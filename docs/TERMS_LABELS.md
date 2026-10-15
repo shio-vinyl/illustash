@@ -4,6 +4,8 @@
 
 当前生产入口由 Rust 负责，普通启动不做 Python 后台切换；升级显式使用 `http --upgrade`。本文提到的 Store/adopt_* 是保留的测试参考，原生现行行为见 [架构方向](ARCHITECTURE_DIRECTION.md#生产入口与测试参考)。
 
+细粒度 ACG 概念的本地学习、meme 候选筛选及验证边界见[研究方案](CONCEPT_LEARNING_PLAN.md)；该研究尚未改变本篇的标签与裁决契约。
+
 ## 1. 映射
 
 | 旧 | 核心 |

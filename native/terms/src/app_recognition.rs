@@ -281,7 +281,7 @@ fn validate_against(
 fn writer(path: &Path) -> Result<Connection> {
     let c = crate::sqlite::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_WRITE)?;
     crate::configure(&c)?;
-    c.busy_timeout(std::time::Duration::from_millis(250))?;
+    c.busy_timeout(crate::WRITER_BUSY)?;
     Ok(c)
 }
 /// Optional research dispatcher acknowledges notification delivery, not completion of algorithms.

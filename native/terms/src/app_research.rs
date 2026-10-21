@@ -275,19 +275,30 @@ fn hash_db(c: &Connection, h: &mut Sha256, only: Option<&[&str]>, skip: &[&str],
     }
     Ok(())
 }
-/// Shared anchor files are read within one complete index publication (index_generation).
 fn fingerprint(app: &Connection, src: &Connection, inputs: &Inputs<'_>, ctx: &TaskContext) -> Result<String> {
+    let source = source_digest(src, inputs, ctx)?;
+    fingerprint_with(app, &source, inputs, ctx)
+}
+/// The source tables' part of a fingerprint, on its own: a publication check holds source still with its read
+/// transaction, so it computes this once however many rounds it takes (#275).
+fn source_digest(src: &Connection, inputs: &Inputs<'_>, ctx: &TaskContext) -> Result<Vec<u8>> {
+    let mut h = Sha256::new();
+    hash_db(src, &mut h, inputs.scope.source(), &["backend_effects", "research_runs"], ctx)?;
+    Ok(h.finalize().to_vec())
+}
+/// Shared anchor files are read within one complete index publication (index_generation).
+fn fingerprint_with(app: &Connection, source: &[u8], inputs: &Inputs<'_>, ctx: &TaskContext) -> Result<String> {
     if inputs.scope == Scope::Learning {
-        crate::index_generation::stable(inputs.anchors, || fingerprint_once(app, src, inputs, ctx))
+        crate::index_generation::stable(inputs.anchors, || fingerprint_once(app, source, inputs, ctx))
     } else {
-        fingerprint_once(app, src, inputs, ctx)
+        fingerprint_once(app, source, inputs, ctx)
     }
 }
-fn fingerprint_once(app: &Connection, src: &Connection, inputs: &Inputs<'_>, ctx: &TaskContext) -> Result<String> {
+fn fingerprint_once(app: &Connection, source: &[u8], inputs: &Inputs<'_>, ctx: &TaskContext) -> Result<String> {
     let mut h = Sha256::new();
     feed(&mut h, format!("{:?}", inputs.scope).as_bytes());
     hash_db(app, &mut h, inputs.scope.app(), UNREAD, ctx)?;
-    hash_db(src, &mut h, inputs.scope.source(), &["backend_effects", "research_runs"], ctx)?;
+    feed(&mut h, source);
     // Base feature/anchor files are inputs too. Changed vectors invalidate an in-flight result.
     for p in inputs.files()? {
         ctx.check()?;
@@ -332,8 +343,52 @@ fn fingerprint_once(app: &Connection, src: &Connection, inputs: &Inputs<'_>, ctx
     }
     Ok(format!("{:x}", h.finalize()))
 }
-/// Rounds of the accept check that recompute the fingerprint outside the write lock.
-const OUTSIDE_ROUNDS: u32 = 3;
+/// Rounds of the accept check before a publication that keeps meeting other writers steps aside (#275).
+const PUBLISH_ROUNDS: u32 = 5;
+/// The pause after the first round that met a writer; it doubles each round.
+const PUBLISH_PAUSE: Duration = Duration::from_millis(250);
+/// A publication whose accept check kept meeting other writers' commits: it ends without an error and recovery
+/// starts it again later (`Research::recover`).
+const PUBLISH_BUSY: &str = "图库一直在写入，研究稍后继续";
+/// How long recovery waits before starting a run that stepped aside, by why it did.
+fn step_aside_wait(e: &Error) -> Option<Duration> {
+    match e {
+        Error::Conflict(m) if m == YIELDED => Some(STEP_ASIDE),
+        Error::Conflict(m) if m == PUBLISH_BUSY => Some(Duration::from_secs(60)),
+        _ => None,
+    }
+}
+fn conflict_text(e: &Error) -> String {
+    match e {
+        Error::Conflict(m) => m.clone(),
+        other => other.to_string(),
+    }
+}
+/// Publications checking their inputs right now. Name fetching writes only tables no research result reads, but one
+/// commit per entry, thousands in a row: each moves `data_version` and would keep a check from ever finding a quiet
+/// moment. It holds its commits while this is non-zero (`hold_unread_writes`); the check is bounded, so the wait is too.
+static CHECKING: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+struct Checking;
+impl Checking {
+    fn hold() -> Self {
+        CHECKING.fetch_add(1, Ordering::SeqCst);
+        Self
+    }
+}
+impl Drop for Checking {
+    fn drop(&mut self) {
+        CHECKING.fetch_sub(1, Ordering::SeqCst);
+    }
+}
+/// For writers of unread tables only: waits while a research publication checks its inputs. `check` ends the wait
+/// with its error (cancellation).
+pub(crate) fn hold_unread_writes(check: impl Fn() -> Result<()>) -> Result<()> {
+    while CHECKING.load(Ordering::SeqCst) > 0 {
+        check()?;
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    Ok(())
+}
 /// One consistent read of each connection: everything `read` does sees the state committed when it
 /// first reads. Nothing is written, so each transaction ends with ROLLBACK.
 fn read_snapshot<T>(dbs: &[&Connection], read: impl FnOnce() -> Result<T>) -> Result<T> {
@@ -354,7 +409,7 @@ fn read_snapshot<T>(dbs: &[&Connection], read: impl FnOnce() -> Result<T>) -> Re
     value
 }
 /// source.sqlite keeps a rollback journal, so a read transaction on it holds a lock that makes its writers (sync,
-/// recognition imports) give up after their 250 ms busy timeout (#226). Research reads source for as long as hashing
+/// recognition imports) give up after their busy timeout (#226). Research reads source for as long as hashing
 /// and copying the whole file takes, which on a large library is far longer. Its source reads watch for the journal a
 /// writer creates before it commits and step aside at once, like the background integrity check (#212).
 struct Writers {
@@ -420,11 +475,21 @@ impl Writers {
 fn data_version(c: &Connection) -> Result<i64> {
     Ok(c.query_row("PRAGMA data_version", [], |r| r.get(0))?)
 }
+/// `data_version` inside a read transaction that has taken its lock: the version of what the transaction reads.
+fn read_version(c: &Connection) -> Result<i64> {
+    c.query_row("SELECT count(*) FROM sqlite_master", [], |r| r.get::<_, i64>(0))?;
+    data_version(c)
+}
 /// Accept-time input check for publishing kinds (#29). The fingerprint is recomputed in a read
 /// transaction, without the write lock. Under BEGIN IMMEDIATE only this connection's
 /// `PRAGMA data_version` (changed by any commit from another connection) and the shared files' stamp
-/// are compared; if either moved, the round is repeated, and the last round recomputes the fingerprint
-/// under the lock. A mismatch is always `INPUT_CHANGED`. `between` runs before each lock (test hook).
+/// are compared; if either moved, the lock is let go and the round repeated after a pause. The fingerprint is never
+/// recomputed under the lock: on a large library that held every other writer of the application database past its
+/// busy timeout (#275). After `PUBLISH_ROUNDS` the check gives up with `PUBLISH_BUSY`. A mismatch is always
+/// `INPUT_CHANGED`. The source part is hashed in its own short read and again only when source's `data_version`
+/// moved: an idle read transaction on source would hold its lock for the whole check, and with no statement running
+/// it would never notice a writer to step aside for (#226). Source is read again, under the write lock, only to
+/// confirm that version and for the publication itself. `between` runs before each lock (test hook).
 fn confirm<T>(
     app: &mut Connection,
     src: &Connection,
@@ -434,26 +499,45 @@ fn confirm<T>(
     mut between: impl FnMut(),
     publish: impl FnOnce(rusqlite::Transaction<'_>) -> Result<T>,
 ) -> Result<T> {
-    let mut round = 1;
-    loop {
+    let _quiet = Checking::hold();
+    let mut publish = Some(publish);
+    let mut source: Option<(i64, Vec<u8>)> = None;
+    for round in 1..=PUBLISH_ROUNDS {
+        if source.as_ref().is_none_or(|(seen, _)| data_version(src).ok() != Some(*seen)) {
+            source = Some(read_snapshot(&[src], || Ok((read_version(src)?, source_digest(src, inputs, ctx)?)))?);
+        }
+        let (source_seen, digest) = source.as_ref().expect("hashed above");
         let files = inputs.stamp()?;
         let reader: &Connection = app;
         let (fresh, seen) =
-            read_snapshot(&[reader], || Ok((fingerprint(reader, src, inputs, ctx)?, data_version(reader)?)))?;
+            read_snapshot(&[reader], || Ok((fingerprint_with(reader, digest, inputs, ctx)?, data_version(reader)?)))?;
         if fresh != version {
             return Err(Error::Conflict(INPUT_CHANGED.into()));
         }
         between();
         let tx = app.transaction_with_behavior(TransactionBehavior::Immediate)?;
-        let unchanged = data_version(&tx)? == seen && inputs.stamp()? == files;
-        if unchanged || round == OUTSIDE_ROUNDS {
-            if !unchanged && fingerprint(&tx, src, inputs, ctx)? != version {
-                return Err(Error::Conflict(INPUT_CHANGED.into()));
+        if data_version(&tx)? == seen && inputs.stamp()? == files {
+            let published = read_snapshot(&[src], || {
+                if read_version(src)? != *source_seen {
+                    return Ok(None);
+                }
+                publish.take().expect("published once")(tx).map(Some)
+            })?;
+            if let Some(value) = published {
+                return Ok(value);
             }
-            return publish(tx);
+        } else {
+            drop(tx);
         }
-        round += 1;
+        if round < PUBLISH_ROUNDS {
+            let until = std::time::Instant::now() + PUBLISH_PAUSE * 2u32.pow(round - 1);
+            while std::time::Instant::now() < until {
+                ctx.check()?;
+                std::thread::sleep(Duration::from_millis(20));
+            }
+        }
     }
+    Err(Error::Conflict(PUBLISH_BUSY.into()))
 }
 /// Snapshot directories `illustash-research-<task>` are removed when their run ends, whatever the outcome
 /// (`Scratch`). Only a killed process leaves one; such a directory is removed once it is older than a day and
@@ -545,8 +629,9 @@ pub struct Research {
     retry_at: Option<std::time::Instant>,
     /// Set when automatic conflict retries ran out; recovery then waits for an explicit start.
     exhausted: Arc<AtomicBool>,
-    /// Set when the last run stepped aside for a source writer (`YIELDED`); recovery starts it again soon.
-    stepped_aside: Arc<AtomicBool>,
+    /// Milliseconds recovery waits when the last run stepped aside for other writers (`step_aside_wait`); 0 when it
+    /// did not.
+    stepped_aside: Arc<std::sync::atomic::AtomicU64>,
 }
 impl Research {
     pub fn new(generation: u64, session: &str, similar_enabled: bool) -> Self {
@@ -560,7 +645,7 @@ impl Research {
             paused: false,
             retry_at: None,
             exhausted: Arc::new(AtomicBool::new(false)),
-            stepped_aside: Arc::new(AtomicBool::new(false)),
+            stepped_aside: Arc::default(),
         }
     }
     pub fn state(&self) -> Json {
@@ -629,7 +714,7 @@ impl Research {
         self.paused = false;
         self.retry_at = None;
         self.exhausted.store(false, Ordering::SeqCst);
-        self.stepped_aside.store(false, Ordering::SeqCst);
+        self.stepped_aside.store(0, Ordering::SeqCst);
         if ["similar", "regroup"].contains(&kind) {
             let c = crate::sqlite::open(library.db())?;
             crate::configure(&c)?;
@@ -711,11 +796,12 @@ impl Research {
                     }
                     Ok(())
                 }
-                Err(e) if yielded(&e) => {
+                Err(e) if step_aside_wait(&e).is_some() => {
                     // Not a failure: the pending work stays as it is, without an error, for recovery to start again.
-                    stepped_aside.store(true, Ordering::SeqCst);
+                    let wait = step_aside_wait(&e).expect("guarded by the match arm");
+                    stepped_aside.store(wait.as_millis() as u64, Ordering::SeqCst);
                     *state.lock().expect("research state mutex poisoned") =
-                        Json::object([("status", "waiting".into()), ("message", YIELDED.into())]).into();
+                        Json::object([("status", "waiting".into()), ("message", conflict_text(&e).into())]).into();
                     if let Some(tx) = reply {
                         let _ = tx.send(Err(Error::Invalid(e.to_string())));
                     }
@@ -751,7 +837,8 @@ impl Research {
     /// Start pending learning/similarity work. Not while a sync runs: its batch imports leave
     /// `imported` events that one run after the sync coalesces, instead of learning competing
     /// with recognition for the CPU between batches. A run that stepped aside for a source writer
-    /// (#226) starts again shortly after, on the same terms.
+    /// (#226) starts again shortly after, one whose publication kept meeting other writers (#275) a minute
+    /// after, on the same terms.
     pub fn recover(&mut self, library: &Library, sync_busy: bool) -> Result<()> {
         if !configured()
             || library.frozen()
@@ -771,8 +858,10 @@ impl Research {
                 self.paused = true;
                 return Ok(());
             }
-            let wait =
-                if self.stepped_aside.swap(false, Ordering::SeqCst) { STEP_ASIDE } else { Duration::from_secs(60) };
+            let wait = match self.stepped_aside.swap(0, Ordering::SeqCst) {
+                0 => Duration::from_secs(60),
+                ms => Duration::from_millis(ms),
+            };
             self.retry_at = Some(std::time::Instant::now() + wait);
             return Ok(());
         }
@@ -803,10 +892,11 @@ fn run(
     let src = crate::app_library::read_connection(&library.source())?;
     let inputs = Inputs::new(library, anchors, kind, &args);
     let writers = Writers::of(&library.source());
-    // Snapshot/version from the same read transactions.
-    let (version, events, intents, regroup, learning) = writers.read(&src, || read_snapshot(&[&c, &src], || {
+    // Snapshot/version from the same read transactions. Copying the application database is no statement on source,
+    // so its steps look for a source writer too; the work on the copies happens after source is let go (#275).
+    let (version, events, intents, regroup) = writers.read(&src, || read_snapshot(&[&c, &src], || {
         let version = fingerprint(&c, &src, &inputs, ctx)?;
-        backup(&c, &scratch.0.join("library.sqlite"), ctx, None)?;
+        backup(&c, &scratch.0.join("library.sqlite"), ctx, Some(&writers))?;
         backup(&src, &scratch.0.join("source.sqlite"), ctx, Some(&writers))?;
         let events: Vec<i64> = c
             .prepare(
@@ -831,17 +921,17 @@ fn run(
                     [],
                     |r| r.get::<_, bool>(0),
                 )? || !intents.is_empty());
-        crate::sqlite::open(scratch.0.join("library.sqlite"))?
-            .execute("DELETE FROM name_settings WHERE key IN ('model_key','deepseek_key')", [])?;
-        // Only learning kinds publish a learning batch; the others skip its full input stamp.
-        let learning = if inputs.scope == Scope::Learning {
-            crate::character_learning::snapshot(&mut crate::sqlite::open(scratch.0.join("library.sqlite"))?)?["token"]
-                .clone()
-        } else {
-            Value::Null
-        };
-        Ok((version, events, intents, regroup, learning))
+        Ok((version, events, intents, regroup))
     }))?;
+    crate::sqlite::open(scratch.0.join("library.sqlite"))?
+        .execute("DELETE FROM name_settings WHERE key IN ('model_key','deepseek_key')", [])?;
+    // Only learning kinds publish a learning batch; the others skip its full input stamp.
+    let learning = if inputs.scope == Scope::Learning {
+        crate::character_learning::snapshot(&mut crate::sqlite::open(scratch.0.join("library.sqlite"))?)?["token"]
+            .clone()
+    } else {
+        Value::Null
+    };
     let request = protocol::value(&protocol::ResearchRequest {
         format: protocol::Format::Research,
         identity: ctx.identity(),
@@ -909,13 +999,12 @@ fn run(
     }
     *state.lock().expect("research state mutex poisoned") = json!({"status":"importing"}).into();
     ctx.receive(&response.identity, || {
-        let mut src = crate::app_library::read_connection(&library.source())?;
-        let src = src.transaction()?;
+        let src = crate::app_library::read_connection(&library.source())?;
         writers.read(&src, || {
             if !inputs.scope.publishes() {
                 // A query publishes nothing: one read transaction checks its inputs and its answer.
                 let c = crate::app_library::read_connection(&library.db())?;
-                return read_snapshot(&[&c], || {
+                return read_snapshot(&[&c, &src], || {
                     if fingerprint(&c, &src, &inputs, ctx)? != version {
                         return Err(Error::Conflict(INPUT_CHANGED.into()));
                     }
@@ -1287,8 +1376,7 @@ mod tests {
         /// Run the accept check for `scope`; returns whether it published and how many rounds ran.
         fn confirm(&self, scope: Scope, version: &str, mut between: impl FnMut(u32)) -> (Result<()>, u32) {
             let mut app = self.app();
-            let mut src = self.source();
-            let src = src.transaction().unwrap();
+            let src = self.source();
             let mut rounds = 0;
             let result = confirm(
                 &mut app,
@@ -1456,21 +1544,19 @@ mod tests {
     }
 
     #[test]
-    fn last_round_checks_the_full_fingerprint_under_the_lock() {
+    fn commits_before_every_lock_end_in_stepping_aside() {
         let f = Fixture::new();
-        // Unread commits before every lock: the last round recomputes under the lock and accepts.
+        // Unread commits before every lock: no round finds a quiet moment, and none recomputes under the lock (#275).
         let version = f.version(Scope::Learning);
         let (result, rounds) = f.confirm(Scope::Learning, &version, |round| {
             f.app().execute("INSERT OR REPLACE INTO prefs VALUES ('synthetic',?)", [round]).unwrap();
         });
-        assert!(result.is_ok(), "{result:?}");
-        assert_eq!(rounds, OUTSIDE_ROUNDS);
-        assert!(f.published());
-        f.app().execute("DELETE FROM image_sigs WHERE uuid='published'", []).unwrap();
-        // A real input committed just before the last lock is found by that recomputation.
-        let version = f.version(Scope::Learning);
+        assert!(matches!(&result, Err(e) if step_aside_wait(e) == Some(Duration::from_secs(60))), "{result:?}");
+        assert_eq!(rounds, PUBLISH_ROUNDS);
+        assert!(!f.published());
+        // A real input committed before a lock is found by the next round's check outside the lock.
         let (result, rounds) = f.confirm(Scope::Learning, &version, |round| {
-            let sql = if round == OUTSIDE_ROUNDS {
+            let sql = if round == 2 {
                 "INSERT INTO memberships VALUES ('c','e1')"
             } else {
                 "INSERT OR REPLACE INTO prefs VALUES ('synthetic','x')"
@@ -1478,8 +1564,93 @@ mod tests {
             f.app().execute(sql, []).unwrap();
         });
         assert!(conflict(&result), "{result:?}");
-        assert_eq!(rounds, OUTSIDE_ROUNDS);
+        assert_eq!(rounds, 2);
         assert!(!f.published());
+    }
+
+    /// #275: between the rounds of a publication check source is not held. A source writer with the former 250 ms busy
+    /// timeout commits in the pause after the first round; its table is one no fingerprint reads, so the check goes on.
+    #[test]
+    fn source_writers_commit_between_publication_rounds() {
+        let f = Fixture::new();
+        f.source().execute_batch("CREATE TABLE backend_effects(id INTEGER PRIMARY KEY,kind TEXT)").unwrap();
+        let version = f.version(Scope::Learning);
+        let path = f.root.join("source.sqlite");
+        let (result, rounds) = f.confirm(Scope::Learning, &version, |round| {
+            f.app().execute("INSERT OR REPLACE INTO prefs VALUES ('synthetic',?)", [round]).unwrap();
+            if round == 1 {
+                let path = path.clone();
+                std::thread::spawn(move || {
+                    std::thread::sleep(Duration::from_millis(100));
+                    let c = crate::sqlite::open(&path).unwrap();
+                    c.busy_timeout(Duration::from_millis(250)).unwrap();
+                    c.execute("INSERT INTO backend_effects(kind) VALUES ('synthetic')", []).map(|_| ())
+                })
+                .join()
+                .unwrap()
+                .unwrap();
+            }
+        });
+        assert!(matches!(&result, Err(e) if step_aside_wait(e).is_some()), "{result:?}");
+        assert_eq!(rounds, PUBLISH_ROUNDS);
+    }
+
+    /// #275: other writers of the application database, with the sync's former 250 ms busy timeout, commit all through
+    /// a publication check that keeps meeting them; the check reads a library that takes at least 0.3 s to hash.
+    /// Before, its last round hashed the library under the write lock and those writers failed with "database is
+    /// locked". A writer that holds its commits while a check runs (`hold_unread_writes`, name fetching) lets it publish.
+    #[test]
+    fn publication_checks_never_hold_the_write_lock_for_a_fingerprint() {
+        let f = Fixture::new();
+        f.app()
+            .execute_batch(
+                "CREATE TABLE synthetic_bulk(id INTEGER PRIMARY KEY,value BLOB);
+                 WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i+1 FROM n WHERE i<300)
+                 INSERT INTO synthetic_bulk SELECT i,randomblob(64) FROM n;",
+            )
+            .unwrap();
+        let version = f.version(Scope::Learning);
+        let path = f.root.join("library.sqlite");
+        // Commits to an unread table every 20 ms until told to stop; returns the failed commits.
+        let writer = |polite: bool| {
+            let stop = Arc::new(AtomicBool::new(false));
+            let (path, flag) = (path.clone(), stop.clone());
+            let handle = std::thread::spawn(move || {
+                let c = crate::sqlite::open(&path).unwrap();
+                c.busy_timeout(Duration::from_millis(250)).unwrap();
+                let mut failed = vec![];
+                for i in 0.. {
+                    if flag.load(Ordering::SeqCst) {
+                        break;
+                    }
+                    if polite {
+                        hold_unread_writes(|| Ok(())).unwrap();
+                    }
+                    if let Err(e) = c.execute("INSERT OR REPLACE INTO prefs VALUES ('synthetic_writer',?)", [i]) {
+                        failed.push(e.to_string());
+                    }
+                    std::thread::sleep(Duration::from_millis(20));
+                }
+                failed
+            });
+            (stop, handle)
+        };
+        ROW_PAUSE.with(|p| p.set(Duration::from_millis(1)));
+        let (stop, handle) = writer(false);
+        let (result, rounds) = f.confirm(Scope::Learning, &version, |_| {});
+        stop.store(true, Ordering::SeqCst);
+        assert_eq!(handle.join().unwrap(), Vec::<String>::new());
+        assert!(matches!(&result, Err(e) if step_aside_wait(e).is_some()), "{result:?}");
+        assert_eq!(rounds, PUBLISH_ROUNDS);
+        assert!(!f.published());
+
+        let (stop, handle) = writer(true);
+        let (result, _) = f.confirm(Scope::Learning, &version, |_| {});
+        stop.store(true, Ordering::SeqCst);
+        ROW_PAUSE.with(|p| p.set(Duration::ZERO));
+        assert_eq!(handle.join().unwrap(), Vec::<String>::new());
+        assert!(result.is_ok(), "{result:?}");
+        assert!(f.published());
     }
 
     /// The publication before #31: full temporary copies of relations and signatures, then every result table
@@ -1738,10 +1909,12 @@ mod tests {
         /// A slow disk for this thread's fingerprints: the pause after each row read.
         static ROW_PAUSE: std::cell::Cell<Duration> = const { std::cell::Cell::new(Duration::ZERO) };
     }
+    /// Spins rather than sleeps: at background priority macOS coalesces short sleeps into tens of milliseconds.
     pub(super) fn pause_row() {
         let pause = ROW_PAUSE.with(std::cell::Cell::get);
-        if !pause.is_zero() {
-            std::thread::sleep(pause);
+        let until = std::time::Instant::now() + pause;
+        while std::time::Instant::now() < until {
+            std::hint::spin_loop();
         }
     }
 
@@ -1791,16 +1964,12 @@ mod tests {
         let version = f.version(Scope::Learning);
         ROW_PAUSE.with(|p| p.set(Duration::from_millis(1)));
         let (started, handle) = writer("synthetic-b");
-        let (mut app, mut src) = (f.app(), f.source());
+        let (mut app, src) = (f.app(), f.source());
         let writers = Writers::of(&path);
         started.send(()).unwrap();
-        // As in `run`, the source transaction ends with the publication step that read it.
-        let checked = (|| {
-            let src = src.transaction()?;
-            writers.read(&src, || {
-                confirm(&mut app, &src, &f.inputs(Scope::Learning), &version, &f.ctx, || {}, |tx| Ok(tx.commit()?))
-            })
-        })();
+        let checked = writers.read(&src, || {
+            confirm(&mut app, &src, &f.inputs(Scope::Learning), &version, &f.ctx, || {}, |tx| Ok(tx.commit()?))
+        });
         assert_eq!(handle.join().unwrap().map_err(|e| e.to_string()), Ok(()));
         assert!(matches!(&checked, Err(e) if yielded(e)), "{checked:?}");
 
@@ -2159,8 +2328,7 @@ mod tests {
                     let version = f.version(scope);
                     prepare.push(ms(started.elapsed()));
                     let mut app = f.app();
-                    let mut src = f.source();
-                    let src = src.transaction().unwrap();
+                    let src = f.source();
                     let started = Instant::now();
                     if !scope.publishes() {
                         // Queries check in one read transaction and take no write lock.

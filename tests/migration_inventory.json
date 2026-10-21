@@ -179,7 +179,7 @@
 
  "native/terms/src/app_files.rs":"2d6a4b7013b350a9c6bf1ff45bcca5c3659e54f2bb97a8053a47de8764c69e7f",
 
- "native/terms/src/app_folder.rs":"2e466b75258b3a1db42f5e6224ca3a5a4fd89cc2ad9e6cad2738e264c33f4555",
+ "native/terms/src/app_folder.rs":"e3292e3686c744df92c807d39afe0b684410c82959ada0f430049a4b793ef6a8",
 
  "native/terms/src/app_http.rs":"34f2d36e4aeb0e9d85d69ef6f2b8f3f324c2bd9ba0d8fa1ca48c82ddc13495c8",
 
@@ -221,13 +221,13 @@
 
  "native/terms/src/app_models.rs":"20ecda715e4a3e41390c03c6879e503b3aa78cb86f83fcb79ebd790d0ee4c015",
 
- "native/terms/src/app_name_sources.rs":"2c5dddb5cd580e838536b56c9cc437f7628da22b33852b3c74a0b964e58fc275",
+ "native/terms/src/app_name_sources.rs":"6e570df3b65512a9c85b7cddecdd2c148b2184108bff28569b454a8cfc1deef4",
 
- "native/terms/src/app_names.rs":"d18eab0d87515e342000046f2849f421133f9671ecc8a54d2e2ac1d322548fa6",
+ "native/terms/src/app_names.rs":"da89639973eb0d89147cc07bdad386ee138342eb9ed5c45a7d65f9889c860563",
 
  "native/terms/src/app_onboarding.rs":"caec1f3634a1d6919f0b7b34d494767d19905c1c4bc054753afc1c3d37c41608",
 
- "native/terms/src/app_photos.rs":"7a895c01adaf633946daab8880a8eaca275b4f1460a8a25fc75bbb46fcf10857",
+ "native/terms/src/app_photos.rs":"2440d0d5a792e96c0e062e3ae30000642a25633b92754f950b32beedc19ccf3e",
 
  "native/terms/src/app_platform.rs":"5d20f65322df394264aedea61ab134aece0404aaa3e91dad3bb7c0cebf79316c",
 
@@ -243,11 +243,11 @@
 
  "native/terms/src/app_provenance_sources.rs":"f8341efb9e83f2fdf20effea6b492dba3192264d664d3a39fe4a90d0bce20c6d",
 
- "native/terms/src/app_recognition.rs":"1cae206a301ad4281ae0549b0f46c2b25ba9a3abbcdd022d84ac796ff7bc4a2b",
+ "native/terms/src/app_recognition.rs":"729e130d9fb2957cf86913f81c31a82993da57c39238f72aaa37cbbd68b46935",
 
  "native/terms/src/app_rescue.rs":"16274da1a0b1683ea0f652c79200cbc2b95ea62732c137c3ae08e7943601a9f0",
 
- "native/terms/src/app_research.rs":"9a32a1a9e0471daac31bbe34b71ce2b6f5be198ec40cf1bd081e4a9392ec8fe8",
+ "native/terms/src/app_research.rs":"6db5ed4b0a5fcfedbf1eae8c25c1ff87e6645b4b9536135e723f0fd8a256fb78",
 
  "native/terms/src/app_resources.rs":"08b7335b22a08947938bf80fe707302cfa82c0fa19b3b3122c28cfe78499811d",
 
@@ -261,7 +261,7 @@
 
  "native/terms/src/app_sources.rs":"69b2de0b8ab8a7bc9c7b1a5853aa0277c9baeb7666e8d1d270b57c80156f7687",
 
- "native/terms/src/app_sync.rs":"9369b15519c0b4b1fed55a9e83707a79b3074d8742e10da6acbcb413a717d7e2",
+ "native/terms/src/app_sync.rs":"32ce21ad72b00a9f852c8ab159ea83fa00f6c5a46d0198dcf265ff4692475e40",
 
  "native/terms/src/app_tasks.rs":"3c01ae07dd99d6a8882c659f1f1cb0203a4eb1ddcc2fdccac6c06d36a19d5083",
 
@@ -315,7 +315,7 @@
 
  "native/terms/src/index_generation.rs":"556ad63a4bb7b8d30e3191d466b91744b29f23fd4fc53fa40ffb9f13b54946e6",
 
- "native/terms/src/lib.rs":"c890139823d735dc00fa984d44f010c7743675b62214bfbebbb3fdc1cc8475bf",
+ "native/terms/src/lib.rs":"57c8a07582984f9348165010ed2cd16ddd328cae6ed876a3f1a3a3dea592a28d",
 
  "native/terms/src/platform_process.rs":"66a45606b4a65b14b2725679bbae0e7e5445e63fddede8e804c2e8d4cca893b0",
 
@@ -501,7 +501,7 @@
  "native/terms/src/app_migrate_data.rs":{"database-write":[57,0,61,"DELETE FROM:similar_groups","INSERT INTO:similar_groups"]},
  "native/terms/src/app_migration_sql/derived.sql":{"database-write":[108,165,161,137,110,167,52,133,107,130,169,168,118,166,117,129,106,128,163,170,119,162,116,154,125,136,172,56,156,114,54,48,174,55]},
  "crates/core/src/character_profile.rs":{"database-write":{"dynamic-or-wrapper":11,"INSERT INTO:term_links":2,"INSERT OR IGNORE INTO:term_links":1,"UPDATE:term_tree":4,"DELETE FROM:term_names":3,"UPDATE:term_links":1,"UPDATE:set":1,"INSERT OR REPLACE INTO:term_names":1,"DELETE FROM:term_links":1,"INSERT OR REPLACE INTO:term_links":1}},
- "native/terms/src/app_names.rs":{"database-write":{"dynamic-or-wrapper":14,"INSERT OR REPLACE INTO:prefs":1,"DELETE FROM:prefs":1,"COMMIT":2,"ROLLBACK":1,"INSERT OR REPLACE INTO:name_cache":4,"INSERT INTO:backend_effects":1,"UPDATE:backend_effects":2,"INSERT OR IGNORE INTO:name_settings|INSERT OR IGNORE INTO:name_settings|DELETE FROM:name_settings":1,"DELETE FROM:name_settings":1,"INSERT INTO:name_settings":1,"INSERT OR REPLACE INTO:name_settings":2,"PRAGMA:c.execute_batch(\"pragma foreign_keys":2,"UPDATE:term_tree":1,"DELETE FROM:term_names":1,"DELETE FROM:name_cache":1},"http-branch":{"/api/local-links":1,"/api/entities":1}},
+ "native/terms/src/app_names.rs":{"database-write":{"dynamic-or-wrapper":14,"INSERT OR REPLACE INTO:prefs":1,"DELETE FROM:prefs":1,"COMMIT":2,"ROLLBACK":1,"INSERT OR REPLACE INTO:name_cache":4,"INSERT INTO:backend_effects":1,"UPDATE:backend_effects":2,"INSERT OR IGNORE INTO:name_settings|INSERT OR IGNORE INTO:name_settings|DELETE FROM:name_settings":1,"DELETE FROM:name_settings":1,"INSERT INTO:name_settings":1,"INSERT OR REPLACE INTO:name_settings":2,"PRAGMA:c.execute_batch(\"pragma foreign_keys":2,"UPDATE:term_tree":1,"DELETE FROM:term_names":1,"DELETE FROM:name_cache":2},"http-branch":{"/api/local-links":1,"/api/entities":1}},
  "desktop/src/main.rs":{"entrypoint":[10]},
  "native/terms/src/bin/illustash-worker.rs":{"entrypoint":[10,4]},
  "native/terms/src/app_accounts.rs":{"database-write":["PRAGMA:c.execute_batch(\"pragma journal_mode",[0,3],46,"PRAGMA:tx.execute_batch(\"pragma user_version","INSERT OR IGNORE INTO:leads",1]},

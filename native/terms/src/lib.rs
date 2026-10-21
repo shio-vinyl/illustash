@@ -135,6 +135,12 @@ pub fn open(path: &Path) -> Result<Connection> {
 
 pub use illustash_core::configure;
 
+/// How long background writers (sync, recognition imports, name fetching) wait for another writer before they give
+/// up with "database is locked". Background work such as a research publication or a batch import holds the write
+/// lock for seconds on a large library; a quarter of a second was not enough (#275). Waiting writers of the WAL
+/// application database block no reader; a rollback-journal source writer blocks new readers only while it commits.
+pub(crate) const WRITER_BUSY: std::time::Duration = std::time::Duration::from_secs(10);
+
 mod app_name_sources;
 mod app_names;
 pub(crate) use illustash_core::name_codecs;

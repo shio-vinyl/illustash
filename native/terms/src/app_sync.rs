@@ -233,7 +233,7 @@ fn now() -> String {
 fn writer(path: &std::path::Path) -> Result<Connection> {
     let c = crate::sqlite::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_WRITE)?;
     crate::configure(&c)?;
-    c.busy_timeout(std::time::Duration::from_millis(250))?;
+    c.busy_timeout(crate::WRITER_BUSY)?;
     Ok(c)
 }
 /// 可供 M4 复用：文件盘点后本地刷新；imported 事件与应用变更同事务提交，保留 pending 给 M4 消费。
@@ -271,6 +271,8 @@ fn run_with(
     let mut counts = json!({"found":0,"removed":0,"imported":0,"failed":0});
     // What the person has to do about a failure, as a code the page words (#202); the message stays the error's own.
     let problem = std::cell::Cell::new(None);
+    // Where a failure happened and which database it was writing, for the log: the page shows the error alone (#275).
+    let stage = std::cell::Cell::new("恢复识别导入（source.sqlite、library.sqlite）");
     let result: Result<(&str, String, Value)> = (|| {
         let recovery = crate::app_recognition::resume(library, cancel, &crate::app_research::dispatch)?;
         if recovery["status"] != "done" {
@@ -285,6 +287,7 @@ fn run_with(
                 done_in_source.set(done);
                 update(json!({"scanned":scanned+done,"scan_total":scanned+total}))
             };
+            stage.set("扫描来源（source.sqlite）");
             let (scan, order) = if source["kind"] == "folder" {
                 let scan = crate::app_folder::scan(source, &library.source(), &|| check(cancel), &progress)?;
                 let _ = scan.changed;
@@ -326,6 +329,7 @@ fn run_with(
             }
             // The persisted source hash, rather than this in-memory list, drives retry after app failure.
         }
+        stage.set("记录扫描结果（library.sqlite）");
         let c = writer(&library.db())?;
         c.execute(
             "UPDATE sync_runs SET found=?,sources=? WHERE id=?",
@@ -351,6 +355,7 @@ fn run_with(
         drop(c);
         check(cancel)?;
         update(json!({"status":"importing"}));
+        stage.set("刷新图库（library.sqlite）");
         let (out, refreshed) = refresh(library, run_id, cancel)?;
         counts["imported"] = out["added"].clone();
         counts["removed"] = out["removed"].clone();
@@ -364,6 +369,7 @@ fn run_with(
                 let worker =
                     std::env::var_os("ILLUSTASH_RECOGNITION_WORKER").filter(|_| !crate::app_models::waiting(root));
                 if let Some(worker) = worker {
+                    stage.set("识别与导入（source.sqlite、library.sqlite）");
                     recognise(
                         library,
                         ctx,
@@ -417,6 +423,7 @@ fn run_with(
     };
     c.execute("UPDATE sync_runs SET status=?,message=?,found=?,removed=?,imported=?,failed=?,finished_at=datetime('now','localtime') WHERE id=?",params![status,message,counts["found"].as_u64(),counts["removed"].as_u64(),counts["imported"].as_u64(),counts["failed"].as_u64(),run_id])?;
     if let Err(e) = &result {
+        eprintln!("同步失败，{}：{e:?}", stage.get());
         let mut fields = json!({"found":counts["found"],"removed":counts["removed"],"imported":counts["imported"],"failed":counts["failed"],"message":stop_message(cancel, context, e)});
         if let Some(problem) = problem.get() {
             fields["problem"] = json!(problem);

@@ -25,7 +25,7 @@ pub(crate) fn scan_ordered(
     let raw = source["path"].as_str().ok_or_else(|| Error::Invalid("Photos 缺少来源路径".into()))?;
     let (root, rows) = crate::platform_photos::read(raw)?;
     let mut c = crate::sqlite::open_with_flags(db, OpenFlags::SQLITE_OPEN_READ_WRITE)?;
-    c.busy_timeout(std::time::Duration::from_millis(250))?;
+    c.busy_timeout(crate::WRITER_BUSY)?;
     let tx = c.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
     tx.execute_batch(include_str!("app_source_schema.sql"))?;
     let known = tx

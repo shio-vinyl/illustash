@@ -28,7 +28,7 @@ pub(crate) fn check(cancel: &AtomicBool) -> Result<()> {
 }
 pub(crate) fn db(path: &std::path::Path) -> Result<Connection> {
     let c = crate::sqlite::open_with_flags(path, rusqlite::OpenFlags::SQLITE_OPEN_READ_WRITE)?;
-    c.busy_timeout(Duration::from_secs(2))?;
+    c.busy_timeout(crate::WRITER_BUSY)?;
     Ok(c)
 }
 #[derive(Default)]

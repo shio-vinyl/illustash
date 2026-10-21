@@ -60,7 +60,7 @@ pub(crate) fn scan_with(
     let sid = source["id"].as_str().ok_or_else(|| Error::Invalid("来源缺少 id".into()))?;
     let preset = source["preset"].as_str().unwrap_or("other");
     let mut c = crate::sqlite::open_with_flags(db, OpenFlags::SQLITE_OPEN_READ_WRITE)?;
-    c.busy_timeout(std::time::Duration::from_millis(250))?;
+    c.busy_timeout(crate::WRITER_BUSY)?;
     let tx = c.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
     tx.execute_batch(include_str!("app_source_schema.sql"))?;
     type Old = (i64, i64, String, String);

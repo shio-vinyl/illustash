@@ -506,7 +506,16 @@ fn run(source: &mut Source, entity: Option<&str>, state: &Mutex<Value>) -> Resul
     let fp = fingerprint(&c, &rows)?;
     let previous: Option<String> =
         c.query_row("SELECT value FROM name_cache WHERE key='[\"sources\", 1]'", [], |r| r.get(0)).optional()?;
-    let done: BTreeSet<String> = if source.force || entity.is_some() || previous.as_deref() != Some(&fp) {
+    let stale = source.force || previous.as_deref() != Some(&fp);
+    // A whole-library run records the sources it works from before its first entry, so the entries it finishes stay
+    // done when a later one fails and the next run redoes only those (#275). Done marks from other sources go now.
+    // Marks first: stopped in between, the next run finds the sources changed and clears them again.
+    if entity.is_none() && stale {
+        crate::app_research::hold_unread_writes(|| net::check(&source.cancel))?;
+        c.execute("DELETE FROM name_cache WHERE key LIKE '[\"done\",%'", [])?;
+        c.execute("INSERT OR REPLACE INTO name_cache VALUES ('[\"sources\", 1]',?)", [&fp])?;
+    }
+    let done: BTreeSet<String> = if entity.is_some() || stale {
         Default::default()
     } else {
         c.prepare("SELECT key FROM name_cache WHERE key LIKE '[\"done\",%'")?
@@ -551,6 +560,7 @@ fn run(source: &mut Source, entity: Option<&str>, state: &Mutex<Value>) -> Resul
     *state.lock().expect("app_names mutex poisoned") = json!({"status":"running","done":0,"total":jobs.len()});
     if !jobs.is_empty() {
         net::check(&source.cancel)?;
+        crate::app_research::hold_unread_writes(|| net::check(&source.cancel))?;
         command(&mut c, seed)?;
     }
 
@@ -561,6 +571,8 @@ fn run(source: &mut Source, entity: Option<&str>, state: &Mutex<Value>) -> Resul
             let job_fp = fingerprint(&c, &job_scope(&rows, kind, key, work))?;
             let ops = if *kind == "skin" { translate_skin(source, key)? } else { enrich(source, kind, key, work)? };
             net::check(&source.cancel)?;
+            // One commit per entry: none while a research publication checks its inputs (#275).
+            crate::app_research::hold_unread_writes(|| net::check(&source.cancel))?;
             // Check sources under the same write transaction as names/projections/done marker.
             let tx = c.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
             if fingerprint(&tx, &job_scope(&scope(&tx, entity)?, kind, key, work))? != job_fp {
@@ -589,18 +601,12 @@ fn run(source: &mut Source, entity: Option<&str>, state: &Mutex<Value>) -> Resul
             if source.cancel.load(Ordering::SeqCst) {
                 return Err(e);
             }
+            eprintln!("名称条目失败（{kind} {key}）：{e:?}");
             keep(&mut first_error, e);
         }
         state.lock().expect("app_names mutex poisoned")["done"] = json!(i + 1);
     }
-    if let Some(e) = first_error {
-        Err(e)
-    } else {
-        if entity.is_none() {
-            c.execute("INSERT OR REPLACE INTO name_cache VALUES ('[\"sources\", 1]',?)", [fp])?;
-        }
-        Ok(())
-    }
+    first_error.map_or(Ok(()), Err)
 }
 fn translate_skin(source: &mut Source, key: &str) -> Result<Vec<Value>> {
     // Reuse the same translation path with no wiki/Bangumi fetch.
@@ -661,6 +667,12 @@ pub(crate) struct Updater {
     grant: Arc<AtomicBool>,
     retry: Instant,
     last_seen: i64,
+    /// Runs in a row that ended in an error; each doubles the wait before pending requests run again (#275).
+    failures: u32,
+}
+/// The wait before pending requests run again after `failures` failed runs in a row: a minute, doubling up to an hour.
+fn retry_wait(failures: u32) -> Duration {
+    (Duration::from_secs(60) * 2u32.pow(failures.saturating_sub(1).min(6))).min(Duration::from_secs(3600))
 }
 impl Updater {
     pub fn new(library: &Library, enabled: bool, authorized: bool, generation: u64, session: &str) -> Result<Self> {
@@ -678,6 +690,7 @@ impl Updater {
             grant: Arc::new(AtomicBool::new(granted)),
             retry: Instant::now(),
             last_seen: 0,
+            failures: 0,
         })
     }
     pub fn stop(&mut self) {
@@ -747,8 +760,13 @@ impl Updater {
         }
         if let Some(mut t) = self.thread.take() {
             let _ = t.wait(Duration::from_millis(0));
-            if self.state.lock().expect("app_names mutex poisoned")["status"] == "done" {
+            let status = self.state.lock().expect("app_names mutex poisoned")["status"].clone();
+            if status == "done" {
+                self.failures = 0;
                 self.retry = Instant::now();
+            } else if status == "error" {
+                self.failures += 1;
+                self.retry = Instant::now() + retry_wait(self.failures);
             }
         }
         let pending = (|| -> Result<Vec<(i64, String)>> {
@@ -828,6 +846,7 @@ impl Updater {
                         }
                         Err(e) => {
                             s["status"] = json!("error");
+                            eprintln!("名称请求失败（library.sqlite）：{e:?}");
                             let message = match e {
                                 Error::Invalid(s) | Error::Network(s) => s,
                                 _ => "名称数据库操作失败".into(),
@@ -1661,6 +1680,8 @@ mod sources_tests {
         fields: HashMap<i64, Value>,
         translation: Value,
         down: bool,
+        /// A wiki page that fails to load, failing that one entry.
+        broken_wiki: Option<String>,
         calls: Vec<(String, Option<Value>)>,
     }
 
@@ -1679,6 +1700,7 @@ mod sources_tests {
                 fields: HashMap::from([(10, result(10, "アリス", Some("爱丽丝")))]),
                 translation: json!({"zh":"译名"}),
                 down: false,
+                broken_wiki: None,
                 calls: vec![],
             }
         }
@@ -1702,6 +1724,9 @@ mod sources_tests {
                 }
                 Some(if path == "/wiki_pages.json" {
                     let tag = test_provider::param(query, "search[title]");
+                    if a.broken_wiki.as_ref() == Some(&tag) {
+                        return None;
+                    }
                     match a.wikis.get(&tag) {
                         Some(names) => json!([{"title": tag, "other_names": names}]),
                         None => json!([]),
@@ -2001,6 +2026,29 @@ mod sources_tests {
         p.set(|a| a.down = false);
         lib.run(&p, None, false).unwrap();
         assert_eq!(lib.char("alice").name, "爱丽丝");
+    }
+
+    #[test]
+    fn failed_runs_wait_longer_each_time() {
+        let minutes = (1..=8).map(|n| retry_wait(n).as_secs() / 60).collect::<Vec<_>>();
+        assert_eq!(minutes, [1, 2, 4, 8, 16, 32, 60, 60]);
+    }
+
+    /// #275: a run that fails on one entry keeps the others done; the next run asks only about the failed one.
+    #[test]
+    fn a_failed_entry_is_redone_alone() {
+        let (p, lib) = (Providers::start(), Library::load());
+        p.set(|a| a.broken_wiki = Some("bob".into()));
+        assert!(lib.run(&p, None, false).is_err());
+        let before = p.calls().len();
+        p.set(|a| a.broken_wiki = None);
+        lib.run(&p, None, false).unwrap();
+        let again: Vec<String> = p.calls()[before..].iter().map(|(url, body)| format!("{url} {body:?}")).collect();
+        assert!(again.iter().any(|c| c.contains("bob")), "{again:?}");
+        assert!(again.iter().all(|c| !c.contains("alice") && !c.contains("Example")), "{again:?}");
+        let after = p.calls().len();
+        lib.run(&p, None, false).unwrap();
+        assert_eq!(p.calls().len(), after, "nothing is left to ask");
     }
 
     #[test]

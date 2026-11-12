@@ -3,7 +3,8 @@
 必须显式给出 ILLUSTASH_TERMS_BIN；缺少 release 构建不算验收。原生宿主经固定录制与原 Python 参考处理程序
 比较（tests/fixed_expectations.py，#9：种子包、参考实现的每个响应和每一步之后参考图库的状态，
 都是在参考实现还在时录制的）。两边都不启动研究 worker。每个 HTTP 步骤之后比较 app/source/provenance 的
-全部表、原始 DDL、带类型的单元格和 rowid（以摘要形式），包括历史、撤销和持久化的事件。响应逐字节比较；
+全部表、原始 DDL、带类型的单元格和 rowid（以摘要形式），包括历史、撤销和持久化的事件。成功响应逐字节比较；
+错误沿用状态码对照，另验各自真实长度及当前 500 安全文案/诊断回执。
 只有会话 token、回环 origin 和临时根目录是占位符。录制的种子固定了时间戳的 DEFAULT 并预置了用户词条，
 所以原生结果是确定的。快照各自在一个事务里取，跨数据库不是原子的。
 """
@@ -44,6 +45,29 @@ def difference(left, right):
     return verify_read_http.difference(*masked)
 
 
+def assert_response_headers(test, reference, response):
+    """错误沿用状态码对照；长度各自核实，500 另验当前安全文案及诊断回执。"""
+    if response['status'] >= 400:
+        for value in (reference, response):
+            test.assertEqual(value['headers'].get('Content-Length'), str(len(value['body'])))
+    if response['status'] == 500:
+        def unique_object(pairs):
+            test.assertEqual(len(pairs), len(dict(pairs)), 'duplicate diagnostic fields')
+            return dict(pairs)
+        test.assertEqual(json.loads(response['body'], object_pairs_hook=unique_object), {
+            'error': '保存失败，请先核对操作结果；可在设置的关于页复制诊断信息'})
+        diagnostic = json.loads(response['headers']['X-Illustash-Diagnostic'], object_pairs_hook=unique_object)
+        test.assertEqual(set(diagnostic), {'id', 'stored', 'publication', 'retry'})
+        test.assertIsNotNone(re.fullmatch(r'D-[0-9a-f]{32}', diagnostic['id']))
+        test.assertIs(diagnostic['stored'], True)
+        test.assertEqual(diagnostic['publication'], 'unknown')
+        test.assertEqual(diagnostic['retry'], 'check_state')
+    for header in HEADERS:
+        if response['status'] >= 400 and header == 'Content-Length':
+            continue  # 已按各自的真实字节数核实，不能拿旧提示文案的长度要求新文案。
+        test.assertEqual(reference['headers'].get(header), response['headers'].get(header), header)
+
+
 def snapshot(path):
     """schema 和每张表（带类型的单元格和物理 rowid），以逐表摘要的形式给出。"""
     from tests.fixed_expectations import table_digests
@@ -77,6 +101,34 @@ def freeze_seed_defaults(path):
 
 
 class SnapshotTest(unittest.TestCase):
+    def test_error_headers_reject_invalid_diagnostics_lengths_and_security_changes(self):
+        def response(message, diagnostic=None):
+            body = json.dumps({'error': message}, ensure_ascii=False).encode()
+            headers = {'Content-Length': str(len(body)), 'Content-Type': 'application/json'}
+            if diagnostic is not None:
+                headers['X-Illustash-Diagnostic'] = json.dumps(diagnostic)
+            return {'status': 500, 'body': body, 'headers': headers}
+        reference = response('保存失败，未提交的操作已回滚；请查看启动终端')
+        receipt = {'id': 'D-' + 'a' * 32, 'stored': True, 'publication': 'unknown', 'retry': 'check_state'}
+        message = '保存失败，请先核对操作结果；可在设置的关于页复制诊断信息'
+        current = response(message, receipt)
+        assert_response_headers(self, reference, current)
+        for invalid in ({**receipt, 'id': '/synthetic/private/file.png'}, {**receipt, 'id': receipt['id'] + '\n'},
+                        {**receipt, 'stored': 1},
+                        {**receipt, 'publication': 'committed'}, {**receipt, 'retry': 'retry'},
+                        {**receipt, 'path': '/synthetic/private/file.png'}):
+            with self.subTest(invalid=invalid), self.assertRaises(AssertionError):
+                assert_response_headers(self, reference, response(message, invalid))
+        for header, value in (('Content-Length', '1'), ('Content-Type', 'text/plain'),
+                              ('Cache-Control', 'public'), ('X-Illustash-Diagnostic', '{}')):
+            bad = {**current, 'headers': {**current['headers'], header: value}}
+            with self.subTest(header=header), self.assertRaises(AssertionError):
+                assert_response_headers(self, reference, bad)
+        with self.assertRaises(AssertionError):
+            assert_response_headers(self, {**reference, 'headers': {**reference['headers'], 'Content-Length': '1'}}, current)
+        with self.assertRaises(AssertionError):
+            assert_response_headers(self, reference, response('保存成功', receipt))
+
     def test_detects_typed_cells_rowids_ddl_history_events_and_auxiliary_changes(self):
         with tempfile.TemporaryDirectory() as tmp:
             a, b = Path(tmp) / 'a.sqlite', Path(tmp) / 'b.sqlite'
@@ -238,8 +290,7 @@ class NativeHumanLabelsTest(unittest.TestCase):
         self.assertIsNone(difference(*responses), (url, body, difference(*responses)))
         self.assertEqual(responses[1]['status'], expected, (url, body, responses[1]['body']))
         self.assertEqual(responses[1]['route'], 'core')
-        for header in HEADERS:
-            self.assertEqual(responses[0]['headers'].get(header), responses[1]['headers'].get(header), header)
+        assert_response_headers(self, *responses)
         self.assertEqual(after[0], after[1], (url, body))
         self.latency.append((url, responses[0]['ms'], responses[1]['ms']))
         self.assertFalse(self.sentinel.exists())

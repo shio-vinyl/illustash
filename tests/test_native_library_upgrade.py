@@ -13,6 +13,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import signal
 import socket
@@ -65,6 +66,88 @@ def tree(root):
         elif p.is_dir():
             state['dir:' + name] = None
     return state
+
+
+def assert_only_startup_diagnostic_added(test, root, before):
+    """失败仍不得改任何原文件；只容许一条严格白名单的启动诊断和它的必要目录/空锁。"""
+    after = tree(root)
+    added = set(after) - set(before)
+    records = []
+    for key in added:
+        if key in ('dir:support', 'dir:support/diagnostics'):
+            test.assertIsNone(after[key])
+        elif key == 'file:support/diagnostics/.lock':
+            test.assertEqual(after[key], hashlib.sha256(b'').hexdigest())
+        else:
+            match = re.fullmatch(r'file:support/diagnostics/(D-[0-9a-f]{32})\.json', key)
+            test.assertIsNotNone(match, ('unexpected startup output', key))
+            data = (root / key.removeprefix('file:')).read_bytes()
+            test.assertLessEqual(len(data), 2048)
+            def unique_object(pairs):
+                test.assertEqual(len(pairs), len(dict(pairs)), 'duplicate diagnostic fields')
+                return dict(pairs)
+            record = json.loads(data, object_pairs_hook=unique_object)
+            test.assertEqual(set(record), {'id', 'at', 'operation', 'stage', 'cause', 'code', 'publication', 'retry'})
+            test.assertEqual(record['id'], match[1])
+            test.assertIs(type(record['at']), int)
+            test.assertLessEqual(0, int(time.time()) - record['at'])
+            test.assertLessEqual(int(time.time()) - record['at'], 14 * 86400)
+            test.assertEqual(record['operation'], 'host')
+            test.assertEqual(record['stage'], 'startup')
+            test.assertIn(record['cause'], ('invalid_input', 'database', 'schema', 'permission_denied',
+                                           'not_found', 'storage_full', 'io', 'conflict', 'network', 'timeout'))
+            if record['code'] is not None:
+                test.assertIs(type(record['code']), int)
+                test.assertGreaterEqual(record['code'], -(2 ** 31))
+                test.assertLess(record['code'], 2 ** 31)
+            test.assertEqual(record['publication'], 'unknown')
+            test.assertEqual(record['retry'], 'check_state')
+            records.append(record)
+    test.assertEqual(len(records), 1, 'each rejected startup must persist exactly one diagnostic')
+    test.assertEqual({key: value for key, value in after.items() if key not in added}, before)
+
+
+class StartupDiagnosticGuardTest(unittest.TestCase):
+    def test_rejects_business_mutations_and_unvalidated_diagnostic_output(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = ('library.pilib/library.sqlite', 'library.pilib/library.json',
+                     'library.pilib/backups/old.sqlite', 'support/settings.json',
+                     'support/diagnostics/D-' + 'b' * 32 + '.json')
+            for name in paths:
+                path = root / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(b'unchanged')
+            before = tree(root)
+            directory = root / 'support/diagnostics'
+            record = {'id': 'D-' + 'a' * 32, 'at': int(time.time()), 'operation': 'host', 'stage': 'startup',
+                      'cause': 'schema', 'code': None, 'publication': 'unknown', 'retry': 'check_state'}
+            output = directory / (record['id'] + '.json')
+            output.write_text(json.dumps(record))
+            (directory / '.lock').touch()
+            assert_only_startup_diagnostic_added(self, root, before)
+            for name in paths:
+                path = root / name
+                path.write_bytes(b'changed')
+                with self.subTest(changed=name), self.assertRaises(AssertionError):
+                    assert_only_startup_diagnostic_added(self, root, before)
+                path.write_bytes(b'unchanged')
+            for name in ('support/unexpected.txt', 'support/diagnostics/raw.log', 'library.pilib/new.sqlite'):
+                extra = root / name
+                extra.write_bytes(b'unexpected')
+                with self.subTest(added=name), self.assertRaises(AssertionError):
+                    assert_only_startup_diagnostic_added(self, root, before)
+                extra.unlink()
+            for invalid in ({**record, 'path': '/synthetic/private/file.png'},
+                            {**record, 'cause': '/synthetic/private/file.png'}, {**record, 'at': True},
+                            {**record, 'id': 'D-' + 'c' * 32}, {**record, 'stage': 'write'}):
+                output.write_text(json.dumps(invalid))
+                with self.subTest(invalid=invalid), self.assertRaises(AssertionError):
+                    assert_only_startup_diagnostic_added(self, root, before)
+            output.write_text(json.dumps(record))
+            (directory / '.lock').write_bytes(b'secret')
+            with self.assertRaises(AssertionError):
+                assert_only_startup_diagnostic_added(self, root, before)
 
 
 def database(path):
@@ -290,7 +373,7 @@ class NativeLibraryUpgradeTest(unittest.TestCase):
                 lib, _ = self.package(version, f'plain-v{version}')
                 before = tree(self.root)
                 self.failed(lib, upgrade=False)
-                self.assertEqual(tree(self.root), before)
+                assert_only_startup_diagnostic_added(self, self.root, before)
 
     def test_historical_source_default_auto_sync_records_each_start_and_imports_new_file(self):
         for version in (5, 6):
@@ -375,12 +458,12 @@ class NativeLibraryUpgradeTest(unittest.TestCase):
         result = subprocess.run(self.args(lib) + ['--backup'], env=self.env, capture_output=True, timeout=10)
         self.assertNotEqual(result.returncode, 0)
         self.assertEqual(result.stderr.decode().strip(), '--upgrade 不可与 --backup 同用')
-        self.assertEqual(tree(self.root), before)
+        assert_only_startup_diagnostic_added(self, self.root, before)
         with socket.socket() as listener:
             listener.bind(('127.0.0.1', 0)); listener.listen()
             before = tree(self.root)
             self.failed(lib, port=listener.getsockname()[1])
-            self.assertEqual(tree(self.root), before)
+            assert_only_startup_diagnostic_added(self, self.root, before)
         for key, value in (('schema_version', '35'), ('terms_names', 'pending')):
             with self.subTest(key=key):
                 with closing(sqlite3.connect(lib.db)) as c:
@@ -388,13 +471,13 @@ class NativeLibraryUpgradeTest(unittest.TestCase):
                     c.execute('UPDATE meta SET value=? WHERE key=?', (value, key)); c.commit()
                 before = tree(self.root)
                 self.failed(lib)
-                self.assertEqual(tree(self.root), before)
+                assert_only_startup_diagnostic_added(self, self.root, before)
                 with closing(sqlite3.connect(lib.db)) as c:
                     c.execute('UPDATE meta SET value=? WHERE key=?', (old, key)); c.commit()
         lib.source.rename(lib.path / 'saved-source.sqlite')
         before = tree(self.root)
         self.failed(lib)
-        self.assertEqual(tree(self.root), before)
+        assert_only_startup_diagnostic_added(self, self.root, before)
 
     def test_injected_migration_failure_rolls_back_and_retains_preupgrade_backup(self):
         lib, _ = self.package(5, 'rollback')

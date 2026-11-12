@@ -7,6 +7,7 @@ collab_run.py timing 运行本工具。--original-models、--candidate-models �
 结果为合成数据；不等于 GUI、安装、真实图库或跨平台验收。输出含本机路径，不可原样公开。
 """
 import argparse
+from contextlib import contextmanager
 import os
 import json
 from pathlib import Path
@@ -17,6 +18,28 @@ from types import SimpleNamespace
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from tools import bench_recognition as bench
+
+
+@contextmanager
+def sandbox_native():
+    """原生宿主和计算子进程只许访问 localhost；父进程仍可用 top 读取测量条件。
+
+    macOS 拒绝在 Seatbelt 沙箱中启动 top，因此仅包装现有基准的两个原生入口。
+    worker 继承宿主的沙箱；这里的替换仅在本次研究脚本运行期间生效。
+    """
+    original = bench.subprocess.Popen
+    policy = '(version 1)(allow default)(deny network*)(allow network* (local ip "localhost:*") (remote ip "localhost:*"))'
+
+    def start(command, *args, **kwargs):
+        if isinstance(command, (list, tuple)) and Path(command[0]).name in ('illustash-terms', 'recognition-compute'):
+            command = ['/usr/bin/sandbox-exec', '-p', policy, *command]
+        return original(command, *args, **kwargs)
+
+    bench.subprocess.Popen = start
+    try:
+        yield
+    finally:
+        bench.subprocess.Popen = original
 
 
 def cache_info(shared):
@@ -112,4 +135,5 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    with sandbox_native():
+        main()

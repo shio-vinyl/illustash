@@ -90,6 +90,35 @@ fn example_learning_recomputes_after_clear_and_undo() {
         }
     };
     wait(&db, 1);
+    let expected = Space::TagsCcip.version("wd-replacement", CCIP_VERSION);
+    let completed = json!({"models":{"wd":{"version":"wd-replacement"}}});
+    let superseded = json!({"models":{"wd":{"version":"wd-superseded"}}});
+    let src = crate::sqlite::open(library.source()).unwrap();
+    src.execute_batch(
+        "CREATE TABLE recognition_imports(digest TEXT PRIMARY KEY, manifest TEXT NOT NULL, status TEXT NOT NULL)",
+    )
+    .unwrap();
+    src.execute(
+        "INSERT INTO recognition_imports VALUES ('completed',?,'done'), ('superseded',?,'superseded')",
+        params![completed.to_string(), superseded.to_string()],
+    )
+    .unwrap();
+    assert_eq!(model_version(&library).unwrap(), expected);
+    let deadline = crate::test_wait::deadline();
+    loop {
+        let active: Vec<String> = db
+            .prepare("SELECT version FROM term_current_evidence WHERE source='example'")
+            .unwrap()
+            .query_map([], |r| r.get(0))
+            .unwrap()
+            .collect::<rusqlite::Result<_>>()
+            .unwrap();
+        if !active.is_empty() && active.iter().all(|version| version.contains(&expected)) {
+            break;
+        }
+        assert!(Instant::now() < deadline, "没有等到新模型版本替换旧批次");
+        std::thread::sleep(Duration::from_millis(50));
+    }
     verdict(&mut db, &p[..1], store::Verdict::Clear);
     assert_eq!(Snapshot::read(&db).unwrap().labels[key].verdicts["E0"], Verdict::Clear);
     wait(&db, 0);

@@ -295,7 +295,7 @@ fn model_version(library: &Library) -> Result<String> {
                         coalesce(json_extract(manifest,'$.recognition.models.ccip.version'),
                                  json_extract(manifest,'$.models.ccip.version'))
                  FROM recognition_imports
-                 WHERE status<>'invalidated' ORDER BY rowid DESC LIMIT 1",
+                 WHERE status='done' ORDER BY rowid DESC LIMIT 1",
                 [],
                 |r| Ok((r.get(0)?, r.get(1)?)),
             )

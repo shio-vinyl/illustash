@@ -67,10 +67,11 @@ pub fn publish(conn: &Connection, batch: &Batch<'_>) -> Result<bool> {
             .collect::<rusqlite::Result<Vec<_>>>()?,
         );
     }
+    let evidence_count = i64::try_from(batch.rows.len()).map_err(|_| Error::invalid("自建标签批次过大"))?;
     conn.execute(
         "INSERT OR IGNORE INTO term_packages(fingerprint,producer,producer_version,library_id,manifest,evidence_count)
          VALUES (?,'example',?,?,?,?)",
-        params![receipt_key, batch.version, batch.library, receipt, batch.rows.len()],
+        params![receipt_key, batch.version, batch.library, receipt, evidence_count],
     )?;
     let package: i64 =
         conn.query_row("SELECT id FROM term_packages WHERE fingerprint=?", [receipt_key], |r| r.get(0))?;

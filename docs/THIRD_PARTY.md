@@ -64,9 +64,16 @@ python3 tools/gen_rust_licenses.py
 
 2026-11-12 用户批准（#375）：macOS 的 WD Core ML 执行变体由本项目 GitHub 模型 Release 分发，按 Apache-2.0 附许可原文、原始来源及变换说明。它基于上述固定 WD 模型，固定 batch 为 1，降低六维形状、删除等价广播、分解 ReduceL2 并预转置常量矩阵；不量化、不训练，不改原始模型文件。构建入口 `tools/build_wd_coreml.py`，固定版本与 SHA-256 见 `native/terms/models.json`，随包声明见 `packaging/model-licenses/NOTICE.txt`。原始模型仍是 CPU 回退和结果身份的唯一依据。
 
-WD 角色扩展 v1（#534）从 Illustash 0.3 起支持，通过项目的 GitHub 模型 Release `wd-extension-v1` 单独分发 `wd-extension-v1.zip` 和 `SHA256SUMS.txt`。ZIP 内的固定模型文件 `b-534.bin` 为 940,701 字节，SHA-256 为 `9da0365457e479eff189150926289c6cf8325cd9bb98c0bd2504c26d7dcae471`，含 228 个分类头和固定阈值 `0.8008725047111511`。模型文件不随代码或安装包分发。复封入口见 [构建脚本](../tools/build_wd_extension.py)，启用与撤回见 [安装说明](INSTALL.md#可选的-wd-角色扩展包)。
+WD 角色扩展由项目的 GitHub 模型 Release 单独分发，每版提供 ZIP 和校验文件 `SHA256SUMS.txt`。完整 ZIP 同时含模型与许可文件，下表的大小和 SHA-256 对应解压出来的模型文件。
 
-扩展文件按 Apache-2.0 分发。分类头用公开 Danbooru 样本在冻结的 WD 向量上独立拟合，底座为 SmilingWolf 的 WD SwinV2 Tagger v3 经 DeepGHS 重导出的向量模型（固定提交 `4ec31f2aeabf66353f3ee3ccd20d2f07e716851b`）。DeepGHS Character Index（MIT，固定提交 `5ee6075ff09f82c27e23f33044b9f9cabaf1e8c3`）用于筛选原索引未覆盖的角色。扩展模型文件包含词表、参数、阈值与底座指纹。ZIP 附 Apache-2.0 原文、两份 WD 模型卡、Character Index 的归属和 MIT 许可、`NOTICE.txt` 与 `provenance.json`。原始图片的版权归各原作者。[实验输入和评测口径](https://github.com/shio-vinyl/illustash/issues/534#issuecomment-6907588551)
+| 版本 | 模型 Release 与 ZIP | 模型文件 | 字节 | SHA-256 |
+|---|---|---|---:|---|
+| v1（#534） | `wd-extension-v1`，`wd-extension-v1.zip` | `b-534.bin` | 940,701 | `9da0365457e479eff189150926289c6cf8325cd9bb98c0bd2504c26d7dcae471` |
+| v2（#555） | `wd-extension-v2`，`wd-extension-v2.zip` | `b-551-shortlist.bin` | 974,043 | `a81d2bc3358c3a75f1b52594a9e65c33b41162a18fe033f11b0d339e1e6478ca` |
+
+v1 含 228 个分类头，固定阈值为 `0.8008725047111511`。v2 逐项保留这 228 个头的标签、顺序、权重、偏置及有效阈值，再追加 7 个经过独立盲测的分类头，其阈值均为 f32 `0.9900000095367432`。复封使用[构建脚本](../tools/build_wd_extension.py)，v2 以冻结的 v1 模型文件、#551 的 `fit/heads.npz` 和 `shortlist/shortlist.json` 为输入。构建脚本固定输入和输出的 SHA-256。启用、换包与撤回见[安装说明](INSTALL.md#可选的-wd-角色扩展包)。
+
+扩展文件按 Apache-2.0 分发。分类头用公开 Danbooru 样本在冻结的 WD 向量上独立拟合，底座为 SmilingWolf 的 WD SwinV2 Tagger v3 经 DeepGHS 重导出的向量模型（固定提交 `4ec31f2aeabf66353f3ee3ccd20d2f07e716851b`）。DeepGHS Character Index（MIT，固定提交 `5ee6075ff09f82c27e23f33044b9f9cabaf1e8c3`）用于筛选原索引未覆盖的角色。扩展模型文件包含词表、参数、阈值与底座指纹。ZIP 附 Apache-2.0 原文、两份 WD 模型卡、Character Index 的归属和 MIT 许可、`NOTICE.txt` 与 `provenance.json`。原始图片的版权归各原作者。[v1 实验输入和评测口径](https://github.com/shio-vinyl/illustash/issues/534#issuecomment-6907588551) · [v2 独立盲测](https://github.com/shio-vinyl/illustash/issues/551#issuecomment-6911924088)
 
 **随包的许可原文**（2026-10-16，#8；2026-10-19 起不论带不带模型，#168）：原文提交在 `packaging/model-licenses/`，是打包的唯一来源。`sources.json` 登记每个文件的上游地址和 SHA-256。每个计算包（`--research`）都把这个目录整份按原字节放进 `resources/licenses/models/`；文件缺失、多出、内容与登记不符，打包都会报错，不会产出半成品。Windows 和 macOS 安装包的暂存步骤也把这些文件列为必需组件。
 

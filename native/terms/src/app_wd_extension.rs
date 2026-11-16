@@ -1,4 +1,4 @@
-//! 显式用 #534 扩展头重扫图库已存的 WD 向量。
+//! 显式用冻结扩展头重扫图库已存的 WD 向量。
 use crate::app_library::Library;
 use crate::{Error, Result};
 use illustash_core::wd_extension::{self, Hit};
@@ -7,10 +7,27 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 use std::path::Path;
 
-const PACKAGE: &str = "9da0365457e479eff189150926289c6cf8325cd9bb98c0bd2504c26d7dcae471";
-const PACKAGE_BYTES: usize = 940_701;
 const DIM: usize = 1024;
-const HEADS: usize = 228;
+
+struct Release {
+    sha256: &'static str,
+    bytes: usize,
+    heads: usize,
+    per_head_thresholds: bool,
+}
+
+const V1: Release = Release {
+    sha256: "9da0365457e479eff189150926289c6cf8325cd9bb98c0bd2504c26d7dcae471",
+    bytes: 940_701,
+    heads: 228,
+    per_head_thresholds: false,
+};
+const V2: Release = Release {
+    sha256: "a81d2bc3358c3a75f1b52594a9e65c33b41162a18fe033f11b0d339e1e6478ca",
+    bytes: 974_043,
+    heads: 235,
+    per_head_thresholds: true,
+};
 
 #[derive(Deserialize)]
 struct Manifest {
@@ -19,10 +36,15 @@ struct Manifest {
     wd_tags_sha256: String,
     threshold: f64,
     labels: Vec<String>,
+    thresholds: Option<Vec<f64>>,
 }
 
 struct Package {
-    manifest: Manifest,
+    sha256: &'static str,
+    wd_model_sha256: String,
+    wd_tags_sha256: String,
+    labels: Vec<String>,
+    thresholds: Vec<f64>,
     weights: Vec<f32>,
     bias: Vec<f32>,
 }
@@ -33,22 +55,43 @@ fn float32(bytes: &[u8]) -> Vec<f32> {
 
 impl Package {
     fn load(path: &Path) -> Result<Self> {
-        let input = crate::app_recognition::file(path, PACKAGE_BYTES as u64)?;
-        if input.len() != PACKAGE_BYTES || crate::strict_json::sha256_hex(&input) != PACKAGE {
-            return Err(Error::invalid("WD 扩展包与 #534 冻结版本不符"));
-        }
+        let input = crate::app_recognition::file(path, V2.bytes as u64)?;
+        let release = [V1, V2]
+            .into_iter()
+            .find(|release| release.bytes == input.len() && crate::strict_json::sha256_hex(&input) == release.sha256)
+            .ok_or_else(|| Error::invalid("WD 扩展包与支持的冻结版本不符"))?;
+        Self::decode(&input, &release)
+    }
+
+    fn decode(input: &[u8], release: &Release) -> Result<Self> {
         let end = input.iter().position(|&byte| byte == b'\n').ok_or_else(|| Error::invalid("缺少 WD 扩展包清单"))?;
         let manifest: Manifest =
             serde_json::from_slice(&input[..end]).map_err(|e| Error::invalid(format!("WD 扩展包清单无效：{e}")))?;
         let coefficients = &input[end + 1..];
         if manifest.format != "illustash-wd-extension/1"
-            || manifest.labels.len() != HEADS
-            || coefficients.len() != HEADS * (DIM + 1) * 4
+            || manifest.labels.len() != release.heads
+            || coefficients.len() != release.heads * (DIM + 1) * 4
         {
             return Err(Error::invalid("WD 扩展包格式不符"));
         }
-        let (weights, bias) = coefficients.split_at(HEADS * DIM * 4);
-        Ok(Self { manifest, weights: float32(weights), bias: float32(bias) })
+        let thresholds = match manifest.thresholds {
+            None if !release.per_head_thresholds => vec![manifest.threshold; release.heads],
+            Some(values) if release.per_head_thresholds && values.len() == release.heads => values,
+            _ => return Err(Error::invalid("WD 扩展包阈值数目不符")),
+        };
+        if thresholds.iter().any(|value| !(0.0..=1.0).contains(value)) {
+            return Err(Error::invalid("WD 扩展包阈值不合法"));
+        }
+        let (weights, bias) = coefficients.split_at(release.heads * DIM * 4);
+        Ok(Self {
+            sha256: release.sha256,
+            wd_model_sha256: manifest.wd_model_sha256,
+            wd_tags_sha256: manifest.wd_tags_sha256,
+            labels: manifest.labels,
+            thresholds,
+            weights: float32(weights),
+            bias: float32(bias),
+        })
     }
 
     fn compatible(&self, manifest: &str) -> Result<()> {
@@ -61,8 +104,8 @@ impl Package {
         };
         if wd["version"] != "swinv2_448"
             || wd["dimension"].as_u64() != Some(DIM as u64)
-            || wd["sha256"].as_str() != Some(&self.manifest.wd_model_sha256)
-            || wd["tags_sha256"].as_str() != Some(&self.manifest.wd_tags_sha256)
+            || wd["sha256"].as_str() != Some(&self.wd_model_sha256)
+            || wd["tags_sha256"].as_str() != Some(&self.wd_tags_sha256)
         {
             return Err(Error::Conflict("WD 扩展包与图库向量的底座模型或标签表版本不匹配".into()));
         }
@@ -77,11 +120,12 @@ impl Package {
         if vector.iter().any(|v| !v.is_finite()) {
             return Err(Error::invalid("WD 特征向量包含非有限值"));
         }
-        for ((tag, weights), bias) in self.manifest.labels.iter().zip(self.weights.chunks_exact(DIM)).zip(&self.bias) {
+        let heads = self.labels.iter().zip(self.weights.chunks_exact(DIM)).zip(&self.bias);
+        for (((tag, weights), bias), &threshold) in heads.zip(&self.thresholds) {
             // 累加与 sigmoid 用 f64，阈值与证据分数沿用冻结实验的 f32 概率精度。
             let sum: f64 = vector.iter().zip(weights).map(|(&x, &w)| f64::from(x) * f64::from(w)).sum();
             let probability = (1.0 / (1.0 + (-(sum + f64::from(*bias))).exp())) as f32;
-            if f64::from(probability) >= self.manifest.threshold {
+            if f64::from(probability) >= threshold {
                 out.push(Hit { uuid: uuid.to_owned(), tag: tag.clone(), probability: f64::from(probability) });
             }
         }
@@ -149,9 +193,9 @@ fn apply_loaded(library: &Library, package: &Package) -> Result<Value> {
     crate::schema::require_current(&app)?;
     let tx = app.transaction_with_behavior(TransactionBehavior::Immediate)?;
     crate::schema::begin_writing(&tx)?;
-    let changed = wd_extension::apply(&tx, PACKAGE, &hits)?;
+    let changed = wd_extension::apply(&tx, package.sha256, &hits)?;
     crate::schema::commit_writing(tx)?;
-    Ok(json!({"package_sha256":PACKAGE,"scored":checked,"hits":hits.len(),"changed":changed}))
+    Ok(json!({"package_sha256":package.sha256,"scored":checked,"hits":hits.len(),"changed":changed}))
 }
 
 pub fn withdraw(library: &Library) -> Result<Value> {
@@ -223,6 +267,44 @@ mod tests {
     }
 
     #[test]
+    fn accepts_the_frozen_threshold_layouts_and_rejects_unknown_content() {
+        let f = Fixture::new();
+        let path = f.root.join("package.bin");
+        let legacy = 0.8008725047111511;
+        let high = f64::from(0.99_f32);
+        let encode = |release: &Release, thresholds: Option<Vec<f64>>| {
+            let mut manifest = json!({
+                "format": "illustash-wd-extension/1",
+                "wd_model_sha256": "model",
+                "wd_tags_sha256": "tags",
+                "threshold": legacy,
+                "labels": (0..release.heads).map(|idx| format!("test_{idx}")).collect::<Vec<_>>()
+            });
+            if let Some(values) = thresholds {
+                manifest["thresholds"] = json!(values);
+            }
+            let mut input = manifest.to_string().into_bytes();
+            input.push(b'\n');
+            input.resize(input.len() + release.heads * (DIM + 1) * 4, 0);
+            input
+        };
+        let mut per_head = vec![legacy; V1.heads];
+        per_head.resize(V2.heads, high);
+        assert_eq!(Package::decode(&encode(&V1, None), &V1).unwrap().thresholds, vec![legacy; V1.heads]);
+        let encoded = encode(&V2, Some(per_head.clone()));
+        assert_eq!(Package::decode(&encoded, &V2).unwrap().thresholds, per_head);
+        assert!(Package::decode(&encoded[..encoded.len() - 1], &V2).is_err());
+        assert!(Package::decode(&encode(&V2, None), &V2).is_err());
+        assert!(Package::decode(&encode(&V2, Some(vec![legacy])), &V2).is_err());
+        per_head[0] = 1.5;
+        assert!(Package::decode(&encode(&V2, Some(per_head)), &V2).is_err());
+        for release in [V1, V2] {
+            fs::write(&path, vec![0; release.bytes]).unwrap();
+            assert!(Package::load(&path).is_err());
+        }
+    }
+
+    #[test]
     fn evidence_replaces_and_restores_without_rewriting_old_sources() {
         round_trip(false);
         round_trip(true);
@@ -238,15 +320,24 @@ mod tests {
         let mut weights = vec![0.; DIM];
         weights[0] = 2.;
         let package = Package {
-            manifest: Manifest {
-                format: "illustash-wd-extension/1".into(),
-                wd_model_sha256: "model".into(),
-                wd_tags_sha256: "tags".into(),
-                threshold: 0.8008725047111511,
-                labels: vec!["from_b".into()],
-            },
+            sha256: V1.sha256,
+            wd_model_sha256: "model".into(),
+            wd_tags_sha256: "tags".into(),
+            labels: vec!["from_b".into()],
+            thresholds: vec![0.8008725047111511],
             weights,
             bias: vec![0.],
+        };
+        let mut expanded_weights = package.weights.repeat(2);
+        expanded_weights[DIM + 1] = 4.;
+        let expanded = Package {
+            sha256: V2.sha256,
+            wd_model_sha256: package.wd_model_sha256.clone(),
+            wd_tags_sha256: package.wd_tags_sha256.clone(),
+            labels: vec!["from_b".into(), "from_v2".into()],
+            thresholds: vec![package.thresholds[0], f64::from(0.99_f32)],
+            weights: expanded_weights,
+            bias: vec![0.; 2],
         };
         let source = writer(&f.library.source()).unwrap();
         source
@@ -254,10 +345,12 @@ mod tests {
                 "CREATE TABLE IF NOT EXISTS embeddings(uuid TEXT,model TEXT,vec BLOB,PRIMARY KEY(uuid,model))",
             )
             .unwrap();
-        let mut wd = vec![0f32; DIM];
-        wd[0] = 1.;
-        let vector = wd.into_iter().flat_map(f32::to_le_bytes).collect::<Vec<_>>();
         for uuid in assets {
+            let mut wd = vec![0f32; DIM];
+            wd[0] = 1.;
+            // 新头只在这张图达到自己的阈值，其余图仍超过旧头阈值。
+            wd[1] = if uuid == "empty" { 1. } else { 0. };
+            let vector = wd.into_iter().flat_map(f32::to_le_bytes).collect::<Vec<_>>();
             source
                 .execute(
                     "INSERT INTO assets(uuid,filename,src_path,width,height,added_at,src_kind,in_scope,trashed)
@@ -317,6 +410,7 @@ mod tests {
         assert_eq!(old_members.len(), 2);
         assert_eq!(withdraw(&f.library).unwrap()["changed"], 0);
         let applied = apply_loaded(&f.library, &package).unwrap();
+        assert_eq!(applied["package_sha256"], V1.sha256);
         assert_eq!(applied["changed"], 5);
         assert_eq!(applied["hits"], 5);
         assert_eq!(
@@ -332,6 +426,36 @@ mod tests {
         let sets = snapshot(&app, "SELECT * FROM term_evidence_sets ORDER BY id");
         assert_eq!(apply_loaded(&f.library, &package).unwrap()["changed"], 0);
         assert_eq!(snapshot(&app, "SELECT * FROM term_evidence_sets ORDER BY id"), sets);
+
+        let active_members = snapshot(&app, members);
+        let upgraded = apply_loaded(&f.library, &expanded).unwrap();
+        assert_eq!(upgraded["package_sha256"], V2.sha256);
+        assert_eq!(upgraded["changed"], 5);
+        assert_eq!(upgraded["hits"], 6);
+        let reopened = Library::open(&f.root.join("test.pilib")).unwrap();
+        let active_extensions = "SELECT a.key,e.version,e.score FROM term_current_evidence e
+                                 JOIN term_assets a ON a.id=e.asset_id WHERE e.source='wd_extension' ORDER BY e.id";
+        let reopened_app = writer(&reopened.db()).unwrap();
+        let upgraded_evidence = snapshot(&reopened_app, active_extensions);
+        assert_eq!(upgraded_evidence.len(), 6);
+        assert!(upgraded_evidence.iter().all(|row| row[1].as_str().unwrap().starts_with(V2.sha256)));
+        let high_scores = upgraded_evidence.iter().filter(|row| row[2].as_f64().unwrap() >= 0.99).collect::<Vec<_>>();
+        assert_eq!(high_scores.len(), 1);
+        assert_eq!(high_scores[0][0], "empty");
+        assert_eq!(
+            snapshot(&reopened_app, "SELECT * FROM memberships WHERE sources<>'WD_EXT' ORDER BY uuid,entity"),
+            old_members
+        );
+        let original_current = "SELECT id,asset_id,term_id,version,score
+                                FROM term_current_evidence WHERE source<>'wd_extension' ORDER BY id";
+        assert_eq!(snapshot(&reopened_app, original_current), old_evidence);
+        assert_eq!(snapshot(&reopened_app, verdicts), old_verdicts);
+        assert_eq!(apply_loaded(&reopened, &expanded).unwrap()["changed"], 0);
+        let restored = apply_loaded(&reopened, &package).unwrap();
+        assert_eq!(restored["package_sha256"], V1.sha256);
+        assert_eq!(restored["changed"], 5);
+        assert_eq!(snapshot(&reopened_app, active_rows), evidence);
+        assert_eq!(snapshot(&reopened_app, members), active_members);
 
         // 模拟批次生效途中数据库写入失败。上一个有效集和投影不动，重试仍能完成。
         app.execute_batch(
@@ -353,7 +477,7 @@ mod tests {
         assert_eq!(snapshot(&app, verdicts), old_verdicts);
         assert_eq!(snapshot(&app, projection), old_projection);
         assert!(snapshot(&app, "SELECT id FROM term_current_evidence WHERE source='wd_extension'").is_empty());
-        assert_eq!(snapshot(&app, "SELECT id FROM term_evidence WHERE source='wd_extension'").len(), 5);
+        assert_eq!(snapshot(&app, "SELECT id FROM term_evidence WHERE source='wd_extension'").len(), 11);
         let reopened = Library::open(&f.root.join("test.pilib")).unwrap();
         assert_eq!(snapshot(&writer(&reopened.db()).unwrap(), members), old_members);
         assert_eq!(apply_loaded(&reopened, &package).unwrap()["changed"], 5);

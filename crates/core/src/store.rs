@@ -649,7 +649,7 @@ pub fn project(conn: &Connection, assets: &[AssetId]) -> Result<()> {
             let state = match a.verdict.as_deref() {
                 Some("yes") => "confirmed",
                 Some(_) => "rejected",
-                None if kind == Kind::Concept && a.cleared => continue,
+                None if *kind == Kind::Concept && a.cleared => continue,
                 None => match kind.policy().judge {
                     Judge::Human => continue,
                     Judge::Pending => "maybe",

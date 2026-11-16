@@ -110,43 +110,6 @@ pub(super) fn ccip_status(host: &Host, session: &Session, started: Option<Json>)
     }).into())
 }
 
-#[cfg(test)]
-mod tests {
-    use super::{ccip_task_and_library, Json};
-    use serde_json::json;
-    use std::cell::Cell;
-
-    #[test]
-    fn ccip_terminal_task_never_pairs_with_precommit_library_state() {
-        for (kind, before, after) in [("enable", 0, 2), ("rescan", 2, 3), ("withdraw", 3, 0), ("auto", 2, 3)] {
-            let committed = Cell::new(false);
-            let snapshot_task = || {
-                if committed.get() {
-                    Some(Json::object([("status", "done".into())]))
-                } else if kind == "auto" {
-                    None
-                } else {
-                    Some(Json::object([("status", "running".into())]))
-                }
-            };
-            let (task, library) = ccip_task_and_library(snapshot_task, || {
-                let images = before;
-                // 模拟图库读到旧值后，worker 随即提交并发布终态。
-                committed.set(true);
-                Ok(json!({"images": images}))
-            })
-            .unwrap();
-            let pending = if kind == "auto" { None } else { Some("running") };
-            assert_eq!(task.as_ref().and_then(|t| t.get("status")).map(Json::text), pending, "{kind}");
-            assert_eq!(library["images"], before, "{kind}");
-
-            let (task, library) = ccip_task_and_library(snapshot_task, || Ok(json!({"images": after}))).unwrap();
-            assert_eq!(task.as_ref().and_then(|t| t.get("status")).map(Json::text), Some("done"), "{kind}");
-            assert_eq!(library["images"], after, "{kind}");
-        }
-    }
-}
-
 impl Host {
     /// 图库的设置，连同本宿主强制关闭的项目。
     pub(super) fn library_settings(&self, library: &Library) -> Result<Json> {
@@ -350,4 +313,41 @@ fn libraries(host: &Host, session: &Session) -> Result<Json> {
         p.set("rescued", report.clone());
     }
     Ok(p)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{ccip_task_and_library, Json};
+    use serde_json::json;
+    use std::cell::Cell;
+
+    #[test]
+    fn ccip_terminal_task_never_pairs_with_precommit_library_state() {
+        for (kind, before, after) in [("enable", 0, 2), ("rescan", 2, 3), ("withdraw", 3, 0), ("auto", 2, 3)] {
+            let committed = Cell::new(false);
+            let snapshot_task = || {
+                if committed.get() {
+                    Some(Json::object([("status", "done".into())]))
+                } else if kind == "auto" {
+                    None
+                } else {
+                    Some(Json::object([("status", "running".into())]))
+                }
+            };
+            let (task, library) = ccip_task_and_library(snapshot_task, || {
+                let images = before;
+                // 模拟图库读到旧值后，worker 随即提交并发布终态。
+                committed.set(true);
+                Ok(json!({"images": images}))
+            })
+            .unwrap();
+            let pending = if kind == "auto" { None } else { Some("running") };
+            assert_eq!(task.as_ref().and_then(|t| t.get("status")).map(Json::text), pending, "{kind}");
+            assert_eq!(library["images"], before, "{kind}");
+
+            let (task, library) = ccip_task_and_library(snapshot_task, || Ok(json!({"images": after}))).unwrap();
+            assert_eq!(task.as_ref().and_then(|t| t.get("status")).map(Json::text), Some("done"), "{kind}");
+            assert_eq!(library["images"], after, "{kind}");
+        }
+    }
 }

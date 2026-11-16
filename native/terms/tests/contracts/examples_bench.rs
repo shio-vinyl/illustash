@@ -15,7 +15,8 @@ fn generate(root: &Path) -> PathBuf {
     let input = source.transaction().unwrap();
     let mut insert =
         app.prepare("INSERT INTO assets(uuid,filename,width,height,added_at) VALUES (?,?,120,150,?)").unwrap();
-    let mut add_source = input.prepare("INSERT INTO assets(uuid,in_scope,trashed) VALUES (?,1,0)").unwrap();
+    let mut add_source =
+        input.prepare("INSERT INTO assets(uuid,in_scope,trashed,src_path) VALUES (?,1,0,'synthetic')").unwrap();
     let mut add_tag =
         input.prepare("INSERT INTO labels(uuid,dim,value,source,conf) VALUES (?,'general',?,'wd_v3',?)").unwrap();
     let vocabulary: Vec<_> = (0..8000).map(|i| format!("tag{i:04}")).collect();

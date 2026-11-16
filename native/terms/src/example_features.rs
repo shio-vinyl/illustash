@@ -47,13 +47,16 @@ fn tags(source: &Connection) -> Result<Matrix> {
         let vectors = Vectors::Tags(Tags { width: 0, offsets: vec![0], entries: Vec::new() });
         return Ok(Matrix { uuids: Vec::new(), vectors });
     }
+    // 原离线口径以有原图路径的在库资产为 IDF 的 N，包含没有 WD 标签的资产。
+    const POOL: &str = "a.in_scope=1 AND coalesce(a.trashed,0)=0 AND coalesce(a.src_path,'')<>''";
+    let count: usize = source.query_row(&format!("SELECT count(*) FROM assets a WHERE {POOL}"), [], |r| r.get(0))?;
     // 先按资产主键走，再用标签主键查每张图的 general 范围，不对整张概率表做临时排序。
-    let mut stmt = source.prepare(
+    let mut stmt = source.prepare(&format!(
         "SELECT a.uuid,l.value,l.conf
          FROM assets a CROSS JOIN labels l ON l.uuid=a.uuid AND l.dim='general'
-         WHERE a.in_scope=1 AND coalesce(a.trashed,0)=0 AND l.source='wd_v3' AND l.conf>=0.001
+         WHERE {POOL} AND l.source='wd_v3' AND l.conf>=0.001
          ORDER BY a.uuid",
-    )?;
+    ))?;
     let mut rows = stmt.query([])?;
     let mut uuids: Vec<String> = Vec::new();
     let mut columns: HashMap<String, u32> = HashMap::new();
@@ -84,7 +87,7 @@ fn tags(source: &Connection) -> Result<Matrix> {
     }
     offsets.push(entries.len());
 
-    let n = uuids.len() as f64 + 1.0;
+    let n = count as f64 + 1.0;
     let idf: Vec<_> = frequency.into_iter().map(|df| ((n / (df as f64 + 1.0)).ln() + 1.0) as f32).collect();
     for bounds in offsets.windows(2) {
         let row = &mut entries[bounds[0]..bounds[1]];

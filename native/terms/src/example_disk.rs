@@ -8,7 +8,7 @@ use std::{
     time::UNIX_EPOCH,
 };
 
-const FORMAT: &[u8] = b"illustash-wd-idf-1\n";
+const FORMAT: &[u8] = b"illustash-wd-idf-1-scope\n";
 pub(crate) type Stamp = [u8; 32];
 
 /// SQLite 的物理版本标记和文件状态。普通 SQLite 提交会改主文件或 WAL，检查点也会使缓存失效。

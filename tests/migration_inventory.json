@@ -353,9 +353,9 @@
 
  "native/terms/src/example_cache.rs":"1cd7354b8f51600bb2841e78aa8179a9672c7c95a1cc8e5f9ddbb16830c8c6cf",
 
- "native/terms/src/example_disk.rs":"f581f11a40e25fee75a3fc971375429bf5bb646a10a618cdf86304176c956bc7",
+ "native/terms/src/example_disk.rs":"fd762cac3aeb77f00b35c0f4ddb2ee1849c8bbcd965808f646b6d822232c4fef",
 
- "native/terms/src/example_features.rs":"ca914a19f4c397fe3a2958d09799d30b26bd601f58617eb05d331839a426d5be",
+ "native/terms/src/example_features.rs":"4f52149f3597b682e17848edd6f286a76d122c47009bfbb06a80ebf7c391a80b",
 
  "native/terms/src/example_learning.rs":"5e2c8f505dde1cc2bb3dc155778f1ffc18953f9ffeb457b32b94ce32655a5104",
 
@@ -373,7 +373,7 @@
 
  "native/terms/src/http_example_search.rs":"37086571f127c0c437a4fa223184fddd7c26adb61c1c1883f8f05ee17011ab10",
 
- "native/terms/src/http_host_get.rs":"046d33e6d22eaf79da9ec753921496abaa77baabaaf72d1363d11de51318dfe5",
+ "native/terms/src/http_host_get.rs":"2ff552034809b3b01a369f69a71f3390431173f81481a406bb373934c8c34f15",
 
  "native/terms/src/http_host_post.rs":"acce5b615c01ec3204c0ea11aca85c0ba9c62358c6cce2ac15da390d6fe5c049",
 

@@ -46,7 +46,7 @@ impl Fixture {
             params![id, name, date],
         )
         .unwrap();
-        source.execute("INSERT INTO assets(uuid,in_scope,trashed) VALUES (?,1,0)", [id]).unwrap();
+        source.execute("INSERT INTO assets(uuid,in_scope,trashed,src_path) VALUES (?,1,0,'synthetic')", [id]).unwrap();
         for &(label, conf) in tags {
             source
                 .execute(

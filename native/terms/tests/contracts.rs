@@ -521,6 +521,19 @@ fn combined_gallery_http_contract() {
         tx.execute("INSERT INTO term_projection(asset_id,term_id,state) VALUES (?,?,?)", params![asset, artist, state])
             .unwrap();
     }
+    use illustash_terms::character_entities::{self, New};
+    for entity in [
+        New { id: "fixture-root-work", kind: "work", ..New::default() },
+        New { id: "fixture-child-work", kind: "work", parent_id: Some("fixture-root-work"), ..New::default() },
+        New { id: "fixture-character", kind: "character", work_id: Some("fixture-child-work"), ..New::default() },
+    ] {
+        character_entities::create(&tx, &entity, "user").unwrap();
+    }
+    tx.execute_batch(
+        "INSERT INTO memberships(uuid,entity,status,origin,sources,score,source_count,ccip_only,skey)
+         VALUES ('a','fixture-character','machine','fixture','WD',0.9,1,0,'a');",
+    )
+    .unwrap();
     schema::commit_writing(tx).unwrap();
     Connection::open(package.join("source.sqlite"))
         .unwrap()
@@ -553,11 +566,14 @@ fn combined_gallery_http_contract() {
     assert_eq!(call(&url("/api/ids", &[("has", r#"["source:other"]"#)]), None), json!(["e"]));
     assert_eq!(call(&url("/api/ids", &[("has", r#"["artist:synthetic-artist"]"#)]), None), json!(["a"]));
     assert_eq!(call(&url("/api/ids", &[("not", r#"["tag:solo"]"#)]), None), json!(["c"]));
-    let params = json!({"to":"2025-12-31","has":has,"from":"2025-01-01"});
+    assert_eq!(call(&url("/api/ids", &[("has", r#"["char:fixture-character"]"#)]), None), json!(["a"]));
+    assert_eq!(call(&url("/api/ids", &[("has", r#"["work:fixture-root-work"]"#)]), None), json!(["a"]));
+    assert_eq!(call(&url("/api/ids", &[("work", "fixture-root-work")]), None), json!(["a"]));
+    let params = json!({"to":"2025-12-31","has":has,"not":"[\"utag:审完:合成\"]","from":"2025-01-01"});
     let created = call("/api/galleries", Some(&json!({"action":"create","params":params})));
     let gallery = &created["gallery"];
     let id = &gallery["id"];
-    assert_eq!(gallery["name"], "1girl · solo · Pixiv · 2025");
+    assert_eq!(gallery["name"], "1girl · solo · Pixiv · 不含 审完:合成 · 2025");
     assert_eq!(gallery["params"]["has"], r#"["tag:1girl","tag:solo","source:pixiv"]"#);
     assert_eq!(gallery["cover"], "a");
     assert_eq!(call("/api/galleries", None)[0]["cover"], "b");
@@ -582,6 +598,7 @@ fn combined_gallery_http_contract() {
     let exclude = ("not", r#"["utag:审完:合成"]"#);
     let filtered: Vec<_> = filter.into_iter().chain([exclude]).collect();
     assert_eq!(call(&url("/api/ids", &filtered), None), json!(["a"]));
+    assert_eq!(call("/api/galleries", None)[0]["cover"], "a");
     for (path, filters) in [
         ("/api/ids", vec![("from", "2025-02-29")]),
         ("/api/ids", vec![("from", "2025-12-31"), ("to", "2025-01-01")]),

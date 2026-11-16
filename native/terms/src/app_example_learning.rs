@@ -45,7 +45,7 @@ impl Learner {
     }
 
     pub(crate) fn stop(&mut self) {
-        if let Some(mut task) = self.0.take() {
+        if let Some(task) = self.0.take() {
             task.context().cancel();
             task.abandon();
         }

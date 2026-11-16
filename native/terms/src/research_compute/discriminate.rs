@@ -90,12 +90,13 @@ fn dot(a: &[f64], b: &[f64]) -> f64 {
 
 /// 从零开始的批量 L-BFGS；每个角色返回一个 d+1 的参数向量。
 fn fit(rows: &Rows, labels: &Labels) -> Result<Vec<Vec<f64>>> {
-    fit_with(rows.d, labels.e, |which, p| evaluate(rows, labels, which, p))
+    fit_with(rows.d, labels.e, MAX_ITERATIONS, GRADIENT_TOLERANCE, |which, p| evaluate(rows, labels, which, p))
 }
 
 /// 例图线性头使用同一优化器，目标函数直接扫稀疏特征。
 pub(crate) fn fit_single(width: usize, evaluate: impl Fn(&[f64]) -> (f64, Vec<f64>)) -> Vec<f64> {
-    fit_with(width, 1, |_, p| {
+    // 例图离线用 sklearn 的类均衡头，max_iter=2000，默认 tol=1e-4。
+    fit_with(width, 1, 2000, 1e-4, |_, p| {
         let (f, g) = evaluate(&p[0]);
         Ok::<_, std::convert::Infallible>(Objective { f: vec![f], g: vec![g] })
     })
@@ -107,6 +108,8 @@ pub(crate) fn fit_single(width: usize, evaluate: impl Fn(&[f64]) -> (f64, Vec<f6
 fn fit_with<E>(
     width: usize,
     e: usize,
+    max_iterations: usize,
+    gradient_tolerance: f64,
     evaluate: impl Fn(&[usize], &[Vec<f64>]) -> std::result::Result<Objective, E>,
 ) -> std::result::Result<Vec<Vec<f64>>, E> {
     let all: Vec<usize> = (0..e).collect();
@@ -115,9 +118,9 @@ fn fit_with<E>(
     let (mut f, mut g) = (start.f, start.g);
     let mut history: Vec<Memory> = vec![vec![]; e];
     let mut active = vec![true; e];
-    for _ in 0..MAX_ITERATIONS {
+    for _ in 0..max_iterations {
         for j in 0..e {
-            active[j] &= g[j].iter().fold(0.0f64, |m, v| m.max(v.abs())) > GRADIENT_TOLERANCE;
+            active[j] &= g[j].iter().fold(0.0f64, |m, v| m.max(v.abs())) > gradient_tolerance;
         }
         let pending: Vec<usize> = (0..e).filter(|&j| active[j]).collect();
         if pending.is_empty() {

@@ -28,6 +28,7 @@ pub mod compat_text;
 #[path = "http_unicode.rs"]
 pub mod compat_unicode;
 pub mod error;
+pub mod example_candidates;
 pub mod human_conclusions;
 pub mod name_codecs;
 pub mod names_commands;

@@ -61,6 +61,8 @@
 
  "crates/core/src/error.rs":"27ac8372c8b3279561a3e250aa0ca2faf2e83fe20eeb6e724b3f7a4f759073f3",
 
+ "crates/core/src/example_candidates.rs":"fc8eea2c2d24fd2390b8b10a071bb972cc74ebf0107bf22b6b42019be6533d82",
+
  "crates/core/src/human_conclusions/definitions.rs":"19e1ee5998ab9da24af95812563a3251d6d6213ba2d33cde348235561fb811ad",
 
  "crates/core/src/human_conclusions/export.rs":"8493a9f55962011e7f5e00d37e810b697a1bb76f884a2468fb1d45869c4ade45",
@@ -99,7 +101,7 @@
 
  "crates/core/src/legacy_names.rs":"f9ad0e0b8b0794964720853b67cc3375423705d35d6b8b29994217e7d221e48a",
 
- "crates/core/src/lib.rs":"571c3078561ae4e76176bfebd3dcd8c898fd70adb26685825d148655a6a132bd",
+ "crates/core/src/lib.rs":"304f172b2966c336fb5e5a098dcf32b2b1953d1457795284aeb3ab49663a8a9f",
 
  "crates/core/src/names_commands.rs":"776af0e82fd79ef5ecfda1e2b6556882373d01f7b5add30b71fdbf390897e7aa",
 
@@ -115,7 +117,7 @@
 
  "crates/core/src/schema.rs":"d9e665a1b3d02295b625f1fa7f5603bb644116f16a35ca9628f7c2bac2381c2a",
 
- "crates/core/src/store.rs":"96741c48b704acb8d7aef81a13136f06b41216f8486fa1cddf8ecd771a57f4b5",
+ "crates/core/src/store.rs":"13a4a8196e6d9f6b89343b81dbd7337729d3819b4fc0dc1da8f65b849f974a3a",
 
  "crates/core/src/strict_json.rs":"dc1bf3fd4e0ceb6316af6a95ab00915c52ffdd8fd759544326f371df39e67da6",
 
@@ -225,6 +227,8 @@
 
  "native/terms/src/app_effects.rs":"507ff09441aab09cc8f2ca7460bbde3da5bffb8180629b3bb6f503598dbbe1b8",
 
+ "native/terms/src/app_example_learning.rs":"5a84a89cfa50c9ec0d534cfc0c484c7df9cc18fc35e73bf9dd5ce431c9398d64",
+
  "native/terms/src/app_files.rs":"3ede70dfff285c721290075d0abb5dfa9cafbfa7d8af3ed01f897ea6b07c3d61",
 
  "native/terms/src/app_folder.rs":"cd148b0a312065b97da3cbea8dc782a596eb0d8e842a1dfcf2d45f259fea6216",
@@ -313,7 +317,7 @@
 
  "native/terms/src/app_resources.rs":"d691ec21499b906972a02d49a21790f2a301c34eb4dea0bd9c301675dd9e2c0a",
 
- "native/terms/src/app_service.rs":"363a0933500c1529268ae4b1b79178c6c02eff6edfb4e317bc8c40743dec1b1c",
+ "native/terms/src/app_service.rs":"b072b03f4c1a351b20ae86bb8ff8f310d869242a2a28692f26d3433f62c84d2d",
 
  "native/terms/src/app_settings.rs":"20f5eb9c25a3a14920b85b48e75186564c5e01f6129cca02b06b2f63d60b2c41",
 
@@ -347,13 +351,15 @@
 
  "native/terms/src/diagnostics/logs/details.rs":"49daaeae10eaaf1275776734b97432d01d14b14855d0cfdcc2ed87a1b97b07d9",
 
- "native/terms/src/example_cache.rs":"9c8bb3014aea3f999cdd74815bd46b0f6d5a9273714e9225cb81ce662c141862",
+ "native/terms/src/example_cache.rs":"1cd7354b8f51600bb2841e78aa8179a9672c7c95a1cc8e5f9ddbb16830c8c6cf",
 
  "native/terms/src/example_disk.rs":"f581f11a40e25fee75a3fc971375429bf5bb646a10a618cdf86304176c956bc7",
 
  "native/terms/src/example_features.rs":"ca914a19f4c397fe3a2958d09799d30b26bd601f58617eb05d331839a426d5be",
 
- "native/terms/src/example_scores.rs":"21d209027a51c59aa6d880d3ff341ccfbbf2ea8748a3cfd9e571ac4af2ee1cd2",
+ "native/terms/src/example_learning.rs":"5e2c8f505dde1cc2bb3dc155778f1ffc18953f9ffeb457b32b94ce32655a5104",
+
+ "native/terms/src/example_scores.rs":"5032345f7abaf4931c3597fe9902401b57fadc06f4fdd58fa9d9f46a004f5efd",
 
  "native/terms/src/http.rs":"f9d1067f511fb59576b731f4afb2051b6cffd6c14fad47facf1d6aa795820bf0",
 
@@ -395,7 +401,7 @@
 
  "native/terms/src/index_generation.rs":"940c236d35bee6001cc2225701d64d0be2964a2575a653a897449650535ad2fa",
 
- "native/terms/src/lib.rs":"2a69397e9dcd2792d0788afb8bc51bd185987ada1767a50fd49aee237b51fb58",
+ "native/terms/src/lib.rs":"3788aa87ed1633b87852e0d8dbb1492983f7c00af5933dd97ed92bf7e2ed850c",
 
  "native/terms/src/platform_process.rs":"62046a3cf19fa77c1f3105770d4937a6cd780b24e9219a84106c4014aaf1f500",
 
@@ -425,7 +431,7 @@
 
  "native/terms/src/recognition_compute/wd_coreml.rs":"deaed63306945926e57c6b59427383bf0334776abb93de94df4e74332b42b96a",
 
- "native/terms/src/research_compute/discriminate.rs":"726d1303d0f23dbed5c531f80cdae1ab0b99d5cf096b5ae4eae8e1ec33f6a382",
+ "native/terms/src/research_compute/discriminate.rs":"9b41a08bebfbe0551869ff0b1c89c34127c3f83d7e121c2fad10cc40d29e2833",
 
  "native/terms/src/research_compute/features.rs":"f6bfa9043f9ef9d6af8023280540dd55eede23d61e6a67fa7c3f81dc07840ee8",
 
@@ -553,7 +559,9 @@
  "native/terms/src/app_ccip_longtail.rs":{"policy":"result-import","current_runtime":"rust-native-ccip-longtail","storage_domain":"source-read+app","boundary_notes":{"authorization":"#559 只读已存 CCIP 向量，通过经校验的索引快照生成并提交独立证据，启用与撤回写每图库状态。"}},
  "native/terms/src/app_galleries.rs":{"policy":"application","current_runtime":"rust-native-galleries","storage_domain":"app","boundary_notes":{"authorization":"#445 明确保存、编辑、删除和撤销本图库画廊。"}},
  "native/terms/src/example_cache.rs":{"policy":"assets","current_runtime":"rust-native","storage_domain":"source-ro+memory-cache","boundary_notes":{"authorization":"源库以只读连接固定特征快照，事务不会写入源库。"}},
- "native/terms/src/http_example_search.rs":{"policy":"application","current_runtime":"rust-native","storage_domain":"app-ro+connection-temp","boundary_notes":{"authorization":"#449 现有读路由和筛选写事务的会话临时选集，只写 temp.like_rank。"}}
+ "native/terms/src/http_example_search.rs":{"policy":"application","current_runtime":"rust-native","storage_domain":"app-ro+connection-temp","boundary_notes":{"authorization":"#449 现有读路由和筛选写事务的会话临时选集，只写 temp.like_rank。"}},
+ "crates/core/src/example_candidates.rs":{"policy":"application","current_runtime":"rust-native","storage_domain":"app","boundary_notes":{"authorization":"#157 经一个发布事务追加 example 批次及其证据，版本和账本一起核对。"}},
+ "native/terms/src/app_example_learning.rs":{"policy":"application","current_runtime":"rust-native","storage_domain":"app+source-ro","boundary_notes":{"authorization":"#157 的候选在源库只读快照算出，取消边界内复核输入并发布。"}}
 },
 "limitations":[
  "审计生产 HTTP/DB/事务/动态执行/启动/CLI；保留研究/测试/生成代码。",
@@ -697,7 +705,9 @@
  "native/terms/src/app_ccip_longtail.rs":{"database-write":{"dynamic-or-wrapper":6,"COMMIT":1,"INSERT OR REPLACE INTO:meta":2,"INSERT INTO:meta":1,"UPDATE:set":1,"DELETE FROM:meta":3}},
  "native/terms/src/app_galleries.rs":{"database-write":{"dynamic-or-wrapper":4,"INSERT INTO:galleries":2,"UPDATE:galleries":1,"DELETE FROM:galleries":2,"INSERT INTO:actions":1,"COMMIT":1,"UPDATE:set":1}},
  "native/terms/src/example_cache.rs":{"database-write":{"dynamic-or-wrapper":1,"COMMIT":1}},
- "native/terms/src/http_example_search.rs":{"database-write":{"dynamic-or-wrapper":2,"DELETE FROM:temp.like_rank":1,"INSERT INTO:temp.like_rank":1}}
+ "native/terms/src/http_example_search.rs":{"database-write":{"dynamic-or-wrapper":2,"DELETE FROM:temp.like_rank":1,"INSERT INTO:temp.like_rank":1}},
+ "crates/core/src/example_candidates.rs":{"database-write":{"dynamic-or-wrapper":4,"INSERT OR IGNORE INTO:term_packages":1,"INSERT INTO:term_evidence_sets":1,"INSERT INTO:term_evidence_set_rows":1,"INSERT OR REPLACE INTO:term_active_evidence":1}},
+ "native/terms/src/app_example_learning.rs":{"database-write":{"dynamic-or-wrapper":3,"COMMIT":2}}
 },
 "policies":{
  "application":{"final_owner":"rust","responsibility":"HTTP 参数/目标、人工命令、正式事务/投影；Python 包装待迁移","acceptance":"合成状态码/原始字节、返回/DB/历史/撤销/事件对照；竞争与注入失败原子回滚","deletion_condition":"Rust 调用链及无 Python 验收后删生产 Python；保留旧对照","stages":["M2","M3"]},

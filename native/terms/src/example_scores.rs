@@ -46,6 +46,38 @@ impl Matrix {
         self.uuids.is_empty()
     }
 
+    /// 特征内容与顺序一起入版本，识别结果被替换后同一标签的旧证据会退出。
+    pub(crate) fn fingerprint(&self) -> sha2::digest::Output<sha2::Sha256> {
+        use sha2::{Digest, Sha256};
+        let mut digest = Sha256::new();
+        digest.update((self.uuids.len() as u64).to_le_bytes());
+        for id in &self.uuids {
+            crate::example_learning::hash_field(&mut digest, id.as_bytes());
+        }
+        digest.update((self.width() as u64).to_le_bytes());
+        match &self.vectors {
+            Vectors::Tags(tags) => {
+                for offset in &tags.offsets {
+                    digest.update((*offset as u64).to_le_bytes());
+                }
+                for &(column, score) in &tags.entries {
+                    digest.update(column.to_le_bytes());
+                    digest.update(score.to_le_bytes());
+                }
+            }
+            Vectors::Ccip(ccip) => {
+                for value in &ccip.values {
+                    digest.update(value.to_le_bytes());
+                }
+            }
+            Vectors::Combined { tags, ccip, .. } => {
+                digest.update(tags.fingerprint());
+                digest.update(ccip.fingerprint());
+            }
+        }
+        digest.finalize()
+    }
+
     fn width(&self) -> usize {
         match &self.vectors {
             Vectors::Tags(tags) => tags.width,

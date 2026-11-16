@@ -310,10 +310,17 @@ fn sample_rank_runs_after_composed_source_exclusion_and_date_filters() {
     assert_eq!(status, 200);
     assert_eq!(page["total"], 1);
     assert_eq!(page["items"][0]["uuid"], "B");
-    let write = parse_request(
-        r#"{"tag":"similar-result","filter":{"like":"["EX"]","has":"["source:pixiv"]","not":"["utag:reviewed"]","from":"2026-01-01","to":"2026-12-31"}}"#,
-    )
-    .unwrap();
+    let payload = serde_json::json!({
+        "tag": "similar-result",
+        "filter": {
+            "like": r#"["EX"]"#,
+            "has": r#"["source:pixiv"]"#,
+            "not": r#"["utag:reviewed"]"#,
+            "from": "2026-01-01",
+            "to": "2026-12-31",
+        },
+    });
+    let write = parse_request(&payload.to_string()).unwrap();
     crate::app_commands::request(&f.context, "/api/tag", &write).unwrap();
     let actual = db
         .prepare("SELECT uuid FROM asset_tags WHERE tag='similar-result' ORDER BY uuid")

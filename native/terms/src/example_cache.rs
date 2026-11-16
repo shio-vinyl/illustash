@@ -23,7 +23,7 @@ struct Inner {
     wake: Condvar,
 }
 
-type BaseStamp = [Option<(u64, SystemTime)>; 2];
+pub(crate) type BaseStamp = [Option<(u64, SystemTime)>; 2];
 
 #[derive(Default)]
 struct State {
@@ -137,7 +137,7 @@ impl Drop for Cache {
     }
 }
 
-fn base_stamp(base: &Path, space: Space) -> Result<BaseStamp> {
+pub(crate) fn base_stamp(base: &Path, space: Space) -> Result<BaseStamp> {
     let mut files = [None; 2];
     if space != Space::Tags {
         for (slot, name) in files.iter_mut().zip(["full-manifest.csv", "full-features.npy"]) {

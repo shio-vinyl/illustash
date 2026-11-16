@@ -488,6 +488,7 @@ pub fn owns(steps: &[Value], handed: Handover) -> bool {
 #[derive(Default)]
 struct Acc {
     verdict: Option<String>,
+    cleared: bool,
     strong: bool,
     best: Option<f64>,
     other: bool,
@@ -639,13 +640,16 @@ pub fn project(conn: &Connection, assets: &[AssetId]) -> Result<()> {
         {
             let (term, kind, verdict) = row?;
             let kind = Kind::parse(&kind).expect("类型由触发器约束");
-            acc.entry((kind, term)).or_default().verdict = (verdict != "clear").then_some(verdict);
+            let state = acc.entry((kind, term)).or_default();
+            state.cleared = verdict == "clear";
+            state.verdict = (!state.cleared).then_some(verdict);
         }
         let mut states: Vec<(Kind, TermId, &'static str, Option<f64>, String)> = Vec::new();
         for ((kind, term), a) in &mut acc {
             let state = match a.verdict.as_deref() {
                 Some("yes") => "confirmed",
                 Some(_) => "rejected",
+                None if *kind == Kind::Concept && a.cleared => continue,
                 None => match kind.policy().judge {
                     Judge::Human => continue,
                     Judge::Pending => "maybe",

@@ -225,6 +225,15 @@ def main():
     if args.longtail:
         lt_labels = {n for item in data.sources[f'lt_{args.longtail}'] for n in item}
         report['longtail_over_b1'] = package_report(data, b1, [f'lt_{args.longtail}'], lt_labels)[0]
+    # #602 要的量：每张图的扩展候选命中数（二级单列），按 5 万张图的规模估证据行数（每条命中一行证据、一行候选）。
+    volume = {}
+    for name in ('t1_257', 't2', 'h534'):
+        counts = np.array([len(item) for item in data.sources[name]])
+        volume[name] = {'mean_hits_per_image': round(float(counts.mean()), 4), 'max_hits_per_image': int(counts.max()),
+                        'images_with_hits': int((counts > 0).sum()),
+                        'p99_hits_per_image': float(np.quantile(counts, 0.99)),
+                        'evidence_rows_per_50k_images': int(round(counts.mean() * 50000))}
+    report['hit_volume'] = volume
     write('report/report.json', report)
     write('report/tier2-per-head.json', per_head(data, b1, ['t2'], t2_labels))
     print(json.dumps(report, ensure_ascii=False, indent=1)[:20000], flush=True)

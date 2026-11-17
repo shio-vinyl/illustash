@@ -208,6 +208,7 @@ def main():
     receipt = {
         'requests_sha256': sha_file(DATA / 'requests.json'), 'frame_sha256': sha_file(DATA / 'frame.json'),
         'images': len(selected), 'groups': Counter(r['group'] for r in selected),
+        'early_positives': Counter(r['group'] for r in selected if r.get('early')),
         'heads': len(heads), 'heads_with_positive': sum(1 for n in heads if sum(counts[n].values())),
         'heads_with_full_solo_quota': sum(1 for n in heads
                                           if counts[n]['solo'] >= PER_HEAD[targets[n]['pack']]['solo']),

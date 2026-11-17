@@ -223,8 +223,23 @@ def main():
     # 整套叠加：二级头和 #534 的 205 头一起加在 B1 上（205 头里过一级的照样只按候选计）。
     report['t2_and_h534_over_b1'] = package_report(data, b1, ['t2', 'h534'], t2_labels | h534_labels)[0]
     if args.longtail:
-        lt_labels = {n for item in data.sources[f'lt_{args.longtail}'] for n in item}
-        report['longtail_over_b1'] = package_report(data, b1, [f'lt_{args.longtail}'], lt_labels)[0]
+        from coverage import canonical
+        from common import COVERAGE
+        aliases = load(COVERAGE / 'alias-map.json')
+        lt_labels = {canonical(e['tag'], aliases) for e in load(DATA / args.longtail / 'A-metadata.json')}
+        # 第二轮锚点加进来以后，精选索引自己的候选也可能因最近九项被挤掉，所以基线换成同一次扫描的 index。
+        base_lt = ['wd', f'index_with_{args.longtail}', 'lt_v1', 't1_257']
+        report['longtail_over_b1'] = package_report(data, base_lt, [f'lt_{args.longtail}'], lt_labels)[0]
+        report['longtail_index_displacement'] = {
+            'index_candidates_before': sum(map(len, data.sources['index'])),
+            'index_candidates_after': sum(map(len, data.sources[f'index_with_{args.longtail}'])),
+            'correct_index_candidates_lost': sum(len((a - b) & data.truth[i]) for i, (a, b) in enumerate(
+                zip(data.sources['index'], data.sources[f'index_with_{args.longtail}']))),
+            'wrong_index_candidates_removed': sum(len((a - b) - data.truth[i]) for i, (a, b) in enumerate(
+                zip(data.sources['index'], data.sources[f'index_with_{args.longtail}']))),
+        }
+        report['longtail_per_anchor'] = per_head(data, base_lt, [f'lt_{args.longtail}'], lt_labels)
+        report['longtail_v1_over_wd_index'] = package_report(data, ['wd', 'index'], ['lt_v1'], data.lt1)[0]
     # #602 要的量：每张图的扩展候选命中数（二级单列），按 5 万张图的规模估证据行数（每条命中一行证据、一行候选）。
     volume = {}
     for name in ('t1_257', 't2', 'h534'):

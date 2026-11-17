@@ -40,6 +40,8 @@ def save_v2(path, labels, weights, biases, thresholds, tiers):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('mode', choices=('native', 'release'))
+    parser.add_argument('--with-t2', action='store_true', help='把 1,595 个二级头也放进包（没过二级预算时不放）')
+    parser.add_argument('--drop-tier1', action='append', default=[], help='原生回放没过一级的 #534 头，降到二级')
     args = parser.parse_args()
     labels, w, b, t = read_pack(PACK_257)
     names, w5, b5 = heads_534()
@@ -53,16 +55,20 @@ def main():
         return
     gates = load(DATA / 'report/h534-per-head.json')
     t2_labels, t2_w, t2_b, t2_t = read_pack(DATA / 'tier2/tier2.bin')
-    first = [n for n in names if not gates[n]['gate']]
-    rest = [n for n in names if gates[n]['gate']]
+    if not args.with_t2:
+        t2_labels, t2_w, t2_b, t2_t = [], t2_w[:0], t2_b[:0], t2_t[:0]
+    first = [n for n in names if not gates[n]['gate'] and n not in args.drop_tier1]
+    rest = [n for n in names if n not in first]
     index = {n: i for i, n in enumerate(names)}
     all_labels = labels + first + t2_labels + rest
     weights = np.concatenate([w, w5[[index[n] for n in first]], t2_w, w5[[index[n] for n in rest]]])
     biases = np.concatenate([b, b5[[index[n] for n in first]], t2_b, b5[[index[n] for n in rest]]])
     thresholds = [*map(float, t), *[THRESHOLD_534] * len(first), *map(float, t2_t), *[THRESHOLD_534] * len(rest)]
     tiers = [1] * (len(labels) + len(first)) + [2] * (len(t2_labels) + len(rest))
-    info = save_v2(folder / 'character-pack-wd-candidate.bin', all_labels, weights, biases, thresholds, tiers)
-    write('packs/release.json', dict(info, tier1_from_534=first, tier2_from_534=len(rest)))
+    name = 'character-pack-wd-candidate' + ('-with-t2' if args.with_t2 else '')
+    info = save_v2(folder / f'{name}.bin', all_labels, weights, biases, thresholds, tiers)
+    write(f'packs/{name}.json', dict(info, tier1_from_534=len(first), tier2_from_534=len(rest),
+                                       tier2_from_551=len(t2_labels), dropped_after_native=args.drop_tier1))
     print(info)
 
 

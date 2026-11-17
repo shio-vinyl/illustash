@@ -59,7 +59,7 @@ SNAPSHOT_END = '2026-07-13'   # #380 公开帖快照的截止日；之后的帖�
 SEED = 'illustash-eval-v1'
 
 # 复用冻结实验的模块：#551 的头包读写和回传校验，#534 的抽样与去重，#380 的 API 和别名。
-sys.path[:0] = [str(TREE_551 / 'experiments/issue_551'), str(TREE_551 / 'experiments/issue_534'),
+sys.path[1:1] = [str(TREE_551 / 'experiments/issue_551'), str(TREE_551 / 'experiments/issue_534'),
                 str(TREE_551 / 'experiments/issue_380')]
 
 

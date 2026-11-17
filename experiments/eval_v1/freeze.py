@@ -14,7 +14,7 @@ from common import DATA, load, priority, sha_file, write
 from evaluate import Images
 from infer import atomic_npz
 from prepare import ARRAYS, rows_and_features, seed_holdout
-from sample import family_roots
+from eval_sample import family_roots
 
 ORDER = ('head_solo', 'head_other', 'tail_solo', 'tail_other', 'same_work_visual_old', 'same_work_other_old',
          'same_work_multi_old', 'unrelated_old', 'multi_old', 'multi_other', 'no_character', 'other_character')

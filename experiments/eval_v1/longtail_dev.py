@@ -6,7 +6,8 @@
 - 参考图：#557 train 分区画师的单人单角色全年龄帖，可早于 START 但须晚于 WD 截止，每角色最多 12 位画师；
 - 校准图：calibration 分区画师、START 以后的帖，每角色最多 4 位；
 - 至少 5 位参考画师、1 位校准画师才取。评测正例只在 test 分区，三区互不相交；
-- 与历史取样和评测集的画师、帖子、家族、MD5、像素摘要都不重叠。
+- 与评测集的画师、帖子、家族、MD5、像素摘要都不重叠（内容指纹在冻结时再查一遍）；历史取样过的图是开发
+  数据，可以再用。
 """
 
 from collections import Counter, defaultdict
@@ -15,7 +16,7 @@ import json
 from common import COVERAGE, DATA, START, STOP, WD_LAST_ID, load, priority, sha_file, split_557, write
 from coverage import canonical
 import sampling as upstream
-from sample import family_roots
+from eval_sample import family_roots
 
 QUOTA = {'train': 12, 'calibration': 4}
 MINIMUM = {'train': 5, 'calibration': 1}
@@ -60,9 +61,8 @@ def main():
         ancestry.extend(rows)
     parents = {int(k): v for k, v in prior['parents'].items()}
     roots = family_roots([*ancestry, *evaluation], parents)
-    banned = {('artist', a) for a in prior['artists']} | {('id', p) for p in prior['ids']}
-    banned |= {('family', roots.get(p, p)) for p in prior['ids']} | {('md5', m) for m in prior['md5']}
-    banned |= {('pixel_hash', p) for p in prior['pixel_hashes']}
+    # 开发数据只需和评测集隔离；历史取样（含 #557 第一轮的参考图）都是开发数据，可以复用。
+    banned = set()
     for row in evaluation:
         banned |= {('artist', row['artist']), ('id', row['id']), ('family', roots.get(row['id'], row['id']))}
         banned |= {(k, row[k]) for k in ('md5', 'pixel_hash') if row.get(k)}

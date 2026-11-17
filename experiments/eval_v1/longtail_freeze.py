@@ -14,8 +14,8 @@ import numpy as np
 from common import COVERAGE, D557, DATA, INDEX_SHA, load, priority, sha_file, write
 from colab_run import MODELS, TAG_SHA
 from evaluate import Images, add_patches, matrix_file
-from prepare import rows_and_features
-from sample import family_roots
+from prepare import rows_and_features, seed_holdout
+from eval_sample import family_roots
 from score import index_entries, longtail
 
 
@@ -28,7 +28,10 @@ def main():
         raise ValueError('开发请求清单发生变化')
     rows, arrays, failures, receipts, ancestry = rows_and_features((work / 'cloud',), ('train', 'calibration'))
     indexed = Images(arrays)
-    roots = family_roots(ancestry, {})
+    evaluation = load(DATA / 'eval/manifest.json')
+    roots = family_roots([*ancestry, *evaluation], {})
+    # 先登记评测集的内容指纹：参考图和校准图与评测图近重复的一律舍弃；评测集画师若混进来直接报错。
+    seed_holdout(indexed, evaluation, roots)
     excluded = Counter()
     for split in ('train', 'calibration'):
         for row in sorted((r for r in requests if r['split'] == split), key=lambda r: priority(r['id'])):

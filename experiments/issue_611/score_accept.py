@@ -195,10 +195,15 @@ def score():
         for kind, flags in outside.items()}
     # 逐头的错误候选（旧角色图上新增的），给 Issue 写过不了的头用
     per_head = Counter()
+    false_posts = []
     for i in idx:
+        wrong = set(packs['611'][i]) - set(rows[i]['characters'])
         if old[i]:
-            for n in set(packs['611'][i]) - set(rows[i]['characters']) - base[i]:
+            for n in wrong - base[i]:
                 per_head[n] += 1
+        if wrong:      # 本 Issue 的头给出的全部错误候选（不论是不是旧角色图），留给漏标核对
+            false_posts.append({'id': rows[i]['id'], 'group': rows[i]['group'], 'candidates': sorted(wrong)})
+    write('accept/false-611.json', false_posts)
     result['false_old_by_head'] = {'heads_with_any': len(per_head), 'max': max(per_head.values(), default=0),
                                    'top20_share': round(sum(v for _, v in per_head.most_common(20)) /
                                                         max(1, sum(per_head.values())), 3)}

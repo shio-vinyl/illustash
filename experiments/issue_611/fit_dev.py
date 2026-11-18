@@ -307,6 +307,28 @@ def main():
             h = sum(len(set(packs['611'][i]) & set(sub_rows[i]['characters']) & names) for i in items)
             target_hits[band] = {'truth': t, 'hits': h, 'recall': round(h / t, 4) if t else None}
         result['recall_by_band'] = target_hits
+        # 召回分解：只算留下来的头；单人单角色和其他；帖子 ID 在 WD 截止前后。
+        kept_names = {labels[j] for j in np.flatnonzero(limits < 1)}
+        split = Counter()
+        for i, r in enumerate(sub_rows):
+            truth_here = set(r['characters']) & labels_611
+            if not truth_here:
+                continue
+            kind = 'single' if len(r['characters']) == 1 else 'other'
+            era = 'post_wd' if r['id'] > 7_220_105 else 'pre_wd'
+            got = set(packs['611'][i])
+            for n in truth_here:
+                for key in ('all', kind, era):
+                    split[f'{key}:truth'] += 1
+                    split[f'{key}:hits'] += n in got
+                    if n in kept_names:
+                        split[f'{key}:kept_truth'] += 1
+                        split[f'{key}:kept_hits'] += n in got
+        result['recall_split'] = {k: {'recall': round(split[f'{k}:hits'] / split[f'{k}:truth'], 4),
+                                      'recall_kept_heads': round(split[f'{k}:kept_hits'] / max(1, split[f'{k}:kept_truth']), 4),
+                                      'truth': split[f'{k}:truth'], 'kept_truth': split[f'{k}:kept_truth']}
+                                  for k in ('all', 'single', 'other', 'pre_wd', 'post_wd') if split[f'{k}:truth']}
+        np.save(OUT / f"estimate/limits-A{'-hard' if hard_ready else ''}.npy", limits)
         write(f"estimate/dev-estimate{'-hard' if hard_ready else ''}.json", result)
         print(json.dumps(result, ensure_ascii=False, indent=1), flush=True)
 

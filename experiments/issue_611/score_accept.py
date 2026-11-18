@@ -170,6 +170,29 @@ def score():
     gate = result['overall']['0.4+611']
     result['gate'] = {'point_le_1pct': gate['rate'] <= 0.01, 'upper_le_1_5pct': gate['interval_95'][1] <= 0.015,
                       'target_precision_ge_95pct': (gate['target_precision'] or 0) >= 0.95}
+    # 库外角色的误报（2026-11-18 Lead 追加，#654 的背景）：本 Issue 目标的正例图上，把这个角色自己的头拿掉，
+    # 看其余的头（0.4 + 本 Issue）会不会给出错误候选。各头独立打分、各自比阈值，拿掉一个头不改变别的头的分数，
+    # 所以「其余头的错误候选」就是这张图上不属于真值、B1 也没给的候选。另数 0.4 一级头（能补主归属）的错误候选、
+    # 且 B1 在这张图上没有给出任何候选的情况，即本尊不在库里时可能被补成错误主归属。
+    tier1_04 = {n for n, tier in zip(header['labels'], header['tiers']) if tier == 1}
+    outside = defaultdict(list)
+    outside_t1 = defaultdict(list)
+    for i, r in enumerate(rows):
+        if not r['group'].startswith('positive_'):
+            continue
+        target = r['target']
+        kind = 'single' if r['group'] == 'positive_single' else 'multi'
+        given = (set(packs['0.4'][i]) | set(packs['611'][i])) - {target}
+        wrong = given - set(r['characters']) - base[i]
+        outside[kind].append(bool(wrong))
+        outside_t1[kind].append(bool(wrong & tier1_04) and not base[i])
+    result['out_of_library'] = {
+        kind: {'images': len(flags), 'with_false_candidate': int(sum(flags)),
+               'rate': round(sum(flags) / len(flags), 5) if flags else None,
+               'interval_95': interval(flags, list(range(len(flags)))) if flags else None,
+               'tier1_false_without_b1': int(sum(outside_t1[kind])),
+               'tier1_rate': round(sum(outside_t1[kind]) / len(flags), 5) if flags else None}
+        for kind, flags in outside.items()}
     # 逐头的错误候选（旧角色图上新增的），给 Issue 写过不了的头用
     per_head = Counter()
     for i in idx:

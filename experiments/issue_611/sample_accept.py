@@ -25,6 +25,7 @@ import re
 import sys
 
 import duckdb
+import numpy as np
 
 from roster import CUTOFF_POST, ROOT, canonical, digest, read, write
 from supply import partition
@@ -51,17 +52,45 @@ def live_posts(api, cache):
     if not last:
         raise ValueError('找不到 2026-11-15 的帖子')
     upper = last[0]['id']
+    query = lambda low, high: f'rating:g id:{low}..{high}'
+
+    def chain(name, low, high, start):
+        """在 [low, high] 里按 ID 从大到小分页；name 区分缓存文件。"""
+        out, cursor = [], start
+        while True:
+            batch = api(cache / f'{name}b{cursor}.json', '/posts.json',
+                        {'tags': query(low, high), 'limit': 200, 'page': f'b{cursor}'})
+            if not batch:
+                break
+            out += batch
+            cursor = min(p['id'] for p in batch)
+            if len(batch) < 200 or cursor <= low:
+                break
+        return out, cursor
+
+    # 先按缓存回放第一轮单线分页取到的部分（不发请求），剩下的 ID 区间切成 4 段并行取；
+    # coverage.api 全局限速每秒一次，并行只是不用干等响应。
     posts, cursor = [], upper + 1
-    while True:
-        batch = api(cache / f'page-b{cursor}.json', '/posts.json',
-                    {'tags': f'rating:g id:{SNAPSHOT_MAX_ID + 1}..{upper}', 'limit': 200, 'page': f'b{cursor}'})
+    while (cache / f'page-b{cursor}.json').exists():
+        batch = json.loads((cache / f'page-b{cursor}.json').read_bytes())
         if not batch:
             break
         posts += batch
         cursor = min(p['id'] for p in batch)
-        if len(batch) < 200:
-            break
-    return [dict(p, created_at=utc(p['created_at'])) for p in posts if utc(p['created_at'])[:10] < STOP], upper
+    low = SNAPSHOT_MAX_ID + 1
+    edges = np.linspace(low, cursor, 5).astype(int)
+    segments = [(int(edges[k]) + (k > 0), int(edges[k + 1]) - (k == 3) * 0) for k in range(4)]
+    from concurrent.futures import ThreadPoolExecutor
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        jobs = [pool.submit(chain, f'seg{k}-{a}-{b_}-', a, b_, b_ + 1) for k, (a, b_) in enumerate(segments)]
+        for job in jobs:
+            posts += job.result()[0]
+    seen, unique = set(), []
+    for p in posts:
+        if p['id'] not in seen and SNAPSHOT_MAX_ID < p['id'] <= upper:
+            seen.add(p['id'])
+            unique.append(p)
+    return [dict(p, created_at=utc(p['created_at'])) for p in unique if utc(p['created_at'])[:10] < STOP], upper
 
 
 def utc(stamp):

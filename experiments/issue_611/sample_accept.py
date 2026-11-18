@@ -22,7 +22,9 @@ import json
 import os
 from pathlib import Path
 import re
+import subprocess
 import sys
+import time
 
 import duckdb
 import numpy as np
@@ -58,13 +60,21 @@ def live_posts(api, cache):
         """在 [low, high] 里按 ID 从大到小分页；name 区分缓存文件。"""
         out, cursor = [], start
         while True:
-            batch = api(cache / f'{name}b{cursor}.json', '/posts.json',
-                        {'tags': query(low, high), 'limit': 200, 'page': f'b{cursor}'})
+            for attempt in range(4):       # 偶发的服务端错误：等 10 秒再试，最多 3 次
+                try:
+                    batch = api(cache / f'{name}b{cursor}.json', '/posts.json',
+                                {'tags': query(low, high), 'limit': 200, 'page': f'b{cursor}'})
+                    break
+                except subprocess.CalledProcessError:
+                    if attempt == 3:
+                        raise
+                    time.sleep(10)
             if not batch:
                 break
             out += batch
             cursor = min(p['id'] for p in batch)
-            if len(batch) < 200 or cursor <= low:
+            # Danbooru 会从页里滤掉隐藏的帖子，不满 200 条不代表到底了；取到空页或越过下界才停。
+            if cursor <= low:
                 break
         return out, cursor
 

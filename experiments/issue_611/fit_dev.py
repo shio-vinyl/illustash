@@ -2,7 +2,7 @@
 
 - 训练：一期清单里训练区的图（split=train），照 #551 的 fit.fit_heads（至少 5 张、3 位画师；
   同作品、近邻和随机负例，逻辑回归，标准化折进权重）。
-- 开发数据：一期清单里校准区的图，加上 #551 定 0.4 阈值用的 47,762 张历次开发图（eval_v1 dev_rule.dev_data）。
+- 开发数据：一期清单里校准区的图、同作品撞脸难负例（sample_hard.py，两个分区都只当开发数据），加上 #551 定 0.4 阈值用的 47,762 张历次开发图（eval_v1 dev_rule.dev_data）。
   历次开发图里和本轮训练图同帖子或同 MD5 的去掉，免得训练过的图又拿来定阈值。
 - 阈值：dev_rule.thresholds(('R1', 2.0))，即 max(0.5, 负例最高分 + 0.01, 正例下四分位,
   sigmoid(logit(负例最高分) + 2))，开发正例画师少于 2 位的头不进包。
@@ -69,11 +69,10 @@ def read_v2(path):
     return header, values[:-n].reshape(n, 1024), values[-n:]
 
 
-def own_features():
-    """读一期回传的特征，按请求清单顺序拼起来；取图失败的帖子不在里面。"""
-    requests = load(OUT / 'dev/requests.json')
+def own_features(requests_path=OUT / 'dev/requests.json', folder=OUT / 'cloud-dev', origin='611_dev'):
+    """读回传的特征，按分片顺序拼起来；取图失败的帖子不在里面。"""
+    requests = load(requests_path)
     by_id = {r['id']: r for r in requests}
-    folder = OUT / 'cloud-dev'
     shards = sorted((folder / 'shards').glob('part-*.json'))
     rows, parts = [], defaultdict(list)
     failed = 0
@@ -87,7 +86,7 @@ def own_features():
             with np.load(BytesIO(package.read('features.npz')), allow_pickle=False) as data:
                 for key in ('wd_vectors', 'ccip_vectors', 'wd_scores'):
                     parts[key].append(data[key])
-                rows.extend(dict(by_id[int(i)], origin='611_dev') for i in data['ids'])
+                rows.extend(dict(by_id[int(i)], origin=origin) for i in data['ids'])
                 tags = data['wd_tags']
         failed += len(report['failures'])
     if len(rows) + failed != len(requests):
@@ -248,6 +247,19 @@ def main():
     dev_rows = [rows[i] for i in own_cal] + [dict(hist_rows[i], characters=sorted(
         {canonical(c, aliases) for c in hist_rows[i]['characters']})) for i in keep_hist]
     dev = {k: np.concatenate([arrays[k][own_cal], hist_arrays[k][keep_hist]]) for k in arrays}
+    # 同作品撞脸的难负例（sample_hard.py）：两个分区的都只当开发数据。
+    hard_dir = OUT / 'cloud-hard'
+    hard_ready = (hard_dir / 'shards').is_dir() and len(list((hard_dir / 'received').glob('part-*.json'))) == len(
+        list((hard_dir / 'shards').glob('part-*.json')))
+    if hard_ready:
+        hard_rows, hard_arrays, _, hard_failed = own_features(OUT / 'hard/requests.json', hard_dir, '611_hard')
+        seen = {r['id'] for r in dev_rows} | trained_ids
+        keep_hard = [i for i, r in enumerate(hard_rows) if r['id'] not in seen and r['md5'] not in trained_md5]
+        dev_rows += [hard_rows[i] for i in keep_hard]
+        dev = {k: np.concatenate([dev[k], hard_arrays[k][keep_hard]]) for k in dev}
+        print(f'难负例 {len(keep_hard):,} 张进开发数据（取图失败 {hard_failed}）', flush=True)
+    else:
+        print('难负例特征还没到齐，这次不含难负例', flush=True)
     x = dev['wd_vectors']
     origins = Counter(r['origin'] for r in dev_rows)
     print(f'开发数据 {len(dev_rows):,} 张：{dict(origins)}；历次开发图因与训练重合去掉 '
@@ -257,7 +269,7 @@ def main():
     if args.estimate:
         part = np.array([half(canonical(r['artist'], artist_aliases)) for r in dev_rows])
         limits, _ = rule_thresholds(x, dev_rows, labels, weights, biases, part == 'A')
-        subset = [i for i in range(len(dev_rows)) if part[i] == 'B' and dev_rows[i]['origin'] == '611_dev']
+        subset = [i for i in range(len(dev_rows)) if part[i] == 'B' and dev_rows[i]['origin'] in ('611_dev', '611_hard')]
         sx = x[subset]
         sub_rows = [dev_rows[i] for i in subset]
         covered = set(load(V1 / 'native-covered.json')['covered_labels'])
@@ -278,7 +290,12 @@ def main():
         idx = list(range(len(subset)))
         result = {'rule': {'name': RULE[0], 'delta_logit': RULE[1]}, 'heads_trained': len(labels),
                   'heads_kept_on_half_A': int((limits < 1).sum()), 'measured_images': len(subset),
+                  'with_hard_negatives': hard_ready,
                   'overall': report(idx, sub_rows, base, packs, old, labels_611, same)}
+        for origin in ('611_dev', '611_hard'):
+            part_idx = [k for k, r in enumerate(sub_rows) if r['origin'] == origin]
+            if part_idx:
+                result[f'only_{origin}'] = report(part_idx, sub_rows, base, packs, old, labels_611, same)
         bands = defaultdict(list)
         for i, r in enumerate(sub_rows):
             for n in set(r['characters']) & labels_611:
@@ -290,7 +307,7 @@ def main():
             h = sum(len(set(packs['611'][i]) & set(sub_rows[i]['characters']) & names) for i in items)
             target_hits[band] = {'truth': t, 'hits': h, 'recall': round(h / t, 4) if t else None}
         result['recall_by_band'] = target_hits
-        write('estimate/dev-estimate.json', result)
+        write(f"estimate/dev-estimate{'-hard' if hard_ready else ''}.json", result)
         print(json.dumps(result, ensure_ascii=False, indent=1), flush=True)
 
     if args.freeze:
@@ -305,6 +322,7 @@ def main():
                   'kept': bool(limits[j] < 1)} for j, n in enumerate(labels)]
         path = write('freeze/heads.json', heads)
         freeze = {'rule': {'name': RULE[0], 'delta_logit': RULE[1]}, 'development_images': len(dev_rows),
+                  'with_hard_negatives': hard_ready,
                   'development_origins': origins, 'trained': len(labels), 'kept': int(len(kept)),
                   'kept_by_band': Counter(h['band'] for h in heads if h['kept']),
                   'not_trained': Counter(v.get('state') for v in training.values() if v.get('state') != 'trained'),

@@ -133,6 +133,7 @@ a.gcard:focus-visible .gcard-prev{box-shadow:0 0 0 2px var(--sheet),0 0 0 4px va
 .lift-count{position:absolute;top:-8px;right:-10px;z-index:var(--z-page-4);padding:var(--space-1) var(--space-6);border-radius:var(--radius-pill);background:var(--accent-fill);
   color:var(--on-accent);font-size:var(--fs-11);font-weight:var(--fw-750)}
 body.lifting{cursor:grabbing;-webkit-user-select:none;user-select:none}
+body.lifting .rail-peek{display:none}
 /* 活页条上不接收的项（按条件的画廊）、指针下面接得住的那一项 */
 .rail-item.is-off{opacity:.32;pointer-events:none}
 .rail-item.is-drop{transform:translateX(8px) scale(1.12)}

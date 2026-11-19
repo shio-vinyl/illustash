@@ -5,7 +5,7 @@
 // 页面的登记在 ui/galleries.js；数据在 core/galleries.js。
 import {number} from '../core/format.js';
 import {t} from '../core/i18n.js';
-import {coversFor, droppable, galleryHref, isFav, isManual, previewOf, withFav} from '../core/galleries.js';
+import {coversFor, droppable, galleryHref, isFav, isManual, loadShows, previewOf, withFav} from '../core/galleries.js';
 import {showFor, showOf} from '../core/gallery_shows.js';
 import {readError} from '../core/session.js';
 import {state} from '../core/state.js';
@@ -14,6 +14,7 @@ import {attr, cls, show, text, tpl} from './el.js';
 import {newManual, reloadList} from './gallery_actions.js';
 import {keyed} from './keyed.js';
 import {thumbs} from './motion.js';
+import {renderHeading} from './shell.js';
 import {setTint} from './tint.js';
 
 const PAGE = tpl`<div class="gallery-index"><div class="gcards" data-ref="list"></div></div>`;
@@ -74,9 +75,10 @@ function indexView(scope) {
   const draw = () => list.set(withFav().map(g => ({...g, preview: previews.get(String(g.id))})));
   return {scope, async load(route) {
     const nsfw = state.nsfw, here = () => scope.alive && state.route === route && state.nsfw === nsfw;
-    try { await reloadList(); } catch (e) { if (here()) error(readError(e)); return; }
+    try { await Promise.all([reloadList(), loadShows()]); } catch (e) { if (here()) error(readError(e)); return; }
     if (!here()) return;
     previews.clear(); draw();
+    renderHeading();   // 页头的画廊数
     refs.list.append(fresh.el);   // 「新建」总在最后（keyed 只管画廊卡片，新挂的卡片插在它前面也没关系：下面每次都挪回末尾）
     const all = withFav();
     let covers = {};

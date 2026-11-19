@@ -23,7 +23,7 @@ import {newManual, putInto} from './gallery_actions.js';
 import {animate, reduced} from './motion.js';
 import {itemEl, mode, railCovers} from './rail.js';
 
-const SLOP = 6, GHOST = 64;
+const SLOP = 6, GHOST = 64, OFFSET = 14;
 let live = null;   // 正在拖：{ids, ghost, x, y, from, target}
 
 export function wireLift(el, pick, scope) {
@@ -68,7 +68,8 @@ function dropItems() {
 }
 function place() {
   const {ghost, x, y} = live;
-  write(() => css(ghost, 'transform', `translate(${Math.round(x - GHOST / 2)}px,${Math.round(y - GHOST / 2)}px)`), 'lift:place');
+  // 缩略图在指针右下方一点，不挡住指针下面要放进去的那一项。
+  write(() => css(ghost, 'transform', `translate(${Math.round(x + OFFSET)}px,${Math.round(y + OFFSET)}px)`), 'lift:place');
 }
 // 指针下面接得住图的地方：{key, el}。key 是 'new' 或画廊 id；接不住（按条件的画廊）时是 null。
 function targetAt(x, y) {
@@ -139,7 +140,7 @@ async function flyBack() {
   const {ghost, from} = live;
   detach();
   mode(null);
-  await animate(ghost, [{transform: ghost.style.transform, opacity: 1}, {transform: `translate(${from.x - GHOST / 2}px,${from.y - GHOST / 2}px) scale(.6)`, opacity: 0}], {dur: 1});
+  await animate(ghost, [{transform: ghost.style.transform, opacity: 1}, {transform: `translate(${from.x + OFFSET}px,${from.y + OFFSET}px) scale(.6)`, opacity: 0}], {dur: 1});
   ghost.remove();
 }
 // 不再跟着指针（拖动结束），缩略图还在，由调用方收尾。

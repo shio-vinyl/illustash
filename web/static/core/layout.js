@@ -215,7 +215,8 @@ export function masonryStep(packed, n, i, dir) {
 }
 
 // 拼贴：前几张图像拍立得一样散放。cols 列（按宽度 2–6 列）、一行一行往下排，每张宽度、偏移、角度（±7°）、叠放次序和
-// 胶带都由 seed 定；行与行稍微叠上一点。框是整张拍立得：图在里面，四周留 pad，下边再留 caption 写名字。
+// 胶带都由 seed 定；行与行稍微叠上一点。框是整张拍立得：图在里面，四周留 pad，下边再留 caption 写名字。图框的宽高比限在
+// 0.62–1.5（拍立得裁过的样子），长图不会把一行撑得很高。
 // 返回 {boxes, height}；框带 rot（度）、z（叠放次序 1–9）、tape（null 或 {at: 0–1 横向位置, rot}）。
 export function collage(ratios, {width, seed = 1, pad = 8, caption = 22, columns = 0}) {
   const n = ratios.length, boxes = [];
@@ -226,7 +227,7 @@ export function collage(ratios, {width, seed = 1, pad = 8, caption = 22, columns
   for (let start = 0; start < n; start += cols) {
     const row = [];
     for (let c = 0; c < cols && start + c < n; c++) {
-      const i = start + c, fw = cell * (.74 + rnd() * .2), fh = (fw - pad * 2) / clampRatio(usable(ratios[i])) + pad + caption;
+      const i = start + c, fw = cell * (.74 + rnd() * .2), fh = (fw - pad * 2) / Math.min(1.5, Math.max(.62, usable(ratios[i]))) + pad + caption;
       const x = Math.min(width - fw, Math.max(0, c * cell + (cell - fw) / 2 + (rnd() - .5) * cell * .18));
       const lift = (rnd() - .5) * cell * .14, rot = Math.round((rnd() - .5) * 140) / 10, z = 1 + Math.floor(rnd() * 9);
       const tape = rnd() > .55 ? {at: Math.round((.3 + rnd() * .4) * 100) / 100, rot: Math.round((rnd() - .5) * 200) / 10} : null;

@@ -357,6 +357,8 @@ export const FLOWS = [
         await post(p, '/api/favorite', {ids: ids.slice(0, 6)});
         await post(p, '/api/galleries', {action: 'create', kind: 'manual', name: 'Summer', ids: ids.slice(6, 10)});
         await post(p, '/api/galleries', {action: 'create', kind: 'manual', name: 'Empty'});
+        await p.send('Page.reload');   // 接口直接写的，页面不知道：重新载入，和用户换了个时候打开一样
+        await p.waitFor(`document.getElementById('rail') && !document.getElementById('splash')`, 15000);
       });
       let snap = await w.step('点活页条的画廊', () => goto(page, '#/galleries'), {shot: true});
       const cards = () => page.eval(`[...document.querySelectorAll('.gcard')].map(c => c.dataset.kind || (c.dataset.drop === 'new' ? 'new' : '?'))`);

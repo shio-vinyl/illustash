@@ -287,6 +287,36 @@ class FrontendArchitectureTest(unittest.TestCase):
             message = self.assertViolation(tree, 'long-line', 'ui/home.js')
             self.assertIn('200', message)
 
+    def test_ui_file_length(self):
+        # 规则 21：ui/ 下新文件超过 600 行报错；已经超长的文件再加一行也报错，缩短了算可收紧
+        with Tree() as tree:
+            tree.append('ui/home.js', '\n'.join(['// 行'] * 200) + '\n')
+            self.assertEqual(tree.errors(), [])
+            path = tree.root / STATIC / 'ui/brand_new.js'
+            path.write_text('// 新模块\n' + 'export const x = 1;\n' * 600, encoding='utf-8')
+            message = self.assertViolation(tree, 'ui-file-length', 'ui/brand_new.js')
+            self.assertIn('600', message)
+        with Tree() as tree:
+            tree.append('ui/grid.js', '// 再加一行\n')
+            self.assertViolation(tree, 'ui-file-length', 'ui/grid.js')
+        with Tree() as tree:
+            # core/ 不管行数
+            tree.append('core/format.js', '\n'.join(['// 行'] * 700) + '\n')
+            self.assertEqual(tree.errors(), [])
+
+    def test_ui_must_not_send_requests(self):
+        # 规则 22：ui/ 里新写 api()、post()、shared()、fetch() 报错；core/ 里照写；名字里带 api 的别的函数不算
+        with Tree() as tree:
+            tree.append('ui/rail.js', "\nexport const more = () => api('/api/home');\n")
+            self.assertViolation(tree, 'ui-request', 'ui/rail.js')
+        with Tree() as tree:
+            tree.append('ui/rail.js', "\nexport const raw = () => fetch('/api/home');\n")
+            self.assertViolation(tree, 'ui-request', 'ui/rail.js')
+        with Tree() as tree:
+            tree.append('core/rail.js', "\nexport const more = () => api('/api/home');\n")
+            tree.append('ui/rail.js', "\nexport const y = () => myapi('a') + x.post('b') + '\\napi(';\n// api('/api/home')\n")
+            self.assertEqual(tree.errors(), [])
+
     def test_long_comment_line_counts(self):
         with Tree() as tree:
             tree.append('core/format.js', '\n// ' + 'word ' * 50 + '\n')
@@ -294,8 +324,8 @@ class FrontendArchitectureTest(unittest.TestCase):
 
     def test_baseline_is_not_keyed_by_line_number(self):
         with Tree() as tree:
-            # 在文件开头插入无关行、让所有行号后移，检查结果不变
-            path = tree.root / STATIC / 'ui/settings.js'
+            # 在文件开头插入无关行、让所有行号后移，检查结果不变（换一个不到 600 行的文件，免得碰到规则 21）
+            path = tree.root / STATIC / 'ui/catalog.js'
             path.write_text('// one\n// two\n// three\n' + path.read_text(encoding='utf-8'), encoding='utf-8')
             self.assertEqual(tree.errors(), [])
 

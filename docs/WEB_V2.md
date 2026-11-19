@@ -123,9 +123,67 @@
 - **开发模式**：在开发者工具里运行 `localStorage['pi.dev'] = 'true'` 后重新载入页面（关掉：`localStorage.removeItem('pi.dev')`）。开发模式下 `ui/scope.js` 记着所有还活着的作用域，换页后上一页期间建的根作用域还没释放（不属于 `app`，也不属于新一页）时在控制台提示 `[scope] 换页后还有 N 个作用域没释放`；`live()` 返回还活着的个数和各名字的数量。偏好存在浏览器本地，不进图库、不随包发出，正常使用不受影响。
 - **测试**：每个模块一组 Node 测试（`tests/el.test.cjs`、`keyed`、`scope`、`frame`、`virtual`、`rows`、`layout`）。`tests/dom.cjs` 是底座用的最小假 DOM：有真正的节点树、`<template>` 的静态 HTML 解析、事件和写入计数（测「值没变不动 DOM」）；`tests/web.cjs` 的 `fakePage()` 只记 `innerHTML` 文本，旧模块的测试照旧用它。`core/layout.js` 用固定输入比对输出的框，等高行另和网格原来的分行逐项对照。`ui/frame.js` 在 Node 里没有 `requestAnimationFrame`，测试用 `setScheduler()` 换成手动的。
 
+### 页面框架与活页条（#706）
+
+- **注册表**（`core/pages.js`）：每个页面声明属于活页条的哪个一级入口（`entry`：`library`、`catalog`、`galleries`、`tidy`、`settings`，画师抽查是 `''`）和在二级层里选中哪一项（`item`，整理的五个队列）；随地址变的那一项（某个画廊、收藏、钉住的角色）由 `core/rail.js` 的 `railAt(route)` 算。图库有三种视图：`days`（按天，`#/days`，原来的首页；`#/`、`#/home`、`#/recent` 改写到这里）、`library`（网格，`#/library`，地址和查询照旧）、`calendar`（日历，`#/calendar`）；`view` 写是哪一种，`filters` 标出读图库筛选的页面（三种视图和画廊），切换视图时筛选跟着走。整理的入口 `#/tidy` 改写到按组整理。角色页在活页条上属于资料库。
+- **活页条**（`ui/rail.js`，数据在 `core/rail.js`，样式 `css/rail.css`）：全应用一个，挂在 `app` 作用域上。各页要换二级层的内容用 `provide(entry, fn)`（`fn()` 返回项的列表，`refresh(entry)` 时重新调），选中某项用 `select(key)`，按天视图滚到某一天用 `selectDay(day)`，点了二级项要自己处理（滚到那一天）用 `onPick(entry, fn)`，改队列的数字用 `count(key, n)`，拖放时临时换一组项用 `mode(name, items, hint)`。每一项的字段写在 `core/rail.js` 开头。图库的时间轴：最近 5 天各一项，更早的同一年按月、再早的按年（用户 2026-11-19 定）；数据按 `/api/calendar` 的 `prev` 一个月一个月往前读。资料库钉住的项按图库存在浏览器本地（`libraryPrefs`，键 `railPins`）。⌘1–4（Windows 上 Ctrl）切一级，⌥↑↓ 在二级里移动，⌥⇧↑↓ 挪动钉住的项，走 `ui/grid.js` 现有的键盘处理。窄窗口（≤760px）二级层收进抽屉，页头左边的按钮打开。
+- **页头**：标题、副标题和本页的链接由各页的 `heading` 返回（`ui/shell.js` 画）；图库三种视图之间、整理三个页签之间的分段切换由框架按注册表画；右侧是全局的控件组（跳到角色、R18、视图选项、撤销、快捷键）。下面的工具栏是 `#toolbar`，空的页面藏起来。
+- **空状态**：`ui/empty.js` 的 `drawEmpty(box, {icon, fact, next})`；网格页按注册表的 `emptyIcon`、`empty`、`emptyNext` 画，`emptyNext` 返回 `[{label, href}]` 或 `[{label, act}]`。
+
+### 页面样板（#706）
+
+一页一个模块，后面各步照这个写（#703「可维护性」）：
+
+1. **登记**：在 `core/pages.js` 的 `list` 里加一项（地址、主区 `area`、活页条的 `entry`、工具栏、空状态……），在 [WEB_UI_MAP.md](WEB_UI_MAP.md) §2.1 总表和 `tests/pages.test.cjs` 的 `ROWS` 各加一行。
+2. **取数**在 `core/<页>.js`：导出返回数据的函数，参数里带 `signal`；请求的参数、并发合并、缓存都写在这里，Node 里能直接测。`ui/` 不直接调 `api()`、`post()`、`shared()`、`fetch()`（规则 22）。
+3. **画**在 `ui/<页>.js`：开头的注释写它负责什么；静态结构写成模块顶层的 ``tpl`…` ``，部件是 `{el, update, dispose}`；文件末尾 `implement({页: {render, heading, help, refresh, …}})`。一个文件不超过 600 行（规则 21），一页里自成一块的部件（卡片、浮层、工具栏）拆成自己的文件。
+4. **作用域**：`render({samePage, restore, scope})` 收到这一页的作用域（换页时框架调 `ui/scope.js` 的 `page()`）。监听、计时器、观察器、帧任务、子部件、`keyed` 列表都登记在它上面，换页时一起释放；不挂 `document`、`window` 级的监听（规则 3）。
+5. **异步回来**先判断还在不在：`if (!scope.alive || state.route !== route) return`（换了页，作用域已经释放；同一页换了子视图，路由对象换了）。别处的回调照旧用 `onPage(state.route, '页')`。
+6. **数据变了**：`refresh(why)` 只重画受影响的部分，部件的 `update` 值没变不动 DOM。
+
+最小的例子（「笔记」页只是示意，不存在）：
+
+```js
+// core/notes.js：笔记页的数据
+import {api} from './session.js';
+export const loadNotes = (route, signal) => api('/api/notes?' + new URLSearchParams({q: route.q}), {signal});
+
+// ui/notes.js：笔记页（列表和空状态）
+import {t} from '../core/i18n.js';
+import {loadNotes} from '../core/notes.js';
+import {implement} from '../core/pages.js';
+import {readError} from '../core/session.js';
+import {state} from '../core/state.js';
+import {$, error, showArea} from './dom.js';
+import {text, tpl} from './el.js';
+import {drawEmpty} from './empty.js';
+import {keyed} from './keyed.js';
+
+const LIST = tpl`<ul class="notes"></ul>`;
+const ROW = tpl`<li class="note"><b data-ref="title"></b></li>`;
+function noteRow(note) {
+  const {el, refs} = ROW();
+  const update = x => text(refs.title, x.title);
+  update(note);
+  return {el, update};
+}
+async function render({scope}) {
+  showArea();
+  const route = state.route, box = $('notesPage');
+  let notes;
+  try { notes = await loadNotes(route, scope.signal); } catch (e) { if (scope.alive) error(readError(e)); return; }
+  if (!scope.alive || state.route !== route) return;
+  if (!notes.length) { drawEmpty(box, {icon: 'check', fact: t('还没有笔记。')}); return; }
+  const {el} = LIST();
+  box.replaceChildren(el);
+  keyed(el, {key: n => n.id, create: noteRow, scope}).set(notes);
+}
+implement({notes: {render, heading: () => [t('笔记'), '']}});
+```
+
 ### 兼容底线
 
-- macOS 14.0 的 WKWebView 按 Safari 17.0 算；Windows 的 WebView2 是常青版。WKWebView 是否随系统里的 Safari 更新，待在 macOS 14 虚拟机里确认，确认之前按 17.0 写。
+- macOS 14.0 的 WKWebView 按 Safari 17.0 算；Windows 的 WebView2 是常青版。macOS 14 上的 WKWebView 不随 Safari 单独更新，只随系统走，最高到 Safari 17.6 的水平（2026-11-19 在 macOS 14 虚拟机里确认，#703 的评论）；所以照 17.0 写。磨砂玻璃照旧写带前缀的 `-webkit-backdrop-filter`（Sonoma 上的 Safari 也只认带前缀的）。
 - 只作增强、要有退路的：View Transitions（Safari 18.0）、`@starting-style`（17.5，`@supports` 测不出来）、`transition-behavior`（17.4）、`linear()` 缓动（17.2）、`content-visibility`（18.0）、`@scope`（17.4）、滚动驱动动画（26）、`Promise.withResolvers` 和 `Object.groupBy`（17.4）。Safari 没有的 `requestIdleCallback`、`scheduler.postTask` 不用。
 - 退场动画用 Web Animations 做。判断动画结束用 `animation.finished`，另按时长加计时兜底（Safari 17 的 `transitionend` 偶尔不来）。
 - 缩略图到大图：WAAPI 的 FLIP 做底，View Transitions 只在支持的平台上用。
@@ -140,9 +198,14 @@
 
 4–8 已由 #705 做成 `tools/check_frontend.py` 的规则 8（扩到 `css/`）和 13–17，另加 18（层）、19（样式表的先后）、20（`--tint` 的写入者）；现行写法见[样式令牌](#样式令牌2026-11-12317)「样式文件与层」的最后一条。
 
+#703「可维护性」的两条由 #706 做成规则 21、22（见上面的[页面样板](#页面样板706)）：
+
+- 规则 21（`ui-file-length`）：`ui/` 下的文件不超过 600 行；现有的 `ui/grid.js`、`ui/settings.js` 按超出的行数进基线，只能缩小。
+- 规则 22（`ui-request`）：`ui/` 不直接发请求，`api(`、`post(`、`shared(`、`fetch(` 只在 `core/` 里；存量按文件计数进基线。按名字认，同名的方法定义也会被认成调用。
+
 ### 样式清单要加的
 
-`tools/styleguide/` 随各步加：活页条的标签和二级项（#706）；详情卡片（#709）；作品卡（#711）。新令牌表和公共部件已在 #705 加好（「新部件」一组）；旧部件在重做完之前标成「旧样式，重做中」。
+`tools/styleguide/` 随各步加：活页条的标签和二级项（#706，已加）；详情卡片（#709）；作品卡（#711）。新令牌表和公共部件已在 #705 加好（「新部件」一组）；旧部件在重做完之前标成「旧样式，重做中」。
 
 ## 新图库引导（2026-10-12，#96）
 

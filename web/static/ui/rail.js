@@ -43,7 +43,12 @@ const ICONS = {
   excluded: tpl`<svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="7.2"/><path d="M5 15 15 5"/></svg>`,
   audit: tpl`<svg viewBox="0 0 20 20" aria-hidden="true"><rect x="4" y="3.5" width="12" height="14" rx="2"/><path d="M7.5 9.8 9.3 11.6 12.8 8"/></svg>`,
   identity: tpl`<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 7h11l-3-3M16 13H5l3 3"/></svg>`,
+  // 没有封面的画廊（收藏还没有图、画廊的条件现在没有图）
+  fav: tpl`<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 16.4S3.4 12.5 3.4 7.9A3.3 3.3 0 0 1 10 6.3a3.3 3.3 0 0 1 6.6 1.6c0 4.6-6.6 8.5-6.6 8.5Z"/></svg>`,
+  gallery: tpl`<svg viewBox="0 0 20 20" aria-hidden="true"><rect x="3" y="4.5" width="14" height="11" rx="2"/><path d="m3.5 13.5 4-4 3 3 2-2 4 4"/></svg>`,
 };
+// 这一项画成图标时用哪个：整理的队列，和没有封面的画廊。
+const iconOf = x => x.kind === 'queue' ? x.key : x.kind === 'gallery' && !x.cover ? (x.key === 'fav' ? 'fav' : 'gallery') : '';
 const PEEK = tpl`<div class="rail-peek-in"><b data-ref="title"></b><small data-ref="meta"></small><span class="rail-peek-pics" data-ref="pics"></span></div>`;
 
 const s = app.child('rail');
@@ -62,7 +67,6 @@ function mark(item) {
 }
 function itemWidget(item) {
   const {el, refs} = ITEM();
-  if (ICONS[item.key] && item.kind === 'queue') refs.icon.append(ICONS[item.key]().el);
   el.dataset.key = item.key; el.dataset.kind = item.kind;
   const update = x => {
     attr(el, 'href', x.href || '#'); attr(el, 'aria-label', x.meta ? `${x.label}，${x.meta}` : x.label);
@@ -71,9 +75,14 @@ function itemWidget(item) {
     attr(refs.img, 'src', thumb(x.cover) || null); show(refs.img, !!x.cover);
     attr(refs.img2, 'src', thumb(x.cover2) || null); show(refs.stack, x.kind === 'month' || x.kind === 'year');
     text(refs.mark, mark(x)); show(refs.mark, !!mark(x));
-    show(refs.heart, !!x.heart);
-    if (!counting.has(refs.count)) text(refs.count, x.count ? String(x.count) : '');
-    show(refs.count, !!x.count);
+    show(refs.heart, !!x.heart && !!x.cover);
+    const icon = iconOf(x);
+    if (refs.icon.dataset.icon !== icon) { refs.icon.dataset.icon = icon; refs.icon.replaceChildren(...(ICONS[icon] ? [ICONS[icon]().el] : [])); }
+    cls(el, 'is-icon', !!icon);
+    // 数字只给整理的队列；时间轴的张数写在悬停预览里
+    const n = x.kind === 'queue' ? x.count : 0;
+    if (!counting.has(refs.count)) text(refs.count, n ? number(n) : '');
+    show(refs.count, !!n);
     el.railItem = x;
   };
   update(item);

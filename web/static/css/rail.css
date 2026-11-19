@@ -58,7 +58,7 @@
 /* 整理的队列：图标 */
 .rail-icon{position:absolute;inset:0;display:grid;place-items:center;border-radius:inherit;color:var(--ink2)}
 .rail-icon:empty{display:none}
-.rail-item[data-kind=queue] .rail-cover{background:var(--sheet);box-shadow:none}
+.rail-item.is-icon .rail-cover{background:var(--sheet)}
 .rail-icon>svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
 /* 日期、月份、作品的首字：写在封面上 */
 .rail-mark{position:absolute;bottom:2px;left:5px;color:var(--on-image);font-size:var(--fs-13);font-weight:var(--fw-750);letter-spacing:-.4px;text-shadow:var(--image-text-shadow);pointer-events:none}

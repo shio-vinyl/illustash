@@ -27,7 +27,8 @@ tools/check_architecture.py 对 crate 依赖方向的检查。规则（说明见
  18 css-layer            css/ 下的文件整个写在自己的 @layer 里（硬规则）：tokens.css 在 tokens，base.css 在 base，overlays.css 在 overlays，其余在 pages
  19 css-order            层的先后靠样式表的顺序：index.html（和样式清单页）第一个样式表是 css/tokens.css，tokens.css 的第一条是 @layer 先后
                          声明；index.html 引了 css/ 下的每个文件（硬规则）
- 20 tint-writer          --tint 只经 ui/tint.js 的 setTint() 写（它同时加 .tint）；别的模块不出现 --tint（硬规则）
+ 20 tint-writer          --tint 只经 ui/tint.js 的 setTint() 写（它同时加 .tint）；别的模块不出现 --tint，样式里也不声明 --tint
+                         （tokens.css 里 :root 的中性默认值除外）（硬规则）
 
 基线（tools/frontend_baseline.json）按「文件 + 内容特征」登记（导入边、字段名、每个文件的数量），不按行号，
 所以文件里别处的改动不会让它失效。基线只能缩小：`--shrink` 只调低、不新增；`--base-ref REF` 在基线比 REF
@@ -67,6 +68,8 @@ from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
 import argparse
+import bisect
+import functools
 import json
 import posixpath
 import re
@@ -128,6 +131,7 @@ _TEMPLATE_RUN = re.compile(r'[^\\`$]+|\$(?!\{)')
 _REGEX_KEYWORDS = {'return', 'typeof', 'case', 'in', 'of', 'void', 'delete', 'throw', 'new', 'else', 'do', 'yield', 'await'}
 
 
+@functools.lru_cache(maxsize=1024)
 def strip_comments(src, strings=True):
     """把注释替换成空白（保留换行，行号不变）；字符串、模板字符串文字和正则字面量原样保留。
     strings=False 时引号字符串和模板字符串的文字也一并抹成空白（`${…}` 里的代码保留）。"""
@@ -419,7 +423,7 @@ def new_rules():
              baselined=False),
         Rule('tint-writer', '20', '在 ui/tint.js 以外写了 --tint',
              '图的主色只经 ui/tint.js 的 setTint(el, color) 写（#705）：它写 --tint 并给元素加 .tint，派生的底色才会在那个元素上重算；'
-             '只写 --tint、漏了 .tint 不会报错，只会静悄悄地退回中性色。没有基线。',
+             '只写 --tint、漏了 .tint 不会报错，只会静悄悄地退回中性色。样式里同样不声明 --tint（tokens.css 里 :root 的中性默认值除外）。没有基线。',
              "改成 `import {setTint} from './tint.js'`（core/ 不碰 DOM，交给 ui/ 写）后 `setTint(el, color)`；去掉颜色用 `setTint(el, null)`。",
              baselined=False),
     ]}
@@ -649,10 +653,19 @@ class Declaration:
     line: int
 
 
+def line_finder(text):
+    """返回「偏移 → 行号」的函数（二分查换行的位置；逐个 text.count 在大文件上是平方级的）。"""
+    breaks = [i for i, c in enumerate(text) if c == '\n']
+    return lambda offset: bisect.bisect_left(breaks, offset) + 1
+
+
+@functools.lru_cache(maxsize=64)
 def css_declarations(raw):
-    """按顺序列出 CSS 里的每条声明；注释抹空、字符串和括号里的 `;`、`{` 不当作分隔。行号是声明开头所在的行。"""
+    """按顺序列出 CSS 里的每条声明；注释抹空、字符串和括号里的 `;`、`{` 不当作分隔。行号是声明开头所在的行。
+    同一份文字的结果会缓存（规则 8、13、15、20 各读一遍）；返回的是元组，调用方不要改它。"""
     text = re.sub(r'/\*.*?\*/', lambda m: _BLANK.sub(' ', m.group(0)), raw, flags=re.S)
     out, stack, start, depth, quote = [], [], 0, 0, ''
+    line_of = line_finder(text)
 
     def emit(end):
         piece = text[start:end]
@@ -661,7 +674,7 @@ def css_declarations(raw):
             return
         prop, _, value = body.partition(':')
         offset = start + len(piece) - len(piece.lstrip())
-        out.append(Declaration(stack[-1], tuple(stack), prop.strip().lower(), value.strip(), text.count('\n', 0, offset) + 1))
+        out.append(Declaration(stack[-1], tuple(stack), prop.strip().lower(), value.strip(), line_of(offset)))
 
     for i, c in enumerate(text):
         if quote:
@@ -686,7 +699,7 @@ def css_declarations(raw):
             if stack:
                 stack.pop()
             start = i + 1
-    return out
+    return tuple(out)
 
 
 def _calls(text, opener):
@@ -1065,11 +1078,12 @@ def css_blocks(raw):
     text = re.sub(r'/\*.*?\*/', lambda m: _BLANK.sub(' ', m.group(0)), raw, flags=re.S)
     blocks, statements, decls, stack = [], [], [], []
     start, depth, quote = 0, 0, ''
+    line_of = line_finder(text)
 
     def head(end):
         piece = text[start:end]
         offset = start + len(piece) - len(piece.lstrip())
-        return piece.strip(), offset, text.count('\n', 0, offset) + 1
+        return piece.strip(), offset, line_of(offset)
 
     for i, c in enumerate(text):
         if quote:
@@ -1217,16 +1231,17 @@ def undefined_variables(files):
     found = []
     for path, raw in files.items():
         text = re.sub(r'/\*.*?\*/', lambda m: _BLANK.sub(' ', m.group(0)), raw, flags=re.S)
+        line_of = line_finder(text)
         for m in VAR_NAME_RE.finditer(text):
             if m.group(1) not in shared and m.group(1) not in local[path]:
-                found.append((path, m.group(1), text.count('\n', 0, m.start()) + 1))
+                found.append((path, m.group(1), line_of(m.start())))
     return found
 
 
 # 规则 19：引样式表的页面（相对仓库根）和每个页面里第一个样式表应有的地址。
 STYLE_PAGES = {'web/static/index.html': '/css/tokens.css', 'tools/styleguide/index.html': '../../web/static/css/tokens.css'}
-LINK_RE = re.compile(r'<link\b[^>]*\brel=["\']?stylesheet["\']?[^>]*>', re.I)
-HREF_RE = re.compile(r'\bhref=["\']([^"\']+)["\']', re.I)
+LINK_RE = re.compile(r'<link\b[^>]*\brel\s*=\s*["\']?stylesheet\b["\']?[^>]*>', re.I)
+HREF_RE = re.compile(r'\bhref\s*=\s*(?:"([^"]*)"|\'([^\']*)\'|([^\s"\'>]+))', re.I)
 TINT_HOME = 'ui/tint.js'
 
 
@@ -1239,8 +1254,8 @@ def stylesheet_order(pages, css_files):
     """规则 19：[(页面, 基线键, 内容, 怎么改)]。"""
     found = []
     for rel, html in pages.items():
-        hrefs = [HREF_RE.search(m.group(0)).group(1) for m in LINK_RE.finditer(re.sub(r'<!--.*?-->', '', html, flags=re.S))
-                 if HREF_RE.search(m.group(0))]
+        hrefs = [next(g for g in h.groups() if g is not None) for m in LINK_RE.finditer(re.sub(r'<!--.*?-->', '', html, flags=re.S))
+                 if (h := HREF_RE.search(m.group(0)))]
         want = STYLE_PAGES[rel]
         if not hrefs or hrefs[0] != want:
             found.append((rel, f'{rel}: 第一个样式表不是 tokens.css', f'第一个样式表是 {hrefs[0] if hrefs else "（没有）"}',
@@ -1308,6 +1323,11 @@ def run_rules(sources, css=None, classic=None, pages=None):
         # 规则 15：没定义的变量
         for path, name, line in undefined_variables(css):
             rules['css-var'].add(f'{path}: {name}', f'{STATIC}/{path}:{line}: var({name})')
+        # 规则 20：样式里也不直接声明 --tint（tokens.css 里 :root 的中性默认值除外）
+        for path, raw in css.items():
+            for d in css_declarations(raw):
+                if d.prop == '--tint' and not (path == TOKENS_FILE and d.selector in TOKEN_SELECTORS):
+                    rules['tint-writer'].add(f'{path}: --tint', f'{STATIC}/{path}:{d.line}: {d.selector} {{ --tint: {d.value[:40]} }}')
     graph = {p: [t for t, _ in imports(s, sources)] for p, s in sources.items()}
     edges = {(p, t): s.raw_line(line) for p, s in sources.items() for t, line in imports(s, sources)}
     # 规则 1：core -> ui，硬规则

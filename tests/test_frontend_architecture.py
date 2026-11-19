@@ -629,6 +629,14 @@ class FrontendArchitectureTest(unittest.TestCase):
                          '@layer tokens{:root{--zz:1}}\n@layer legacy, tokens, base, pages, overlays;\n@layer tokens{')
             self.assertViolation(tree, 'css-order', 'css/tokens.css: 层的声明不在最前')
 
+    def test_stylesheet_order_reads_unquoted_href(self):
+        with Tree() as tree:
+            tree.replace('index.html', '<link rel="stylesheet" href="/css/tokens.css">', '<link rel=stylesheet href=/css/tokens.css>')
+            self.assertEqual(tree.errors(), [])
+            tree.replace('index.html', '<link rel=stylesheet href=/css/tokens.css>', '')
+            tree.replace('index.html', '<link rel="stylesheet" href="/css/base.css">', '<link rel="stylesheet" href="/css/base.css"><link rel=stylesheet href=/css/tokens.css>')
+            self.assertViolation(tree, 'css-order', 'web/static/index.html: 第一个样式表不是 tokens.css')
+
     def test_tint_is_written_only_by_set_tint(self):
         with Tree() as tree:
             tree.append('ui/grid.js', "\nexport const paint = (el, c) => el.style.setProperty('--tint', c);\n")
@@ -636,6 +644,8 @@ class FrontendArchitectureTest(unittest.TestCase):
         with Tree() as tree:
             tree.append('ui/tint.js', "\nexport const again = el => el.style.getPropertyValue('--tint');\n")
             self.assertEqual(tree.errors(), [])
+        # 样式里也不直接声明 --tint；tokens.css 里 :root 的中性默认值除外
+        self.assertPage('tint-writer', '.card{--tint:var(--accent)}', 'css/library.css: --tint')
 
     def test_class_substring_and_descendant_has(self):
         self.assertPage('css-selector', '.grid [class*=card-]{opacity:.5}', 'css/library.css: 类名子串选择器', '2.4 倍')

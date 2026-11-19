@@ -8,7 +8,7 @@
 //   flip(el, oldBox, newBox);                   // 位置变了：用 core/layout.js 算出的框（{x, y, w, h}），不量 DOM
 //   thumbs.mark(img, uuid);                     // 各视图画缩略图时标上图片 id（写 data-thumb）
 //   await share({from: thumbs.find(uuid), to: () => viewerImg(), update: () => showViewer()});  // 缩略图展开成大图
-//   await shareBack(bigImg, thumbs.rect(uuid)); // 关掉时缩回缩略图的位置；没有位置（滚走了）就淡出
+//   await shareBack(bigImg, thumbs.find(uuid)); // 关掉时缩回缩略图的位置；没有（滚走了）就淡出
 //   countTo(numberEl, 1234);                    // 数字滚到新值
 //
 // 时长传 1 / 2 / 3（对应 --dur-1 / -2 / -3），也可以直接传毫秒；缓动传 'ease' 或 'spring'（--ease-spring，只给活页条标签和
@@ -252,8 +252,10 @@ export async function share({from, to, update, toBox, dur = 3, radius, position}
       big = target();
       if (big?.style) big.style.viewTransitionName = name;
     });
-    // 兜底从动画真正开始（截好图、update 画完）算起。
-    await Promise.race([Promise.resolve(transition.ready).catch(() => {}), new Promise(r => setTimeout(r, READY_LIMIT_MS))]);
+    // 兜底从动画真正开始（截好图、update 画完）算起；ready 先到时清掉等它的计时器。
+    let limit;
+    await Promise.race([Promise.resolve(transition.ready).catch(() => {}), new Promise(r => { limit = setTimeout(r, READY_LIMIT_MS); })]);
+    clearTimeout(limit);
     const ok = await settle(transition, duration(3));
     node.style.viewTransitionName = '';
     if (big?.style) big.style.viewTransitionName = '';
@@ -268,11 +270,14 @@ export async function share({from, to, update, toBox, dur = 3, radius, position}
   return animate(big, frames, {dur});
 }
 /**
- * 大图缩回缩略图的位置（关看图器时）。`el` 停在终点（fill: forwards），调用方在 Promise 之后把它摘掉。
- * 没有目标框（缩略图滚走了、所在的视图没登记）时淡出。
+ * 大图缩回缩略图的位置（关看图器时）。`target` 是缩略图节点（通常来自 thumbs.find）或它的框；`el` 停在终点（fill: forwards），
+ * 调用方在 Promise 之后把它摘掉。position 不传时读缩略图的 object-position（和 share() 一样）。没有目标（缩略图滚走了）时淡出。
  */
-export function shareBack(el, target, {fromBox, dur = 2, radius = [0, 8], position = [0.5, 0.5]} = {}) {
-  const frames = target ? shareFrames(target, fromBox || el?.getBoundingClientRect?.(), {radius: [radius[1], radius[0]], position}) : null;
+export function shareBack(el, target, {fromBox, dur = 2, radius = [0, 8], position} = {}) {
+  const node = target && typeof target.getBoundingClientRect === 'function' ? target : null;
+  const thumb = node ? node.getBoundingClientRect() : target;
+  const crop = position || (node ? objectPosition(node) : undefined);
+  const frames = thumb ? shareFrames(thumb, fromBox || el?.getBoundingClientRect?.(), {radius: [radius[1], radius[0]], position: crop}) : null;
   if (!frames) return animate(el, EXIT.scale, {dur: 1, fill: 'forwards'});
   return animate(el, frames.slice().reverse(), {dur, fill: 'forwards'});
 }

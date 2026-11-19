@@ -279,6 +279,14 @@ test('关看图器：缩回缩略图的框并停在那里；没有框时淡出',
   assert.equal(await back, true);
   motion.shareBack(big, null);
   assert.equal(animations[1].keyframes.at(-1).opacity, 0);
+  // 目标是缩略图节点时和 share() 一样读它的 object-position
+  globalThis.getComputedStyle = () => ({objectPosition: '50% 25%', getPropertyValue: () => ''});
+  const poster = node({rect: {left: 0, top: 0, width: 100, height: 100}});
+  const tall = node({rect: {left: 0, top: 0, width: 200, height: 400}});
+  motion.shareBack(tall, poster);
+  globalThis.getComputedStyle = tokens;
+  assert.equal(animations[2].keyframes.at(-1).clipPath,
+    motion.shareFrames({x: 0, y: 0, w: 100, h: 100}, {x: 0, y: 0, w: 200, h: 400}, {position: [0.5, 0.25], radius: [8, 0]})[0].clipPath);
 });
 
 test('数字滚动：逐帧写到终值；又滚时接着新目标走', async () => {

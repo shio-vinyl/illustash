@@ -55,8 +55,10 @@ const layer = createLayer({kind: 'overlay', id: 'viewer', el: () => $('viewer'),
   inert: () => [document.querySelector('.app'), $('selectionBar'), $('taskPanel')], onDismiss: reason => closeViewer(reason)});
 
 // ---------- 三张轮换 ----------
-function makeSlot() {
+function makeSlot(n) {
   const {el, refs} = SLOT();
+  // 带 id：ui/dom.js 的全局图片出错处理只换没有 id 的图，看图器自己写「读不出来」。
+  refs.low.id = `viewerLow${n}`; refs.high.id = `viewerHigh${n}`;
   const slot = {el, ...refs, uuid: null, ready: Promise.resolve()};
   s.on(refs.low, 'error', () => { if (slot.uuid) { show(refs.frame, false); text(refs.missing, unreadableText()); show(refs.missing, true); } });
   s.on(refs.high, 'load', () => { if (slot === current && refs.high.getAttribute('src')) refs.high.decode?.().catch(() => {}).then(() => { if (slot === current) show(refs.high, true); }); });
@@ -294,8 +296,8 @@ export function peekAt(el) {
 export function wireViewer() {
   bar = viewerBar();
   const stage = $('viewerStage');
-  slots = [makeSlot(), makeSlot(), makeSlot()];
-  stage.replaceChildren(...slots.map(x => x.el));
+  slots = [makeSlot(0), makeSlot(1), makeSlot(2)];
+  stage.append(...slots.map(x => x.el));
   backdrop = make('div', 'vw-backdrop'); root().prepend(backdrop);
   $('viewerBar').replaceChildren(bar.el);
   s.on(bar.el, 'click', e => {

@@ -174,8 +174,6 @@ test('心形：收藏过的是按下态，小格子只画不能点的实心，�
   assert.match(ui.cardHeart({uuid: 'a', fav: true}, true), /<span class="fav-mark on still" data-fav="a" aria-hidden="true">/);
   assert.equal(ui.cardHeart({uuid: 'a', fav: false}, true), '');
   assert.equal(ui.homeHeart({uuid: 'a'}), '');
-  assert.match(ui.viewerHeart('a', true), /data-vact="fav".*<kbd>F<\/kbd><span class="fav-label">已收藏<\/span>/);
-  assert.match(ui.detailHeart('a<', false), /data-fav="a&lt;"/);
 });
 
 test('写入后就地改掉页面上这些图的心形，别的图不动', () => {

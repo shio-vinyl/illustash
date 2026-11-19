@@ -132,7 +132,7 @@ export const searchIcon = () => '<svg width="15" height="15" viewBox="0 0 24 24"
 // 页面停下时的横幅，以及工具栏的撤销按钮。页面启动时调用一次。
 export function wireDom() {
   // App 无法解码的图片（损坏的文件）：用一个朴素的占位，而不是浏览器的破图图标。
-  // 查看器有它自己的提示（#viewerMissing）。
+  // 看图器和详情卡片的大图带 id，各自写「读不出来」（ui/viewer.js、ui/detail_card.js）。
   document.addEventListener('error', e => {
     const img = e.target;
     if (!(img instanceof HTMLImageElement) || img.id || !img.getAttribute('src')?.startsWith('/image?')) return;

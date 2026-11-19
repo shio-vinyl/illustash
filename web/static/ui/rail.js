@@ -245,7 +245,7 @@ export function railRoute(route) {
 // 放得下几张放几张，卡片跟着内容变宽；作品的角色画成一排圆头像。这一项的主色经 setTint 变成卡片底下的彩色投影和靠活页条那边
 // 一层很淡的光（css/rail.css），不出色块。卡片建一次（wirePeek），之后只换内容，图的节点按位置复用。
 // 动效：第一次出现时卡片从活页条那边滑出、图一张接一张发出来；已经开着时换到相邻的项，卡片滑到新的位置（CSS 过渡 translate），
-// 不重新弹出；离开二级层稍等一会儿再收起，划过两项之间的空隙时不闪。滚动、拖动时立刻收起。键盘焦点到了项上同样给预览
+// 不重新弹出；离开二级层稍等一会儿再收起，划过两项之间的空隙时不闪。拖动、指针悬停时滚动立刻收起。键盘焦点到了项上同样给预览
 // （读屏不读它：aria-hidden，项的 aria-label 里已经有标题和张数）。
 const PEEK_IN = [{opacity: 0, transform: 'translateX(-10px) scale(.96)'}, {opacity: 1, transform: 'none'}];
 const PEEK_OUT = [{opacity: 1, transform: 'none'}, {opacity: 0, transform: 'translateX(-6px) scale(.98)'}];
@@ -297,11 +297,14 @@ function showPeek(el) {
   peekOn = true;
   if (!glide) cancelExit(peek);
   peek.hidden = false;   // 要量它的高；位置和进场在下一帧画之前写好，不会先在旧位置闪一下
+  // 量和写是延后的：到时悬停的已经不是这一项（Tab 走到最后一项时二级层滚动，先收起了预览）就不再写，免得把收起的预览又显示出来。
   s.read(() => {
+    if (hovered !== el) return;
     const r = el.getBoundingClientRect(), layer = $('railLayer').getBoundingClientRect(), h = peek.offsetHeight, edge = 8;
     const y = Math.round(Math.max(edge, Math.min(innerHeight - h - edge, r.top + r.height / 2 - h / 2)));
     const left = Math.round(layer.right - 6);
     s.write(() => {
+      if (hovered !== el) return;
       cls(peek, 'is-glide', glide);
       css(peek, 'translate', `${left}px ${y}px`);
       const shown = imgs.slice(0, row.pics.length);
@@ -422,7 +425,8 @@ export function wireRail() {
   s.on(items, 'pointermove', moveDrag);
   s.on(items, 'pointerup', endDrag);
   s.on(items, 'pointercancel', endDrag);
-  s.on($('railLayer'), 'scroll', () => hover(null, {now: true}), {passive: true});
+  // 滚动：键盘焦点在悬停的那一项上（Tab 走到头时二级层跟着滚）就把预览挪到它的新位置，否则（指针悬停时滚轮）收起。
+  s.on($('railLayer'), 'scroll', () => { if (hovered && hovered === document.activeElement) showPeek(hovered); else hover(null, {now: true}); }, {passive: true});
   s.on($('sidebarToggle'), 'click', () => setDrawer(!$('rail').classList.contains('is-drawer')));
   // 窗口拉宽到不再是抽屉时，开着的抽屉收起来（不然它一直留在浮层栈里，网格的方向键不响应）。
   const narrow = typeof matchMedia === 'function' ? matchMedia('(max-width: 760px)') : null;

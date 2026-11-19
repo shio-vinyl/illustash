@@ -20,20 +20,31 @@ const ROW = tpl`<button class="library-row"><b data-ref="name"></b><span data-re
 const s = app.child('library-pop');
 const layer = createLayer({kind: 'popover', id: 'library-pop', el: () => $('libraryPop'), anchor: () => $('brand'), menu: true, focusIn: 'first',
   onDismiss: reason => setOpen(false, reason)});
-let body = null, rows = null;
+let body = null;
+// 各行按图库路径留着：打开时先按已有的列表画，/api/libraries 读回来再画一次。只增删、更新文字，顺序没变的行不挪，
+// 有焦点的那一行（打开时焦点进第一项）不会被删掉重建、把焦点丢到 body 上。
+const rows = new Map();
 
 function draw() {
   const data = state.libraries, cur = data?.info, list = (data?.libraries || []).filter(l => l.path !== data?.current);
   body ||= POP();
   const {refs} = body;
   text(refs.name, cur?.name || t('图库')); text(refs.path, home(data?.current || '')); show(refs.path, !!data?.current);
-  for (const row of [...refs.list.querySelectorAll('.library-row')]) row.remove();
-  rows?.dispose(); rows = s.child('rows');   // 每次重画换一批行，监听跟着它们一起释放
+  const keep = new Set(list.map(l => l.path));
+  for (const [path, row] of rows) if (!keep.has(path)) { row.scope.dispose(); row.el.remove(); rows.delete(path); }
+  let prev = refs.list.firstElementChild;   // 「其他图库」那行小字
   for (const l of list) {
-    const {el, refs: r} = ROW();
-    text(r.name, l.name); text(r.path, home(l.path)); attr(el, 'title', l.path);
-    rows.on(el, 'click', () => { setOpen(false); openLibrary(l.path, l.name); });
-    refs.list.append(el);
+    let row = rows.get(l.path);
+    if (!row) {
+      const {el, refs: r} = ROW(), scope = s.child('row');
+      row = {el, refs: r, scope, library: l};
+      scope.on(el, 'click', () => { setOpen(false); openLibrary(row.library.path, row.library.name); });
+      rows.set(l.path, row);
+    }
+    row.library = l;
+    text(row.refs.name, l.name); text(row.refs.path, home(l.path)); attr(row.el, 'title', l.path);
+    if (prev.nextElementSibling !== row.el) refs.list.insertBefore(row.el, prev.nextElementSibling);   // 只挪位置不对的（挪动有焦点的节点会丢焦点）
+    prev = row.el;
   }
   show(refs.list, list.length > 0);
   if (!$('libraryPop').contains(body.el)) $('libraryPop').replaceChildren(body.el);

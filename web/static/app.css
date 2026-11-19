@@ -612,7 +612,7 @@ dialog::backdrop{background:rgba(20,20,30,.22);backdrop-filter:blur(3px)}
 .progress span{background:var(--accent)}
 @media(max-width:1050px){.inspector{width:290px}.selection-bar,.toast{left:50%}}
 @media(max-width:760px){
-  .workspace{padding:var(--space-6)}
+  .workspace{padding:var(--space-6) var(--space-6) var(--space-6) 0}
   .content{--gutter:12px;padding:0 var(--gutter)}
   .jump span,.jump kbd{display:none}
 }

@@ -151,3 +151,26 @@ test('悬停预览：换内容不重建，放得下几张放几张；离开稍�
   $('railLayer').dispatchEvent({type: 'scroll'});
   assert.equal(peek.hidden, true);
 });
+
+// 虚拟机走查（PR #754）：Tab 走到二级层最后一项时二级层滚动，滚动先收起预览，延后的量和写又把它显示出来，之后一直不消失。
+test('悬停预览：延后的量和写到时悬停的已经不是这一项，就不再显示', async () => {
+  const items = [...$('railItems').children].flatMap(g => g.children).filter(x => x.dataset.kind === 'day');
+  const peek = $('railPeek');
+  // 像浏览器一样，出场动画要放一会儿（这里等计时兜底），中途 enter() 取消它时出场作废、预览留着：这正是卡住的样子
+  peek.animate = () => { let reject; const finished = new Promise((_, r) => { reject = r; }); finished.catch(() => {}); return {finished, cancel: () => reject(new Error('取消')), finish() {}}; };
+  globalThis.innerHeight = 800;
+  $('railItems').dispatchEvent({type: 'focusin', target: {closest: () => items[0]}});
+  $('railLayer').dispatchEvent({type: 'scroll'});   // 帧任务跑之前先滚动了
+  await new Promise(r => setTimeout(r, 500));   // 帧任务、出场的计时兜底都过去
+  assert.equal(peek.hidden, true);
+  // 键盘焦点就在这一项上时，滚动只是把预览挪到它的新位置（Tab 走到头时二级层跟着滚），不收起
+  items[0].focus();
+  $('railItems').dispatchEvent({type: 'focusin', target: {closest: () => items[0]}});
+  $('railLayer').dispatchEvent({type: 'scroll'});
+  await new Promise(r => setTimeout(r, 500));
+  assert.equal(peek.hidden, false);
+  $('railItems').dispatchEvent({type: 'focusout'});
+  await new Promise(r => setTimeout(r, 500));
+  assert.equal(peek.hidden, true);
+  delete peek.animate; delete globalThis.innerHeight;
+});

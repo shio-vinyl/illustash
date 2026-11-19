@@ -11,8 +11,15 @@ tools/check_architecture.py 对 crate 依赖方向的检查。规则（说明见
   5 long-line            不得新增超过 200 字符的行（app.js、core/、ui/）
   6 page-name            页面名只能在 core/pages.js（页面注册表，#342）里比较（硬规则，没有基线）
   7 state-writer         state 字段只能由 core/state.js 组标题写明的写入者文件赋值（#353；硬规则，没有基线）
-  8 css-literal          app.css 不得新增写死的字号、圆角、gap/padding、z-index 和颜色，改用顶部的令牌（#349）
+  8 css-literal          app.css 和 css/ 下的样式不得新增写死的字号、圆角、gap/padding、z-index 和颜色，改用 css/tokens.css 的令牌（#349、#705）
   9 ime-composing        每个 keydown/keyup/keypress 处理函数先问 core/keys.js 的 composing(e)；别处不得直接读 isComposing / keyCode（#388）
+ 13 css-scale            字重、阴影、动效的时长和缓动只用三档令牌；字号只用 11/12/13/20/28/40，圆角不用冻结给旧样式的 2/6/10/14/16（#705）
+ 13 css-layer            css/ 下的文件整个写在自己的 @layer 里（硬规则）：tokens.css 在 tokens，base.css 在 base，overlays.css 在 overlays，其余在 pages
+ 14 css-selector         不写类名子串选择器（[class*=] 一类）和后代形式的 :has()（:has(.x)；:has(> .x)、:has(+ .x) 可以）（#469）
+ 15 css-var              var(--名) 必须有定义：在 css/tokens.css、同一个文件里，或在 JS_VARIABLES 登记的「由 JS 写的变量」里（硬规则）
+ 16 backdrop-filter      backdrop-filter 只写在 css/base.css 的玻璃表面（.glass、.glass-bar）
+ 17 css-compat           Safari 17.0 没有的 CSS 能力只写在登记的增强块里：探测它的 @supports（测不出来的写成 @starting-style 这类块本身），
+                         块前面紧挨着写明退路的注释；CSS 嵌套和相对颜色语法不用（硬规则）
 
 基线（tools/frontend_baseline.json）按「文件 + 内容特征」登记（导入边、字段名、每个文件的数量），不按行号，
 所以文件里别处的改动不会让它失效。基线只能缩小：`--shrink` 只调低、不新增；`--base-ref REF` 在基线比 REF
@@ -22,7 +29,8 @@ tools/check_all.sh 两个都带上。新规则就是 new_rules() 里多一个 Ru
 「基准上的基线和检查脚本里都没有」的规则认作首次登记，不算变大，但登记的数量不能多于现状。
 
 规则 8 按声明扫描（选择器 + 属性 + 值），基线键是「属性: 字面量」（如 `background: #e0e0e6`），不含选择器，改名、挪位置
-不受影响。令牌定义处（:root 与 :root[data-theme=dark] 里的 `--名:值`）不查；按 #339 的登记，margin 和不在档位上的
+不受影响；css/ 下的文件键前加文件名（如 `css/base.css: color: #fff`），所以从 app.css 挪过去的字面量算新增。规则 13–17 的基线键
+同样带文件名。令牌定义处（css/tokens.css 里的 `--名:值`）不查；按 #339 的登记，margin 和不在档位上的
 18px 以上 padding、gap 不查；z-index 的 0、长度的 0 不算。颜色查十六进制、rgb()/hsl() 等颜色函数（通道里用了 var() 的
 不算，如 `rgba(var(--sh),.1)`），颜色名只在颜色类属性里查。别处声明的自定义属性（`.x{--gutter:26px}`）只查颜色。
 
@@ -32,6 +40,8 @@ tools/check_all.sh 两个都带上。新规则就是 new_rules() 里多一个 Ru
 已知盲区（文本级检查做不到）：规则 2 认不出 `state[key]`、`Object.assign(state, …)` 和解构写法，名为 state
 的函数参数会被误报；正则字面量与除号靠前一个字符判断，`if (ok) /re/.test(s)` 这种写法会被当成除号。规则 8 不查
 JS 里拼的内联样式、index.html 的 style 属性和 var() 的回退值；同一个字面量在别处删掉一处、新增一处，数量不变，查不出来。
+规则 13 只看 font-weight、font、font-size、border-radius、box-shadow、transition、animation 这几类声明，别处声明的自定义属性
+（`.x{--shadow:…}`）不查；box-shadow 里不带模糊的描边环不算阴影。规则 17 按能力清单（COMPAT_FEATURES）找，清单之外的新能力查不出来。
 """
 from collections import Counter
 from dataclasses import dataclass, field
@@ -268,11 +278,11 @@ def new_rules():
              '没有合适的函数，就在写入者模块里加一个导出函数，由它来赋值。确实应当换写入者或拆组时，改 core/state.js 的组标题，'
              '并在 PR 里写明理由；不要为了通过检查在组标题里列两个文件。',
              baselined=False),
-        Rule('css-literal', '8', 'app.css 新增了写死的字号、圆角、间距、z-index 或颜色',
-             'web/static/app.css 顶部的 CSS 变量是外观令牌的唯一来源（docs/WEB_V2.md「样式令牌」，#317、#349）：font-size（含 font 简写）、'
-             'border-radius、gap 和 padding、z-index、颜色都写成 var(--…)；:root 与 :root[data-theme=dark] 里的变量声明就是令牌定义，不算。'
-             f'按 #339 的登记，margin 和不在档位上的 {LARGE_SPACING}px 以上 padding、gap 不检查。现有的字面量已冻结为基线，不得新增。',
-             '按每处箭头后的提示改用令牌；没有对应档位的，取最近的一档，确需新档位先在 Issue 里问（新档位加在 app.css 顶部的令牌块，'
+        Rule('css-literal', '8', '样式里新增了写死的字号、圆角、间距、z-index 或颜色',
+             'web/static/css/tokens.css 的 CSS 变量是外观令牌的唯一来源（docs/WEB_V2.md「样式令牌」，#317、#349、#705）：app.css 和 css/ 下的'
+             '样式里，font-size（含 font 简写）、border-radius、gap 和 padding、z-index、颜色都写成 var(--…)；tokens.css 里的变量声明就是令牌定义，不算。'
+             f'按 #339 的登记，margin 和不在档位上的 {LARGE_SPACING}px 以上 padding、gap 不检查。app.css 现有的字面量已冻结为基线，不得新增；css/ 下没有基线。',
+             '按每处箭头后的提示改用令牌；没有对应档位的，取最近的一档，确需新档位先在 Issue 里问（新档位成对加在 css/tokens.css，'
              '并改 docs/WEB_V2.md 那一节），不要往基线里添加。改好存量的一处后运行 `python tools/check_frontend.py --shrink`。'),
         Rule('ime-composing', '9', '键盘处理函数没有先判断输入法是否在组字，或者绕开 core/keys.js 直接读 isComposing / keyCode',
              '输入法组字时的回车、方向键、数字键、Esc 是在选词、挑候选、取消组字，不是页面的操作（#388）。WebKit 里结束组字的那次 keydown 的 '
@@ -280,6 +290,41 @@ def new_rules():
              'core/keys.js 的 composing(e) 判断，判断只在那一处写。没有基线。',
              "在处理函数开头加 `if (composing(e)) return;`（`import {composing} from '../core/keys.js'`），不要自己读 e.isComposing 或 e.keyCode；"
              '处理函数交给变量再传进来时，改成直接写在 addEventListener 里，或让函数体里出现 composing(。见 docs/WEB_V2.md「输入框的键盘处理」。',
+             baselined=False),
+        Rule('css-scale', '13', '样式里用了三档以外的字重、阴影、时长或缓动，或者新代码不该用的字号、圆角档位',
+             '0.4 的视觉语言（#685、#705，docs/WEB_V2.md「前端整体升级」）：字重三档 --fw-400 / --fw-600 / --fw-750；阴影三档 --shadow-hover / '
+             '--shadow-pop / --shadow-dialog（不带模糊的描边环不算阴影）；时长三档 --dur-1 / --dur-2 / --dur-3，缓动 --ease 和只给强调动作的 '
+             '--ease-spring（循环动画 infinite 不查）；字号只用 11 / 12 / 13 / 20 / 28 / 40；圆角 2 / 6 / 10 / 14 / 16 冻结给旧样式。'
+             'app.css 里的旧档位已冻结为基线，不得新增；css/ 下没有基线。',
+             '按每处箭头后的提示改用对应的令牌，不要往基线里添加。改好存量的一处后运行 `python tools/check_frontend.py --shrink`。'),
+        Rule('css-layer', '13', 'css/ 下的样式写在了自己的 @layer 外面',
+             '层的先后由 css/tokens.css 第一行的 `@layer legacy, tokens, base, pages, overlays;` 定（#705）。没有层的样式比所有层都强，'
+             '会盖过新部件，也让 legacy 层的旧样式失去「最低」的位置。所以 css/ 下每个文件整个写在一个 @layer 里：tokens.css 在 tokens，'
+             'base.css 在 base，overlays.css 在 overlays，其余各页的文件在 pages；层的顺序只在 tokens.css 第一行声明。没有基线。',
+             '把规则挪进文件里那一个 `@layer 名{ … }`；要新的层先在 Issue 里问，加在 tokens.css 第一行的声明里，并改 docs/WEB_V2.md「样式文件与层」。',
+             baselined=False),
+        Rule('css-selector', '14', '样式里新增了类名子串选择器或后代形式的 :has()',
+             '[class*=…]、[class^=…]、[class$=…] 这类按类名子串匹配的选择器和 :has(.x) 这种查整棵子树的 :has()，每次改 DOM 都要重算大片样式：'
+             'VS Code 在 3.7k 个节点上实测，前者让样式重算慢 2.4 倍（#469）。:has() 只查直接子节点和相邻节点（:has(> .x)、:has(+ .x)、:has(~ .x)）可以。'
+             'app.css 现有的已冻结为基线，不得新增。',
+             '给要选的元素加一个专门的类（或 data- 特性）直接选；:has() 改成 :has(> …) 这种只看子节点、相邻节点的写法，或由 JS 在父节点上写一个状态类。'),
+        Rule('css-var', '15', '样式里用了没有定义的 CSS 变量',
+             'var(--名) 引用的变量必须有定义（#705）：在 css/tokens.css 里，在同一个文件里（部件自己的局部变量），或在 tools/check_frontend.py 的 '
+             'JS_VARIABLES 里登记为「由 JS 写的变量」（如 --tint）。没定义的变量取不到值，整条声明失效，又不会报错（#317 时发现过从未定义的 --panel）。没有基线。',
+             '拼错了就改对；是令牌就成对加进 css/tokens.css；是部件内部的变量就在同一个文件里给出默认值；由 JS 写的，加进 JS_VARIABLES 并写明哪个文件写它。'
+             '别的文件里的局部变量不能借用，要共用就挪进 tokens.css。',
+             baselined=False),
+        Rule('backdrop-filter', '16', 'backdrop-filter 写在了玻璃表面以外',
+             '磨砂玻璃只给浮层（#685、#705）：每个带 backdrop-filter 的元素各占一块显存，卡片上的模糊在长列表里会把显存吃满（#683）。所以 backdrop-filter '
+             '只写在 css/base.css 的玻璃表面（.glass、.glass-bar）。app.css 现有的已冻结为基线，不得新增。',
+             '浮层用 css/base.css 的 .glass（整块玻璃）或 .glass-bar（浮在图上的按钮组），不要自己写 backdrop-filter；卡片、芯片上不用模糊，'
+             '用不透明或半透明的底色。'),
+        Rule('css-compat', '17', 'Safari 17.0 没有的 CSS 能力写在了登记的增强块以外',
+             'macOS 14.0 的 WKWebView 按 Safari 17.0 算（docs/WEB_V2.md「兼容底线」）。没有的能力只作增强：写在探测它的 @supports 里'
+             '（@starting-style 这类测不出来的，块本身就是增强块），块前面紧挨着一段写明退路的注释（含「退路」二字），退路就是块外面已经写好的样子。'
+             'CSS 嵌套（17.2）和相对颜色语法（rgb(from …)，Safari 18 之前和规范不一致）不用。没有基线。',
+             '把用到新能力的声明挪进 `@supports (能力) { … }`，前面加 `/* 增强：…（Safari 版本）。退路：… */`；块外面写好不支持时的样子。'
+             '嵌套的规则展开成完整的选择器；相对颜色改用 color-mix()。能力清单在 tools/check_frontend.py 的 COMPAT_FEATURES。',
              baselined=False),
     ]}
 
@@ -417,8 +462,10 @@ def state_writers(sources):
 
 
 # ------------------------------------------------------------------------------------------------- 规则 8：CSS 字面量
-CSS_FILE = 'app.css'  # 相对 web/static
-# 令牌定义处：这两个选择器里的变量声明（`--名:值`）就是令牌本身，不算违规。
+CSS_FILE = 'app.css'  # 相对 web/static；0.4 之前的旧样式，整个在 legacy 层
+TOKENS_FILE = 'css/tokens.css'  # 令牌定义处：这个文件里的变量声明（`--名:值`）就是令牌本身，不算违规（#705）
+CSS_GLOBS = (CSS_FILE, 'css/*.css')
+# 令牌表（给出「该用哪个令牌」的提示）只读 tokens.css 里这两个选择器的声明：亮色值和暗色值。
 TOKEN_SELECTORS = frozenset({':root', ':root[data-theme=dark]'})
 # 按 #339 的登记（docs/WEB_V2.md「样式令牌」）不进令牌的：页面级的大间距（18px 以上、不在档位上的 padding、gap）和 margin。
 LARGE_SPACING = 18
@@ -638,57 +685,400 @@ class CssAdvisor:
                 '（先在 Issue 里问；新增暗色取值按 docs/WEB_V2.md 的对比度要求核对）')
 
 
-def css_literals(raw):
-    """app.css 里写死的字号、圆角、间距、z-index 和颜色：[(基线键, 声明, 字面量, 怎么改)]。"""
-    declarations = css_declarations(raw)
-    advisor = CssAdvisor(declarations, raw)
+def css_literals(files):
+    """各样式文件里写死的字号、圆角、间距、z-index 和颜色：[(文件, 基线键, 声明, 字面量, 怎么改)]。
+    `files` 是 {相对 web/static 的路径: 文字}；只给一段文字时当作 app.css。"""
+    if isinstance(files, str):
+        files = {CSS_FILE: files}
+    parsed = {path: css_declarations(raw) for path, raw in files.items()}
+    token_decls = parsed.get(TOKENS_FILE) or [d for ds in parsed.values() for d in ds]
+    advisor = CssAdvisor(token_decls, '\n'.join(files.values()))
+    found = []
+    for path, declarations in parsed.items():
+        prefix = '' if path == CSS_FILE else f'{path}: '
+        for d in declarations:
+            custom = d.prop.startswith('--')
+            if custom and path == TOKENS_FILE:
+                continue  # 令牌定义处
+            value = _clean_value(d.value)
+            hits = []
+            if d.prop == 'font-size':
+                hits += [(m.group(0), advisor.font_size) for m in LENGTH_RE.finditer(value)]
+            elif d.prop == 'font':
+                hits += [(m.group(0), advisor.font_size) for m in FONT_SIZE_IN_SHORTHAND_RE.finditer(value)][:1]
+            elif RADIUS_PROP_RE.match(d.prop):
+                hits += [(m.group(0), advisor.radius_of) for m in LENGTH_RE.finditer(value)]
+            elif d.prop in SPACING_PROPS or d.prop.startswith('padding'):
+                for m in LENGTH_RE.finditer(value):
+                    px = advisor._px(m.group(0))
+                    if px is not None and px >= LARGE_SPACING and px not in advisor.space:
+                        continue  # 页面级的大间距，按 #339 的登记不进令牌
+                    if m.group(1) in ('px', 'rem', 'em', 'pt'):
+                        hits.append((m.group(0), advisor.spacing))
+            elif d.prop == 'z-index' and re.fullmatch(r'-?\d+', value) and int(value) != 0:
+                hits.append((value, advisor.z_index))
+            hits = [(lit, how) for lit, how in hits if float(re.match(r'-?(\d+\.?\d*|\.\d+)', lit).group(1)) != 0]
+            hits += [(m.group(0), advisor.color) for m in HEX_RE.finditer(value)]
+            hits += [(value[b:e], advisor.color) for b, e in _calls(value, COLOR_FN_RE) if 'VAR' not in value[b:e]]
+            if not custom and COLOR_PROP_RE.search(d.prop):
+                hits += [(m.group(0), advisor.color) for m in NAMED_COLOR_RE.finditer(value)]
+            for literal, how in hits:
+                shown = _normal_color(literal) if how == advisor.color else literal
+                found.append((path, f'{prefix}{d.prop}: {shown}', d, literal, how(literal)))
+    return found
+
+
+# ------------------------------------------------------------------------------------- 规则 13：三档令牌和新代码的档位
+WEIGHTS = ('--fw-400', '--fw-600', '--fw-750')
+SHADOWS = ('--shadow-hover', '--shadow-pop', '--shadow-dialog')
+NEW_FONT_SIZES = {11: '--fs-11', 12: '--fs-12', 13: '--fs-13', 20: '--fs-20', 28: '--fs-display-28', 40: '--fs-display-40'}
+NEW_RADII = {4: '40px 以下的小元素', 8: '缩略图、格子', 12: '卡片、分组、弹出层', 18: '内容页、对话框、活页条标签'}
+FROZEN_RADII = frozenset({2, 6, 10, 14, 16})
+CSS_WIDE = frozenset({'inherit', 'initial', 'unset', 'revert', 'revert-layer'})
+VAR_NAME_RE = re.compile(r'var\(\s*(--[\w-]+)')
+TIME_RE = re.compile(r'(?<![\w.\-])-?(?:\d+\.?\d*|\.\d+)m?s(?![\w%])')
+EASING_RE = re.compile(r'(?<![\w-])(?:cubic-bezier|steps|linear)\([^)]*\)|(?<![\w-])(?:ease-in-out|ease-in|ease-out|ease|linear|step-start|step-end)(?![\w(-])', re.I)
+WEIGHT_WORD_RE = re.compile(r'(?<![\w-])(?:[1-9]00|bold|bolder|lighter)(?![\w-])', re.I)
+SCALE_FIX = {
+    'weight': '字重只有三档：正文 var(--fw-400)、强调和节标题 var(--fw-600)、展示字号 var(--fw-750)',
+    'shadow': '阴影只有三档：悬停 var(--shadow-hover)、弹出层 var(--shadow-pop)、对话框 var(--shadow-dialog)；不带模糊的描边环（0 0 0 2px var(--accent)）可以照写',
+    'duration': '时长只有三档：出场、悬停 var(--dur-1)（140ms）；进场、展开、换页 var(--dur-2)（240ms）；共享元素、活页条标签 var(--dur-3)（380ms）',
+    'easing': '缓动用 var(--ease)；带回弹的 var(--ease-spring) 只给活页条标签和「弹一下」这类强调动作',
+}
+
+
+def split_top(value, sep=','):
+    """按不在括号里的分隔符切开。"""
+    parts, depth, cur = [], 0, ''
+    for c in value:
+        depth += {'(': 1, ')': -1}.get(c, 0)
+        if c == sep and depth == 0:
+            parts.append(cur)
+            cur = ''
+        else:
+            cur += c
+    return parts + [cur]
+
+
+def _weight_fix(word):
+    number = {'bold': 700, 'bolder': 700, 'lighter': 300, 'normal': 400}.get(word.lower()) or int(word)
+    nearest = min((400, 600, 750), key=lambda w: (abs(w - number), w))
+    return f'{SCALE_FIX["weight"]}；{word} 最近的是 var(--fw-{nearest})'
+
+
+def _size_fix(name):
+    m = re.search(r'(\d+)$', name)
+    nearest = min(NEW_FONT_SIZES, key=lambda v: (abs(v - int(m.group(1))), v)) if m else 13
+    return (f'新写的界面字号只用 11 / 12 / 13 / 20（var(--fs-N)）和 28 / 40（var(--fs-display-N)）：'
+            f'改用最近的一档 var({NEW_FONT_SIZES[nearest]})')
+
+
+def _radius_fix(name):
+    px = int(re.search(r'(\d+)$', name).group(1))
+    nearest = min(NEW_RADII, key=lambda v: (abs(v - px), v))
+    tiers = '；'.join(f'{use} var(--radius-{v})' for v, use in NEW_RADII.items())
+    return f'2 / 6 / 10 / 14 / 16 只留给旧样式（{tiers}，能点的控件 var(--radius-pill)，人 var(--radius-round)）：最近的是 var(--radius-{nearest})'
+
+
+def scale_issues(declarations):
+    """规则 13：[(基线键里属性之后的部分, 声明, 怎么改)]。"""
     found = []
     for d in declarations:
-        custom = d.prop.startswith('--')
-        if custom and d.selector in TOKEN_SELECTORS:
-            continue  # 令牌定义处
+        raw = re.sub(r'!\s*important', '', d.value, flags=re.I).strip()
         value = _clean_value(d.value)
-        hits = []
-        if d.prop == 'font-size':
-            hits += [(m.group(0), advisor.font_size) for m in LENGTH_RE.finditer(value)]
-        elif d.prop == 'font':
-            hits += [(m.group(0), advisor.font_size) for m in FONT_SIZE_IN_SHORTHAND_RE.finditer(value)][:1]
-        elif RADIUS_PROP_RE.match(d.prop):
-            hits += [(m.group(0), advisor.radius_of) for m in LENGTH_RE.finditer(value)]
-        elif d.prop in SPACING_PROPS or d.prop.startswith('padding'):
-            for m in LENGTH_RE.finditer(value):
-                px = advisor._px(m.group(0))
-                if px is not None and px >= LARGE_SPACING and px not in advisor.space:
-                    continue  # 页面级的大间距，按 #339 的登记不进令牌
-                if m.group(1) in ('px', 'rem', 'em', 'pt'):
-                    hits.append((m.group(0), advisor.spacing))
-        elif d.prop == 'z-index' and re.fullmatch(r'-?\d+', value) and int(value) != 0:
-            hits.append((value, advisor.z_index))
-        hits = [(lit, how) for lit, how in hits if float(re.match(r'-?(\d+\.?\d*|\.\d+)', lit).group(1)) != 0]
-        hits += [(m.group(0), advisor.color) for m in HEX_RE.finditer(value)]
-        hits += [(value[b:e], advisor.color) for b, e in _calls(value, COLOR_FN_RE) if 'VAR' not in value[b:e]]
-        if not custom and COLOR_PROP_RE.search(d.prop):
-            hits += [(m.group(0), advisor.color) for m in NAMED_COLOR_RE.finditer(value)]
-        for literal, how in hits:
-            shown = _normal_color(literal) if how == advisor.color else literal
-            found.append((f'{d.prop}: {shown}', d, literal, how(literal)))
+        names = VAR_NAME_RE.findall(raw)
+        if d.prop == 'font-weight':
+            if value.lower() not in CSS_WIDE and not (value == 'VAR' and names and names[0] in WEIGHTS):
+                shown = f'var({names[0]})' if value == 'VAR' and names else value
+                how = _weight_fix(value) if WEIGHT_WORD_RE.fullmatch(value) or value.lower() == 'normal' else SCALE_FIX['weight']
+                found.append((f'font-weight: {shown}', d, how))
+        if d.prop == 'font':
+            size = FONT_SIZE_IN_SHORTHAND_RE.search(value)
+            before = value[:size.start()] if size else value.split('/')[0]
+            for m in WEIGHT_WORD_RE.finditer(before):
+                found.append((f'font-weight: {m.group(0)}', d, _weight_fix(m.group(0))))
+            found += [(f'font-weight: var({n})', d, SCALE_FIX['weight']) for n in names if n.startswith('--fw-') and n not in WEIGHTS]
+        if d.prop in ('font', 'font-size'):
+            for n in names:
+                px = re.fullmatch(r'--fs-(?:display-)?(\d+)', n)
+                if px and NEW_FONT_SIZES.get(int(px.group(1))) != n:
+                    found.append((f'font-size: var({n})', d, _size_fix(n)))
+        if RADIUS_PROP_RE.match(d.prop):
+            for n in names:
+                px = re.fullmatch(r'--radius-(\d+)', n)
+                if px and int(px.group(1)) in FROZEN_RADII:
+                    found.append((f'border-radius: var({n})', d, _radius_fix(n)))
+        if d.prop == 'box-shadow':
+            for layer in split_top(raw):
+                layer = layer.strip()
+                if not layer or layer.lower() in CSS_WIDE | {'none'}:
+                    continue
+                inner = VAR_NAME_RE.findall(layer)
+                cleaned = _clean_value(layer)
+                if cleaned == 'VAR':
+                    if inner[0] not in SHADOWS:
+                        found.append((f'box-shadow: var({inner[0]})', d, SCALE_FIX['shadow']))
+                    continue
+                for b, e in reversed(_calls(cleaned, COLOR_FN_RE)):
+                    cleaned = cleaned[:b] + cleaned[e:]
+                lengths = re.findall(r'(?<![\w#.\-])-?(?:\d+\.?\d*|\.\d+)(?:px|rem|em)?(?![\w%(])', cleaned)
+                if len(lengths) >= 3 and float(re.match(r'-?([\d.]+)', lengths[2]).group(1)) != 0:
+                    found.append((f'box-shadow: {" ".join(lengths)}', d, SCALE_FIX['shadow']))
+        if d.prop in ('transition', 'animation', 'transition-duration', 'animation-duration'):
+            shorthand = d.prop in ('transition', 'animation')
+            for layer in split_top(value):
+                if d.prop.startswith('animation') and re.search(r'(?<![\w-])infinite(?![\w-])', layer):
+                    continue  # 循环动画（转圈、呼吸）不是进出场，不查
+                times = TIME_RE.findall(layer)
+                for t in times[:1] if shorthand else times:
+                    if float(re.match(r'-?([\d.]+)', t).group(1)) != 0:
+                        found.append((f'{d.prop.split("-")[0]}-duration: {t}', d, SCALE_FIX['duration']))
+        if d.prop in ('transition', 'animation', 'transition-timing-function', 'animation-timing-function'):
+            for layer in split_top(value):
+                if d.prop.startswith('animation') and re.search(r'(?<![\w-])infinite(?![\w-])', layer):
+                    continue
+                for m in EASING_RE.finditer(layer):
+                    easing = re.sub(r'\s+', '', m.group(0))
+                    found.append((f'{d.prop.split("-")[0]}-timing-function: {easing}', d, SCALE_FIX['easing']))
+    return found
+
+
+# --------------------------------------------------------------------- 规则 13（层）、14、15、16、17：样式文件的结构
+# 规则 13（层）：css/ 下各文件所在的层；层的先后只在 tokens.css 第一行声明。
+LAYER_ORDER = ('legacy', 'tokens', 'base', 'pages', 'overlays')
+FILE_LAYERS = {TOKENS_FILE: 'tokens', 'css/base.css': 'base', 'css/overlays.css': 'overlays'}
+# 规则 15：由 JS 写进元素 style 的变量（样式里只引用，不在 CSS 里定义）。每项写明谁写它；不再有人写时删掉。
+JS_VARIABLES = {
+    '--tint': '各视图按图的主色写（#717 的数据到了以后），见 css/tokens.css 的 .tint',
+    '--p': 'ui/catalog.js 最近 30 天的圆环；css/base.css 带进度圆环的头像',
+    '--dup-hue': 'ui/grid.js 重复组的色调',
+    '--depth': 'ui/catalog.js 作品树的缩进层级',
+    '--w': 'ui/like.js 例图条的宽度',
+}
+# 规则 16：可以写 backdrop-filter 的地方。
+GLASS_FILE = 'css/base.css'
+GLASS_SELECTORS = frozenset({'.glass', '.glass-bar'})
+# 规则 14
+CLASS_SUBSTRING_RE = re.compile(r'\[\s*class\s*[*^$|]=')
+HAS_RE = re.compile(r':has\(\s*(.)')
+# 规则 17：Safari 17.0 没有的能力：(名字, 在哪里找, 正则, @supports 条件里要出现的字样)。'at' 找块的前导，'prop' 找属性名，
+# 'value' 找值，'selector' 找选择器。探测字样是 None 的（@supports 测不出来）只能写成那个块本身，前面写退路。
+COMPAT_FEATURES = (
+    ('@starting-style（Safari 17.5，@supports 测不出来）', 'at', r'^@starting-style\b', None),
+    ('@scope（Safari 17.4）', 'at', r'^@scope\b', None),
+    ('@view-transition（Safari 18.2）', 'at', r'^@view-transition\b', None),
+    ('@position-try（锚点定位）', 'at', r'^@position-try\b', None),
+    ('transition-behavior（Safari 17.4）', 'prop', r'^transition-behavior$', 'transition-behavior'),
+    ('content-visibility（Safari 18.0）', 'prop', r'^content-visibility$', 'content-visibility'),
+    ('View Transitions（Safari 18.0）', 'prop', r'^view-transition-(?:name|class)$', 'view-transition'),
+    ('滚动驱动动画（Safari 26）', 'prop', r'^(?:animation-timeline|animation-range(?:-start|-end)?|scroll-timeline(?:-name|-axis)?|view-timeline(?:-name|-axis|-inset)?|timeline-scope)$', 'timeline'),
+    ('锚点定位', 'prop', r'^(?:anchor-name|anchor-scope|position-anchor|position-area|position-try(?:-fallbacks|-order)?|position-visibility)$', 'anchor'),
+    ('field-sizing', 'prop', r'^field-sizing$', 'field-sizing'),
+    ('interpolate-size', 'prop', r'^interpolate-size$', 'interpolate-size'),
+    ('text-box', 'prop', r'^text-box(?:-trim|-edge)?$', 'text-box'),
+    ('linear() 缓动（Safari 17.2）', 'value', r'(?<![\w-])linear\(', 'linear('),
+    ('allow-discrete（Safari 17.4）', 'value', r'(?<![\w-])allow-discrete(?![\w-])', 'transition-behavior'),
+    ('light-dark()（Safari 17.5）', 'value', r'(?<![\w-])light-dark\(', 'light-dark'),
+    ('calc-size()', 'value', r'(?<![\w-])calc-size\(', 'calc-size'),
+    ('anchor() / anchor-size()', 'value', r'(?<![\w-])anchor(?:-size)?\(', 'anchor'),
+    ('text-wrap: balance / pretty（Safari 17.5 / 26）', 'text-wrap', r'(?<![\w-])(?:balance|pretty)(?![\w-])', 'text-wrap'),
+    ('View Transitions 的伪元素（Safari 18.0）', 'selector', r'::view-transition', 'view-transition'),
+    (':state()（Safari 17.4）', 'selector', r':state\(', ':state'),
+    ('::details-content（Safari 18.4）', 'selector', r'::details-content', 'details-content'),
+)
+RELATIVE_COLOR_RE = re.compile(r'(?<![\w-])(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch|color)\(\s*from\s', re.I)
+
+
+@dataclass
+class Block:
+    prelude: str
+    line: int
+    start: int  # 前导在文字里的起点
+    parent: int  # 外层块在列表里的下标，顶层是 -1
+
+
+def css_blocks(raw):
+    """样式表的块结构：(blocks, statements, decls)。blocks 是每个 `{` 的 Block；statements 是顶层以 `;` 结束的语句
+    [(文字, 行号)]；decls 是 [(所在块的下标, 属性, 值, 行号)]。注释抹空，字符串和括号里的符号不算。"""
+    text = re.sub(r'/\*.*?\*/', lambda m: _BLANK.sub(' ', m.group(0)), raw, flags=re.S)
+    blocks, statements, decls, stack = [], [], [], []
+    start, depth, quote = 0, 0, ''
+
+    def head(end):
+        piece = text[start:end]
+        offset = start + len(piece) - len(piece.lstrip())
+        return piece.strip(), offset, text.count('\n', 0, offset) + 1
+
+    for i, c in enumerate(text):
+        if quote:
+            if c == quote and text[i - 1] != '\\':
+                quote = ''
+        elif c in '\'"':
+            quote = c
+        elif c == '(':
+            depth += 1
+        elif c == ')':
+            depth = max(depth - 1, 0)
+        elif depth:
+            continue
+        elif c == '{':
+            body, offset, line = head(i)
+            blocks.append(Block(' '.join(body.split()), line, offset, stack[-1] if stack else -1))
+            stack.append(len(blocks) - 1)
+            start = i + 1
+        elif c in ';}':
+            body, offset, line = head(i)
+            if body:
+                if not stack:
+                    statements.append((' '.join(body.split()), line))
+                elif ':' in body:
+                    prop, _, value = body.partition(':')
+                    decls.append((stack[-1], prop.strip().lower(), value.strip(), line))
+            if c == '}' and stack:
+                stack.pop()
+            start = i + 1
+    return blocks, statements, decls
+
+
+def _chain(blocks, index):
+    """从最外层到 index 的块。"""
+    out = []
+    while index >= 0:
+        out.append(blocks[index])
+        index = blocks[index].parent
+    return out[::-1]
+
+
+def _comment_before(raw, offset):
+    """紧挨在 offset 之前（中间只有空白）的那段注释的文字；没有时是 ''。"""
+    before = raw[:offset].rstrip()
+    if not before.endswith('*/'):
+        return ''
+    begin = before.rfind('/*')
+    return before[begin:] if begin >= 0 else ''
+
+
+def structure_issues(path, raw):
+    """规则 13（层）、14、16、17：[(规则, 基线键, 行号, 内容, 怎么改)]。"""
+    blocks, statements, decls = css_blocks(raw)
+    found = []
+    in_css = path.startswith('css/')
+    # 规则 13（层）
+    if in_css:
+        want = FILE_LAYERS.get(path, 'pages')
+        declaration = f'@layer {", ".join(LAYER_ORDER)}'
+        for text, line in statements:
+            if not (path == TOKENS_FILE and text.replace(' ', '') == declaration.replace(' ', '') and line == min(l for _, l in statements)):
+                found.append(('css-layer', f'{path}: {text[:40]}', line, text,
+                              f'这里只能有 `@layer 名{{ … }}` 一块；层的顺序只在 {TOKENS_FILE} 第一行写成 `{declaration};`'))
+        if path == TOKENS_FILE and not any(t.replace(' ', '') == declaration.replace(' ', '') for t, _ in statements):
+            found.append(('css-layer', f'{path}: 没有层的声明', 1, '', f'第一行写 `{declaration};`'))
+        for b in blocks:
+            if b.parent == -1 and b.prelude != f'@layer {want}':
+                found.append(('css-layer', f'{path}: {b.prelude[:40]}', b.line, b.prelude,
+                              f'{path} 的规则整个写在 `@layer {want}{{ … }}` 里'))
+    # 规则 14
+    for b in blocks:
+        if b.prelude.startswith('@'):
+            continue
+        for m in CLASS_SUBSTRING_RE.finditer(b.prelude):
+            found.append(('css-selector', f'{path}: 类名子串选择器', b.line, b.prelude, '给元素加专门的类直接选'))
+        for m in HAS_RE.finditer(b.prelude):
+            if m.group(1) not in '>+~':
+                found.append(('css-selector', f'{path}: 后代形式的 :has()', b.line, b.prelude, '改成 :has(> …)、:has(+ …)，或由 JS 在父节点上写状态类'))
+    # 规则 16
+    for index, prop, value, line in decls:
+        if prop in ('backdrop-filter', '-webkit-backdrop-filter'):
+            selector = blocks[index].prelude
+            if not (path == GLASS_FILE and selector in GLASS_SELECTORS):
+                found.append(('backdrop-filter', f'{path}: backdrop-filter', line, f'{selector} {{ {prop}: {value[:40]} }}',
+                              '改用 css/base.css 的 .glass 或 .glass-bar'))
+    # 规则 17
+    def enhanced(chain, probe):
+        """chain 里有探测 probe 的 @supports（或 probe 为 None 时 chain 的某一块就是那个能力的块），并且那一块前面写了退路。"""
+        for b in chain:
+            hit = (b.prelude.startswith('@supports') and probe and probe.lower() in b.prelude.lower()) or (probe is None and b is chain[-1])
+            if hit and '退路' in _comment_before(raw, b.start):
+                return True
+        return False
+
+    for index, b in enumerate(blocks):
+        parent = blocks[b.parent] if b.parent >= 0 else None
+        if parent and not parent.prelude.startswith('@'):
+            found.append(('css-compat', f'{path}: CSS 嵌套', b.line, f'{parent.prelude} {{ {b.prelude} {{ … }} }}',
+                          'CSS 嵌套要 Safari 17.2：展开成完整的选择器写在外面'))
+        chain = _chain(blocks, index)
+        for name, where, pattern, probe in COMPAT_FEATURES:
+            target = b.prelude if (where == 'at' and b.prelude.startswith('@')) or (where == 'selector' and not b.prelude.startswith('@')) else None
+            if target is not None and re.search(pattern, target) and not enhanced(chain, probe):
+                found.append(('css-compat', f'{path}: {name}', b.line, b.prelude, _compat_fix(name, probe)))
+    for index, prop, value, line in decls:
+        chain = _chain(blocks, index)
+        if RELATIVE_COLOR_RE.search(value):
+            found.append(('css-compat', f'{path}: 相对颜色语法', line, f'{prop}: {value[:60]}',
+                          '相对颜色语法在 Safari 18 之前和规范不一致：改用 color-mix()'))
+        for name, where, pattern, probe in COMPAT_FEATURES:
+            hit = ((where == 'prop' and re.search(pattern, prop)) or (where == 'value' and re.search(pattern, value))
+                   or (where == 'text-wrap' and prop in ('text-wrap', 'text-wrap-style') and re.search(pattern, value)))
+            if hit and not enhanced(chain, probe):
+                found.append(('css-compat', f'{path}: {name}', line, f'{prop}: {value[:60]}', _compat_fix(name, probe)))
+    return found
+
+
+def _compat_fix(name, probe):
+    if probe is None:
+        return f'{name} 本身就是增强块：块外面写好不支持时的样子，块前面紧挨着写 `/* 增强：…。退路：… */`'
+    return f'挪进 `@supports ({probe}…) {{ … }}`，块外面写好不支持时的样子，块前面紧挨着写 `/* 增强：…。退路：… */`'
+
+
+def undefined_variables(files):
+    """规则 15：[(文件, 变量名, 行号)]。定义处：css/tokens.css、同一个文件里的声明、JS_VARIABLES。"""
+    shared = set(JS_VARIABLES)
+    local = {}
+    for path, raw in files.items():
+        names = {d.prop for d in css_declarations(raw) if d.prop.startswith('--')}
+        local[path] = names
+        if path == TOKENS_FILE:
+            shared |= names
+    found = []
+    for path, raw in files.items():
+        text = re.sub(r'/\*.*?\*/', lambda m: _BLANK.sub(' ', m.group(0)), raw, flags=re.S)
+        for m in VAR_NAME_RE.finditer(text):
+            if m.group(1) not in shared and m.group(1) not in local[path]:
+                found.append((path, m.group(1), text.count('\n', 0, m.start()) + 1))
     return found
 
 
 def load_css(root):
-    path = root / STATIC / CSS_FILE
-    if not path.exists():
+    """{相对 web/static 的路径: 文字}：app.css 和 css/ 下的全部样式。"""
+    base = root / STATIC
+    if not (base / CSS_FILE).exists():
         raise SystemExit(f'check_frontend: 缺少 {STATIC}/{CSS_FILE}')
-    return path.read_text(encoding='utf-8')
+    return {path.relative_to(base).as_posix(): path.read_text(encoding='utf-8')
+            for pattern in CSS_GLOBS for path in sorted(base.glob(pattern))}
 
 
 def run_rules(sources, css=None):
     rules = new_rules()
-    # 规则 8：app.css 的字面量
-    if css is not None:
-        for key, d, literal, how in css_literals(css):
+    if isinstance(css, str):
+        css = {CSS_FILE: css}
+    for path, raw in (css or {}).items():
+        where = f'{STATIC}/{path}'
+        # 规则 13：三档令牌和新代码的档位（键带文件名）
+        for key, d, how in scale_issues(css_declarations(raw)):
             selector = d.selector if len(d.selector) <= 60 else d.selector[:59] + '…'
-            rules['css-literal'].add(key, f'{STATIC}/{CSS_FILE}:{d.line}: {selector} {{ {d.prop}: {d.value[:70]} }}  → {how}')
+            rules['css-scale'].add(f'{path}: {key}', f'{where}:{d.line}: {selector} {{ {d.prop}: {d.value[:70]} }}  → {how}')
+        # 规则 13（层）、14、16、17
+        for rid, key, line, text, how in structure_issues(path, raw):
+            rules[rid].add(key, f'{where}:{line}: {text[:90]}  → {how}')
+    if css:
+        # 规则 8：写死的字面量
+        for path, key, d, literal, how in css_literals(css):
+            selector = d.selector if len(d.selector) <= 60 else d.selector[:59] + '…'
+            rules['css-literal'].add(key, f'{STATIC}/{path}:{d.line}: {selector} {{ {d.prop}: {d.value[:70]} }}  → {how}')
+        # 规则 15：没定义的变量
+        for path, name, line in undefined_variables(css):
+            rules['css-var'].add(f'{path}: {name}', f'{STATIC}/{path}:{line}: var({name})')
     graph = {p: [t for t, _ in imports(s, sources)] for p, s in sources.items()}
     edges = {(p, t): s.raw_line(line) for p, s in sources.items() for t, line in imports(s, sources)}
     # 规则 1：core -> ui，硬规则

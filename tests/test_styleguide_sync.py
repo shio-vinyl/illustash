@@ -1,4 +1,4 @@
-"""tools/check_styleguide.py 的合成负例：在副本上故意弄错样例类名、改 app.css 不重跑 census、
+"""tools/check_styleguide.py 的合成负例：在副本上故意弄错样例类名、改样式不重跑 census、
 删掉清单页调用的导出、拆散舞台和样例的对应等，确认都会报错。"""
 from contextlib import redirect_stdout
 from pathlib import Path
@@ -8,7 +8,9 @@ import re
 import shutil
 import tempfile
 import unittest
-from tools.check_styleguide import APP_CSS, CENSUS, GUIDE, HOOK_CLASSES, ROOT, STATIC, check, js_exports, main
+from tools.check_styleguide import CENSUS, GUIDE, HOOK_CLASSES, ROOT, STATIC, check, js_exports, main
+
+APP_CSS = STATIC / 'app.css'
 
 
 class Tree(tempfile.TemporaryDirectory):
@@ -68,7 +70,7 @@ class StyleguideSyncTest(unittest.TestCase):
             html = tree.read(GUIDE / 'index.html')
             line = html[:html.index('<button class="quiet">')].count('\n') + 1
             tree.replace(GUIDE / 'index.html', '<button class="quiet">', '<button class="quiett">')
-            error = self.assertOne(tree.errors(), '.quiett', f'第 {line}', 'app.css 里没有')
+            error = self.assertOne(tree.errors(), '.quiett', f'第 {line}', '里没有它的样式')
             self.assertIn('[样式清单 · class]', error)
             code, out = tree.run_main()
             self.assertEqual(code, 1)
@@ -80,7 +82,7 @@ class StyleguideSyncTest(unittest.TestCase):
             css = tree.read(APP_CSS)
             self.assertIsNotNone(re.search(r'\.link-button(?![\w-])', css))
             tree.write(APP_CSS, re.sub(r'\.link-button(?![\w-])', '.text-button', css))
-            tree.write(GUIDE / 'census.js', CENSUS.render(tree.read(APP_CSS)))
+            tree.write(GUIDE / 'census.js', CENSUS.render(CENSUS.read_files(tree.root)))
             errors = tree.errors()
             self.assertOne(errors, '[样式清单 · class]', '.link-button')
             self.assertOne(errors, '[样式清单 · listed]', '.link-button')
@@ -101,7 +103,7 @@ class StyleguideSyncTest(unittest.TestCase):
             tree.write(GUIDE / 'styleguide.css', tree.read(GUIDE / 'styleguide.css') + '.sg-frozen .gone-widget { position: static; }\n')
             tree.replace(GUIDE / 'index.html', 'class="sg-lead"', 'class="sg-lead gone-widget"')
             errors = tree.errors()
-            self.assertOne(errors, 'index.html', '.gone-widget', 'app.css 里没有')
+            self.assertOne(errors, 'index.html', '.gone-widget', '里没有它的样式')
             self.assertOne(errors, 'styleguide.css 的选择器', '.gone-widget')
 
     def test_shell_modifiers_are_accepted(self):
@@ -117,7 +119,15 @@ class StyleguideSyncTest(unittest.TestCase):
             error = self.assertOne(tree.errors(), '[样式清单 · census]', 'census.js 过期', 'python3 tools/styleguide/census.py')
             self.assertRegex(error, r'现在是 \d+ 行')
             # 按提示重跑之后就通过
-            tree.write(GUIDE / 'census.js', CENSUS.render(tree.read(APP_CSS)))
+            tree.write(GUIDE / 'census.js', CENSUS.render(CENSUS.read_files(tree.root)))
+            self.assertEqual(tree.errors(), [])
+
+    def test_css_folder_change_without_census_rerun_is_reported(self):
+        # css/ 下的文件同样在统计里（#705）：改了不重跑会报，重跑以后通过
+        with Tree() as tree:
+            tree.replace(STATIC / 'css/base.css', '.text-meta{', '.sg-new-part{gap:var(--space-4)}\n.text-meta{')
+            self.assertOne(tree.errors(), '[样式清单 · census]', 'census.js 过期')
+            tree.write(GUIDE / 'census.js', CENSUS.render(CENSUS.read_files(tree.root)))
             self.assertEqual(tree.errors(), [])
 
     def test_hand_edited_census_is_reported(self):
@@ -213,12 +223,15 @@ class StyleguideSyncTest(unittest.TestCase):
         self.assertTrue(callable(module.render))
 
     def test_census_records_tokens_and_hash(self):
-        data = CENSUS.build((ROOT / APP_CSS).read_text(encoding='utf-8'))
+        data = CENSUS.build(CENSUS.read_files())
         self.assertRegex(data['sha256'], r'^[0-9a-f]{64}$')
-        for family in ('fs', 'fsDisplay', 'radius', 'space', 'h', 'z'):
+        self.assertIn('css/tokens.css', data['files'])
+        for family in ('fs', 'fsDisplay', 'radius', 'space', 'h', 'z', 'fw', 'shadow', 'dur', 'ease'):
             self.assertTrue(data['tokens'][family], f'{family} 令牌为空：TOKENS-BEGIN/END 块变了？')
         self.assertTrue(all(t['name'].startswith('--z-') for t in data['tokens']['z']))
         self.assertEqual(data['themeVars']['groups'][0]['title'], '基础')
+        # 暗色另写的阴影记在 dark 里
+        self.assertTrue(all(t.get('dark') for t in data['tokens']['shadow']))
 
 
 if __name__ == '__main__':

@@ -15,19 +15,21 @@ use tiny_http::{Header, Response, StatusCode};
 
 pub const ROUTES: &[&str] =
     &["/", "/app.js", "/app.css", "/theme.js", "/favicon.svg", "/splash.js", "/i18n.js", "/image"];
-/// 页面在 web/static 下的 ES 模块所在的文件夹（#199）：core/ 从不碰 DOM，可以服务任何布局；ui/ 是桌面布局。模块路径是
-/// /<folder>/<name>.js，名字由小写字母、数字、- 和 _ 组成。
-const MODULE_FOLDERS: &[&str] = &["/core/", "/ui/"];
-/// 模块在 web/static 下的文件夹和它的文件名。
-fn module(path: &str) -> Option<(&'static str, &str)> {
-    let folder = MODULE_FOLDERS.iter().find(|folder| path.starts_with(**folder))?;
+/// 页面在 web/static 下按文件夹发的文件：(文件夹, 扩展名, 类型)。core/ 和 ui/ 是 ES 模块（#199）：core/ 从不碰 DOM，
+/// 可以服务任何布局；ui/ 是桌面布局。css/ 是按层拆开的样式表（#705）。路径是 /<文件夹>/<名>.<扩展名>，名字由小写字母、
+/// 数字、- 和 _ 组成，不含子文件夹。
+const MODULE_FOLDERS: &[(&str, &str, &str)] =
+    &[("/core/", ".js", "text/javascript"), ("/ui/", ".js", "text/javascript"), ("/css/", ".css", "text/css")];
+/// 文件在 web/static 下的文件夹、文件名和类型。
+fn module(path: &str) -> Option<(&'static str, &str, &'static str)> {
+    let (folder, extension, kind) = MODULE_FOLDERS.iter().find(|(folder, ..)| path.starts_with(*folder))?;
     let file = &path[folder.len()..];
-    let name = file.strip_suffix(".js")?;
+    let name = file.strip_suffix(extension)?;
     let plain = !name.is_empty()
         && name.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-' || b == b'_');
-    plain.then_some((folder.trim_matches('/'), file))
+    plain.then_some((folder.trim_matches('/'), file, *kind))
 }
-/// `path`（不含查询串）是不是静态文件、模块或图片。
+/// `path`（不含查询串）是不是静态文件、模块、样式表或图片。
 pub fn serves(path: &str) -> bool {
     ROUTES.contains(&path) || module(path).is_some()
 }
@@ -68,29 +70,8 @@ impl File {
 
 pub fn prepare(library: &Library, root: &Path, url: &str) -> Result<Prepared, Failure> {
     let path = url.split('?').next().unwrap_or(url);
-    if path == "/i18n.js" {
-        let script = root.join("web/static/i18n.js");
-        return Ok(Prepared::I18n { script, locales: crate::app_preferences::locales_folder(root) });
-    }
-    if let Some((folder, file)) = module(path) {
-        let script = root.join("web/static").join(folder).join(file);
-        return if script.is_file() {
-            Ok(Prepared::Static(script, "text/javascript"))
-        } else {
-            Err(Failure::Status(404))
-        };
-    }
     if path != "/image" {
-        let (name, kind) = match path {
-            "/" => ("index.html", "text/html"),
-            "/app.css" => ("app.css", "text/css"),
-            "/favicon.svg" => ("favicon.svg", "image/svg+xml"),
-            "/app.js" => ("app.js", "text/javascript"),
-            "/theme.js" => ("theme.js", "text/javascript"),
-            "/splash.js" => ("splash.js", "text/javascript"),
-            _ => return Err(Failure::Status(404)),
-        };
-        return Ok(Prepared::Static(root.join("web/static").join(name), kind));
+        return static_file(root, path);
     }
     let query = crate::http_read::query(url);
     let size = query.get("size").map(String::as_str).unwrap_or("thumb");
@@ -113,6 +94,31 @@ pub fn prepare(library: &Library, root: &Path, url: &str) -> Result<Prepared, Fa
     let stat = fs::metadata(&source).map_err(|_| Failure::Status(404))?;
     let key = cache_key(ident, &stat, size).ok_or(Failure::Status(404))?;
     Ok(Prepared::Image { source, target: library.thumbnails().join(format!("{key}.jpg")), bound })
+}
+/// 页面的静态文件：固定的几个根目录文件、按语言生成的 i18n.js，以及 core/、ui/、css/ 下的模块和样式表。不读图库。
+fn static_file(root: &Path, path: &str) -> Result<Prepared, Failure> {
+    if path == "/i18n.js" {
+        let script = root.join("web/static/i18n.js");
+        return Ok(Prepared::I18n { script, locales: crate::app_preferences::locales_folder(root) });
+    }
+    if let Some((folder, file, kind)) = module(path) {
+        let script = root.join("web/static").join(folder).join(file);
+        return if script.is_file() {
+            Ok(Prepared::Static(script, kind))
+        } else {
+            Err(Failure::Status(404))
+        };
+    }
+    let (name, kind) = match path {
+        "/" => ("index.html", "text/html"),
+        "/app.css" => ("app.css", "text/css"),
+        "/favicon.svg" => ("favicon.svg", "image/svg+xml"),
+        "/app.js" => ("app.js", "text/javascript"),
+        "/theme.js" => ("theme.js", "text/javascript"),
+        "/splash.js" => ("splash.js", "text/javascript"),
+        _ => return Err(Failure::Status(404)),
+    };
+    Ok(Prepared::Static(root.join("web/static").join(name), kind))
 }
 /// 缓存文件名：图片 ID、原文件的修改时间和大小、尺寸档。原文件改了就是新的键。
 fn cache_key(ident: &str, stat: &fs::Metadata, size: &str) -> Option<String> {
@@ -512,7 +518,8 @@ mod tests {
     }
     #[test]
     fn modules_are_plain_names_in_their_folders() {
-        for path in ["/core/session.js", "/ui/dom.js", "/core/a_b-2.js", "/app.js", "/image"] {
+        for path in ["/core/session.js", "/ui/dom.js", "/core/a_b-2.js", "/css/tokens.css", "/css/a_b-2.css", "/app.js", "/image"]
+        {
             assert!(serves(path), "{path}");
         }
         for path in [
@@ -521,21 +528,54 @@ mod tests {
             "/core/Session.js",
             "/core/.js",
             "/core/a.mjs",
+            "/core/a.css",
             "/other/a.js",
             "/core",
             "/core/",
             "/js/a.js",
+            "/css/a.js",
+            "/css/../app.css",
+            "/css/a/b.css",
+            "/css/Tokens.css",
+            "/css/.css",
+            "/css/",
+            "/ui/a.css",
         ] {
             assert!(!serves(path), "{path}");
         }
-        // 页面有的每个模块都能提供。
+        // 页面有的每个模块和样式表都能提供。
         let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../web/static");
-        for folder in MODULE_FOLDERS.iter().map(|folder| folder.trim_matches('/')) {
+        for folder in MODULE_FOLDERS.iter().map(|(folder, ..)| folder.trim_matches('/')) {
             for entry in fs::read_dir(root.join(folder)).unwrap() {
                 let name = entry.unwrap().file_name().into_string().unwrap();
                 assert!(serves(&format!("/{folder}/{name}")), "{folder}/{name}");
             }
         }
+    }
+    #[test]
+    fn stylesheets_are_css_with_the_same_headers_as_app_css() {
+        // css/ 下的文件按 text/css 发，缓存和安全头与 /app.css 相同（#705）；不存在的文件和越出文件夹的路径是 404。
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let headers = |file: Prepared| {
+            let response = response(Images::default().load(file).ok().expect("static file loads"));
+            let mut found: Vec<(String, String)> = response
+                .headers()
+                .iter()
+                .map(|h| (h.field.as_str().as_str().to_owned(), h.value.as_str().to_owned()))
+                .collect();
+            found.sort();
+            found
+        };
+        let sheet = |path| match static_file(&root, path) {
+            Ok(Prepared::Static(path, kind)) => (path, kind),
+            _ => panic!("{path} is not a static file"),
+        };
+        let (path, kind) = sheet("/css/tokens.css");
+        assert_eq!((path.as_path(), kind), (root.join("web/static/css/tokens.css").as_path(), "text/css"));
+        let (app, app_kind) = sheet("/app.css");
+        assert_eq!(headers(Prepared::Static(path, kind)), headers(Prepared::Static(app, app_kind)));
+        assert!(matches!(static_file(&root, "/css/missing.css"), Err(Failure::Status(404))));
+        assert!(matches!(static_file(&root, "/css/../app.css"), Err(Failure::Status(404))));
     }
     #[test]
     fn clear_waits_for_generation_and_aliases_share_gate() {

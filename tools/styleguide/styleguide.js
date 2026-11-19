@@ -43,7 +43,7 @@ const C = window.CENSUS;
 const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>"]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]));
 // 主题块里不是颜色的变量：不画色块，列在“非颜色的变量”表里
-const NON_COLOR = new Set(['--sh', '--mono', '--ease', '--sheet-shadow', '--select-arrow', '--btn-hover-filter']);
+const NON_COLOR = new Set(['--sh', '--mono', '--ease', '--sheet-shadow', '--select-arrow', '--btn-hover-filter', '--scrim', '--image-text-shadow']);
 const bar = (n, max) => `<i class="sg-bar" style="width:${Math.max(3, Math.round(n / max * 90))}px"></i>`;
 // 去掉 var(...) 和单独的 0 之后还有数字，就是写死的值
 const literal = v => /\d/.test(String(v).replace(/var\([^)]*\)/g, '').replace(/(^|[^\w.])0(?![\w.%])/g, '$1'));
@@ -117,17 +117,36 @@ function scalarTokens() {
   $('census-meta').textContent = `统计对象：${C.source}，${C.lines} 行、${C.rules} 条规则（含 @media 内的规则），sha256 ${C.sha256.slice(0, 12)}`;
 }
 
-// ---- census.js 是否比 app.css 旧？只有经 http 打开时能比（file:// 页面读不了别的文件） ----
+// ---- 0.4 的新令牌（#705）：字重、阴影、动效 ----
+function newTokens() {
+  const row = r => C.tokens[r] || [];
+  $('tok-fw').innerHTML = `<div class="sg-weights">${row('fw').map(r =>
+    `<span style="font-weight:var(${r.name})">图库 Illustash 2026 <code>var(${r.name})</code> · ${esc(r.value)} · 引用 ${r.uses} 次</span>`).join('')}</div>`;
+  $('tok-shadow').innerHTML = row('shadow').map(r =>
+    `<div class="sg-shadow" style="box-shadow:var(${r.name})"><code>var(${r.name})</code>引用 ${r.uses} 次</div>`).join('') +
+    `<div class="sg-shadow tint" style="--tint:#d9774f;box-shadow:var(--shadow-hover)"><code>.tint 里的 --shadow-hover</code></div>`;
+  const durations = row('dur'), easings = row('ease');
+  const lines = [...durations.map(d => ({label: `var(${d.name}) · ${d.value}`, dur: d.name, ease: '--ease'})),
+    ...easings.map(e => ({label: `var(${e.name}) · 用 --dur-3`, dur: '--dur-3', ease: e.name}))];
+  $('tok-motion').innerHTML = `<button class="btn is-small" id="sg-play">播放</button>` + lines.map(l =>
+    `<div class="sg-motion"><code>${esc(l.label)}</code><span class="sg-track"><i style="transition-duration:var(${l.dur});transition-timing-function:var(${l.ease})"></i></span></div>`).join('') +
+    `<p class="sg-cap">缓动：${easings.map(e => `<code>${e.name}</code> = ${esc(e.value)}`).join('；')}。系统开了「减少动态效果」时点了直接到终点。</p>`;
+  $('sg-play').addEventListener('click', () => { for (const el of document.querySelectorAll('.sg-motion')) el.classList.toggle('sg-run'); });
+}
+
+// ---- census.js 是否比样式旧？只有经 http 打开时能比（file:// 页面读不了别的文件） ----
 async function staleCheck() {
-  if (location.protocol === 'file:') return;
+  if (location.protocol === 'file:' || !crypto.subtle) return;
   try {
-    const css = await (await fetch('../../web/static/app.css', {cache: 'no-store'})).arrayBuffer();
-    const digest = crypto.subtle ? [...new Uint8Array(await crypto.subtle.digest('SHA-256', css))].map(b => b.toString(16).padStart(2, '0')).join('') : '';
-    const stale = digest ? digest !== C.sha256 : new TextDecoder().decode(css).split('\n').length !== C.lines;
-    if (stale) $('sg-stale').classList.add('on');
+    const hex = async buf => [...new Uint8Array(await crypto.subtle.digest('SHA-256', buf))].map(b => b.toString(16).padStart(2, '0')).join('');
+    const files = C.files || {};
+    for (const [path, sha] of Object.entries(files)) {
+      const css = await (await fetch(`../../web/static/${path}`, {cache: 'no-store'})).arrayBuffer();
+      if (await hex(css) !== sha) { $('sg-stale').classList.add('on'); return; }
+    }
   } catch { /* 不是从仓库目录起的服务器：没有可比的 */ }
 }
 
 placeholders();
 liveNotes();
-if (C) { colorTokens(); scalarTokens(); staleCheck(); } else $('sg-stale').classList.add('on');
+if (C) { colorTokens(); scalarTokens(); newTokens(); staleCheck(); } else $('sg-stale').classList.add('on');

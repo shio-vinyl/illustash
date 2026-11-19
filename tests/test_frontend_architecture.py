@@ -19,7 +19,7 @@ class Tree(tempfile.TemporaryDirectory):
         base.mkdir(parents=True)
         shutil.copyfile(ROOT / STATIC / 'app.js', base / 'app.js')
         shutil.copyfile(ROOT / STATIC / 'app.css', base / 'app.css')
-        for folder in ('core', 'ui'):
+        for folder in ('core', 'ui', 'css'):
             shutil.copytree(ROOT / STATIC / folder, base / folder)
         (self.root / BASELINE).parent.mkdir(parents=True)
         shutil.copyfile(ROOT / BASELINE, self.root / BASELINE)
@@ -469,15 +469,33 @@ class FrontendArchitectureTest(unittest.TestCase):
 
     def test_tokens_zero_and_registered_exceptions_are_fine(self):
         self.assertCssClean(
-            # 令牌定义处：两个 :root 块里的变量声明
-            ':root{--new-tone:#abcdef;--fs-9:9px}\n:root[data-theme=dark]{--new-tone:#123}\n'
             # 引用令牌、0、auto、var() 通道的颜色函数、透明和 currentColor
             '.new-thing{font-size:var(--fs-12);padding:0 var(--space-8) 0 0;gap:0;z-index:0;border-radius:0;color:currentColor;'
-            'background:transparent;box-shadow:0 1px 2px rgba(var(--sh),.2);border:1px solid var(--line)}\n'
+            'background:transparent;box-shadow:0 0 0 1px rgba(var(--sh),.2);border:1px solid var(--line)}\n'
             # 按 #339 的登记不查：margin，以及不在档位上的 18px 以上 padding、gap
             '.new-thing{margin:7px 13px;padding:26px 18px;gap:18px 40px}\n'
             # 注释、字符串和 url() 里的内容
             '/* .new-thing{color:#fff;font-size:9px} */\n.new-thing::after{content:"#fff; z-index:3";background:url("data:x;#fff")}')
+
+    def test_token_definitions_live_in_tokens_css(self):
+        # 令牌定义处只有 css/tokens.css（#705）：那里的变量声明不查，app.css 和别的文件里的照常查颜色
+        with Tree() as tree:
+            tree.replace('css/tokens.css', ':root{--fw-400:400;', ':root{--new-tone:#abcdef;--fs-9:9px;--fw-400:400;')
+            tree.replace('css/tokens.css', ':root[data-theme=dark]{--shadow-hover:', ':root[data-theme=dark]{--new-tone:#123;--shadow-hover:')
+            self.assertEqual(tree.errors(), [])
+        self.assertCss(':root{--new-tone:#abcdef}', '--new-tone: #abcdef')
+
+    def test_css_folder_literals_have_no_baseline(self):
+        # css/ 下的文件没有基线，键带文件名：从 app.css 挪过去的字面量算新增
+        with Tree() as tree:
+            tree.replace('css/base.css', '.text-meta{color:var(--muted);', '.text-meta{color:#e0e0e6;')
+            message = self.assertViolation(tree, 'css-literal', 'css/base.css: color: #e0e0e6')
+            self.assertIn('web/static/css/base.css:', message)
+            self.assertIn('基线允许 0 处', message)
+        with Tree() as tree:
+            tree.replace('css/rail.css', '@layer pages{\n', '@layer pages{\n.new-rail{gap:6px;font-size:13px}\n')
+            self.assertViolation(tree, 'css-literal', 'css/rail.css: gap: 6px')
+            self.assertViolation(tree, 'css-literal', 'css/rail.css: font-size: 13px')
 
     def test_existing_css_literals_are_frozen(self):
         with Tree() as tree:
@@ -491,7 +509,7 @@ class FrontendArchitectureTest(unittest.TestCase):
 
     def test_fixed_css_literal_must_be_shrunk(self):
         with Tree() as tree:
-            tree.replace('app.css', 'font:800 9px/1', 'font:800 var(--fs-10)/1')
+            tree.replace('app.css', 'font:800 9px/1', 'font:800 var(--fs-11)/1')
             errors, stale = check(tree.root)
             self.assertEqual(errors, [])
             self.assertTrue(any('css-literal' in line and 'font: 9px' in line for line in stale))
@@ -509,6 +527,113 @@ class FrontendArchitectureTest(unittest.TestCase):
                          [('.x', 'color', 2), ('.x', 'background', 2), ('.y', 'gap', 3), ('to', 'opacity', 4)])
         self.assertEqual(decls[2].context, ('@media(x)', '.y'))
         self.assertEqual(decls[1].value, 'url("a;b{c}")')
+
+    # ---------- 规则 13–17：样式文件的结构和三档令牌（#705） ----------
+    def assertPage(self, rule, css, *needles, file='css/library.css'):
+        """往 css/ 下一个文件的层里加一段，确认报 rule 的错，报错里有 needles。"""
+        layer = {'css/base.css': '@layer base{\n', 'css/overlays.css': '@layer overlays{\n'}.get(file, '@layer pages{\n')
+        with Tree() as tree:
+            tree.replace(file, layer, layer + css + '\n')
+            message = self.assertViolation(tree, rule, needles[0])
+            for needle in needles[1:]:
+                self.assertIn(needle, message)
+            return message
+
+    def assertPageClean(self, css):
+        with Tree() as tree:
+            tree.replace('css/library.css', '@layer pages{\n', '@layer pages{\n' + css + '\n')
+            self.assertEqual(tree.errors(), [])
+
+    def test_weights_shadows_motion_and_tiers(self):
+        self.assertPage('css-scale', '.x{font-weight:700}', 'css/library.css: font-weight: 700', 'var(--fw-750)')
+        self.assertPage('css-scale', '.x{font-weight:bold}', 'font-weight: bold', 'var(--fw-750)')
+        self.assertPage('css-scale', '.x{font:500 var(--fs-12)/1.4 inherit}', 'font-weight: 500', 'var(--fw-400)')
+        self.assertPage('css-scale', '.x{box-shadow:0 4px 12px rgba(var(--sh),.2)}', 'box-shadow: 0 4px 12px', 'var(--shadow-hover)', '描边环')
+        self.assertPage('css-scale', '.x{box-shadow:var(--sheet-shadow)}', 'box-shadow: var(--sheet-shadow)')
+        self.assertPage('css-scale', '.x{transition:opacity .2s ease}', 'transition-duration: .2s', 'var(--dur-1)')
+        self.assertPage('css-scale', '.x{transition:opacity .2s ease}', 'transition-timing-function: ease', 'var(--ease)')
+        self.assertPage('css-scale', '.x{transition:transform var(--dur-2) cubic-bezier(.3, 1, .3, 1)}',
+                        'transition-timing-function: cubic-bezier(.3,1,.3,1)')
+        self.assertPage('css-scale', '.x{animation:pop 300ms var(--ease)}', 'animation-duration: 300ms')
+        self.assertPage('css-scale', '.x{font-size:var(--fs-14)}', 'font-size: var(--fs-14)', 'var(--fs-13)')
+        self.assertPage('css-scale', '.x{font-size:var(--fs-display-32)}', 'font-size: var(--fs-display-32)', 'var(--fs-display-28)')
+        self.assertPage('css-scale', '.x{border-radius:var(--radius-10)}', 'border-radius: var(--radius-10)', 'var(--radius-8)', '只留给旧样式')
+
+    def test_scale_tokens_and_exempt_forms_are_fine(self):
+        self.assertPageClean(
+            '.x{font-weight:var(--fw-600);font:var(--fw-750) var(--fs-display-40)/1.1 inherit;font-size:var(--fs-11);border-radius:var(--radius-18)}\n'
+            # 三档阴影、不带模糊的描边环、none
+            '.x{box-shadow:var(--shadow-pop)}\n.y{box-shadow:0 0 0 2px var(--accent),inset 0 1px 0 var(--line)}\n.z{box-shadow:none}\n'
+            # 三档时长和两条缓动、0 时长；延迟不查；循环动画不查
+            '.x{transition:opacity var(--dur-1) var(--ease),transform var(--dur-3) var(--ease-spring) 40ms}\n.y{transition:none;transition-duration:0s}\n'
+            '.z{animation:spin 1s linear infinite}\n'
+            # 嵌套的内圆角：外层 − 间距
+            '.x{border-radius:calc(var(--radius-18) - var(--space-6))}')
+
+    def test_existing_scale_issues_are_frozen_per_file(self):
+        with Tree() as tree:
+            frozen = tree.baseline()['css-scale']
+            self.assertIn('app.css: font-weight: 700', frozen)
+            self.assertEqual(tree.errors(), [])
+            tree.append('app.css', '\n.new-thing{font-weight:700}\n')
+            message = self.assertViolation(tree, 'css-scale', 'app.css: font-weight: 700')
+            self.assertIn(f'基线允许 {frozen["app.css: font-weight: 700"]} 处', message)
+
+    def test_css_files_live_in_their_layer(self):
+        with Tree() as tree:
+            tree.append('css/library.css', '.loose{color:var(--ink)}\n')
+            self.assertViolation(tree, 'css-layer', 'css/library.css: .loose', '@layer pages')
+        with Tree() as tree:
+            tree.replace('css/detail.css', '@layer pages{', '@layer base{')
+            self.assertViolation(tree, 'css-layer', 'css/detail.css: @layer base', '@layer pages')
+        with Tree() as tree:
+            tree.replace('css/overlays.css', '@layer overlays{', '@layer pages{')
+            self.assertViolation(tree, 'css-layer', 'css/overlays.css', '@layer overlays')
+        with Tree() as tree:
+            tree.replace('css/rail.css', '@layer pages{', '@layer legacy, pages;\n@layer pages{')
+            self.assertViolation(tree, 'css-layer', 'css/rail.css: @layer legacy, pages', '第一行')
+        with Tree() as tree:
+            tree.replace('css/tokens.css', '@layer legacy, tokens, base, pages, overlays;', '')
+            self.assertViolation(tree, 'css-layer', 'css/tokens.css: 没有层的声明')
+
+    def test_class_substring_and_descendant_has(self):
+        self.assertPage('css-selector', '.grid [class*=card-]{opacity:.5}', 'css/library.css: 类名子串选择器', '2.4 倍')
+        self.assertPage('css-selector', 'div[class^="x"]{opacity:.5}', '类名子串选择器')
+        self.assertPage('css-selector', '.page:has(.selected){opacity:.5}', '后代形式的 :has()', ':has(> …)')
+        self.assertPageClean('.row:has(> .avatar){gap:0}\n.item:has(+ .item:hover){opacity:.9}\n.x[class~=y]{opacity:.9}')
+
+    def test_variables_must_be_defined(self):
+        self.assertPage('css-var', '.x{color:var(--inkk)}', 'css/library.css: --inkk', 'JS_VARIABLES')
+        # 别的文件里的局部变量不能借用
+        self.assertPage('css-var', '.x{padding:0 var(--gutter)}', 'css/library.css: --gutter')
+        # 回退值里的变量同样要有定义
+        self.assertPage('css-var', '.x{color:var(--tint-wash,var(--nope))}', 'css/library.css: --nope')
+        # 同一个文件里定义的局部变量、tokens.css 的令牌、登记的 JS 变量都可以
+        self.assertPageClean('.x{--cols:4;grid-template-columns:repeat(var(--cols),1fr);background:var(--tint-wash);width:calc(var(--p) * 1%)}')
+
+    def test_backdrop_filter_only_on_glass(self):
+        self.assertPage('backdrop-filter', '.card{backdrop-filter:blur(8px)}', 'css/library.css: backdrop-filter', '.glass', '显存')
+        self.assertPage('backdrop-filter', '.glass-card{-webkit-backdrop-filter:blur(8px)}', 'css/base.css: backdrop-filter', file='css/base.css')
+        with Tree() as tree:
+            tree.append('app.css', '\n.new-thing{backdrop-filter:blur(4px)}\n')
+            self.assertViolation(tree, 'backdrop-filter', 'app.css: backdrop-filter')
+
+    def test_newer_css_only_in_registered_enhancements(self):
+        self.assertPage('css-compat', '.x{content-visibility:auto}', 'css/library.css: content-visibility', '@supports', '退路')
+        self.assertPage('css-compat', '.x{transition-timing-function:linear(0,1)}', 'linear() 缓动')
+        self.assertPage('css-compat', '@starting-style{.x{opacity:0}}', '@starting-style')
+        self.assertPage('css-compat', '::view-transition-old(root){opacity:0}', 'View Transitions 的伪元素')
+        self.assertPage('css-compat', '.x{color:light-dark(var(--ink),var(--sheet))}', 'light-dark()')
+        # 在 @supports 里但前面没写退路，或者 @supports 测的是别的东西，都不算登记
+        self.assertPage('css-compat', '@supports (content-visibility:auto){.x{content-visibility:auto}}', 'content-visibility')
+        self.assertPage('css-compat', '/* 增强。退路：照常画。 */\n@supports (display:grid){.x{content-visibility:auto}}', 'content-visibility')
+        # 嵌套和相对颜色是硬规则，没有增强的写法
+        self.assertPage('css-compat', '.x{color:var(--ink);.y{color:var(--muted)}}', 'CSS 嵌套', '展开')
+        self.assertPage('css-compat', '.x{color:rgb(from var(--accent) r g b / .5)}', '相对颜色语法', 'color-mix()')
+        self.assertPageClean('.x{opacity:1}\n/* 增强：content-visibility（Safari 18.0）。退路：上面照常画全部。 */\n'
+                             '@supports (content-visibility:auto){.x{content-visibility:auto}}\n'
+                             '/* 增强：入场的起始样式（Safari 17.5）。退路：没有起始样式时直接出现。 */\n@starting-style{.x{opacity:0}}\n'
+                             '@keyframes k{from{opacity:0}to{opacity:1}}')
 
     # ---------- 新规则首次登记存量：--init-rule（#349） ----------
     def test_init_rule_registers_only_a_new_rule(self):

@@ -142,8 +142,8 @@ def text_sites(source, suffix):
                 anchor = 'dynamic-or-wrapper'
         if anchor:
             sites.append({'line': number, 'scope': scope, 'kind': 'database-write', 'key': anchor, 'detail': text})
-        # 基线之后新增的静态页面路由（/i18n.js，#173；模块文件夹 /core/ 和 /ui/，#199）也列为边界。
-        routes = re.findall(r'"(/(?:api/[^" ]+|image|app\.[^" ]+|i18n\.js|favicon[^" ]*|core/|ui/))"', text)
+        # 基线之后新增的静态页面路由（/i18n.js，#173；模块文件夹 /core/ 和 /ui/，#199；样式文件夹 /css/，#705）也列为边界。
+        routes = re.findall(r'"(/(?:api/[^" ]+|image|app\.[^" ]+|i18n\.js|favicon[^" ]*|core/|ui/|css/))"', text)
         if routes or 'Backend::Forward' in text or re.search(r'\bforward\(', text):
             key = '|'.join(routes) if routes else '<forward>'
             sites.append({'line': number, 'scope': scope, 'kind': 'http-branch', 'key': key, 'detail': text})

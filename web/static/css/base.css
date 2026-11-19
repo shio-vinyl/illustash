@@ -1,0 +1,110 @@
+/* 公共部件（#705，0.4 第 A2 步）：排版、表面、胶囊控件与「选中」、页头、空状态、海报、圆头像、玻璃。各页步骤用这里的部件，
+   不另画一套；样子和用法见样式清单 tools/styleguide/（「新部件」一组）。设计约定在 docs/WEB_V2.md「前端整体升级」。
+   - 只用 css/tokens.css 的令牌。新写的界面字号只用 11 / 12 / 13 / 20 / 28 / 40，圆角只用 4 / 8 / 12 / 18、胶囊和圆形，
+     字重、阴影、时长和缓动各用三档（tools/check_frontend.py 规则 8、13 拦）。
+   - 「选中」一种画法：强调色浅底；分段控件里白底浮起。状态写在 aria-pressed / aria-selected / aria-checked / aria-current 上，
+     不另起 .on、.active 这类类名（旧样式里到处有，会串）。
+   - 旧样式在更低的 legacy 层，按元素名写的旧规则（button、input…）仍会落到新部件上，部件把自己在意的属性都写全。 */
+@layer base{
+
+/* ---- 排版：大字标题三档 + 次要文字 ---- */
+.title-hero{margin:0;font-size:var(--fs-display-40);font-weight:var(--fw-750);letter-spacing:-.025em;line-height:1.1}
+.title-page{margin:0;font-size:var(--fs-display-28);font-weight:var(--fw-750);letter-spacing:-.025em;line-height:1.1}
+.title-section{margin:0;font-size:var(--fs-20);font-weight:var(--fw-750);letter-spacing:-.02em;line-height:1.2}
+.text-meta{color:var(--muted);font-size:var(--fs-11)}
+
+/* ---- 表面两层：画布和内容页；内容页里的分组用浅底，不描边、不套卡 ---- */
+.canvas{background:var(--canvas);color:var(--ink)}
+.sheet{background:var(--sheet);color:var(--ink);border-radius:var(--radius-18)}
+.group{padding:var(--space-16);border-radius:var(--radius-12);background:var(--soft)}
+
+/* ---- 胶囊控件：按钮（主要 / 普通 / 安静）、芯片、分段、搜索框 ---- */
+.btn,.chip,.seg>button{display:inline-flex;align-items:center;justify-content:center;gap:var(--space-6);margin:0;border:0;border-radius:var(--radius-pill);
+  font:inherit;font-size:var(--fs-12);line-height:1;white-space:nowrap;text-decoration:none;box-shadow:none;
+  transition:background-color var(--dur-1) var(--ease),color var(--dur-1) var(--ease),box-shadow var(--dur-1) var(--ease)}
+.btn{height:var(--h-32);padding:0 var(--space-14);background:var(--soft);color:var(--ink2);font-weight:var(--fw-600);cursor:pointer}
+.btn:hover{background:var(--chip-hover);color:var(--ink)}
+.btn.is-primary{background:var(--accent-btn);color:var(--on-accent)}
+.btn.is-primary:hover{background:var(--accent-btn);filter:var(--btn-hover-filter)}
+.btn.is-quiet{background:transparent}
+.btn.is-quiet:hover{background:var(--wash-hover)}
+.btn.is-small{height:var(--h-28);padding:0 var(--space-12)}
+.btn:disabled,.btn[aria-disabled=true]{opacity:.5;cursor:default;filter:none}
+.btn svg,.chip svg,.seg>button svg{width:15px;height:15px;flex:none;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.chip{height:var(--h-28);padding:0 var(--space-12);background:var(--soft);color:var(--ink2);font-weight:var(--fw-400)}
+button.chip,a.chip{cursor:pointer}
+button.chip:hover,a.chip:hover{background:var(--chip-hover);color:var(--ink)}
+/* 带头像的芯片：头像贴左边，左内边距收窄 */
+.chip:has(> .avatar:first-child){padding-left:var(--space-4)}
+.chip>.avatar{width:20px;height:20px}
+.chip>.chip-count{color:var(--muted);font-size:var(--fs-11)}
+.seg{display:inline-flex;align-items:center;gap:var(--space-2);padding:var(--space-4);border-radius:var(--radius-pill);background:var(--soft)}
+.seg>button{height:var(--h-28);padding:0 var(--space-12);background:transparent;color:var(--ink2);font-weight:var(--fw-400);cursor:pointer}
+.seg>button:hover{color:var(--ink)}
+/* 选中：强调色浅底；分段控件里白底浮起。选中的文字同时变深、变粗，不只靠底色区分 */
+.chip[aria-pressed=true],.chip[aria-selected=true],.chip[aria-current=page],.chip[aria-current=true],
+.btn[aria-pressed=true]:not(.is-primary){background:var(--accent-soft);color:var(--accent-ink);font-weight:var(--fw-600)}
+.seg>button[aria-pressed=true],.seg>button[aria-checked=true],.seg>button[aria-selected=true]{background:var(--seg-on);color:var(--ink);font-weight:var(--fw-600);box-shadow:var(--shadow-hover)}
+.search{display:flex;align-items:center;gap:var(--space-8);height:var(--h-32);padding:0 var(--space-14);border-radius:var(--radius-pill);background:var(--soft);color:var(--muted);font-size:var(--fs-12)}
+.search>svg{width:15px;height:15px;flex:none;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round}
+.search>input{flex:1;min-width:0;height:100%;margin:0;padding:0;border:0;border-radius:0;background:transparent;color:var(--ink);font:inherit;box-shadow:none;outline:none}
+.search>input::placeholder{color:var(--muted)}
+.search>kbd{padding:var(--space-1) var(--space-6);border:0;border-radius:var(--radius-4);background:var(--sheet);color:var(--muted);font:inherit;font-size:var(--fs-11)}
+.search:focus-within{box-shadow:0 0 0 2px var(--accent)}
+.btn:focus-visible,.chip:focus-visible,.seg>button:focus-visible,.glass-bar>button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+/* ---- 页头：大标题 + 副标题 + 右侧控件组，下面最多一行工具 ---- */
+.page-head{display:flex;align-items:flex-end;gap:var(--space-16);padding:var(--space-24) 0 var(--space-14)}
+.page-head>hgroup{min-width:0}
+.page-head .page-title{margin:0;font-size:var(--fs-display-28);font-weight:var(--fw-750);letter-spacing:-.025em;line-height:1.1;overflow-wrap:anywhere}
+.page-head .page-sub{margin:var(--space-4) 0 0;color:var(--muted);font-size:var(--fs-12)}
+.page-actions{display:flex;align-items:center;gap:var(--space-8);margin-left:auto}
+.page-tools{display:flex;align-items:center;gap:var(--space-8);padding:0 0 var(--space-16)}
+
+/* ---- 空状态：大图标 + 一句事实 + 一个去处 ---- */
+.empty-state{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:var(--space-10);padding:48px var(--space-24);text-align:center}
+.empty-state>.empty-icon{display:grid;place-items:center;width:96px;height:96px;margin-bottom:6px;border-radius:var(--radius-round);background:var(--soft);color:var(--muted)}
+.empty-icon>svg{width:42px;height:42px;fill:none;stroke:currentColor;stroke-width:1.3;stroke-linecap:round;stroke-linejoin:round}
+.empty-state>.empty-fact{max-width:420px;margin:0;color:var(--ink);font-size:var(--fs-20);font-weight:var(--fw-750);letter-spacing:-.02em;line-height:1.3}
+
+/* ---- 海报：满版图 + 渐变压暗 + 白字。读图之前是图的主色（--tint-soft） ---- */
+.poster{position:relative;display:block;overflow:hidden;isolation:isolate;aspect-ratio:3/4;border-radius:var(--radius-12);background:var(--tint-soft);color:var(--on-image);
+  text-decoration:none;transition:transform var(--dur-2) var(--ease),box-shadow var(--dur-2) var(--ease)}
+.poster>img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:50% 25%;transition:transform var(--dur-3) var(--ease)}
+.poster::after{content:"";position:absolute;inset:0;background:var(--scrim);pointer-events:none}
+.poster-cap{position:absolute;right:var(--space-14);bottom:var(--space-12);left:var(--space-14);z-index:var(--z-page-1);display:grid;gap:var(--space-2);text-shadow:var(--image-text-shadow)}
+.poster-cap>b{overflow:hidden;font-size:var(--fs-20);font-weight:var(--fw-750);letter-spacing:-.02em;line-height:1.2;white-space:nowrap;text-overflow:ellipsis}
+.poster-cap>small{font-size:var(--fs-11);opacity:.85}
+a.poster:hover,button.poster:hover{transform:translateY(-3px);box-shadow:var(--shadow-hover)}
+a.poster:hover>img,button.poster:hover>img{transform:scale(1.04)}
+
+/* ---- 圆头像（圆形代表人）和带进度圆环的头像：进度是 JS 写的 --p（0–100） ---- */
+.avatar{display:block;flex:none;width:40px;height:40px;border-radius:var(--radius-round);background:var(--tint-soft);object-fit:cover}
+.avatar.is-small{width:28px;height:28px}
+.avatar.is-large{width:68px;height:68px}
+.avatar-ring{position:relative;display:inline-grid;flex:none;width:68px;height:68px;padding:var(--space-4);border-radius:var(--radius-round);
+  background:conic-gradient(var(--accent) calc(var(--p,0) * 1%),var(--accent-soft) 0)}
+.avatar-ring>.avatar{width:100%;height:100%;box-shadow:0 0 0 2px var(--sheet)}
+.avatar-ring>em{position:absolute;right:-4px;bottom:-2px;padding:var(--space-1) var(--space-6);border-radius:var(--radius-pill);background:var(--accent-btn);color:var(--on-accent);
+  font-size:var(--fs-11);font-style:normal;font-weight:var(--fw-750);line-height:1.2;box-shadow:0 0 0 2px var(--sheet)}
+
+/* ---- 玻璃表面（只给浮层），和浮在图上的玻璃按钮组（翻页、收藏、放大、关闭） ----
+   backdrop-filter 只写在这里（tools/check_frontend.py 规则 16）：每张卡片上的模糊各占一块显存（#683）。
+   不支持模糊时是几乎不透明的底，文字照样看得清。Safari 17 只认带 -webkit- 前缀的写法。 */
+.glass{border-radius:var(--radius-12);background:var(--glass-solid);color:var(--ink);box-shadow:var(--shadow-pop)}
+.glass-bar{display:inline-flex;align-items:center;gap:var(--space-2);padding:var(--space-2);border-radius:var(--radius-pill);background:var(--glass-solid);color:var(--ink);box-shadow:var(--shadow-hover)}
+@supports (backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px)){
+  .glass{background:var(--glass-surface);-webkit-backdrop-filter:blur(26px) saturate(1.7);backdrop-filter:blur(26px) saturate(1.7)}
+  .glass-bar{background:var(--glass-surface);-webkit-backdrop-filter:blur(14px) saturate(1.6);backdrop-filter:blur(14px) saturate(1.6)}
+}
+.glass-bar>button{display:grid;place-items:center;width:28px;height:var(--h-28);margin:0;padding:0;border:0;border-radius:var(--radius-pill);background:transparent;color:inherit;
+  font:inherit;box-shadow:none;cursor:pointer;transition:background-color var(--dur-1) var(--ease),color var(--dur-1) var(--ease)}
+.glass-bar>button:hover{background:var(--wash-hover)}
+.glass-bar>button[aria-pressed=true]{color:var(--accent-ink)}
+.glass-bar>button svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+
+/* 增强：View Transitions（Safari 18.0）。退路：没有 document.startViewTransition 时 ui/motion.js 的 share() 用 Web Animations 做 FLIP，这块不生效。 */
+@supports (view-transition-name:none){
+  ::view-transition-group(*){animation-duration:var(--dur-3);animation-timing-function:var(--ease)}
+}
+}

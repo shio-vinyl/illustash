@@ -322,7 +322,10 @@ class FrontendArchitectureTest(unittest.TestCase):
                  "\nimport * as session from '../core/session.js';\n",
                  "\nexport const raw = () => fetch('/api/home');\n",
                  "\nexport const raw = () => window.fetch('/b');\n",
-                 "\nexport const raw = () => globalThis.fetch?.('/c');\n"]
+                 "\nexport const raw = () => globalThis.fetch?.('/c');\n",
+                 "\nexport const beacon = () => navigator.sendBeacon('/d', '');\n",
+                 "\nexport const stream = () => new EventSource('/e');\n",
+                 "\nexport const xhr = () => new XMLHttpRequest();\n"]
         for text in cases:
             with self.subTest(text=text), Tree() as tree:
                 tree.append('ui/rail.js', text)

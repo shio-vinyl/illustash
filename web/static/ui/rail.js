@@ -335,11 +335,20 @@ export function wireRail() {
   provide('galleries', () => galleryItems(galleryCovers));
   provide('catalog', () => pinItems());
   provide('library', () => timeline.items.map(x => ({...x, label: timelineLabel(x), meta: timelineMeta(x), href: timelineHref(state.route, x.first)})));
-  timeline.changed.on(() => { refresh('library'); select(railAt(state.route, state.char).item); });
+  // 时间轴读完重画：原来选中的那项还在就留着（网格里 ⌥↑↓ 移过去的、按天视图滚动时 selectDay 设的），不在了才回到地址上的那一项。
+  timeline.changed.on(() => {
+    refresh('library');
+    if (current === 'library' && !timeline.items.some(x => x.key === selected)) select(railAt(state.route, state.char).item);
+  });
   pins.changed.on(() => { refresh('catalog'); select(railAt(state.route, state.char).item); });
   loadPins().then(() => refresh('catalog'));
-  // 写入、撤销之后旧月份的张数和封面可能变了：整条重读（在图库里时马上读，否则下次进图库时读）。同步到了新图只重读最新的月。
-  s.add(onPost(() => { forgetTimeline(); if (current === 'library') loadTimeline(state.route).catch(() => {}); }));
+  // 写入、撤销之后旧月份的张数和封面可能变了：整条重读。同步到了新图只重读最新的月。
+  // 连着写几次（点收藏、改标签）只在停下 0.7 秒后读一次，不在图库里时等下次进来再读。
+  let soon = 0;
+  s.add(onPost(() => {
+    forgetTimeline(); clearTimeout(soon);
+    soon = s.timeout(() => { if (current === 'library') loadTimeline(state.route).catch(() => {}); }, 700);
+  }));
   s.add(onJob((job, change) => { if (job === 'sync' && change.arrived && current === 'library') loadTimeline(state.route, {newest: true}).catch(() => {}); }));
   const items = $('railItems');
   s.on(items, 'click', e => { const el = e.target.closest('.rail-item'); if (el && !el.inert) pick(el, e); });

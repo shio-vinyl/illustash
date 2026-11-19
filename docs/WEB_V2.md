@@ -141,7 +141,7 @@
 2. **取数**在 `core/<页>.js`：导出返回数据的函数，参数里带 `signal`；请求的参数、并发合并、缓存都写在这里，Node 里能直接测。`ui/` 不从 `core/session.js` 导入 `api`、`post`、`shared`，也不调 `fetch()`（规则 22）。
 3. **画**在 `ui/<页>.js`：开头的注释写它负责什么；静态结构写成模块顶层的 ``tpl`…` ``，部件是 `{el, update, dispose}`；文件末尾 `implement({页: {render, head, help, refresh, …}})`。一个文件不超过 600 行（规则 21），一页里自成一块的部件（卡片、浮层、工具栏）拆成自己的文件。
 4. **部件建一次**：`render({samePage, scope})` 收到这一页的作用域（换页时框架调 `ui/scope.js` 的 `page()`，释放上一页的）。`samePage` 为假是刚进这一页：在 `scope` 上建这一页的部件（列表、监听、计时器都登记在它上面）。`samePage` 为真是同一页又画一次（换了子视图、筛选变了），作用域沿用：**不再建一份**，只按新地址更新已有的部件（`list.set()`、`update()`），不然上一份要等离开这一页才释放。主区已经由框架切好，不用调 `showArea`。不挂 `document`、`window` 级的监听（规则 3）。
-5. **异步回来**先判断还在不在：`if (!scope.alive || state.route !== route) return`（换了页，作用域已经释放；同一页换了子视图或筛选，路由对象换了）。别处的回调照旧用 `onPage(state.route, '页')`。
+5. **异步回来**先判断还在不在：`if (!scope.alive || state.route !== route) return`，成功和失败都这样判断（换了页，作用域已经释放；同一页换了子视图、改了筛选条，地址换了，路由对象也换了；搜索词改了地址是就地替换，框架同样换一个新的路由对象，`core/route.js` 的 `reRoute`）。这样先发的请求后回来，结果不画、错误也不弹。别处的回调照旧用 `onPage(state.route, '页')`。
 6. **数据变了**：`refresh(why)` 和 `samePage` 一样只更新已有的部件，值没变不动 DOM；`why` 的取值写在 `core/pages.js` 的 `implement` 说明里。筛选变了不走 `refresh`，走 `render({samePage: true})`。
 7. **页头**：`head(r, {n})` 返回纯文字和节点（上一节「页头」），不拼 HTML。
 
@@ -178,7 +178,7 @@ function notesView(scope) {
   const list = keyed(refs.list, {key: n => n.id, create: noteRow, scope});
   return {scope, async load(route) {
     let notes;
-    try { notes = await loadNotes(route, scope.signal); } catch (e) { if (scope.alive) error(readError(e)); return; }
+    try { notes = await loadNotes(route, scope.signal); } catch (e) { if (scope.alive && state.route === route) error(readError(e)); return; }
     if (!scope.alive || state.route !== route) return;
     list.set(notes);
     show(refs.empty, !notes.length);
@@ -194,7 +194,7 @@ implement({notes: {
 }});
 ```
 
-`tests/pages.test.cjs` 有一项照这个例子在日历页上走：同一页画几次以后，活着的作用域数不涨；换了页，上一页的都释放。
+`tests/pages.test.cjs` 有两项照这个例子在日历页上走：同一页画几次以后，活着的作用域数不涨、部件只建一次；搜索时先停在 a 再打成 ab，a 的回复晚到不画。
 
 ### 兼容底线
 
@@ -216,7 +216,7 @@ implement({notes: {
 #703「可维护性」的两条由 #706 做成规则 21、22（见上面的[页面样板](#页面样板706)）：
 
 - 规则 21（`ui-file-length`）：`ui/` 下的文件不超过 600 行；现有的 `ui/grid.js`、`ui/settings.js` 按超出的行数进基线，只能缩小。
-- 规则 22（`ui-request`）：`ui/` 不直接发请求：不从 `core/session.js` 导入 `api`、`post`、`shared`（改名导入、`import * as` 也认），不调 `fetch()`（`window.fetch`、`globalThis.fetch?.()` 也认）；存量按文件计数（导入的名字和 `fetch` 调用各算一处）进基线。
+- 规则 22（`ui-request`）：`ui/` 不直接发请求：不从 `core/session.js` 导入 `api`、`post`、`shared`（改名导入、`import * as` 也认），不调 `fetch()`（`window.fetch`、`globalThis.fetch?.()` 也认）、`navigator.sendBeacon()`，不建 `EventSource`、`XMLHttpRequest`、`WebSocket`；存量按文件计数（导入的名字和 `fetch` 调用各算一处）进基线。
 
 ### 样式清单要加的
 

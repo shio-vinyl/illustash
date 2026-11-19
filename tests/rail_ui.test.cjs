@@ -95,3 +95,23 @@ test('钉住的项：钉住的列表先读到、角色目录后到，目录到�
   const {railAt} = await web.load('core/rail.js');
   assert.deepEqual(railAt({page: 'library', work: '7', has: [], not: []}), {entry: 'catalog', item: 'w:7'});
 });
+
+test('时间轴读完重画时，原来选中的那项还在就留着；连着写几次只重读一次', async () => {
+  const core = await web.load('core/rail.js'), session = await web.load('core/session.js');
+  rail.railRoute({page: 'library', q: '', has: [], not: []});   // 网格视图
+  for (let i = 0; i < 3; i++) await tick();
+  core.timeline.items = core.groupTimeline(['2026-11-18', '2026-11-17', '2026-11-15'].map(day => ({day, count: 1, cover: null})));
+  await core.timeline.changed.emit();
+  rail.select('d:2026-11-17');   // 网格里用 ⌥↑↓ 移过去的选中
+  await core.timeline.changed.emit();   // 又读完一次（写入后、同步后）
+  const current = () => [...$('railItems').children].flatMap(g => g.children).filter(x => x.getAttribute('aria-current')).map(x => x.dataset.key);
+  assert.deepEqual(current(), ['d:2026-11-17']);
+  // 连着写三次：0.7 秒后只读一次（这里每读一次是一个 /api/calendar 请求）
+  let reads = 0;
+  const fetch = globalThis.fetch;
+  globalThis.fetch = async path => { if (String(path).startsWith('/api/calendar')) reads++; return fetch(path); };
+  for (let i = 0; i < 3; i++) await session.post('/api/favorite', {});   // 一次写入：post 回来以后通知 onPost
+  await new Promise(r => setTimeout(r, 900));
+  globalThis.fetch = fetch;
+  assert.equal(reads, 1);
+});

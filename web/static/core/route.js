@@ -53,9 +53,16 @@ export const filterRoute = patch => ({...(pageOf(state.route).toolbar === 'libra
 // 角色是图库的一个筛选，不是单独的页面。
 export const charRoute = (id, variant = '') => ({page: 'library', char: id, variant});
 export const charHash = (id, variant = '') => hashFor(charRoute(id, variant));
-// 换到新解析出的路由（只有 ui/shell.js applyRoute 调用）；replaceRoute 只改当前路由的参数、不触发换页。
+// 换到新解析出的路由（ui/shell.js applyRoute，和下面的 reRoute）；replaceRoute 就地改当前路由的参数、不触发换页。
 export function setRoute(route) { state.route = route; }
 export function replaceRoute(patch) { Object.assign(state.route, patch); history.replaceState(history.state, '', hashFor(state.route)); }
+// 筛选变了（搜索词，#706）：地址就地替换（不新增历史记录），但换一个新的路由对象，这样异步回来用 state.route !== route 判断「还在不在」
+// 能丢掉旧筛选的回复（docs/WEB_V2.md「页面样板」第 5 条）。旧对象也同步改：工具栏上已经挂好的处理函数还拿着它，读到的要是新值。
+export function reRoute(patch) {
+  Object.assign(state.route, patch);
+  setRoute({...state.route});
+  history.replaceState(history.state, '', hashFor(state.route));
+}
 // ---------- 后退／前进（#402） ----------
 // 桌面 App 菜单里的「后退／前进」（⌘[、⌘]）经 window.illustashHistory 调 stepHistory。只在这个页面自己的地址之间走：
 // 页面打开之前的那一条是启动页或上一个图库（带一次性登录码的地址），退过去就离开了图库。所以每一条地址在

@@ -307,3 +307,36 @@ test('照页面样板写：同一页重画几次，活着的作用域数不涨',
   assert.equal(builds, 1, '部件只建一次');
   S.setDev(false);
 });
+
+// 搜索词改了换一个新的路由对象（core/route.js 的 reRoute）：照页面样板写的页面，先停在 a 再打成 ab，a 的回复晚到也不画。
+test('搜索时先发的请求后回来，它的结果不画（页面样板第 5 条）', async () => {
+  const page = web.fakePage();
+  globalThis.history = {state: null, replaceState() {}};
+  globalThis.window = {addEventListener() {}};
+  globalThis.requestAnimationFrame = () => 0;
+  const {applyRoute, renderChrome} = await web.load('ui/shell.js');
+  const pending = new Map(), drawn = [];
+  const loadNotes = route => new Promise(resolve => pending.set(route.q, resolve));
+  let view = null;
+  const notesView = scope => ({scope, async load(route) {
+    const notes = await loadNotes(route);
+    if (!scope.alive || state.route !== route) return;
+    drawn.push(notes);
+  }});
+  pages.implement({calendar: {render: ({samePage, scope}) => { if (!samePage || !view?.scope.alive) view = notesView(scope); return view.load(state.route); }}});
+  globalThis.location.hash = '#/calendar';
+  const entered = applyRoute();
+  await new Promise(r => setTimeout(r, 0));
+  pending.get('')(['全部']); await entered;
+  renderChrome();
+  const input = page.el('search'), type = async value => {
+    input.value = value;
+    for (const fn of input.listeners.input) fn({target: input, isComposing: false, keyCode: 0});
+    await new Promise(r => setTimeout(r, 300));
+  };
+  await type('a'); await type('ab');
+  pending.get('ab')(['ab 的结果']); await new Promise(r => setTimeout(r, 0));
+  pending.get('a')(['a 的结果']); await new Promise(r => setTimeout(r, 0));
+  assert.deepEqual(drawn, [['全部'], ['ab 的结果']]);
+  assert.equal(state.route.q, 'ab');
+});

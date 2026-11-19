@@ -30,7 +30,8 @@ tools/check_architecture.py 对 crate 依赖方向的检查。规则（说明见
  20 tint-writer          --tint 只经 ui/tint.js 的 setTint() 写（它同时加 .tint）；别的模块不出现 --tint，样式里也不声明 --tint
                          （tokens.css 里 :root 的中性默认值除外）（硬规则）
  21 ui-file-length       ui/ 下的文件不超过 600 行；现有的大文件按超出的行数冻结为基线，只能缩小（#703「可维护性」，#706）
- 22 ui-request           ui/ 不直接发请求：不从 core/session.js 导入 api、post、shared，也不调 fetch()；请求写在 core/ 的取数层里
+ 22 ui-request           ui/ 不直接发请求：不从 core/session.js 导入 api、post、shared，也不调 fetch()、sendBeacon，不建 EventSource、XMLHttpRequest、
+                         WebSocket；请求写在 core/ 的取数层里
                          （docs/WEB_V2.md「页面样板」，#706）
 
 基线（tools/frontend_baseline.json）按「文件 + 内容特征」登记（导入边、字段名、每个文件的数量），不按行号，
@@ -58,7 +59,7 @@ setHTMLUnsafe、parseHTMLUnsafe、createContextualFragment、parseFromString、�
 模块里只由规则 11 管，规则 12 只在经典脚本里管它，不重复报。
 规则 12 只按名字认（`Promise.withResolvers`、`Object.groupBy` 这类），认不出经变量间接调用的；字符串里的名字（`'requestIdleCallback' in window`）不算。
 迭代器方法只认紧跟在 `.values()`、`.keys()`、`.entries()` 后面的调用和 `Iterator.from`，存进变量再调的认不出。
-规则 22 按从 core/session.js 的导入认 api、post、shared（改名导入、import * as 都认），fetch 按调用认（window.fetch、globalThis.fetch?.( 也认）；
+规则 22 按从 core/session.js 的导入认 api、post、shared（改名导入、import * as 都认），fetch、sendBeacon 按调用认（window.fetch、globalThis.fetch?.( 也认），EventSource、XMLHttpRequest、WebSocket 按 new 认；
 认不出经别的模块转手的请求函数（那个模块在 ui/ 里时，它自己的导入会被报）。
 
 已知盲区（文本级检查做不到）：规则 2 认不出 `state[key]`、`Object.assign(state, …)` 和解构写法，名为 state
@@ -94,10 +95,10 @@ MAX_LINE = 200
 # 规则 21：ui/ 下一个文件的行数上限。
 MAX_UI_LINES = 600
 # 规则 22：ui/ 从 core/session.js 导入的发请求的函数（按导入认：改了名、传来传去、包一层都认得出，也不会把同名的方法定义当成调用），
-# 以及直接调 fetch（含 window.、globalThis.、self. 前缀和 ?.()）。
+# 以及直接调 fetch（含 window.、globalThis.、self. 前缀和 ?.()）、navigator.sendBeacon，和 new EventSource / XMLHttpRequest / WebSocket。
 REQUEST_NAMES = frozenset({'api', 'post', 'shared'})
 SESSION_IMPORT_RE = re.compile(r'''\bimport\s*(?:\{([^}]*)\}|\*\s*as\s+(\w+))\s*from\s*['"]([^'"]*core/session\.js)['"]''')
-FETCH_RE = re.compile(r'(?<![\w$.])(?:(?:window|globalThis|self)\s*\.\s*)?fetch\s*(?:\?\.\s*)?\(')
+FETCH_RE = re.compile(r'(?<![\w$.])(?:(?:window|globalThis|self|navigator)\s*\.\s*)?(?:fetch|sendBeacon)\s*(?:\?\.\s*)?\(|\bnew\s+(?:EventSource|XMLHttpRequest|WebSocket)\b')
 # 规则 10 的放行项：ui/el.js 把 tpl`…` 的静态模板交给 <template> 解析，是唯一把字符串变成节点的地方（#704）。
 HTML_SINK_ALLOWED = frozenset({'ui/el.js'})
 # 规则 11 的放行项（#704）：每帧调度和动效各有唯一入口。ui/motion.js 由 #705 新建，先写进名单。

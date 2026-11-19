@@ -184,14 +184,17 @@ function settle(toBox) {
     for (const el of box.children) el.getAnimations?.().forEach(a => a.cancel());
   }
 }
+let wanted = null;   // 最近一次切换要显示的那组
 async function swap(fromBox, toBox) {
   const gen = ++swapping;
+  wanted = toBox;
   const quick = reduced() || !fromBox || fromBox.hidden || fromBox === toBox;
   cls($('railInd'), 'is-on', false);
   if (!quick) {
     await Promise.all(itemsOf(fromBox).map((el, i) => animate(el, [{opacity: 1, transform: 'none'}, {opacity: 0, transform: 'translateX(-16px) scale(.92)'}],
       {dur: 1, delay: i * 16, fill: 'forwards'})));
-    if (gen !== swapping) { fromBox.hidden = true; for (const el of fromBox.children) el.getAnimations?.().forEach(a => a.cancel()); return; }
+    // 又换过了：退场的动画撤掉；这组不是最新要显示的那组才藏起来（拖图进画廊时一下换出去又换回来，它就是要显示的那组，#710）。
+    if (gen !== swapping) { if (fromBox !== wanted) fromBox.hidden = true; for (const el of fromBox.children) el.getAnimations?.().forEach(a => a.cancel()); return; }
   }
   settle(toBox);
   if (!toBox) return;

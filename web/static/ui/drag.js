@@ -46,6 +46,7 @@ export function wireLift(el, pick, scope) {
 // 拿起：缩略图跟着指针，活页条换成画廊封面。拖着的时候一直在窗口上监听指针，松手、取消或拖出窗口时结束。
 export function lift(ids, e) {
   if (live || !ids?.length) return;
+  document.getSelection?.()?.removeAllRanges();   // 按住拖动时浏览器可能已经开始选文字
   const ghost = make('div', 'lift');
   ghost.setAttribute('aria-hidden', 'true');
   for (const id of ids.slice(0, 3)) { const img = make('img'); img.alt = ''; img.src = `/image?id=${encodeURIComponent(id)}&size=thumb`; ghost.append(img); }
@@ -54,7 +55,7 @@ export function lift(ids, e) {
   live = {ids, ghost, x: e.clientX, y: e.clientY, from: {x: e.clientX, y: e.clientY}, target: null};
   place();
   document.body.classList.add('lifting');
-  mode('drop', dropItems(), t('拖到收藏或手选画廊里'));
+  mode('drop', dropItems(), t('放进画廊'));
   addEventListener('pointermove', onMove);
   addEventListener('pointerup', onUp);
   addEventListener('pointercancel', onCancel);

@@ -91,6 +91,7 @@ export const FLOWS = [
         ['资料库 · 作品', '#/characters/works', 'panel'],
         ['未识别 · 按组整理', '#/groups', 'panel'], ['未识别 · 第 1 组', `#/g/${f.groups[0]?.id}`, 'grid'],
         ['全部未识别', '#/unmatched', 'grid'], ['已跳过', '#/skipped', 'grid'], ['重复', '#/duplicates', 'grid'],
+        ['画廊', '#/galleries', 'panel'],
         ['相似的图', '#/similar', 'panel'], ['相似的图 · 第 1 组', `#/s/${f.similar[0]?.id}`, 'grid'], ['已排除', '#/excluded', 'grid'],
         ['设置 · 通用', '#/settings', 'panel'], ['设置 · 图库', '#/settings/library', 'panel'],
         ['设置 · 画师', '#/settings/artists', 'panel'], ['设置 · 关于', '#/settings/about', 'panel'],
@@ -343,6 +344,85 @@ export const FLOWS = [
       w.check('网格是原比例', cards > 0, {cards});
       await w.step('按 R 切回方格', p => p.key('r'));
       w.check('R 切回方格', (await stateOf(page, 'S.fit')) === false, '');
+    },
+  },
+
+  {
+    name: 'galleries',
+    title: '画廊：收藏在最前、两种画廊分得出；换展示方式记得住；旧的收藏地址能打开；把图拖进手选画廊再撤销；「更多像这张的」页上没有「保存为画廊」',
+    covers: ['#710', '#646'],
+    async run(w, page) {
+      const ids = Object.keys(w.config.names).slice(0, 12);
+      await w.step('（准备）收藏 6 张，建一个手选画廊（放进 4 张）和一个空的手选画廊', async p => {
+        await post(p, '/api/favorite', {ids: ids.slice(0, 6)});
+        await post(p, '/api/galleries', {action: 'create', kind: 'manual', name: 'Summer', ids: ids.slice(6, 10)});
+        await post(p, '/api/galleries', {action: 'create', kind: 'manual', name: 'Empty'});
+      });
+      let snap = await w.step('点活页条的画廊', () => goto(page, '#/galleries'), {shot: true});
+      const cards = () => page.eval(`[...document.querySelectorAll('.gcard')].map(c => c.dataset.kind || (c.dataset.drop === 'new' ? 'new' : '?'))`);
+      const kinds = await cards();
+      w.check('收藏在最前，最后一张是「新建」', kinds[0] === 'fav' && kinds.at(-1) === 'new', kinds);
+      w.check('手选画廊的卡片标成手选', kinds.filter(k => k === 'manual').length === 2, kinds);
+      w.check('画廊列表有标题', !!snap.heading, snap.heading);
+
+      snap = await w.step('打开旧的收藏地址 #/library?has=["fav"]', async p => {
+        await p.eval(`location.hash = '#/library?has=' + encodeURIComponent('["fav"]')`); await gridReady(p);
+      }, {shot: true});
+      w.check('旧地址改写到收藏画廊', /^#\/(gallery|showcase)\/fav/.test(snap.hash), snap.hash);
+      w.check('收藏画廊里是收藏的 6 张', snap.total === 6, snap.total);
+
+      // 展示方式：点页头的分段控件；离开再回来还是它。
+      const showBtn = id => `.gallery-shows [data-show="${id}"]`;
+      for (const id of ['collage', 'magazine', 'hall', 'color', 'masonry']) {
+        snap = await w.step(`展示方式换成 ${id}`, async p => { await p.click(showBtn(id)); await sleep(500); await gridReady(p); }, {shot: true});
+        const pressed = await page.eval(`document.querySelector(${JSON.stringify(showBtn(id))})?.getAttribute('aria-pressed')`);
+        w.check(`${id}：分段控件按下的是它`, pressed === 'true', pressed);
+        const pieces = await page.eval(`document.querySelectorAll('.stage .piece').length`);
+        if (['collage', 'magazine', 'hall'].includes(id)) w.check(`${id}：展示页放了图`, pieces > 0, pieces);
+        else w.check(`${id}：网格有图`, snap.total === 6, snap.total);
+      }
+      await w.step('展示方式换成拼贴，再去别处', async p => { await p.click(showBtn('collage')); await sleep(500); await goto(p, '#/days'); });
+      snap = await w.step('从活页条回到收藏', async p => { await goto(p, '#/galleries'); await p.click('.gcard[data-kind="fav"]'); await sleep(600); await gridReady(p); });
+      w.check('记得住：回来还是拼贴', snap.hash.startsWith('#/showcase/fav')
+        && await page.eval(`document.querySelector(${JSON.stringify(showBtn('collage'))})?.getAttribute('aria-pressed') === 'true'`), snap.hash);
+
+      // 拖进手选画廊：真鼠标按住一张拼贴里的图拖到活页条「Summer」上。活页条拿起之后才换成画廊封面，所以先拿起、再量目标。
+      const count = name => inPage(page, `const g = (await (await fetch('/api/galleries')).json()).find(x => x.name === ${JSON.stringify(name)});
+        const r = await fetch('/api/assets/count?has=' + encodeURIComponent(JSON.stringify(['gallery:' + g.id]))); return (await r.json()).total;`);
+      const before = await count('Summer');
+      snap = await w.step('按住一张图拖到活页条上的 Summer', async p => {
+        const from = await p.center('.stage .piece:nth-child(3) img');
+        await p.send('Input.dispatchMouseEvent', {type: 'mouseMoved', x: from.x, y: from.y});
+        await p.send('Input.dispatchMouseEvent', {type: 'mousePressed', x: from.x, y: from.y, button: 'left', clickCount: 1});
+        for (let k = 1; k <= 4; k++) { await p.send('Input.dispatchMouseEvent', {type: 'mouseMoved', x: from.x - k * 6, y: from.y, button: 'left', buttons: 1}); await sleep(16); }
+        await p.waitFor(`!!document.querySelector('.lift') && [...document.querySelectorAll('#railItems .rail-item')].some(x => x.offsetParent && x.dataset.key === 'new')`, 3000);
+        await sleep(600);
+        const to = await p.eval(`(() => { const el = [...document.querySelectorAll('#railItems .rail-item')].find(x => x.offsetParent && x.railItem?.label === 'Summer');
+          const r = el.getBoundingClientRect(); return {x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2)}; })()`);
+        for (let k = 1; k <= 8; k++) {
+          await p.send('Input.dispatchMouseEvent', {type: 'mouseMoved', x: Math.round(from.x + (to.x - from.x) * k / 8), y: Math.round(from.y + (to.y - from.y) * k / 8), button: 'left', buttons: 1});
+          await sleep(16);
+        }
+        const offs = await p.eval(`[...document.querySelectorAll('#railItems .rail-item.is-off')].filter(x => x.offsetParent).length`);
+        await p.send('Input.dispatchMouseEvent', {type: 'mouseReleased', x: to.x, y: to.y, button: 'left', clickCount: 1});
+        await sleep(900);
+        return offs;
+      }, {shot: true});
+      w.check('放进去了', await count('Summer') === before + 1, {before, after: await count('Summer')});
+      w.check('有提示和撤销', !!(await page.eval(`!document.getElementById('toast').hidden && !document.getElementById('toastUndo').hidden`)), '');
+      w.check('活页条换回画廊这一组', await page.eval(`![...document.querySelectorAll('#railItems .rail-item')].some(x => x.offsetParent && x.dataset.key === 'new')`), '');
+      await w.step('⌘Z 撤销', p => p.key('z', {modifiers: ['Meta']}));
+      await sleep(600);
+      w.check('撤销以后拿出来了', await count('Summer') === before, {before, after: await count('Summer')});
+
+      // #646：「更多像这张的」页上有条件也没有「保存为画廊」；普通图库上有。
+      snap = await w.step('打开「更多像这张的」并加一个条件', async p => {
+        await p.eval(`location.hash = '#/library?like=' + encodeURIComponent(JSON.stringify([${JSON.stringify(ids[0])}])) + '&has=' + encodeURIComponent('["fav"]')`);
+        await gridReady(p);
+      });
+      w.check('「更多像这张的」页上没有「保存为画廊」', !await page.eval(`!!document.getElementById('saveGallery')`), '');
+      await w.step('图库加一个条件', async p => { await p.eval(`location.hash = '#/library?has=' + encodeURIComponent('["source:other"]')`); await gridReady(p); });
+      w.check('图库上有「保存为画廊」', await page.eval(`!!document.getElementById('saveGallery')`), '');
     },
   },
 

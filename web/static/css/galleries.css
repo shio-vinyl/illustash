@@ -79,10 +79,10 @@ a.gcard:focus-visible .gcard-prev{box-shadow:0 0 0 2px var(--sheet),0 0 0 4px va
 /* ---- 展示页 ---- */
 .stage-page{padding:var(--space-8) 0 40px}
 .stage-page[data-show=hall]{overflow-x:auto;margin:0 -24px;padding:0}
-.stage{position:relative;margin:0 auto}
+.stage{position:relative;margin:0 auto;-webkit-user-select:none;user-select:none}
 .piece{position:absolute;top:0;left:0;margin:0;cursor:pointer;transform-origin:50% 50%}
 .piece-frame{position:relative;display:block;overflow:hidden;width:100%;height:100%;border-radius:var(--radius-8);background:var(--tint-soft)}
-.piece-frame>img{display:block;width:100%;height:100%;object-fit:cover}
+.piece-frame>img{display:block;width:100%;height:100%;object-fit:cover;-webkit-user-drag:none}
 .piece>figcaption{overflow:hidden;color:var(--ink2);font-size:var(--fs-12);white-space:nowrap;text-overflow:ellipsis}
 .piece-no{margin-right:var(--space-6);color:var(--accent);font-weight:var(--fw-750)}
 .piece-tape{position:absolute;top:-4px;z-index:var(--z-page-1);width:64px;height:20px;background:color-mix(in srgb,var(--tint) 24%,var(--glass-chip));opacity:.9}

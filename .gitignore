@@ -18,3 +18,6 @@ packaging/desktop-compute/
 
 # 界面走查的结果（python3 -m tools.ui_walk run，#453）
 /.walk/
+
+# 界面性能测量的夹具和结果（python3 -m tools.ui_perf，#683）
+/.perf.noindex/

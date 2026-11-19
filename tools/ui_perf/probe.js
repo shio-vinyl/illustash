@@ -1,0 +1,205 @@
+// 界面性能测量（#683）的页内探针。两个内核注入同一份：Chromium 经 DevTools 协议（chromium.mjs），WebKit 经 WKWebView
+// （webkit.swift）。场景的每一步都由这里执行，所以两边的滚动方式、计时窗口和指标口径一致。
+//
+// 依赖页面结构的部分（入口地址、页面就绪的标志、滚动容器、怎么开大图和翻页、怎么触发同步、同步时盯着哪一块）全在
+// 下面的 PAGES 里。界面改版（#716）后只改这一段，场景和指标不动。
+//
+// 指标：
+//   帧        requestAnimationFrame 的间隔。两个内核都有；长帧是间隔超过 50ms 的帧。
+//   长任务    PerformanceObserver('longtask')，只有 Chromium 有（WebKit 没有这个 API，结果里写 null）。
+//   DOM       测量窗口里新增、删掉的元素数；删掉的已显示图片（<img> 已解码完）数，以及删的时候它在视野里的数——
+//             同步导入时「可见的那一天整块重建」就是后者不为零。
+//   快照      元素总数、<img> 数和已加载的数、滚动位置和总高度；Chromium 另有 JS 堆（performance.memory）。
+(() => {
+  if (window.__perf) return;
+  const $ = id => document.getElementById(id);
+  const viewport = () => $('viewport');
+  const PAGES = {
+    // 应用启动完、能接受跳转的标志。
+    booted: () => !!viewport() && !$('splash') && !!document.querySelector('.nav[data-page]'),
+    home: {hash: '#/home', ready: () => !!document.querySelector('#homePage .home-day img'), scroller: viewport,
+      // 同步导入时盯着的「最上面那一天」：新图都进这一块。
+      watch: () => $('homePage')},
+    library: {hash: '#/library', ready: () => !!document.querySelector('#grid .card[data-id] img'), scroller: viewport, watch: () => $('grid')},
+    characters: {hash: '#/characters', ready: () => !!document.querySelector('#charIndex .cast-poster img'), scroller: viewport,
+      watch: () => $('charIndex')},
+    viewer: {
+      hash: '#/library', ready: () => !!document.querySelector('#grid .card[data-id] img'), scroller: viewport, watch: () => $('viewer'),
+      // 双击网格里的第一张打开大图，点「下一张」翻页；image 是大图的 <img>，换图时它的 src 会变。
+      open: () => document.querySelector('#grid .card[data-id]').dispatchEvent(new MouseEvent('dblclick', {bubbles: true, cancelable: true})),
+      opened: () => !$('viewer').hidden,
+      next: () => $('viewerNext').click(),
+      image: () => $('viewerImg'),
+    },
+    // 页面自己的同步入口：和上手指引里「同步」按钮一样，先 startSync 再 pollSync（同步进行中每 2 秒读一次，有新图就重画）。
+    // 上一次还没结束时不发新的。返回这次有没有发出。
+    sync: async () => {
+      const jobs = await import('/core/jobs.js'), {state} = await import('/core/state.js');
+      if (jobs.SYNC_ACTIVE.includes(state.sync?.status)) return false;
+      await jobs.startSync();
+      jobs.pollSync();
+      return true;
+    },
+    // 同步落定后读到的「这次新加入」：只用来核对同步确实在导入。
+    imported: async () => (await import('/core/state.js')).state.sync?.imported || 0,
+  };
+
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+  const frame = () => new Promise(r => requestAnimationFrame(r));
+  async function until(test, limit, what) {
+    const end = performance.now() + limit;
+    while (performance.now() < end) {
+      try { if (await test()) return true; } catch { /* 页面在换 */ }
+      await sleep(50);
+    }
+    throw new Error('等' + what + '超时');
+  }
+  const quantile = (xs, q) => {
+    if (!xs.length) return null;
+    const s = [...xs].sort((a, b) => a - b);
+    return s[Math.min(s.length - 1, Math.floor(q * s.length))];
+  };
+  const round = x => x == null ? null : Math.round(x * 10) / 10;
+
+  // ---------- 记录器：一个测量窗口里的帧、长任务和 DOM 变化 ----------
+  let current = null;
+  const longtasks = 'PerformanceObserver' in window && PerformanceObserver.supportedEntryTypes?.includes('longtask');
+  if (longtasks) new PerformanceObserver(list => { if (current) for (const e of list.getEntries()) current.long.push(e.duration); }).observe({type: 'longtask', buffered: false});
+  const visible = new Set();
+  const seen = new IntersectionObserver(es => { for (const e of es) e.isIntersecting ? visible.add(e.target) : visible.delete(e.target); });
+  const loaded = img => img.complete && img.naturalWidth > 0;
+  function track(node) {
+    if (node.nodeType !== 1) return;
+    if (node.tagName === 'IMG') seen.observe(node);
+    for (const img of node.getElementsByTagName('img')) seen.observe(img);
+  }
+  const mutations = new MutationObserver(records => {
+    for (const r of records) {
+      for (const n of r.addedNodes) { if (n.nodeType !== 1) continue; track(n); if (current) current.added += 1 + n.getElementsByTagName('*').length; }
+      for (const n of r.removedNodes) {
+        if (n.nodeType !== 1) continue;
+        const imgs = n.tagName === 'IMG' ? [n] : [...n.getElementsByTagName('img')];
+        if (current) {
+          current.removed += 1 + n.getElementsByTagName('*').length;
+          for (const img of imgs) { if (loaded(img)) { current.removedImages++; if (visible.has(img)) current.removedVisible++; } }
+        }
+        for (const img of imgs) { seen.unobserve(img); visible.delete(img); }
+      }
+    }
+  });
+  // 应用启动完（boot）才开始盯 DOM：注入时页面可能还在跳转，没有 body。
+  let watching = false;
+  function watch() { if (watching) return; watching = true; mutations.observe(document.body, {childList: true, subtree: true}); track(document.body); }
+
+  function begin() {
+    const rec = {start: performance.now(), frames: [], long: [], added: 0, removed: 0, removedImages: 0, removedVisible: 0, stop: false};
+    current = rec;
+    let last = null;
+    const loop = t => { if (rec.stop) return; if (last != null) rec.frames.push(t - last); last = t; requestAnimationFrame(loop); };
+    requestAnimationFrame(loop);
+    return rec;
+  }
+  function end(rec) {
+    rec.stop = true;
+    if (current === rec) current = null;
+    const f = rec.frames, ms = performance.now() - rec.start;
+    return {
+      ms: Math.round(ms),
+      frames: {count: f.length, fps: round(f.length / (ms / 1000)), p50: round(quantile(f, .5)), p95: round(quantile(f, .95)),
+        p99: round(quantile(f, .99)), max: round(f.length ? Math.max(...f) : null), over50: f.filter(x => x > 50).length,
+        over100: f.filter(x => x > 100).length},
+      longtasks: longtasks ? {count: rec.long.length, total: Math.round(rec.long.reduce((a, b) => a + b, 0)),
+        max: round(rec.long.length ? Math.max(...rec.long) : 0), over100: rec.long.filter(x => x > 100).length} : null,
+      dom: {added: rec.added, removed: rec.removed, removedImages: rec.removedImages, removedVisible: rec.removedVisible},
+    };
+  }
+  function snapshot(page) {
+    const imgs = [...document.getElementsByTagName('img')], s = page && PAGES[page]?.scroller();
+    return {elements: document.getElementsByTagName('*').length, images: imgs.length, imagesLoaded: imgs.filter(loaded).length,
+      imagesVisible: visible.size, scrollTop: s ? Math.round(s.scrollTop) : null, scrollHeight: s ? s.scrollHeight : null,
+      jsHeap: performance.memory ? Math.round(performance.memory.usedJSHeapSize / 1048576) : null};
+  }
+
+  // ---------- 场景的每一步 ----------
+  let syncLoop = null;
+  const ops = {
+    async boot() { await until(PAGES.booted, 60000, '应用启动'); watch(); return {dpr: devicePixelRatio, width: innerWidth, height: innerHeight, ua: navigator.userAgent}; },
+    // 跳到一页，等它的第一批图显示出来，再等 settle 毫秒让后续的读取和解码落定。
+    async go({page, settle = 1500}) {
+      const p = PAGES[page];
+      if (location.hash !== p.hash) location.hash = p.hash;
+      await until(p.ready, 60000, page + ' 就绪');
+      await sleep(settle);
+      return snapshot(page);
+    },
+    // 以 speed 像素/秒匀速往下滚 screens 屏（每帧按经过的时间推进 scrollTop），记录这一段。滚到底时等更多内容（首页的
+    // 更早几天）最多 wait 毫秒，还没有就提前结束。
+    async scroll({page, screens = 8, speed = 2400, wait = 5000}) {
+      const s = PAGES[page].scroller(), target = s.scrollTop + screens * s.clientHeight, rec = begin();
+      let last = performance.now(), stuckSince = null, reachedEnd = false;
+      while (s.scrollTop < target - 1) {
+        const t = await frame(), before = s.scrollTop;
+        s.scrollTop = Math.min(target, before + speed * Math.min(100, t - last) / 1000);
+        last = t;
+        if (s.scrollTop <= before) {
+          stuckSince ??= t;
+          if (t - stuckSince > wait) { reachedEnd = true; break; }
+        } else stuckSince = null;
+      }
+      const out = end(rec);
+      return {...out, reachedEnd, after: snapshot(page)};
+    },
+    // 不动，记录 ms 毫秒（空闲时或同步导入时盯着页面看）。
+    async idle({page, ms = 5000}) { const rec = begin(); await sleep(ms); return {...end(rec), after: snapshot(page)}; },
+    // 打开大图，然后每 every 毫秒翻一张，共 flips 张；记录整段，外加每次翻页到新图显示出来（load）的时间。
+    async flip({flips = 30, every = 400}) {
+      const p = PAGES.viewer;
+      p.open();
+      await until(p.opened, 10000, '大图打开');
+      await until(() => loaded(p.image()), 30000, '大图显示');
+      await sleep(800);
+      const rec = begin(), waits = [];
+      for (let i = 0; i < flips; i++) {
+        const img = p.image(), was = img.src, t0 = performance.now();
+        p.next();
+        try { await until(() => img.src !== was && loaded(img), 10000, '下一张'); waits.push(performance.now() - t0); } catch { waits.push(null); }
+        const left = every - (performance.now() - t0);
+        if (left > 0) await sleep(left);
+      }
+      const shown = waits.filter(x => x != null);
+      return {...end(rec), flip: {count: flips, missed: waits.length - shown.length, p50: round(quantile(shown, .5)), p95: round(quantile(shown, .95)),
+        max: round(shown.length ? Math.max(...shown) : null)}, after: snapshot('viewer')};
+    },
+    // 同步导入：每 every 毫秒经页面自己的入口发一次同步（上一次没结束就不发）。来源文件夹里的新图由测量脚本另行放进去。
+    async syncStart({every = 4000}) {
+      const loop = {stop: false, started: 0, imported: 0};
+      syncLoop = loop;
+      (async () => {
+        while (!loop.stop) {
+          try {
+            const before = loop.started ? await PAGES.imported() : 0;
+            if (await PAGES.sync()) { loop.started++; loop.imported += before; }
+          } catch { /* 下一次再试 */ }
+          await sleep(every);
+        }
+      })();
+      return {};
+    },
+    // 停下同步循环；imported 是各次同步新加入的张数之和（最后一次没落定的不算）。
+    async syncStop() {
+      const loop = syncLoop; syncLoop = null;
+      if (!loop) return {started: 0, imported: 0};
+      loop.stop = true;
+      const {state} = await import('/core/state.js'), jobs = await import('/core/jobs.js');
+      const last = jobs.SYNC_ACTIVE.includes(state.sync?.status) ? 0 : await PAGES.imported();
+      return {started: loop.started, imported: loop.imported + last};
+    },
+    async snapshot({page}) { return snapshot(page); },
+  };
+
+  window.__perf = {
+    async call(op, args = {}) {
+      try { return {ok: true, value: await ops[op](args)}; } catch (e) { return {ok: false, error: String(e?.message || e)}; }
+    },
+  };
+})();

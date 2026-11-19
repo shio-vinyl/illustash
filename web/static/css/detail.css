@@ -18,7 +18,9 @@
 .dc-bar>.fav-toggle[aria-pressed=true]{color:var(--fav)}
 .dc-bar>.fav-toggle[aria-pressed=true] svg{fill:currentColor}
 
-.dc-body{flex:1;min-height:0;overflow:auto;padding:var(--space-16) var(--space-20) var(--space-8)}
+.dc-body{flex:1;min-height:0;overflow:auto;padding:var(--space-16) var(--space-20) var(--space-8);transition:opacity var(--dur-1) var(--ease)}
+/* 换成另一张、详情还在读：正文是上一张的，稍微变淡（读得快时不闪：等一档时长再变） */
+.dc[aria-busy=true] .dc-body{opacity:.55;transition-delay:var(--dur-1)}
 .dc-status{margin:var(--space-8) 0;text-align:center}
 .dc-label{margin:0 0 var(--space-6);color:var(--muted);font-size:var(--fs-11);font-weight:var(--fw-600)}
 .dc-section{margin-top:var(--space-20)}

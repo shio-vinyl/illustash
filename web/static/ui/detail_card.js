@@ -40,6 +40,8 @@ function button(className, label, data = {}, title = '') {
   return b;
 }
 const kbd = key => make('kbd', '', key);
+// 详情还没读到时也能用的按钮：只要知道是哪张图（翻页、收藏、放大、关闭、打开文件）。
+const BY_ID = new Set(['nav', 'fav', 'expand', 'close', 'file']);
 // 已排除的原因，自动规则排除的加一句。
 const excludedNote = d => t('已排除 · {reason}', {reason: REASONS[d.excluded.reason] || ''}) + (d.excluded.origin === 'rule' ? t('（自动规则）') : '');
 
@@ -209,12 +211,15 @@ export function detailCard(on) {
   const ask = askBar(), who = identities(), artists = artistBlock(on.artist);
   refs.askSlot.replaceWith(ask.el); refs.whoSlot.replaceWith(who.el); refs.artistSlot.replaceWith(artists.el);
   s.add(ask); s.add(who); s.add(artists);
-  let cur = null, wanted = '', shown = '', tint;
+  let cur = null, pending = null, wanted = '', shown = '', tint;
   // 点击统一在根上接：按钮写 data-act，其余数据在 data-* 上。
+  // 换成另一张、它的详情还没读回来时（cur 为空），只认只要知道是哪张图的按钮；角色、标签这些要等数据到了，
+  // 免得按着上一张的数据改这一张。
   s.on(el, 'click', e => {
-    const b = e.target.closest?.('[data-act]'); if (!b || !el.contains(b) || !cur) return;
+    const b = e.target.closest?.('[data-act]'); if (!b || !el.contains(b)) return;
     if (b.tagName === 'A') e.preventDefault();
-    on.act(b.dataset.act, b.dataset, e, cur);
+    if (!cur && !(pending && BY_ID.has(b.dataset.act))) return;
+    on.act(b.dataset.act, b.dataset, e, cur || {uuid: pending});
   });
   s.on(refs.img, 'error', () => { if (wanted === refs.img.getAttribute('src')) failImage(); });
   function failImage() { show(refs.img, false); text(refs.missing, unreadableText()); show(refs.missing, true); }
@@ -232,12 +237,15 @@ export function detailCard(on) {
   return {
     el, scope: s, preview: refs.preview, img: refs.img,
     dispose: () => s.dispose(),
-    get uuid() { return cur?.uuid ?? null; },
+    get uuid() { return cur?.uuid ?? pending; },
     /** 开始读一张图：先换图，正文等数据。 */
-    loading(uuid) { preview(uuid); attr(el, 'aria-busy', 'true'); show(refs.status, !cur); text(refs.status, t('读取图片详情…')); },
+    loading(uuid) {
+      if (cur?.uuid !== uuid) cur = null;
+      pending = uuid; preview(uuid); attr(el, 'aria-busy', 'true'); show(refs.status, !shown); text(refs.status, t('读取图片详情…'));
+    },
     failed(message) { attr(el, 'aria-busy', 'false'); show(refs.status, true); text(refs.status, message); },
     update(d, opts) {
-      cur = d; preview(d.uuid); attr(el, 'aria-busy', 'false'); show(refs.status, false);
+      cur = d; pending = null; preview(d.uuid); attr(el, 'aria-busy', 'false'); show(refs.status, false);
       if (tint !== d.color) { tint = d.color; setTint(el, d.color); }
       const fav = !!d.fav;
       attr(refs.fav, 'aria-pressed', String(fav)); attr(refs.fav, 'data-fav', d.uuid); attr(refs.fav, 'title', fav ? t('取消收藏（F）') : t('收藏（F）'));

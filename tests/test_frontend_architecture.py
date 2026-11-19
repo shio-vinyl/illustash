@@ -19,9 +19,12 @@ class Tree(tempfile.TemporaryDirectory):
         base.mkdir(parents=True)
         shutil.copyfile(ROOT / STATIC / 'app.js', base / 'app.js')
         shutil.copyfile(ROOT / STATIC / 'app.css', base / 'app.css')
+        shutil.copyfile(ROOT / STATIC / 'index.html', base / 'index.html')
+        (self.root / 'tools/styleguide').mkdir(parents=True)
+        shutil.copyfile(ROOT / 'tools/styleguide/index.html', self.root / 'tools/styleguide/index.html')
         for folder in ('core', 'ui', 'css'):
             shutil.copytree(ROOT / STATIC / folder, base / folder)
-        (self.root / BASELINE).parent.mkdir(parents=True)
+        (self.root / BASELINE).parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(ROOT / BASELINE, self.root / BASELINE)
         return self
 
@@ -496,6 +499,11 @@ class FrontendArchitectureTest(unittest.TestCase):
             tree.replace('css/rail.css', '@layer pages{\n', '@layer pages{\n.new-rail{gap:6px;font-size:13px}\n')
             self.assertViolation(tree, 'css-literal', 'css/rail.css: gap: 6px')
             self.assertViolation(tree, 'css-literal', 'css/rail.css: font-size: 13px')
+        # css/ 下给的改法只在新档位里找，和规则 13 一致：照着改不会又被规则 13 拦
+        message = self.assertPage('css-literal', '.x{font-size:14px}', 'css/library.css: font-size: 14px', 'var(--fs-13)', '新写的界面能用的档位')
+        self.assertNotIn('--fs-14', message)
+        message = self.assertPage('css-literal', '.x{border-radius:7px}', 'css/library.css: border-radius: 7px', 'var(--radius-8)')
+        self.assertNotIn('--radius-6', message)
 
     def test_existing_css_literals_are_frozen(self):
         with Tree() as tree:
@@ -582,7 +590,10 @@ class FrontendArchitectureTest(unittest.TestCase):
     def test_css_files_live_in_their_layer(self):
         with Tree() as tree:
             tree.append('css/library.css', '.loose{color:var(--ink)}\n')
-            self.assertIn('@layer pages', self.assertViolation(tree, 'css-layer', 'css/library.css: .loose'))
+            message = self.assertViolation(tree, 'css-layer', 'css/library.css: .loose')
+            self.assertIn('@layer pages', message)
+            self.assertIn('[规则 18 · css-layer]', message)
+        self.assertPage('css-layer', '@layer base{.x{opacity:1}}', 'css/library.css: 嵌套的 @layer base')
         with Tree() as tree:
             tree.replace('css/detail.css', '@layer pages{', '@layer base{')
             self.assertIn('@layer pages', self.assertViolation(tree, 'css-layer', 'css/detail.css: @layer base'))
@@ -596,6 +607,34 @@ class FrontendArchitectureTest(unittest.TestCase):
             tree.replace('css/tokens.css', '@layer legacy, tokens, base, pages, overlays;', '')
             self.assertViolation(tree, 'css-layer', 'css/tokens.css: 没有层的声明')
 
+    def test_stylesheet_order_keeps_the_layers_in_order(self):
+        with Tree() as tree:
+            tree.replace('index.html', '<link rel="stylesheet" href="/css/tokens.css">', '')
+            tree.replace('index.html', '<link rel="stylesheet" href="/css/base.css">',
+                         '<link rel="stylesheet" href="/css/base.css"><link rel="stylesheet" href="/css/tokens.css">')
+            self.assertIn('最前面', self.assertViolation(tree, 'css-order', 'web/static/index.html: 第一个样式表不是 tokens.css'))
+        with Tree() as tree:
+            (tree.root / STATIC / 'css/new-page.css').write_text('@layer pages{\n}\n', encoding='utf-8')
+            self.assertViolation(tree, 'css-order', 'web/static/index.html: 没有引 css/new-page.css')
+        with Tree() as tree:
+            path = tree.root / 'tools/styleguide/index.html'
+            text = path.read_text(encoding='utf-8')
+            path.write_text(text.replace('<link rel="stylesheet" href="../../web/static/css/tokens.css">\n', ''), encoding='utf-8')
+            self.assertViolation(tree, 'css-order', 'tools/styleguide/index.html: 第一个样式表不是 tokens.css')
+        with Tree() as tree:
+            # 层的声明不是第一条：先写的 @layer tokens{…} 会让 tokens 排到最前
+            tree.replace('css/tokens.css', '@layer legacy, tokens, base, pages, overlays;\n@layer tokens{',
+                         '@layer tokens{:root{--zz:1}}\n@layer legacy, tokens, base, pages, overlays;\n@layer tokens{')
+            self.assertViolation(tree, 'css-order', 'css/tokens.css: 层的声明不在最前')
+
+    def test_tint_is_written_only_by_set_tint(self):
+        with Tree() as tree:
+            tree.append('ui/grid.js', "\nexport const paint = (el, c) => el.style.setProperty('--tint', c);\n")
+            self.assertIn('setTint', self.assertViolation(tree, 'tint-writer', 'ui/grid.js'))
+        with Tree() as tree:
+            tree.append('ui/tint.js', "\nexport const again = el => el.style.getPropertyValue('--tint');\n")
+            self.assertEqual(tree.errors(), [])
+
     def test_class_substring_and_descendant_has(self):
         self.assertPage('css-selector', '.grid [class*=card-]{opacity:.5}', 'css/library.css: 类名子串选择器', '2.4 倍')
         self.assertPage('css-selector', 'div[class^="x"]{opacity:.5}', '类名子串选择器')
@@ -608,8 +647,11 @@ class FrontendArchitectureTest(unittest.TestCase):
         self.assertPage('css-var', '.x{padding:0 var(--gutter)}', 'css/library.css: --gutter')
         # 回退值里的变量同样要有定义
         self.assertPage('css-var', '.x{color:var(--tint-wash,var(--nope))}', 'css/library.css: --nope')
-        # 同一个文件里定义的局部变量、tokens.css 的令牌、登记的 JS 变量都可以
-        self.assertPageClean('.x{--cols:4;grid-template-columns:repeat(var(--cols),1fr);background:var(--tint-wash);width:calc(var(--p) * 1%)}')
+        # css/ 下不认局部变量：`--x: 13px` 规则 8、13 都不查，借它就绕过三档令牌
+        self.assertPage('css-var', '.a{--d:500ms;--g:13px;transition:opacity var(--d);gap:var(--g)}', 'css/library.css: --d')
+        # tokens.css 的令牌、登记的 JS 变量可以；app.css 还认同一个文件里的旧局部变量
+        self.assertPageClean('.x{background:var(--tint-wash);width:calc(var(--p) * 1%)}')
+        self.assertCssClean('.new-thing{--cols:4;grid-template-columns:repeat(var(--cols),1fr)}')
 
     def test_backdrop_filter_only_on_glass(self):
         self.assertPage('backdrop-filter', '.card{backdrop-filter:blur(8px)}', 'css/library.css: backdrop-filter', '.glass', '显存')
@@ -627,6 +669,9 @@ class FrontendArchitectureTest(unittest.TestCase):
         # 在 @supports 里但前面没写退路，或者 @supports 测的是别的东西，都不算登记
         self.assertPage('css-compat', '@supports (content-visibility:auto){.x{content-visibility:auto}}', 'content-visibility')
         self.assertPage('css-compat', '/* 增强。退路：照常画。 */\n@supports (display:grid){.x{content-visibility:auto}}', 'content-visibility')
+        self.assertPage('css-compat', '/* 增强。退路：照常画。 */\n@supports not (content-visibility:auto){.x{content-visibility:auto}}', 'content-visibility')
+        # Safari 17.4 之前 ::backdrop 不继承自定义属性
+        self.assertPage('css-compat', 'dialog.x::backdrop{background:var(--scrim)}', '::backdrop 里的 var()', '写死色值')
         # 嵌套和相对颜色是硬规则，没有增强的写法
         self.assertPage('css-compat', '.x{color:var(--ink);.y{color:var(--muted)}}', 'CSS 嵌套', '展开')
         self.assertPage('css-compat', '.x{color:rgb(from var(--accent) r g b / .5)}', '相对颜色语法', 'color-mix()')

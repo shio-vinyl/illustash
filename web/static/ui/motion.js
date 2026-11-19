@@ -1,13 +1,13 @@
 // 动效（#705，0.4 第 A2 步）：界面上所有用脚本做的动画都从这里走，el.animate、startViewTransition 只在这个文件里调
-// （tools/check_frontend.py 拦）。CSS 过渡照旧写在样式里，用 var(--dur-N)、var(--ease) 两组令牌。
+// （由 A1 #704 的 tools/check_frontend.py 规则 11 拦）。CSS 过渡照旧写在样式里，用 var(--dur-N)、var(--ease) 两组令牌。
 //
 // 怎么用：
 //   import {enter, exit, flip, share, shareBack, countTo, thumbs} from './motion.js';
 //   await enter(card);                          // 进场：淡入并上移一点，--dur-2
 //   await exit(card);                           // 出场：比进场短（--dur-1），结束后把节点摘掉；{remove: false} 改成藏起来
 //   flip(el, oldBox, newBox);                   // 位置变了：用 core/layout.js 算出的框（{x, y, w, h}），不量 DOM
-//   const off = thumbs.add(uuid, img);          // 各视图登记缩略图，节点换图或摘掉时调 off()
-//   await share({from: thumbs.find(uuid), to: bigImg, update: () => showViewer()});  // 缩略图展开成大图
+//   thumbs.mark(img, uuid);                     // 各视图画缩略图时标上图片 id（写 data-thumb）
+//   await share({from: thumbs.find(uuid), to: () => viewerImg(), update: () => showViewer()});  // 缩略图展开成大图
 //   await shareBack(bigImg, thumbs.rect(uuid)); // 关掉时缩回缩略图的位置；没有位置（滚走了）就淡出
 //   countTo(numberEl, 1234);                    // 数字滚到新值
 //
@@ -21,6 +21,10 @@
 //   transitionend 偶尔不来，Web Animations 也按同样的思路兜底）时，最晚在时长之后 FALLBACK_MS 结束，返回的 Promise 不会挂住。
 //   Promise 的值：正常结束或兜底结束是 true，被取消是 false。
 // - View Transitions 只作增强（Safari 18.0 才有）：没有 startViewTransition 时用 Web Animations 做 FLIP，效果相同。
+// - 带延迟的动画在延迟那段就停在第一帧（fill: backwards），不会先按节点自己的样子画一下再跳回去（错开的进场不闪）。
+// - 同一个节点的动画互相接手：exit() 先取消这个节点上没走完的出场，enter() 也会取消它，节点再显示时不会还是透明的。
+// - 缩略图在哪里不登记，现查：各视图在缩略图节点上写 data-thumb（thumbs.mark），看图器打开时 thumbs.find 按它找。
+//   不持有节点，摘掉的缩略图连同解码好的位图照常释放（#683）。
 
 const DEFAULT_MS = {1: 140, 2: 240, 3: 380};
 const DEFAULT_EASE = {ease: 'cubic-bezier(.2,.8,.2,1)', spring: 'cubic-bezier(.34,1.42,.5,1)'};
@@ -89,13 +93,19 @@ export function settle(animation, ms) {
  * @param {{dur?: number, ease?: string, delay?: number, fill?: FillMode}} [options] dur 是 1 / 2 / 3 或毫秒
  * @returns {Promise<boolean>}
  */
-export function animate(el, keyframes, {dur = 2, ease = 'ease', delay = 0, fill = 'none'} = {}) {
+export function animate(el, keyframes, {dur = 2, ease = 'ease', delay = 0, fill} = {}) {
   const off = reduced();
   const ms = off ? 0 : duration(dur);
   const wait = off ? 0 : Math.max(0, delay);
   if (typeof el?.animate !== 'function') return Promise.resolve(true);
-  const animation = el.animate(keyframes, {duration: ms, delay: wait, easing: easing(ease), fill});
+  const animation = el.animate(keyframes, {duration: ms, delay: wait, easing: easing(ease), fill: fillMode(fill, wait)});
   return settle(animation, ms + wait);
+}
+/** 有延迟时延迟那段停在第一帧：没指定 fill 的用 backwards，指定了 forwards 的用 both。 */
+export function fillMode(fill, delay) {
+  if (!(delay > 0)) return fill || 'none';
+  if (!fill || fill === 'none') return 'backwards';
+  return fill === 'forwards' ? 'both' : fill;
 }
 
 // ---- 进场与出场 ----
@@ -111,20 +121,23 @@ const EXIT = {
 };
 /** 进场：节点已经在页面上、是它最终的样子，从淡、低一点的位置过渡过来。from：'rise'（默认）、'fade'、'scale' 或自己的关键帧。 */
 export function enter(el, {from = 'rise', dur = 2, delay = 0, ease = 'ease'} = {}) {
+  cancelExit(el);
   return animate(el, Array.isArray(from) ? from : ENTER[from] || ENTER.rise, {dur, delay, ease});
 }
 /**
  * 出场，比进场短。结束后默认把节点摘掉；remove: false 时改成 hidden = true（藏起来以后再撤掉动画，不会闪一下）。
- * 出场途中又要进场（同一个节点），先 cancelExit(el)。
+ * 同一个节点上没走完的出场先取消（返回 false），由这一次接手。
  */
 export async function exit(el, {to = 'rise', dur = 1, delay = 0, remove = true} = {}) {
   const keyframes = Array.isArray(to) ? to : EXIT[to] || EXIT.rise;
   const off = reduced();
+  cancelExit(el);
   if (typeof el?.animate !== 'function') { finishExit(el, remove); return true; }
   const ms = off ? 0 : duration(dur);
-  const animation = el.animate(keyframes, {duration: ms, delay: off ? 0 : delay, easing: easing('ease'), fill: 'forwards'});
+  const wait = off ? 0 : Math.max(0, delay);
+  const animation = el.animate(keyframes, {duration: ms, delay: wait, easing: easing('ease'), fill: fillMode('forwards', wait)});
   exiting.set(el, animation);
-  const ok = await settle(animation, ms + (off ? 0 : delay));
+  const ok = await settle(animation, ms + wait);
   if (exiting.get(el) !== animation) return false;
   exiting.delete(el);
   if (!ok) return false;
@@ -137,8 +150,9 @@ function finishExit(el, remove) {
   if (remove) el?.remove?.();
   else if (el) el.hidden = true;
 }
-/** 取消正在进行的出场（节点留在原处，回到自己的样子）。 */
+/** 取消正在进行的出场（节点留在原处，回到自己的样子）。enter() 和下一次 exit() 会自动调它。 */
 export function cancelExit(el) {
+  if (!el) return;
   const animation = exiting.get(el);
   if (!animation) return;
   exiting.delete(el);
@@ -185,54 +199,80 @@ export function flip(el, from, to, {dur = 2, ease = 'ease', delay = 0} = {}) {
 // ---- 共享元素：缩略图到大图 ----
 /**
  * 共享元素过渡的关键帧：节点最终在 `to`（比如看图器里按比例放下的大图），开始时看起来正好是 `from`（网格里裁成方块的缩略图）。
- * 等比放大到盖满 `from`，再用 clip-path 裁出 `from` 那一块，所以图不会被拉变形。radius 是起止两端的圆角（px）。
+ * 等比放大到盖满 `from`，再用 clip-path 裁出 `from` 那一块，所以图不会被拉变形。radius 是起止两端的圆角（px）；
+ * position 是缩略图裁切的位置（object-position 的两个比例，默认居中 [.5, .5]，海报是 [.5, .25]）。
  */
-export function shareFrames(from, to, {radius = [8, 0]} = {}) {
+export function shareFrames(from, to, {radius = [8, 0], position = [0.5, 0.5]} = {}) {
   const a = box(from), b = box(to);
   if (!a || !b || b.w <= 0 || b.h <= 0) return null;
   const s = Math.max(a.w / b.w, a.h / b.h);
   const width = b.w * s, height = b.h * s;
-  const x = a.x + a.w / 2 - width / 2 - b.x;
-  const y = a.y + a.h / 2 - height / 2 - b.y;
-  // 裁切在缩放之前，所以按缩放前的尺寸算：盖满的图左右、上下各多出来的一半。
-  const insetX = (width - a.w) / 2 / s, insetY = (height - a.h) / 2 / s;
+  const [px, py] = position;
+  // 盖满的图比缩略图多出来的部分，按 object-position 分到两边。
+  const extraX = width - a.w, extraY = height - a.h;
+  const x = a.x - extraX * px - b.x;
+  const y = a.y - extraY * py - b.y;
+  // 裁切在缩放之前，所以按缩放前的尺寸算。
+  const [top, right, bottom, left] = [extraY * py, extraX * (1 - px), extraY * (1 - py), extraX * px].map(v => round(v / s));
   const [r0, r1] = radius;
   return [
     {transformOrigin: '0 0', transform: transform({x, y, sx: s, sy: s}),
-      clipPath: `inset(${round(insetY)}px ${round(insetX)}px round ${round(r0 / s)}px)`},
-    {transformOrigin: '0 0', transform: 'none', clipPath: `inset(0px 0px round ${round(r1)}px)`},
+      clipPath: `inset(${top}px ${right}px ${bottom}px ${left}px round ${round(r0 / s)}px)`},
+    {transformOrigin: '0 0', transform: 'none', clipPath: `inset(0px 0px 0px 0px round ${round(r1)}px)`},
   ];
 }
+/** 节点的 object-position 换成两个比例；不是百分比（或读不到）时按居中。 */
+export function objectPosition(el) {
+  let text = '';
+  try { text = getComputedStyle(el).objectPosition || ''; } catch { text = ''; }
+  const parts = text.trim().split(/\s+/).map(v => (/^-?[\d.]+%$/.test(v) ? parseFloat(v) / 100 : null));
+  return parts.length === 2 && parts.every(v => v !== null) ? parts : [0.5, 0.5];
+}
+// View Transitions 的名字每次不同：上一次过渡还没收尾时再来一次，名字也不会撞（撞了浏览器会跳过过渡）。
+let shares = 0;
+// 等 View Transitions 截好图、开始动画的上限：update 卡住时不一直等（只防挂死）。
+const READY_LIMIT_MS = 10000;
 /**
- * 缩略图展开成大图。`from` 是缩略图节点（通常来自 thumbs.find）或它的框；`to` 是大图节点；`update` 把大图画出来
- * （在 View Transitions 里调用，或者在 Web Animations 之前调用）。toBox 不传时量 `to` 的位置。
- * 有 document.startViewTransition、from 是节点、没开「减少动态效果」时用 View Transitions，否则用 Web Animations。
+ * 缩略图展开成大图。`from` 是缩略图节点（通常来自 thumbs.find）或它的框；`to` 是大图节点，或者在 update 之后才取得到它的函数；
+ * `update` 把大图画出来，可以是异步的（等大图解码）：在 View Transitions 里等它画完，或者在 Web Animations 之前等它画完。
+ * toBox 不传时量大图的位置；position 不传时读缩略图的 object-position。
+ * 有 document.startViewTransition、from 是节点、没开「减少动态效果」时用 View Transitions（时长固定 --dur-3，和 css/base.css 里
+ * ::view-transition-group 的一致），否则用 Web Animations（时长 dur）。
  */
-export async function share({from, to, update, toBox, dur = 3, radius} = {}) {
+export async function share({from, to, update, toBox, dur = 3, radius, position} = {}) {
   const node = from && typeof from.getBoundingClientRect === 'function' ? from : null;
-  if (node && typeof document !== 'undefined' && typeof document.startViewTransition === 'function' && !reduced() && to?.style) {
-    node.style.viewTransitionName = 'share';
-    const transition = document.startViewTransition(() => {
+  const target = () => (typeof to === 'function' ? to() : to);
+  if (node && typeof document !== 'undefined' && typeof document.startViewTransition === 'function' && !reduced()) {
+    const name = `share-${++shares}`;
+    let big = null;
+    node.style.viewTransitionName = name;
+    const transition = document.startViewTransition(async () => {
       node.style.viewTransitionName = '';
-      update?.();
-      to.style.viewTransitionName = 'share';
+      await update?.();
+      big = target();
+      if (big?.style) big.style.viewTransitionName = name;
     });
-    const ok = await settle(transition, duration(dur));
-    to.style.viewTransitionName = '';
+    // 兜底从动画真正开始（截好图、update 画完）算起。
+    await Promise.race([Promise.resolve(transition.ready).catch(() => {}), new Promise(r => setTimeout(r, READY_LIMIT_MS))]);
+    const ok = await settle(transition, duration(3));
+    node.style.viewTransitionName = '';
+    if (big?.style) big.style.viewTransitionName = '';
     return ok;
   }
   const start = node ? node.getBoundingClientRect() : from;
-  update?.();
-  const frames = shareFrames(start, toBox || to?.getBoundingClientRect?.(), {radius});
-  if (!frames) return enter(to, {from: 'scale', dur: 2});
-  return animate(to, frames, {dur});
+  const crop = position || (node ? objectPosition(node) : undefined);
+  await update?.();
+  const big = target();
+  const frames = shareFrames(start, toBox || big?.getBoundingClientRect?.(), {radius, position: crop});
+  if (!frames) return enter(big, {from: 'scale', dur: 2});
+  return animate(big, frames, {dur});
 }
 /**
  * 大图缩回缩略图的位置（关看图器时）。`el` 停在终点（fill: forwards），调用方在 Promise 之后把它摘掉。
  * 没有目标框（缩略图滚走了、所在的视图没登记）时淡出。
  */
-export function shareBack(el, target, {fromBox, dur = 2, radius = [0, 8]} = {}) {
-  const frames = target ? shareFrames(target, fromBox || el?.getBoundingClientRect?.(), {radius: [radius[1], radius[0]]}) : null;
+export function shareBack(el, target, {fromBox, dur = 2, radius = [0, 8], position = [0.5, 0.5]} = {}) {
+  const frames = target ? shareFrames(target, fromBox || el?.getBoundingClientRect?.(), {radius: [radius[1], radius[0]], position}) : null;
   if (!frames) return animate(el, EXIT.scale, {dur: 1, fill: 'forwards'});
   return animate(el, frames.slice().reverse(), {dur, fill: 'forwards'});
 }
@@ -280,48 +320,30 @@ const lastValue = new WeakMap();
 
 // ---- 缩略图在屏幕上哪里 ----
 /**
- * 「这张图的缩略图在屏幕上哪里」的登记表：各视图（网格、按天、画廊…）把画出来的缩略图节点按图片 id 登记，看图器查询，
- * 所以看图器不用导入各个视图。同一张图在几处都画着时，取最后登记、还在页面上、并且在视口里的那一个。
- * 节点被复用来画另一张图时直接登记新的 id，旧的登记跟着去掉。
+ * 「这张图的缩略图在屏幕上哪里」：各视图（网格、按天、画廊…）画缩略图时在节点上写 data-thumb="<图片 id>"（thumbs.mark），
+ * 看图器打开、关掉时按它现查，所以看图器不用导入各个视图。不登记、不持有节点：摘掉的缩略图照常释放（#683）。
+ * 同一张图在几处都画着时，取文档里最后一个在视口里的。
  */
 export const thumbs = {
-  /** 登记；返回撤销登记的函数（交给 ui/scope.js 的作用域，换页时一起释放）。 */
-  add(id, el) {
-    const old = owner.get(el);
-    if (old !== undefined && old !== id) places.get(old)?.delete(el);
-    owner.set(el, id);
-    const set = places.get(id) || new Set();
-    set.delete(el);
-    set.add(el);
-    places.set(id, set);
-    return () => thumbs.remove(id, el);
+  /** 标上图片 id；节点被复用来画另一张图时再标一次就行。 */
+  mark(el, id) {
+    if (el?.dataset) el.dataset.thumb = id;
   },
-  remove(id, el) {
-    const set = places.get(id);
-    if (!set) return;
-    set.delete(el);
-    if (owner.get(el) === id) owner.delete(el);
-    if (!set.size) places.delete(id);
-  },
-  /** 屏幕上看得见的那个缩略图节点；没有时是 null。 */
-  find(id) {
-    const set = places.get(id);
-    if (!set) return null;
-    for (const el of [...set].reverse()) {
-      if (el.isConnected === false) { set.delete(el); continue; }
-      if (visible(el.getBoundingClientRect())) return el;
-    }
+  /** 屏幕上看得见的那个缩略图节点；没有时是 null。root 默认是整个文档。 */
+  find(id, root = globalThis.document) {
+    if (!root?.querySelectorAll || id === undefined || id === null) return null;
+    const found = [...root.querySelectorAll(`[data-thumb="${escapeValue(String(id))}"]`)];
+    for (const el of found.reverse()) if (visible(el.getBoundingClientRect())) return el;
     return null;
   },
   /** 那个缩略图在视口里的框（DOMRect）；没有时是 null。 */
-  rect(id) {
-    return thumbs.find(id)?.getBoundingClientRect() || null;
+  rect(id, root) {
+    return thumbs.find(id, root)?.getBoundingClientRect() || null;
   },
-  /** 测试用：清空登记表。 */
-  clear() { places.clear(); },
 };
-const places = new Map();
-const owner = new WeakMap();
+function escapeValue(text) {
+  return text.replace(/["\\]/g, '\\$&');
+}
 function visible(r) {
   if (!r || !(r.width > 0) || !(r.height > 0)) return false;
   const width = globalThis.innerWidth ?? Infinity, height = globalThis.innerHeight ?? Infinity;

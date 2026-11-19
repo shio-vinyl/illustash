@@ -1,9 +1,9 @@
 // 动效工具（ui/motion.js，#705）：「减少动态效果」时直接到终态、结束的计时兜底、FLIP 和共享元素过渡的起止计算、
-// 出场摘节点、数字滚动、缩略图位置登记表。节点和 Web Animations 都是假的，记下调用参数，由测试决定动画何时结束。
+// 带延迟时停在第一帧、出场摘节点和接手、数字滚动、按 data-thumb 找缩略图；以及写图的颜色的 ui/tint.js。节点和 Web Animations 都是假的，记下调用参数，由测试决定动画何时结束。
 const {test, before, beforeEach} = require('node:test');
 const assert = require('node:assert/strict');
 const web = require('./web.cjs');
-let motion;
+let motion, tint;
 
 // 假的 Web Animations：finished 由测试调 end() / cancel() 决定；hang 为真时永远不结束（模拟 finished 不来）。
 let animations, hang;
@@ -27,18 +27,19 @@ function node({rect = {left: 0, top: 0, width: 100, height: 100}} = {}) {
   return el;
 }
 let reduce;
+const tokens = () => ({getPropertyValue: name => ({'--dur-1': '140ms', '--dur-2': '.24s', '--dur-3': '380ms',
+  '--ease': 'cubic-bezier(.2,.8,.2,1)', '--ease-spring': 'cubic-bezier(.34,1.42,.5,1)'}[name] || '')});
 before(async () => {
   await web.ready();
   globalThis.matchMedia = () => ({get matches() { return reduce; }});
-  globalThis.getComputedStyle = () => ({getPropertyValue: name => ({'--dur-1': '140ms', '--dur-2': '.24s', '--dur-3': '380ms',
-    '--ease': 'cubic-bezier(.2,.8,.2,1)', '--ease-spring': 'cubic-bezier(.34,1.42,.5,1)'}[name] || '')});
+  globalThis.getComputedStyle = tokens;
   motion = await web.load('ui/motion.js');
+  tint = await web.load('ui/tint.js');
 });
 beforeEach(() => {
   animations = []; hang = false; reduce = false;
   web.fakePage();
   globalThis.innerWidth = 1200; globalThis.innerHeight = 800;
-  motion.thumbs.clear();
 });
 
 test('时长和缓动取令牌：1 / 2 / 3 档、秒和毫秒都认，直接给的毫秒原样用', () => {
@@ -135,6 +136,44 @@ test('出场比进场短；结束后摘掉节点，remove: false 时藏起来，
   assert.ok(parent.children.includes(c));
 });
 
+test('带延迟时延迟那段停在第一帧：进场、FLIP 用 backwards，出场用 both', async () => {
+  const el = node();
+  motion.enter(el, {delay: 80});
+  assert.equal(animations[0].options.fill, 'backwards');
+  motion.flip(el, {x: 0, y: 0, w: 10, h: 10}, {x: 5, y: 5, w: 10, h: 10}, {delay: 40});
+  assert.equal(animations[1].options.fill, 'backwards');
+  motion.exit(node(), {delay: 30});
+  assert.equal(animations[2].options.fill, 'both');
+  // 没有延迟时照旧
+  motion.enter(el);
+  assert.equal(animations[3].options.fill, 'none');
+  assert.equal(motion.fillMode('forwards', 0), 'forwards');
+  assert.equal(motion.fillMode(undefined, 10), 'backwards');
+  for (const a of animations) a.end();
+});
+
+test('同一个节点：第二次出场接手第一次，进场取消出场，节点不会留在透明', async () => {
+  const parent = new web.FakeElement();
+  const el = node();
+  parent.append(el);
+  const first = motion.exit(el, {remove: false});
+  const second = motion.exit(el, {remove: false});
+  assert.equal(animations[0].state, 'cancelled', '第一次的 fill 不留在节点上');
+  assert.equal(await first, false);
+  animations[1].end();
+  assert.equal(await second, true);
+  assert.equal(el.hidden, true);
+  assert.equal(animations[1].state, 'cancelled');
+  // 出场途中进场：出场被取消，节点留在原处
+  el.hidden = false;
+  const leaving = motion.exit(el);
+  motion.enter(el);
+  assert.equal(animations[2].state, 'cancelled');
+  assert.equal(await leaving, false);
+  assert.ok(parent.children.includes(el));
+  animations[3].end();
+});
+
 test('FLIP 的起止：起点是从新框回到旧框的平移和缩放，终点是 none；起止相同不动画', async () => {
   assert.deepEqual(motion.flipDelta({x: 10, y: 20, w: 50, h: 40}, {x: 110, y: 60, w: 100, h: 80}), {x: -100, y: -40, sx: 0.5, sy: 0.5});
   // DOMRect 的写法同样认；宽高为 0 的方向不缩放。
@@ -160,30 +199,67 @@ test('共享元素的起止：等比放大盖满缩略图，裁出缩略图那�
   const s = 0.25, x = 45 - 50 - 100, y = 55 - 25 - 100;
   assert.equal(first.transform, `translate(${x}px, ${y}px) scale(${s}, ${s})`);
   // 裁掉左右各 (100 - 50) / 2 / s = 100px（缩放前的尺寸），上下不裁；圆角按缩放前写，缩完正好 8px。
-  assert.equal(first.clipPath, 'inset(0px 100px round 32px)');
-  assert.deepEqual(last, {transformOrigin: '0 0', transform: 'none', clipPath: 'inset(0px 0px round 0px)'});
+  assert.equal(first.clipPath, 'inset(0px 100px 0px 100px round 32px)');
+  assert.deepEqual(last, {transformOrigin: '0 0', transform: 'none', clipPath: 'inset(0px 0px 0px 0px round 0px)'});
   // 起点画出来的可见区域正好是缩略图：左边 = 100 + x + 100 * s。
   assert.equal(100 + x + 100 * s, 20);
   assert.equal(motion.shareFrames({x: 0, y: 0, w: 10, h: 10}, {x: 0, y: 0, w: 0, h: 10}), null);
 });
 
-test('共享元素：有 View Transitions 时用它，在过渡里画大图并交接名字；没有时先画再用 Web Animations', async () => {
+test('共享元素的起点按缩略图的 object-position 裁：海报 50% 25%', () => {
+  // 大图 200×400 竖图；缩略图 100×100 方块。s = max(100/200, 100/400) = 0.5，缩放后 100×200，上下多出 100。
+  const [first] = motion.shareFrames({x: 0, y: 0, w: 100, h: 100}, {x: 0, y: 0, w: 200, h: 400}, {position: [0.5, 0.25]});
+  // 上面露出 25%：起点往上挪 25px，裁掉缩放前的上 50px、下 150px。
+  assert.equal(first.transform, 'translate(0px, -25px) scale(0.5, 0.5)');
+  assert.equal(first.clipPath, 'inset(50px 0px 150px 0px round 16px)');
+  // 读得到的 object-position 是百分比时照用，读不到按居中。
+  globalThis.getComputedStyle = () => ({objectPosition: '50% 25%', getPropertyValue: () => ''});
+  assert.deepEqual(motion.objectPosition(node()), [0.5, 0.25]);
+  globalThis.getComputedStyle = () => ({objectPosition: 'left top', getPropertyValue: () => ''});
+  assert.deepEqual(motion.objectPosition(node()), [0.5, 0.5]);
+  globalThis.getComputedStyle = tokens;
+});
+
+test('共享元素：有 View Transitions 时用它，等异步的 update 画完再取大图、交接名字；名字每次不同；兜底按 --dur-3', async () => {
   const thumb = node({rect: {left: 20, top: 30, width: 50, height: 50}}), big = node({rect: {left: 100, top: 100, width: 400, height: 200}});
-  let names = [];
+  const seen = [];
+  let pending;
   document.startViewTransition = update => {
-    names.push(['before', thumb.style.viewTransitionName, big.style.viewTransitionName]);
-    update();
-    names.push(['after', thumb.style.viewTransitionName, big.style.viewTransitionName]);
-    return {finished: Promise.resolve()};
+    seen.push(['before', thumb.style.viewTransitionName]);
+    const done = update();
+    const transition = {ready: done, finished: new Promise(resolve => { pending = resolve; })};
+    return transition;
   };
-  const order = [];
-  assert.equal(await motion.share({from: thumb, to: big, update: () => order.push('draw')}), true);
-  assert.deepEqual(names, [['before', 'share', undefined], ['after', '', 'share']]);
+  let drawn = false;
+  const started = Date.now();
+  const first = motion.share({from: thumb, to: () => (drawn ? big : null),
+    update: async () => { await new Promise(r => setTimeout(r, 20)); drawn = true; }});
+  await new Promise(r => setTimeout(r, 60));
+  const name = big.style.viewTransitionName;
+  assert.match(name, /^share-\d+$/);
+  assert.equal(seen[0][1], name, '缩略图和大图用同一个名字');
+  assert.equal(thumb.style.viewTransitionName, '', '截完旧图就从缩略图上撤掉');
+  // finished 一直不来：兜底在 ready 之后再等 --dur-3（380ms）加 FALLBACK_MS。
+  assert.equal(await first, true);
+  assert.ok(Date.now() - started >= 380 + motion.FALLBACK_MS, `${Date.now() - started}ms`);
   assert.equal(big.style.viewTransitionName, '', '结束后去掉名字');
+  // 第二次的名字和第一次不同
+  const second = motion.share({from: thumb, to: big, update: () => {}});
+  await new Promise(r => setTimeout(r, 0));
+  assert.notEqual(big.style.viewTransitionName, name);
+  pending();
+  assert.equal(await second, true);
   assert.equal(animations.length, 0);
   delete document.startViewTransition;
-  const done = motion.share({from: thumb, to: big, update: () => order.push('draw again')});
-  assert.deepEqual(order, ['draw', 'draw again']);
+});
+
+test('共享元素：没有 View Transitions 时先等 update 画完，再对大图做 Web Animations', async () => {
+  const thumb = node({rect: {left: 20, top: 30, width: 50, height: 50}}), big = node({rect: {left: 100, top: 100, width: 400, height: 200}});
+  const order = [];
+  const done = motion.share({from: thumb, to: () => { order.push('get'); return big; },
+    update: async () => { await new Promise(r => setTimeout(r, 5)); order.push('draw'); }});
+  await new Promise(r => setTimeout(r, 30));
+  assert.deepEqual(order, ['draw', 'get']);
   assert.equal(animations.length, 1);
   assert.equal(animations[0].el, big);
   assert.equal(animations[0].options.duration, 380);
@@ -227,23 +303,38 @@ test('数字滚动：逐帧写到终值；又滚时接着新目标走', async ()
   assert.equal(other.textContent, '7');
 });
 
-test('缩略图登记表：取最后登记、还在页面上、在视口里的那个；节点换图时旧登记去掉', () => {
+test('缩略图按 data-thumb 现查：取文档里最后一个在视口里的；不持有节点', () => {
   const a = node({rect: {left: 0, top: 0, width: 100, height: 100}});
   const b = node({rect: {left: 200, top: 0, width: 100, height: 100}});
   const below = node({rect: {left: 0, top: 2000, width: 100, height: 100}});
-  const offA = motion.thumbs.add('img-1', a);
-  motion.thumbs.add('img-1', b);
-  motion.thumbs.add('img-1', below);
-  assert.equal(motion.thumbs.find('img-1'), b, '视口外的不算');
-  assert.equal(motion.thumbs.rect('img-1').left, 200);
-  b.isConnected = false;
-  assert.equal(motion.thumbs.find('img-1'), a, '摘掉的节点不算');
-  motion.thumbs.add('img-2', a);
-  assert.equal(motion.thumbs.find('img-1'), null, '节点改画 img-2 以后不再是 img-1');
-  assert.equal(motion.thumbs.find('img-2'), a);
-  offA();
-  assert.equal(motion.thumbs.find('img-2'), a, '撤销的是 img-1 的登记，img-2 照旧');
-  motion.thumbs.remove('img-2', a);
-  assert.equal(motion.thumbs.rect('img-2'), null);
-  assert.equal(motion.thumbs.find('missing'), null);
+  motion.thumbs.mark(a, 'img-1'); motion.thumbs.mark(b, 'img-1'); motion.thumbs.mark(below, 'img-1');
+  assert.equal(a.dataset.thumb, 'img-1');
+  let asked = [];
+  const root = {querySelectorAll: selector => { asked.push(selector); return [a, b, below].filter(el => `[data-thumb="${el.dataset.thumb}"]` === selector); }};
+  assert.equal(motion.thumbs.find('img-1', root), b, '视口外的不算，同样看得见的取后面那个');
+  assert.equal(motion.thumbs.rect('img-1', root).left, 200);
+  motion.thumbs.mark(b, 'img-2');
+  assert.equal(motion.thumbs.find('img-1', root), a, '节点改画别的图以后不再算');
+  assert.equal(motion.thumbs.find('missing', root), null);
+  // id 里的引号和反斜杠转义后才拼进选择器
+  motion.thumbs.find('a"b\\c', root);
+  assert.equal(asked.at(-1), '[data-thumb="a\\"b\\\\c"]');
+  // 默认在整个文档里找
+  assert.equal(motion.thumbs.find('img-1'), null);
+});
+
+test('图的颜色只经 setTint 写：同时写 --tint 和 .tint，没有颜色或格式不对时两样都去掉', () => {
+  const props = {};
+  const el = node();
+  el.style = {setProperty: (k, v) => { props[k] = v; }, removeProperty: k => { delete props[k]; }, getPropertyValue: k => props[k] || ''};
+  tint.setTint(el, '#D9774F');
+  assert.equal(props['--tint'], '#D9774F');
+  assert.equal(el.classList.contains('tint'), true);
+  tint.setTint(el, 'red; background: url(x)');
+  assert.equal(props['--tint'], undefined);
+  assert.equal(el.classList.contains('tint'), false);
+  tint.setTint(el, '#abc');
+  tint.setTint(el, null);
+  assert.deepEqual(props, {});
+  assert.equal(el.classList.contains('tint'), false);
 });

@@ -136,7 +136,7 @@
     <p class="sg-src">140ms：出场、悬停；240ms：进场、展开、换页；380ms：共享元素、活页条标签。出场比进场短。<code>--ease</code> 给所有进出场、展开、换页；<code>--ease-spring</code> 带回弹，只给活页条标签和「弹一下」。系统开了「减少动态效果」时三档时长都是 0。脚本里的动画走 <code>web/static/ui/motion.js</code>（用法写在文件开头）。点「播放」看每一档。</p>
     <div class="sg-stage col" id="tok-motion"></div></div>
   <div class="sg-item"><header><h3>图的颜色：--tint 和派生的底色</h3><span class="sg-cls"><code>--tint</code><code>--tint-wash</code><code>--tint-soft</code><code>--tint-glow</code><code>--tint-shadow</code><code>.tint</code></span></header>
-    <p class="sg-src">颜色只用、不展示：JS 把图的主色写进元素的 <code>--tint</code>，并给元素加 <code>.tint</code>，派生的几档在那个元素上用 <code>color-mix()</code> 重新算（自定义属性里的 <code>var()</code> 在声明它的元素上就算好了）。wash：作品卡、日历格的底；soft：缩略图读完之前的占位；glow：环境光；shadow：悬停的彩色投影。没写 <code>--tint</code> 时是中性色（第一列）。下面的色值是样例，界面上不出色块、色值。</p>
+    <p class="sg-src">颜色只用、不展示：图的主色只经 <code>web/static/ui/tint.js</code> 的 <code>setTint(el, color)</code> 写，它写 <code>--tint</code> 并给元素加 <code>.tint</code>，派生的几档在那个元素上用 <code>color-mix()</code> 重新算（自定义属性里的 <code>var()</code> 在声明它的元素上就算好了）。wash：作品卡、日历格的底；soft：缩略图读完之前的占位；glow：环境光；shadow：悬停的彩色投影。没写 <code>--tint</code> 时是中性色（第一列）。下面的色值是样例，界面上不出色块、色值。</p>
     <div class="sg-stage" id="tok-tint">
       <div class="sg-tint"><b>没有图</b><span style="background:var(--tint-wash)">wash</span><span style="background:var(--tint-soft)">soft</span><span style="background:radial-gradient(closest-side,var(--tint-glow),transparent)">glow</span></div>
       <div class="sg-tint tint" style="--tint:#d9774f"><b>--tint:#d9774f</b><span style="background:var(--tint-wash)">wash</span><span style="background:var(--tint-soft)">soft</span><span style="background:radial-gradient(closest-side,var(--tint-glow),transparent)">glow</span></div>
@@ -160,11 +160,11 @@
 <section id="n-controls">
   <h2>新部件 · 胶囊控件与选中</h2>
   <div class="sg-item"><header><h3>按钮：主要、普通、安静</h3><span class="sg-tag hand">手写</span><span class="sg-cls"><code>.btn</code><code>.is-primary</code><code>.is-quiet</code><code>.is-small</code></span></header>
-    <p class="sg-src">胶囊形，高 32（<code>.is-small</code> 28），字号 12、字重 600。一页最多一个主要按钮。按下的开关按钮写 <code>aria-pressed="true"</code>，画法同选中。</p>
+    <p class="sg-src">胶囊形，高 32（<code>.is-small</code> 28），字号 12、字重 600。主要按钮的底是 <code>--accent-fill</code>。一页最多一个主要按钮。按下的开关按钮写 <code>aria-pressed="true"</code>，画法同选中。</p>
     <div class="sg-stage"><button class="btn is-primary">新建画廊</button><button class="btn"><svg viewBox="0 0 24 24"><path d="M4 6h16M7 12h10M10 18h4"/></svg>筛选</button><button class="btn is-quiet">取消</button><button class="btn is-small">小按钮</button><button class="btn" aria-pressed="true">已关注</button><button class="btn is-primary" disabled>不可用</button></div></div>
   <div class="sg-item"><header><h3>芯片</h3><span class="sg-tag hand">手写</span><span class="sg-cls"><code>.chip</code><code>.avatar</code><code>.chip-count</code></span></header>
     <p class="sg-src">高 28 的胶囊。能点的用 <code>&lt;button class="chip"&gt;</code>；选中：<code>aria-pressed</code> / <code>aria-selected</code> / <code>aria-current</code>，强调色浅底，文字同时变深变粗。带头像的芯片头像贴左。</p>
-    <div class="sg-stage"><button class="chip">全部</button><button class="chip" aria-pressed="true">已识别</button><button class="chip">未识别</button><span class="chip"><img class="avatar" data-ph="2">合成角色 A<span class="chip-count">31</span></span><button class="chip"><img class="avatar" data-ph="3">合成角色 B<span class="chip-count">12</span></button></div></div>
+    <div class="sg-stage"><button class="chip">全部</button><button class="chip" aria-pressed="true">已识别<span class="chip-count">31</span></button><button class="chip">未识别</button><span class="chip"><img class="avatar" data-ph="2">合成角色 A<span class="chip-count">31</span></span><button class="chip"><img class="avatar" data-ph="3">合成角色 B<span class="chip-count">12</span></button></div></div>
   <div class="sg-item"><header><h3>分段控件</h3><span class="sg-tag hand">手写</span><span class="sg-cls"><code>.seg</code></span></header>
     <p class="sg-src">选中的一段白底浮起（<code>--seg-on</code>、<code>--shadow-hover</code>），文字变深变粗。单选组写 <code>role="radiogroup"</code> 和 <code>aria-checked</code>，切换按钮写 <code>aria-pressed</code>。</p>
     <div class="sg-stage"><div class="seg" role="group" aria-label="视图"><button aria-pressed="true"><svg viewBox="0 0 24 24"><path d="M4 5h16M4 12h16M4 19h16"/></svg>按天</button><button aria-pressed="false"><svg viewBox="0 0 24 24"><path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z"/></svg>网格</button><button aria-pressed="false">日历</button></div></div></div>
@@ -175,9 +175,9 @@
 
 <section id="n-head">
   <h2>新部件 · 页头与空状态</h2>
-  <div class="sg-item"><header><h3>页头：大标题 + 副标题 + 右侧控件组，下面最多一行工具</h3><span class="sg-tag hand">手写</span><span class="sg-cls"><code>.page-head</code><code>.page-title</code><code>.page-sub</code><code>.page-actions</code><code>.page-tools</code></span></header>
-    <p class="sg-src">每页的页头同一个结构。标题 28、字重 750；副标题 12、<code>--muted</code>。</p>
-    <div class="sg-stage col"><div style="width:100%"><header class="page-head"><hgroup><h1 class="page-title">图库</h1><p class="page-sub">2,431 张 · 最近一次同步 10:21</p></hgroup><div class="page-actions"><div class="seg" role="group" aria-label="视图"><button aria-pressed="true">按天</button><button aria-pressed="false">网格</button><button aria-pressed="false">日历</button></div><button class="btn is-primary">同步</button></div></header>
+  <div class="sg-item"><header><h3>页头：大标题 + 副标题 + 右侧控件组，下面最多一行工具</h3><span class="sg-tag hand">手写</span><span class="sg-cls"><code>.page-head</code><code>.title-page</code><code>.page-sub</code><code>.page-actions</code><code>.page-tools</code></span></header>
+    <p class="sg-src">每页的页头同一个结构。大标题就是 <code>.title-page</code>（28、字重 750）；副标题 12、<code>--muted</code>。</p>
+    <div class="sg-stage col"><div style="width:100%"><header class="page-head"><hgroup><h1 class="title-page">图库</h1><p class="page-sub">2,431 张 · 最近一次同步 10:21</p></hgroup><div class="page-actions"><div class="seg" role="group" aria-label="视图"><button aria-pressed="true">按天</button><button aria-pressed="false">网格</button><button aria-pressed="false">日历</button></div><button class="btn is-primary">同步</button></div></header>
       <div class="page-tools"><label class="search" style="width:260px"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6"/><path d="m20 20-4.5-4.5"/></svg><input placeholder="搜索"></label><button class="chip" aria-pressed="true">全部</button><button class="chip">R18</button></div></div></div></div>
   <div class="sg-item"><header><h3>空状态：大图标 + 一句事实 + 一个去处</h3><span class="sg-tag hand">手写</span><span class="sg-cls"><code>.empty-state</code><code>.empty-icon</code><code>.empty-fact</code></span></header>
     <p class="sg-src">文案照 <code>docs/I18N_TERMS.md</code>「语气」：写事实，不客套、不安抚，去处是一个按钮或链接。</p>
@@ -197,7 +197,7 @@
 <section id="n-glass">
   <h2>新部件 · 玻璃</h2>
   <div class="sg-item"><header><h3>玻璃表面（只给浮层）和浮在图上的玻璃按钮组</h3><span class="sg-tag hand">手写</span><span class="sg-cls"><code>.glass</code><code>.glass-bar</code></span></header>
-    <p class="sg-src"><code>backdrop-filter</code> 只写在这两处（规则 16）：每个带模糊的元素各占一块显存。不支持模糊时是几乎不透明的底。按钮组用来放翻页、收藏、放大、关闭；按下（收藏了）写 <code>aria-pressed="true"</code>。</p>
+    <p class="sg-src"><code>backdrop-filter</code> 只写在这两处（规则 16）：每个带模糊的元素各占一块显存。不支持模糊、或系统要求降低透明度（<code>prefers-reduced-transparency</code>，Safari 还不认）时是几乎不透明的底。按钮组用来放翻页、收藏、放大、关闭；按下（收藏了）写 <code>aria-pressed="true"</code>。</p>
     <div class="sg-stage"><div class="sg-glass-bg"><img data-ph="3" alt=""><div class="glass-bar sg-glass-l"><button aria-label="上一张"><svg viewBox="0 0 24 24"><path d="m15 6-6 6 6 6"/></svg></button><button aria-label="下一张"><svg viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></svg></button></div><div class="glass-bar sg-glass-r"><button aria-label="收藏" aria-pressed="true"><svg viewBox="0 0 24 24"><path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/></svg></button><button aria-label="放大"><svg viewBox="0 0 24 24"><path d="M4 10V4h6M20 14v6h-6M4 4l6 6M20 20l-6-6"/></svg></button><button aria-label="关闭"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div><div class="glass sg-glass-panel"><b>玻璃浮层</b><p class="text-meta">弹出层、菜单这类浮在内容上的东西。</p></div></div></div></div>
 </section>
 

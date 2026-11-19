@@ -14,12 +14,16 @@ tools/check_architecture.py 对 crate 依赖方向的检查。规则（说明见
   8 css-literal          app.css 和 css/ 下的样式不得新增写死的字号、圆角、gap/padding、z-index 和颜色，改用 css/tokens.css 的令牌（#349、#705）
   9 ime-composing        每个 keydown/keyup/keypress 处理函数先问 core/keys.js 的 composing(e)；别处不得直接读 isComposing / keyCode（#388）
  13 css-scale            字重、阴影、动效的时长和缓动只用三档令牌；字号只用 11/12/13/20/28/40，圆角不用冻结给旧样式的 2/6/10/14/16（#705）
- 13 css-layer            css/ 下的文件整个写在自己的 @layer 里（硬规则）：tokens.css 在 tokens，base.css 在 base，overlays.css 在 overlays，其余在 pages
+ 18 css-layer            css/ 下的文件整个写在自己的 @layer 里（硬规则）：tokens.css 在 tokens，base.css 在 base，overlays.css 在 overlays，其余在 pages
  14 css-selector         不写类名子串选择器（[class*=] 一类）和后代形式的 :has()（:has(.x)；:has(> .x)、:has(+ .x) 可以）（#469）
- 15 css-var              var(--名) 必须有定义：在 css/tokens.css、同一个文件里，或在 JS_VARIABLES 登记的「由 JS 写的变量」里（硬规则）
+ 15 css-var              var(--名) 必须有定义：在 css/tokens.css，或在 JS_VARIABLES 登记的「由 JS 写的变量」里；只有 app.css 还认同一个文件里的
+                         旧局部变量（--gutter）。css/ 下不认局部变量，所以 `--x: 13px` 绕不过规则 8、13（硬规则）
  16 backdrop-filter      backdrop-filter 只写在 css/base.css 的玻璃表面（.glass、.glass-bar）
  17 css-compat           Safari 17.0 没有的 CSS 能力只写在登记的增强块里：探测它的 @supports（测不出来的写成 @starting-style 这类块本身），
-                         块前面紧挨着写明退路的注释；CSS 嵌套和相对颜色语法不用（硬规则）
+                         块前面紧挨着写明退路的注释（@supports not (…) 不算）；CSS 嵌套、相对颜色语法和 ::backdrop 里的 var() 不用（硬规则）
+ 19 css-order            层的先后靠样式表的顺序：index.html（和样式清单页）第一个样式表是 css/tokens.css，tokens.css 的第一条是 @layer 先后
+                         声明；index.html 引了 css/ 下的每个文件（硬规则）
+ 20 tint-writer          --tint 只经 ui/tint.js 的 setTint() 写（它同时加 .tint）；别的模块不出现 --tint（硬规则）
 
 基线（tools/frontend_baseline.json）按「文件 + 内容特征」登记（导入边、字段名、每个文件的数量），不按行号，
 所以文件里别处的改动不会让它失效。基线只能缩小：`--shrink` 只调低、不新增；`--base-ref REF` 在基线比 REF
@@ -40,6 +44,7 @@ tools/check_all.sh 两个都带上。新规则就是 new_rules() 里多一个 Ru
 已知盲区（文本级检查做不到）：规则 2 认不出 `state[key]`、`Object.assign(state, …)` 和解构写法，名为 state
 的函数参数会被误报；正则字面量与除号靠前一个字符判断，`if (ok) /re/.test(s)` 这种写法会被当成除号。规则 8 不查
 JS 里拼的内联样式、index.html 的 style 属性和 var() 的回退值；同一个字面量在别处删掉一处、新增一处，数量不变，查不出来。
+规则 8 在 css/ 下给的改法只在新代码能用的档位里找（字号 11/12/13/20/28/40，圆角 4/8/12/18），和规则 13 一致。
 规则 13 只看 font-weight、font、font-size、border-radius、box-shadow、transition、animation 这几类声明，别处声明的自定义属性
 （`.x{--shadow:…}`）不查；box-shadow 里不带模糊的描边环不算阴影。规则 17 按能力清单（COMPAT_FEATURES）找，清单之外的新能力查不出来。
 """
@@ -297,7 +302,7 @@ def new_rules():
              '--ease-spring（循环动画 infinite 不查）；字号只用 11 / 12 / 13 / 20 / 28 / 40；圆角 2 / 6 / 10 / 14 / 16 冻结给旧样式。'
              'app.css 里的旧档位已冻结为基线，不得新增；css/ 下没有基线。',
              '按每处箭头后的提示改用对应的令牌，不要往基线里添加。改好存量的一处后运行 `python tools/check_frontend.py --shrink`。'),
-        Rule('css-layer', '13', 'css/ 下的样式写在了自己的 @layer 外面',
+        Rule('css-layer', '18', 'css/ 下的样式写在了自己的 @layer 外面',
              '层的先后由 css/tokens.css 第一行的 `@layer legacy, tokens, base, pages, overlays;` 定（#705）。没有层的样式比所有层都强，'
              '会盖过新部件，也让 legacy 层的旧样式失去「最低」的位置。所以 css/ 下每个文件整个写在一个 @layer 里：tokens.css 在 tokens，'
              'base.css 在 base，overlays.css 在 overlays，其余各页的文件在 pages；层的顺序只在 tokens.css 第一行声明。没有基线。',
@@ -309,10 +314,11 @@ def new_rules():
              'app.css 现有的已冻结为基线，不得新增。',
              '给要选的元素加一个专门的类（或 data- 特性）直接选；:has() 改成 :has(> …) 这种只看子节点、相邻节点的写法，或由 JS 在父节点上写一个状态类。'),
         Rule('css-var', '15', '样式里用了没有定义的 CSS 变量',
-             'var(--名) 引用的变量必须有定义（#705）：在 css/tokens.css 里，在同一个文件里（部件自己的局部变量），或在 tools/check_frontend.py 的 '
-             'JS_VARIABLES 里登记为「由 JS 写的变量」（如 --tint）。没定义的变量取不到值，整条声明失效，又不会报错（#317 时发现过从未定义的 --panel）。没有基线。',
-             '拼错了就改对；是令牌就成对加进 css/tokens.css；是部件内部的变量就在同一个文件里给出默认值；由 JS 写的，加进 JS_VARIABLES 并写明哪个文件写它。'
-             '别的文件里的局部变量不能借用，要共用就挪进 tokens.css。',
+             'var(--名) 引用的变量必须有定义（#705）：在 css/tokens.css 里，或在 tools/check_frontend.py 的 JS_VARIABLES 里登记为「由 JS 写的变量」'
+             '（如 --tint、--p）。没定义的变量取不到值，整条声明失效，又不会报错（#317 时发现过从未定义的 --panel）。css/ 下不认文件里自己声明的局部变量：'
+             '`--x: 13px` 这种声明规则 8、13 都不查，借它就绕过了三档令牌。只有 app.css 还认同一个文件里的旧局部变量（--gutter）。没有基线。',
+             '拼错了就改对；是令牌就成对加进 css/tokens.css（先在 Issue 里问）；由 JS 写的，加进 JS_VARIABLES 并写明哪个文件写它；'
+             '部件里想用的局部变量直接写成令牌，或者把那个值直接写在属性上（规则 8、13 会查它）。',
              baselined=False),
         Rule('backdrop-filter', '16', 'backdrop-filter 写在了玻璃表面以外',
              '磨砂玻璃只给浮层（#685、#705）：每个带 backdrop-filter 的元素各占一块显存，卡片上的模糊在长列表里会把显存吃满（#683）。所以 backdrop-filter '
@@ -322,9 +328,23 @@ def new_rules():
         Rule('css-compat', '17', 'Safari 17.0 没有的 CSS 能力写在了登记的增强块以外',
              'macOS 14.0 的 WKWebView 按 Safari 17.0 算（docs/WEB_V2.md「兼容底线」）。没有的能力只作增强：写在探测它的 @supports 里'
              '（@starting-style 这类测不出来的，块本身就是增强块），块前面紧挨着一段写明退路的注释（含「退路」二字），退路就是块外面已经写好的样子。'
-             'CSS 嵌套（17.2）和相对颜色语法（rgb(from …)，Safari 18 之前和规范不一致）不用。没有基线。',
+             '`@supports not (…)` 不算增强块。CSS 嵌套（17.2）、相对颜色语法（rgb(from …)，Safari 18 之前和规范不一致）和 ::backdrop 里的 var()'
+             '（Safari 17.4 之前 ::backdrop 不从元素继承自定义属性）不用。没有基线。',
              '把用到新能力的声明挪进 `@supports (能力) { … }`，前面加 `/* 增强：…（Safari 版本）。退路：… */`；块外面写好不支持时的样子。'
-             '嵌套的规则展开成完整的选择器；相对颜色改用 color-mix()。能力清单在 tools/check_frontend.py 的 COMPAT_FEATURES。',
+             '嵌套的规则展开成完整的选择器；相对颜色改用 color-mix()；::backdrop 里写死色值（或在对话框外层元素上画遮罩）。'
+             '能力清单在 tools/check_frontend.py 的 COMPAT_FEATURES。',
+             baselined=False),
+        Rule('css-order', '19', '样式表的先后不对：层的先后会变',
+             '层的先后按每个层名第一次出现的顺序定（#705）。css/tokens.css 第一条是 `@layer legacy, tokens, base, pages, overlays;`，'
+             '它必须是页面上第一个样式表、并且这条声明在 tokens.css 里任何块之前；否则先出现的层排在前面，旧样式反过来盖住新部件，规则 18 查不出来。'
+             'css/ 下新加的文件也要在 web/static/index.html 里引上。没有基线。',
+             '把 `<link rel="stylesheet" href="/css/tokens.css">` 放在 index.html 所有样式表的最前面（样式清单页 tools/styleguide/index.html 同样）；'
+             'tokens.css 的层声明挪回第一条；新文件在 index.html 里 base.css 之后照现有顺序加一行 <link>。',
+             baselined=False),
+        Rule('tint-writer', '20', '在 ui/tint.js 以外写了 --tint',
+             '图的主色只经 ui/tint.js 的 setTint(el, color) 写（#705）：它写 --tint 并给元素加 .tint，派生的底色才会在那个元素上重算；'
+             '只写 --tint、漏了 .tint 不会报错，只会静悄悄地退回中性色。没有基线。',
+             "改成 `import {setTint} from './tint.js'`（core/ 不碰 DOM，交给 ui/ 写）后 `setTint(el, color)`；去掉颜色用 `setTint(el, null)`。",
              baselined=False),
     ]}
 
@@ -625,6 +645,14 @@ class CssAdvisor:
             if HEX_RE.fullmatch(value) or COLOR_FN_RE.match(value):
                 self.colors.setdefault(_normal_color(value), []).append(name)
 
+    def restrict(self):
+        """只在新代码能用的档位里给建议（css/ 下的文件，和规则 13 一致）。"""
+        self.font = {v: n for v, n in self.font.items() if NEW_FONT_SIZES.get(int(v)) == n}
+        self.display = {v: n for v, n in self.display.items() if NEW_FONT_SIZES.get(int(v)) == n}
+        self.radius = {v: n for v, n in self.radius.items() if int(v) in NEW_RADII}
+        self.restricted = True
+        return self
+
     @staticmethod
     def _px(literal):
         m = re.fullmatch(r'-?(\d+\.?\d*|\.\d+)px', literal)
@@ -636,7 +664,8 @@ class CssAdvisor:
 
     def _ask(self, what, scale, value, prefix):
         near = f'最近的一档是 var({_nearest(scale, value, self.uses, prefix)})；' if scale else ''
-        return f'没有 {what} 这一档（现有档位 {self._scale(scale)}）：{near}确需这个值，先在 Issue 里问是否新增档位'
+        tiers = '新写的界面能用的档位' if getattr(self, 'restricted', False) else '现有档位'
+        return f'没有 {what} 这一档（{tiers} {self._scale(scale)}）：{near}确需这个值，先在 Issue 里问是否新增档位'
 
     def font_size(self, literal):
         px = self._px(literal)
@@ -692,10 +721,12 @@ def css_literals(files):
         files = {CSS_FILE: files}
     parsed = {path: css_declarations(raw) for path, raw in files.items()}
     token_decls = parsed.get(TOKENS_FILE) or [d for ds in parsed.values() for d in ds]
-    advisor = CssAdvisor(token_decls, '\n'.join(files.values()))
+    legacy = CssAdvisor(token_decls, '\n'.join(files.values()))
+    current = CssAdvisor(token_decls, '\n'.join(files.values())).restrict()
     found = []
     for path, declarations in parsed.items():
         prefix = '' if path == CSS_FILE else f'{path}: '
+        advisor = legacy if path == CSS_FILE else current
         for d in declarations:
             custom = d.prop.startswith('--')
             if custom and path == TOKENS_FILE:
@@ -846,8 +877,8 @@ def scale_issues(declarations):
     return found
 
 
-# --------------------------------------------------------------------- 规则 13（层）、14、15、16、17：样式文件的结构
-# 规则 13（层）：css/ 下各文件所在的层；层的先后只在 tokens.css 第一行声明。
+# ------------------------------------------------------------- 规则 14、15、16、17、18、19、20：样式文件的结构
+# 规则 18（层）：css/ 下各文件所在的层；层的先后只在 tokens.css 第一行声明。
 LAYER_ORDER = ('legacy', 'tokens', 'base', 'pages', 'overlays')
 FILE_LAYERS = {TOKENS_FILE: 'tokens', 'css/base.css': 'base', 'css/overlays.css': 'overlays'}
 # 规则 15：由 JS 写进元素 style 的变量（样式里只引用，不在 CSS 里定义）。每项写明谁写它；不再有人写时删掉。
@@ -962,11 +993,11 @@ def _comment_before(raw, offset):
 
 
 def structure_issues(path, raw):
-    """规则 13（层）、14、16、17：[(规则, 基线键, 行号, 内容, 怎么改)]。"""
+    """规则 14、16、17、18（层）、19（tokens.css 里声明的位置）：[(规则, 基线键, 行号, 内容, 怎么改)]。"""
     blocks, statements, decls = css_blocks(raw)
     found = []
     in_css = path.startswith('css/')
-    # 规则 13（层）
+    # 规则 18（层）
     if in_css:
         want = FILE_LAYERS.get(path, 'pages')
         declaration = f'@layer {", ".join(LAYER_ORDER)}'
@@ -976,10 +1007,18 @@ def structure_issues(path, raw):
                               f'这里只能有 `@layer 名{{ … }}` 一块；层的顺序只在 {TOKENS_FILE} 第一行写成 `{declaration};`'))
         if path == TOKENS_FILE and not any(t.replace(' ', '') == declaration.replace(' ', '') for t, _ in statements):
             found.append(('css-layer', f'{path}: 没有层的声明', 1, '', f'第一行写 `{declaration};`'))
+        # 规则 19：层的声明要在任何块之前，否则先出现的块的层排到前面
+        lines = [l for t, l in statements if t.replace(' ', '') == declaration.replace(' ', '')]
+        if path == TOKENS_FILE and lines and blocks and blocks[0].line <= lines[0]:
+            found.append(('css-order', f'{path}: 层的声明不在最前', lines[0], declaration,
+                          f'把 `{declaration};` 挪到 {path} 的第一条，在 `@layer tokens{{` 之前'))
         for b in blocks:
             if b.parent == -1 and b.prelude != f'@layer {want}':
                 found.append(('css-layer', f'{path}: {b.prelude[:40]}', b.line, b.prelude,
                               f'{path} 的规则整个写在 `@layer {want}{{ … }}` 里'))
+            elif b.parent != -1 and b.prelude.startswith('@layer'):
+                found.append(('css-layer', f'{path}: 嵌套的 {b.prelude[:30]}', b.line, b.prelude,
+                              f'不要在层里再开层（会变成 {want}.子层）：规则直接写在 `@layer {want}{{ … }}` 里'))
     # 规则 14
     for b in blocks:
         if b.prelude.startswith('@'):
@@ -1000,7 +1039,8 @@ def structure_issues(path, raw):
     def enhanced(chain, probe):
         """chain 里有探测 probe 的 @supports（或 probe 为 None 时 chain 的某一块就是那个能力的块），并且那一块前面写了退路。"""
         for b in chain:
-            hit = (b.prelude.startswith('@supports') and probe and probe.lower() in b.prelude.lower()) or (probe is None and b is chain[-1])
+            positive = b.prelude.startswith('@supports') and not re.match(r'@supports\s+not\b', b.prelude)
+            hit = (positive and probe and probe.lower() in b.prelude.lower()) or (probe is None and b is chain[-1])
             if hit and '退路' in _comment_before(raw, b.start):
                 return True
         return False
@@ -1017,6 +1057,9 @@ def structure_issues(path, raw):
                 found.append(('css-compat', f'{path}: {name}', b.line, b.prelude, _compat_fix(name, probe)))
     for index, prop, value, line in decls:
         chain = _chain(blocks, index)
+        if 'var(' in value and any('::backdrop' in b.prelude for b in chain):
+            found.append(('css-compat', f'{path}: ::backdrop 里的 var()', line, f'{prop}: {value[:60]}',
+                          'Safari 17.4 之前 ::backdrop 不继承自定义属性，var() 取不到值：写死色值，或在对话框外层元素上画遮罩'))
         if RELATIVE_COLOR_RE.search(value):
             found.append(('css-compat', f'{path}: 相对颜色语法', line, f'{prop}: {value[:60]}',
                           '相对颜色语法在 Safari 18 之前和规范不一致：改用 color-mix()'))
@@ -1035,12 +1078,12 @@ def _compat_fix(name, probe):
 
 
 def undefined_variables(files):
-    """规则 15：[(文件, 变量名, 行号)]。定义处：css/tokens.css、同一个文件里的声明、JS_VARIABLES。"""
+    """规则 15：[(文件, 变量名, 行号)]。定义处：css/tokens.css、JS_VARIABLES；app.css 另外认同一个文件里的声明。"""
     shared = set(JS_VARIABLES)
     local = {}
     for path, raw in files.items():
         names = {d.prop for d in css_declarations(raw) if d.prop.startswith('--')}
-        local[path] = names
+        local[path] = names if path == CSS_FILE else set()
         if path == TOKENS_FILE:
             shared |= names
     found = []
@@ -1049,6 +1092,36 @@ def undefined_variables(files):
         for m in VAR_NAME_RE.finditer(text):
             if m.group(1) not in shared and m.group(1) not in local[path]:
                 found.append((path, m.group(1), text.count('\n', 0, m.start()) + 1))
+    return found
+
+
+# 规则 19：引样式表的页面（相对仓库根）和每个页面里第一个样式表应有的地址。
+STYLE_PAGES = {'web/static/index.html': '/css/tokens.css', 'tools/styleguide/index.html': '../../web/static/css/tokens.css'}
+LINK_RE = re.compile(r'<link\b[^>]*\brel=["\']?stylesheet["\']?[^>]*>', re.I)
+HREF_RE = re.compile(r'\bhref=["\']([^"\']+)["\']', re.I)
+TINT_HOME = 'ui/tint.js'
+
+
+def load_pages(root):
+    """{相对仓库根的路径: 文字}：引样式表的页面（不存在的跳过）。"""
+    return {rel: (root / rel).read_text(encoding='utf-8') for rel in STYLE_PAGES if (root / rel).exists()}
+
+
+def stylesheet_order(pages, css_files):
+    """规则 19：[(页面, 基线键, 内容, 怎么改)]。"""
+    found = []
+    for rel, html in pages.items():
+        hrefs = [HREF_RE.search(m.group(0)).group(1) for m in LINK_RE.finditer(re.sub(r'<!--.*?-->', '', html, flags=re.S))
+                 if HREF_RE.search(m.group(0))]
+        want = STYLE_PAGES[rel]
+        if not hrefs or hrefs[0] != want:
+            found.append((rel, f'{rel}: 第一个样式表不是 tokens.css', f'第一个样式表是 {hrefs[0] if hrefs else "（没有）"}',
+                          f'把 <link rel="stylesheet" href="{want}"> 放在所有样式表的最前面'))
+        if rel == 'web/static/index.html':
+            for path in sorted(css_files):
+                if path.startswith('css/') and f'/{path}' not in hrefs:
+                    found.append((rel, f'{rel}: 没有引 {path}', f'没有 <link href="/{path}">',
+                                  f'在 base.css 之后照现有顺序加一行 <link rel="stylesheet" href="/{path}">'))
     return found
 
 
@@ -1061,8 +1134,18 @@ def load_css(root):
             for pattern in CSS_GLOBS for path in sorted(base.glob(pattern))}
 
 
-def run_rules(sources, css=None):
+def run_rules(sources, css=None, pages=None):
     rules = new_rules()
+    # 规则 19：页面里样式表的先后
+    for rel, key, text, how in stylesheet_order(pages or {}, css or {}):
+        rules['css-order'].add(key, f'{rel}: {text}  → {how}')
+    # 规则 20：--tint 只经 ui/tint.js 写
+    for p, s in sources.items():
+        if p == TINT_HOME:
+            continue
+        for m in re.finditer(r'--tint(?![\w-])', s.code):
+            line = s.line_of(m.start())
+            rules['tint-writer'].add(p, f'{STATIC}/{p}:{line}: {s.raw_line(line)[:110]}')
     if isinstance(css, str):
         css = {CSS_FILE: css}
     for path, raw in (css or {}).items():
@@ -1217,7 +1300,7 @@ def baseline_at(root, ref):
 
 def check(root=ROOT, baseline=None):
     """返回 (errors, stale)。传入 `baseline` 时覆盖基线文件（测试用）。"""
-    rules = run_rules(load_sources(root), load_css(root))
+    rules = run_rules(load_sources(root), load_css(root), load_pages(root))
     if baseline is None:
         baseline = load_baseline(root)
     if baseline is None:
@@ -1256,7 +1339,7 @@ def main(argv=None):
     parser.add_argument('--strict-stale', action='store_true', help='把基线里已不再出现的项算作失败')
     args = parser.parse_args(argv)
     root = args.root
-    rules = run_rules(load_sources(root), load_css(root))
+    rules = run_rules(load_sources(root), load_css(root), load_pages(root))
     if args.init:
         if (root / BASELINE).exists():
             print('基线已存在；只能用 --shrink 缩小。', file=sys.stderr)

@@ -27,10 +27,10 @@
   --fav:#e5484d;--on-image:#fff;
   /* 不随主题变化的状态色 */
   --ok:#34c38f;--bad:#d9534f;--err:#b5523b;
-  /* 0.4 新增（#705）：强调色底上的文字；海报上的文字阴影与压暗渐变；浮层的磨砂玻璃（没有 backdrop-filter 时用 solid） */
-  --on-accent:#fff;--image-text-shadow:0 1px 8px rgba(12,12,18,.3);--scrim:linear-gradient(180deg,rgba(12,12,18,0) 35%,rgba(12,12,18,.62));
+  /* 0.4 新增（#705）：新部件的强调色底（亮色比 --accent-btn 略深，白字到 4.6:1）和底上的文字；海报上的文字阴影与压暗渐变；浮层的磨砂玻璃（没有 backdrop-filter 时用 solid） */
+  --accent-fill:#676bcd;--on-accent:#fff;--image-text-shadow:0 1px 8px rgba(12,12,18,.3);--scrim:linear-gradient(180deg,rgba(12,12,18,0) 35%,rgba(12,12,18,.62));
   --glass-surface:rgba(255,255,255,.72);--glass-solid:rgba(255,255,255,.96);
-  /* 图的主色（#705）：JS 把每张图的主色写进元素的 --tint，并给元素加 .tint，派生的底色在文件末尾的 .tint 块里算；没写时是中性色 */
+  /* 图的主色（#705）：由 ui/tint.js 的 setTint() 写进元素的 --tint 并加 .tint，派生的底色在文件末尾的 .tint 块里算；没写时是中性色 */
   --tint:#9a9aa6}
 /* 暗色主题：html[data-theme=dark]，由 theme.js 设置；颜色成对写在这里，规则里只引用变量。 */
 :root[data-theme=dark]{--tour-dim:rgba(0,0,0,.66);
@@ -55,7 +55,7 @@
   --select-arrow:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Cpath d='m6 8 4 4 4-4' fill='none' stroke='%238d8d96' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
   --r18-on:#2a0f17;
   --fav:#ff6b6f;--on-image:#fff;
-  --on-accent:#14142a;--glass-surface:rgba(40,40,45,.72);--glass-solid:rgba(40,40,45,.97);--tint:#8a8a96}
+  --accent-fill:#8286e6;--on-accent:#14142a;--glass-surface:rgba(40,40,45,.72);--glass-solid:rgba(40,40,45,.97);--tint:#8a8a96}
 /* TOKENS-BEGIN */
 /* 字号 --fs-N、圆角 --radius-N、间距 --space-N（gap 与 padding 共用）、控件高度 --h-N、层级 --z-*：数字就是 px 值。新写的值取最近的一档，不要再写档位之外的数。 */
 :root{--fs-10:10px;--fs-11:11px;--fs-12:12px;--fs-13:13px;--fs-14:14px;--fs-15:15px;--fs-16:16px;--fs-20:20px;--fs-22:22px}
@@ -66,7 +66,8 @@
 /* 展示字号：大标题、空状态、启动页等一次性的大字，不进正文档位；--h-N 只用于按钮、输入框、下拉等控件的高度，头像缩略图和图标底板的尺寸不在其内。 */
 :root{--fs-display-17:17px;--fs-display-18:18px;--fs-display-21:21px;--fs-display-26:26px;--fs-display-28:28px;--fs-display-30:30px;--fs-display-32:32px;--fs-display-40:40px;--fs-display-72:72px}
 :root{--h-28:28px;--h-32:32px;--h-36:36px}
-/* 字重三档（#705）：正文；强调、节标题；展示字号。Windows 的雅黑只有常规和粗体，600、750 都画成粗体。 */
+/* 字重三档（#705）：正文；强调、节标题；展示字号。三档只对西文都分得开：中文字体只有两档（Windows 的雅黑只有常规和粗体，
+   Mac 的苹方没有粗体、最粗是中粗），600 和 750 在中文上是同一档，标题靠字号拉开层次。 */
 :root{--fw-400:400;--fw-600:600;--fw-750:750}
 /* 动效（#705）：时长三档，出场比进场短；--ease 给所有进出场、展开、换页，--ease-spring 带回弹，只给活页条标签和「弹一下」这类强调动作。
    系统开了「减少动态效果」时时长都是 0；ui/motion.js 另外直接判断这个设置，Web Animations 也直接到终态。 */
@@ -79,11 +80,12 @@
   --shadow-dialog:0 0 0 .5px rgba(255,255,255,.08),0 30px 80px -26px rgba(0,0,0,.8)}
 /* TOKENS-END */
 /* 由 --tint 派生的底色（#705）：color-mix()，不用相对颜色语法（Safari 18 之前和规范不一致）。自定义属性里的 var() 在声明它的元素上
-   就算好了，所以这几项要在写了 --tint 的元素上重新算：JS 写 --tint 时给元素加 .tint。:root 上的是没有图时的中性色。
+   就算好了，所以这几项要在写了 --tint 的元素上重新算：--tint 只经 ui/tint.js 的 setTint() 写，它同时加 .tint。海报、头像这两种
+   直接用 --tint-soft 的部件也在这里重算，写在部件本身上同样生效。:root 上的是没有图时的中性色。
    wash：作品卡、日历格的底；soft：缩略图读完之前的占位；glow：环境光；shadow：悬停时彩色投影的颜色。 */
-:root,.tint{--tint-wash:color-mix(in srgb,var(--tint) 9%,var(--sheet));--tint-soft:color-mix(in srgb,var(--tint) 22%,var(--soft));
+:root,.tint,.poster,.avatar{--tint-wash:color-mix(in srgb,var(--tint) 9%,var(--sheet));--tint-soft:color-mix(in srgb,var(--tint) 22%,var(--soft));
   --tint-glow:color-mix(in srgb,var(--tint) 45%,transparent);--tint-shadow:color-mix(in srgb,var(--tint) 55%,transparent)}
 .tint{--shadow-hover:0 1px 2px rgba(var(--sh),.06),0 22px 40px -18px var(--tint-shadow)}
-:root[data-theme=dark],:root[data-theme=dark] .tint{--tint-wash:color-mix(in srgb,var(--tint) 14%,var(--sheet));--tint-soft:color-mix(in srgb,var(--tint) 26%,var(--soft));
+:root[data-theme=dark],:root[data-theme=dark] .tint,:root[data-theme=dark] .poster,:root[data-theme=dark] .avatar{--tint-wash:color-mix(in srgb,var(--tint) 14%,var(--sheet));--tint-soft:color-mix(in srgb,var(--tint) 26%,var(--soft));
   --tint-glow:color-mix(in srgb,var(--tint) 30%,transparent);--tint-shadow:color-mix(in srgb,var(--tint) 45%,transparent)}
 }

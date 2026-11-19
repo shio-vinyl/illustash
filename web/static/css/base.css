@@ -9,7 +9,7 @@
 
 /* ---- 排版：大字标题三档 + 次要文字 ---- */
 .title-hero{margin:0;font-size:var(--fs-display-40);font-weight:var(--fw-750);letter-spacing:-.025em;line-height:1.1}
-.title-page{margin:0;font-size:var(--fs-display-28);font-weight:var(--fw-750);letter-spacing:-.025em;line-height:1.1}
+.title-page{margin:0;font-size:var(--fs-display-28);font-weight:var(--fw-750);letter-spacing:-.025em;line-height:1.1;overflow-wrap:anywhere}
 .title-section{margin:0;font-size:var(--fs-20);font-weight:var(--fw-750);letter-spacing:-.02em;line-height:1.2}
 .text-meta{color:var(--muted);font-size:var(--fs-11)}
 
@@ -24,8 +24,8 @@
   transition:background-color var(--dur-1) var(--ease),color var(--dur-1) var(--ease),box-shadow var(--dur-1) var(--ease)}
 .btn{height:var(--h-32);padding:0 var(--space-14);background:var(--soft);color:var(--ink2);font-weight:var(--fw-600);cursor:pointer}
 .btn:hover{background:var(--chip-hover);color:var(--ink)}
-.btn.is-primary{background:var(--accent-btn);color:var(--on-accent)}
-.btn.is-primary:hover{background:var(--accent-btn);filter:var(--btn-hover-filter)}
+.btn.is-primary{background:var(--accent-fill);color:var(--on-accent)}
+.btn.is-primary:hover{background:var(--accent-fill);filter:var(--btn-hover-filter)}
 .btn.is-quiet{background:transparent}
 .btn.is-quiet:hover{background:var(--wash-hover)}
 .btn.is-small{height:var(--h-28);padding:0 var(--space-12)}
@@ -38,6 +38,8 @@ button.chip:hover,a.chip:hover{background:var(--chip-hover);color:var(--ink)}
 .chip:has(> .avatar:first-child){padding-left:var(--space-4)}
 .chip>.avatar{width:20px;height:20px}
 .chip>.chip-count{color:var(--muted);font-size:var(--fs-11)}
+/* 选中的芯片底色换成强调色浅底，计数跟着文字色走（--muted 在 --accent-soft 上暗色只有 4.0:1） */
+.chip[aria-pressed=true]>.chip-count,.chip[aria-selected=true]>.chip-count,.chip[aria-current]>.chip-count{color:inherit}
 .seg{display:inline-flex;align-items:center;gap:var(--space-2);padding:var(--space-4);border-radius:var(--radius-pill);background:var(--soft)}
 .seg>button{height:var(--h-28);padding:0 var(--space-12);background:transparent;color:var(--ink2);font-weight:var(--fw-400);cursor:pointer}
 .seg>button:hover{color:var(--ink)}
@@ -53,10 +55,9 @@ button.chip:hover,a.chip:hover{background:var(--chip-hover);color:var(--ink)}
 .search:focus-within{box-shadow:0 0 0 2px var(--accent)}
 .btn:focus-visible,.chip:focus-visible,.seg>button:focus-visible,.glass-bar>button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 
-/* ---- 页头：大标题 + 副标题 + 右侧控件组，下面最多一行工具 ---- */
+/* ---- 页头：大标题 + 副标题 + 右侧控件组，下面最多一行工具。大标题就是 .title-page，不另起一套 ---- */
 .page-head{display:flex;align-items:flex-end;gap:var(--space-16);padding:var(--space-24) 0 var(--space-14)}
 .page-head>hgroup{min-width:0}
-.page-head .page-title{margin:0;font-size:var(--fs-display-28);font-weight:var(--fw-750);letter-spacing:-.025em;line-height:1.1;overflow-wrap:anywhere}
 .page-head .page-sub{margin:var(--space-4) 0 0;color:var(--muted);font-size:var(--fs-12)}
 .page-actions{display:flex;align-items:center;gap:var(--space-8);margin-left:auto}
 .page-tools{display:flex;align-items:center;gap:var(--space-8);padding:0 0 var(--space-16)}
@@ -85,7 +86,7 @@ a.poster:hover>img,button.poster:hover>img{transform:scale(1.04)}
 .avatar-ring{position:relative;display:inline-grid;flex:none;width:68px;height:68px;padding:var(--space-4);border-radius:var(--radius-round);
   background:conic-gradient(var(--accent) calc(var(--p,0) * 1%),var(--accent-soft) 0)}
 .avatar-ring>.avatar{width:100%;height:100%;box-shadow:0 0 0 2px var(--sheet)}
-.avatar-ring>em{position:absolute;right:-4px;bottom:-2px;padding:var(--space-1) var(--space-6);border-radius:var(--radius-pill);background:var(--accent-btn);color:var(--on-accent);
+.avatar-ring>em{position:absolute;right:-4px;bottom:-2px;padding:var(--space-1) var(--space-6);border-radius:var(--radius-pill);background:var(--accent-fill);color:var(--on-accent);
   font-size:var(--fs-11);font-style:normal;font-weight:var(--fw-750);line-height:1.2;box-shadow:0 0 0 2px var(--sheet)}
 
 /* ---- 玻璃表面（只给浮层），和浮在图上的玻璃按钮组（翻页、收藏、放大、关闭） ----
@@ -96,6 +97,11 @@ a.poster:hover>img,button.poster:hover>img{transform:scale(1.04)}
 @supports (backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px)){
   .glass{background:var(--glass-surface);-webkit-backdrop-filter:blur(26px) saturate(1.7);backdrop-filter:blur(26px) saturate(1.7)}
   .glass-bar{background:var(--glass-surface);-webkit-backdrop-filter:blur(14px) saturate(1.6);backdrop-filter:blur(14px) saturate(1.6)}
+}
+/* 系统要求降低透明度时不用模糊、用不透明底（Safari 还不认这个媒体查询，在那里不生效；规则 16 只许在 .glass、.glass-bar 上写模糊） */
+@media (prefers-reduced-transparency:reduce){
+  .glass{background:var(--glass-solid);-webkit-backdrop-filter:none;backdrop-filter:none}
+  .glass-bar{background:var(--glass-solid);-webkit-backdrop-filter:none;backdrop-filter:none}
 }
 .glass-bar>button{display:grid;place-items:center;width:28px;height:var(--h-28);margin:0;padding:0;border:0;border-radius:var(--radius-pill);background:transparent;color:inherit;
   font:inherit;box-shadow:none;cursor:pointer;transition:background-color var(--dur-1) var(--ease),color var(--dur-1) var(--ease)}

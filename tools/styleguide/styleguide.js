@@ -140,6 +140,10 @@ async function staleCheck() {
   try {
     const hex = async buf => [...new Uint8Array(await crypto.subtle.digest('SHA-256', buf))].map(b => b.toString(16).padStart(2, '0')).join('');
     const files = C.files || {};
+    // css/ 下新加、census 里还没有的文件：从仓库根起的 http.server 会列目录
+    const listing = await (await fetch('../../web/static/css/', {cache: 'no-store'})).text();
+    const present = [...listing.matchAll(/href="([\w-]+\.css)"/g)].map(m => `css/${m[1]}`);
+    if (present.some(path => !(path in files))) { $('sg-stale').classList.add('on'); return; }
     for (const [path, sha] of Object.entries(files)) {
       const css = await (await fetch(`../../web/static/${path}`, {cache: 'no-store'})).arrayBuffer();
       if (await hex(css) !== sha) { $('sg-stale').classList.add('on'); return; }

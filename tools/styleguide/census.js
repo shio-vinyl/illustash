@@ -3,7 +3,7 @@ window.CENSUS = {
  "source": "web/static/app.css、web/static/css/base.css、web/static/css/catalog.css、web/static/css/character.css、web/static/css/detail.css、web/static/css/galleries.css、web/static/css/library.css、web/static/css/overlays.css、web/static/css/rail.css、web/static/css/settings.css、web/static/css/tidy.css、web/static/css/tokens.css",
  "files": {
   "app.css": "978319a989dbcdfe0e6c6765fde6e63fc9fded619a963052e42f3daff0946ced",
-  "css/base.css": "05045318116dcab66585eaa68e63e92f244591e99f06d886c824a634581e3a97",
+  "css/base.css": "58a5c76dd6b2c66bf1374bfd9597071db081731f83362c3ec9057760cc36d1e0",
   "css/catalog.css": "6af407c23feb8360ce625efb0c23a632e6d405ac0ca90ec378a5665f40a7df88",
   "css/character.css": "52eaf299dfeb41d32014564d83057a714061e8970e67356a9631efc1dc087a71",
   "css/detail.css": "439c47e1b2aa2368b4f5977f34c88ad68603448d98534548e97172bdf6d3064d",
@@ -13,11 +13,11 @@ window.CENSUS = {
   "css/rail.css": "7cac41acced0786321a39126e8600dd7ad3571785a374641a074f211193104a5",
   "css/settings.css": "f4308d031d40a2d389ce6477ebdd14cbd1d5292358f311fe56406034ffd475f6",
   "css/tidy.css": "0dae765ffbd6e5e96298c7b5ad97a2d9a64c085d13ae8bd0ad0d82c49e536bec",
-  "css/tokens.css": "e68b38b89e0047dc9931999153f2cd2e1fc54e7cb9554598d170449f834f1502"
+  "css/tokens.css": "ab5cbeb02f1a7698ba0942dbb02c7b11addb0b63812b8e85bbb49d0400646214"
  },
- "sha256": "dd749d8cbf7432f1e5af915ed8e1b7944f58929cacb96fed15c452bf87ebd04d",
- "lines": 1614,
- "rules": 1327,
+ "sha256": "db04a90dcde6b662244213d8c39a9bcc48e9342dc46a9e443ecf185505321028",
+ "lines": 1622,
+ "rules": 1329,
  "themeVars": {
   "light": {
    "--canvas": "#f4f4f6",
@@ -92,6 +92,7 @@ window.CENSUS = {
    "--ok": "#34c38f",
    "--bad": "#d9534f",
    "--err": "#b5523b",
+   "--accent-fill": "#676bcd",
    "--on-accent": "#fff",
    "--image-text-shadow": "0 1px 8px rgba(12,12,18,.3)",
    "--scrim": "linear-gradient(180deg,rgba(12,12,18,0) 35%,rgba(12,12,18,.62))",
@@ -169,6 +170,7 @@ window.CENSUS = {
    "--r18-on": "#2a0f17",
    "--fav": "#ff6b6f",
    "--on-image": "#fff",
+   "--accent-fill": "#8286e6",
    "--on-accent": "#14142a",
    "--glass-surface": "rgba(40,40,45,.72)",
    "--glass-solid": "rgba(40,40,45,.97)",
@@ -261,7 +263,7 @@ window.CENSUS = {
    "--tone-amber-bg": 1,
    "--mono": 4,
    "--radius-14": 15,
-   "--accent-btn": 16,
+   "--accent-btn": 13,
    "--ok": 3,
    "--bad": 4,
    "--radius-18": 6,
@@ -297,7 +299,7 @@ window.CENSUS = {
    "--fs-display-26": 2,
    "--fs-display-72": 1,
    "--p": 2,
-   "--fs-display-28": 3,
+   "--fs-display-28": 2,
    "--z-page-1": 2,
    "--h-28": 5,
    "--fs-display-30": 1,
@@ -313,9 +315,10 @@ window.CENSUS = {
    "--fs-display-32": 1,
    "--fs-display-18": 1,
    "--depth": 1,
-   "--fw-750": 7,
+   "--fw-750": 6,
    "--dur-1": 5,
    "--fw-600": 3,
+   "--accent-fill": 3,
    "--on-accent": 2,
    "--fw-400": 2,
    "--shadow-hover": 3,
@@ -324,7 +327,7 @@ window.CENSUS = {
    "--dur-3": 2,
    "--scrim": 1,
    "--image-text-shadow": 1,
-   "--glass-solid": 2,
+   "--glass-solid": 4,
    "--shadow-pop": 1,
    "--glass-surface": 2,
    "--tint": 8,
@@ -439,8 +442,9 @@ window.CENSUS = {
     ]
    },
    {
-    "title": "0.4 新增（#705）：强调色底上的文字；海报上的文字阴影与压暗渐变；浮层的磨砂玻璃（没有 backdrop-filter 时用 solid）",
+    "title": "0.4 新增（#705）：新部件的强调色底（亮色比 --accent-btn 略深，白字到 4.6:1）和底上的文字；海报上的文字阴影与压暗渐变；浮层的磨砂玻璃（没有 backdrop-filter 时用 solid）",
     "names": [
+     "--accent-fill",
      "--on-accent",
      "--image-text-shadow",
      "--scrim",
@@ -449,7 +453,7 @@ window.CENSUS = {
     ]
    },
    {
-    "title": "图的主色（#705）：JS 把每张图的主色写进元素的 --tint，并给元素加 .tint，派生的底色在文件末尾的 .tint 块里算；没写时是中性色",
+    "title": "图的主色（#705）：由 ui/tint.js 的 setTint() 写进元素的 --tint 并加 .tint，派生的底色在文件末尾的 .tint 块里算；没写时是中性色",
     "names": [
      "--tint"
     ]
@@ -481,7 +485,7 @@ window.CENSUS = {
    {
     "name": "--fs-display-28",
     "value": "28px",
-    "uses": 3
+    "uses": 2
    },
    {
     "name": "--fs-display-30",
@@ -778,7 +782,7 @@ window.CENSUS = {
    {
     "name": "--fw-750",
     "value": "750",
-    "uses": 7
+    "uses": 6
    }
   ],
   "shadow": [
@@ -1207,7 +1211,7 @@ window.CENSUS = {
  "rgbaCalls": 109,
  "fontSize": {
   "kinds": 22,
-  "uses": 299,
+  "uses": 298,
   "table": [
    {
     "value": "0",
@@ -1341,11 +1345,10 @@ window.CENSUS = {
    },
    {
     "value": "var(--fs-display-28)",
-    "uses": 3,
+    "uses": 2,
     "examples": [
      ".cast-head h2",
-     ".title-page",
-     ".page-head .page-title"
+     ".title-page"
     ]
    },
    {

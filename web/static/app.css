@@ -1,62 +1,9 @@
-:root{font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI","PingFang SC",sans-serif;color:var(--ink);background:var(--canvas);font-size:var(--fs-13);font-synthesis:none;font-variant-numeric:tabular-nums;
-  --canvas:#f4f4f6;--sheet:#fff;--ink:#1b1b1f;--ink2:#46464e;--muted:#8b8b94;--faint:#b8b8c0;--line:#e8e8ec;--hair:rgba(20,20,35,.08);--soft:#f2f2f5;
-  --accent:#7c80d8;--accent-btn:#6a6ecf;--accent-soft:#efeffb;--accent-ink:#4f52b0;--warn:#e08a2c;--r18:#e0466e;--r18-soft:#fdeaf0;--sh:20,20,35;
-  --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,monospace;--ease:cubic-bezier(.2,.8,.2,1);
-  --sheet-shadow:0 0 0 1px var(--hair),0 1px 2px rgba(var(--sh),.03),0 12px 32px -16px rgba(var(--sh),.16);
-  /* 警告/提示色调：底色 + 文字，成对使用（错误条、核对提示、关系类型徽标） */
-  --tone-warn-bg:#fdf3e7;--tone-warn-ink:#8a5a22;--tone-sand-bg:#f6ecd8;--tone-sand-ink:#7a6a3e;--tone-amber-bg:#fbf1de;--tone-amber-ink:#9a6b1f;
-  --tone-steel-bg:#eaf0f8;--tone-steel-ink:#4a6fa5;--tone-indigo-bg:#dedff1;--tone-indigo-ink:#2d3073;--tone-blue-bg:#e1ebf6;--tone-blue-ink:#2f5f93;
-  --tone-lilac-bg:#f1ecf4;--tone-lilac-ink:var(--muted);--tone-purple-bg:#efe4f3;--tone-purple-ink:#744a86;--tone-clay-bg:#f7e9dc;
-  --tone-clay-ink:#98572a;
-  /* 图上标签芯片：自动标签（待确认/已确认/已否定）与建议标签 */
-  --atag-open-bg:#eef0fbf2;--atag-open-ink:#3a3f86;--atag-open-ring:#6f76c966;--atag-yes-bg:#e9f6eef2;--atag-yes-ink:#2f7a4f;--atag-no-bg:#fbeceaf2;
-  --atag-no-ink:#a8453d;--hint-bg:#fffffff0;--hint-ink:#282b64;--hint-ring:#282b6455;--hint-bg-hover:#282b64;--glass-chip:rgba(255,255,255,.8);
-  /* 浮层表面：磨砂条、提示条、菜单分组、启动页 */
-  --glass-head:rgba(255,255,255,.88);--bar-bg:rgba(24,24,30,.86);--toast-bg:rgba(24,24,30,.88);--menu-group:var(--sheet);
-  --splash-bg:radial-gradient(120% 90% at 50% 42%,#fff 0%,#f6f5fd 55%,#ecebf9 100%);
-  /* 控件状态：开关、分段控件、悬停、徽标、滚动条 */
-  --switch-off:#d4d4da;--view-sw-off:rgba(var(--sh),.14);--seg-on:var(--sheet);--wash-hover:rgba(var(--sh),.03);--chip-hover:#e0e0e5;--palette-hover:#e2e2e7;
-  --btn-hover-filter:brightness(.96);--badge-bg:var(--soft);--badge-ink:var(--ink2);--tag-on-ink:var(--accent);--scroll-thumb:#d7d7de;
-  --select-arrow:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Cpath d='m6 8 4 4 4-4' fill='none' stroke='%238b8b94' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
-  --r18-on:#fff;
-  /* 收藏（#447）：心形的颜色；图片上的图标用的白色 */
-  --fav:#e5484d;--on-image:#fff;
-  /* 不随主题变化的状态色 */
-  --ok:#34c38f;--bad:#d9534f;--err:#b5523b}
-/* 暗色主题：html[data-theme=dark]，由 theme.js 设置；颜色成对写在这里，规则里只引用变量。 */
-:root[data-theme=dark]{color-scheme:dark;color:#ededf1;background:var(--canvas);--tour-dim:rgba(0,0,0,.66);
-  --canvas:#1d1d21;--sheet:#28282d;--ink:#eeeef2;--ink2:#c8c8d0;--muted:#9a9aa3;--faint:#6d6d76;--line:#3a3a41;--hair:rgba(255,255,255,.09);--soft:#323238;
-  --accent:#a1a4f3;--accent-btn:#8286e6;--accent-soft:#35375f;--accent-ink:#c0c2ff;--warn:#f0a04b;--r18:#ff6b8f;--r18-soft:#48262f;--sh:0,0,0;
-  --sheet-shadow:0 0 0 1px var(--hair),0 12px 32px -16px rgba(0,0,0,.45);
-  /* 警告/提示色调：底色 + 文字，成对使用（错误条、核对提示、关系类型徽标） */
-  --tone-warn-bg:#35271a;--tone-warn-ink:#f0c68a;--tone-sand-bg:#3a2f18;--tone-sand-ink:#eac27a;--tone-amber-bg:#3a2f18;--tone-amber-ink:#eac27a;
-  --tone-steel-bg:#1c2a40;--tone-steel-ink:#8dbbff;--tone-indigo-bg:#25264a;--tone-indigo-ink:#b9bbff;--tone-blue-bg:#1c2a40;--tone-blue-ink:#8dbbff;
-  --tone-lilac-bg:#2b2433;--tone-lilac-ink:#d0b4dd;--tone-purple-bg:#2d2236;--tone-purple-ink:#c9a0dc;--tone-clay-bg:#36271a;--tone-clay-ink:#eab28a;
-  /* 图上标签芯片：自动标签（待确认/已确认/已否定）与建议标签 */
-  --atag-open-bg:rgba(70,74,130,.85);--atag-open-ink:#e4e6ff;--atag-open-ring:#8f95e066;--atag-yes-bg:rgba(40,90,62,.85);--atag-yes-ink:#d4f2df;
-  --atag-no-bg:rgba(110,46,42,.85);--atag-no-ink:#f6d8d4;--hint-bg:rgba(46,46,52,.9);--hint-ink:var(--accent-ink);--hint-ring:var(--accent);
-  --hint-bg-hover:var(--accent-btn);--glass-chip:rgba(46,46,52,.82);
-  /* 浮层表面：磨砂条、提示条、菜单分组、启动页 */
-  --glass-head:rgba(40,40,45,.88);--bar-bg:rgba(58,58,66,.9);--toast-bg:rgba(58,58,66,.94);--menu-group:#34343a;
-  --splash-bg:radial-gradient(120% 90% at 50% 42%,#2b2b33 0%,#222227 55%,#1b1b1f 100%);
-  /* 控件状态：开关、分段控件、悬停、徽标、滚动条 */
-  --switch-off:#46464e;--view-sw-off:rgba(255,255,255,.16);--seg-on:#42424a;--wash-hover:rgba(255,255,255,.04);--chip-hover:var(--soft);--palette-hover:var(--soft);
-  --btn-hover-filter:brightness(1.12);--badge-bg:var(--accent-soft);--badge-ink:var(--accent-ink);--tag-on-ink:var(--accent-ink);
-  --scroll-thumb:#4a4a52;
-  --select-arrow:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Cpath d='m6 8 4 4 4-4' fill='none' stroke='%238d8d96' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
-  --r18-on:#2a0f17;
-  --fav:#ff6b6f;--on-image:#fff}
-/* TOKENS-BEGIN */
-/* 字号 --fs-N、圆角 --radius-N、间距 --space-N（gap 与 padding 共用）、控件高度 --h-N、层级 --z-*：数字就是 px 值。新写的值取最近的一档，不要再写档位之外的数。 */
-:root{--fs-10:10px;--fs-11:11px;--fs-12:12px;--fs-13:13px;--fs-14:14px;--fs-15:15px;--fs-16:16px;--fs-20:20px;--fs-22:22px}
-:root{--radius-2:2px;--radius-4:4px;--radius-6:6px;--radius-8:8px;--radius-10:10px;--radius-12:12px;--radius-14:14px;--radius-16:16px;--radius-18:18px;--radius-pill:999px;--radius-round:50%}
-:root{--space-1:1px;--space-2:2px;--space-4:4px;--space-6:6px;--space-8:8px;--space-10:10px;--space-12:12px;--space-14:14px;--space-16:16px;--space-20:20px;--space-24:24px}
-/* 层级由低到高：页面内局部叠放 < 浮动条 < 浮层 < 抽屉 < 菜单 < 全屏浮层 < 提示条 < 引导 < 启动页；只能新增档位，不要改数值的先后。 */
-:root{--z-page-1:1;--z-page-2:2;--z-page-3:3;--z-page-4:4;--z-page-5:5;--z-page-6:6;--z-bar:10;--z-popover:20;--z-drawer:25;--z-menu:30;--z-overlay:40;--z-toast:60;--z-guide-checklist:790;--z-guide-nudge:800;--z-guide-tour:900;--z-splash:1000}
-/* 展示字号：大标题、空状态、启动页等一次性的大字，不进正文档位；--h-N 只用于按钮、输入框、下拉等控件的高度，头像缩略图和图标底板的尺寸不在其内。 */
-:root{--fs-display-17:17px;--fs-display-18:18px;--fs-display-21:21px;--fs-display-26:26px;--fs-display-28:28px;--fs-display-30:30px;--fs-display-32:32px;--fs-display-40:40px;--fs-display-72:72px}
-:root{--h-28:28px;--h-32:32px;--h-36:36px}
-/* TOKENS-END */
+/* 旧样式（0.4 之前）：整个在最低的 legacy 层（#705），新样式在 css/ 下各层，不用和这里的选择器比权重。各页步骤重写一块，就删掉这里对应的旧规则。
+   令牌已挪到 css/tokens.css；这里不再新增规则。 */
+@layer legacy{
+:root{font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI","PingFang SC",sans-serif;color:var(--ink);background:var(--canvas);font-size:var(--fs-13);font-synthesis:none;font-variant-numeric:tabular-nums}
+/* 暗色主题：html[data-theme=dark]，由 theme.js 设置；颜色令牌在 css/tokens.css。 */
+:root[data-theme=dark]{color-scheme:dark;color:#ededf1;background:var(--canvas)}
 *{box-sizing:border-box}
 body{margin:0;background:var(--canvas)}
 body.dragging{user-select:none;cursor:crosshair}
@@ -1222,7 +1169,7 @@ body:has(#settingsPage:not([hidden])) .nudge,body:has(#selectionBar:not([hidden]
 .aa-summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:var(--space-8);margin:4px 0 10px}
 .aa-summary em{font-style:normal;font-size:var(--fs-13);color:var(--muted);font-weight:400}
 .aa-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:var(--space-12);margin-top:12px}
-.aa-card{display:flex;flex-direction:column;border:1px solid var(--line);border-radius:var(--radius-10);overflow:hidden;background:var(--panel,transparent)}
+.aa-card{display:flex;flex-direction:column;border:1px solid var(--line);border-radius:var(--radius-10);overflow:hidden;background:transparent}
 .aa-card.yes{border-color:color-mix(in srgb,#3c8d5a 55%,var(--line))}
 .aa-card.no{border-color:color-mix(in srgb,var(--err) 55%,var(--line))}
 .aa-img{position:relative;display:block;background:var(--line);aspect-ratio:1;overflow:hidden}
@@ -1417,3 +1364,4 @@ dialog.index-add{width:min(720px,calc(100vw - 32px))}
 .net-table td:last-child{min-width:9.5em}
 .net-table .link-button.strong{font-size:inherit;text-align:left}
 .lib-path-hint{word-break:break-all}
+}

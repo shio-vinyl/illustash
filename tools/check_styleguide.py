@@ -6,11 +6,11 @@ index.html 里 `data-sg-live` 的舞台），和照模板手写的（index.html 
 AGENTS.md 要求写界面前先看这页、照它复用类名，所以它一过期就会把代理带偏。本脚本只做便宜的机械检查，
 接在 tools/check_all.sh 和 ci.yml 里：
 
-  1 census     census.js 必须等于 census.py 对当前 app.css 的输出（app.css 改了没重跑、手改 census.js 都会报）
-  2 class      index.html 里元素用到的类，必须在 web/static/app.css 里有样式；
+  1 census     census.js 必须等于 census.py 对当前样式的输出（样式改了没重跑、手改 census.js 都会报）
+  2 class      index.html 里元素用到的类，必须在 web/static 的样式（app.css 和 css/ 下的文件，#705）里有样式；
                页面外壳的类（sg- 前缀，以及 styleguide.css 里挂在 .sg-* 选择器上的修饰类）必须在 styleguide.css 里有定义；
                只给 JS 当钩子、本来就没有样式的类登记在 HOOK_CLASSES，并且必须仍出现在 web/static 的代码里
-  3 listed     条目标题里 <span class="sg-cls"> 列出的 `.类名`，同样必须在 app.css 里有样式
+  3 listed     条目标题里 <span class="sg-cls"> 列出的 `.类名`，同样必须在 web/static 的样式里有
   4 live       live.js 从 web/static 导入的每个名字，在那个文件里确实导出（产品代码改名、删导出会报）；
                live.js 的 SHELLS 列的外壳 id 在 web/static/index.html 里存在；
                index.html 的 data-sg-live 和 live.js 的 sample('名字', …) 一一对应；
@@ -28,11 +28,11 @@ import re
 import sys
 
 ROOT = Path(__file__).resolve().parents[1]
-APP_CSS = Path('web/static/app.css')
 STATIC = Path('web/static')
+STYLES = 'web/static 的样式（app.css 和 css/ 下的文件）'
 GUIDE = Path('tools/styleguide')
 CENSUS_FIX = '运行 `python3 tools/styleguide/census.py`，把改写后的 tools/styleguide/census.js 一起提交'
-# 样例照抄了应用模板里的这些类：它们只给 JS 当选择器或钩子，app.css 里本来没有样式。
+# 样例照抄了应用模板里的这些类：它们只给 JS 当选择器或钩子，样式里本来没有。
 # 每项写明出处；应用代码里不再用它时检查会报，届时从这里和样例里一起删掉。
 HOOK_CLASSES = {
     'more-control': 'ui/shell.js 更多菜单的点外关闭判断',
@@ -75,7 +75,7 @@ def shell_classes(css_text):
 
     修饰类是页面外壳自己的非 sg- 类：和 .sg-* 写在同一个复合选择器里（`.sg-stage.col`），
     或者挂在 .sg-* 下面、带元素名的复合选择器里（`.sg-table td.n`）。
-    其余非 sg- 类（如 `.sg-frozen .toast` 的 toast）是在改写应用组件，必须仍在 app.css 里。
+    其余非 sg- 类（如 `.sg-frozen .toast` 的 toast）是在改写应用组件，必须仍在 web/static 的样式里。
     """
     sg, modifiers, app = set(), set(), {}
     for selector, _, _ in CENSUS.parse_rules(CENSUS.strip_comments(css_text)):
@@ -166,7 +166,7 @@ def _lines(lines):
 
 def check_census(root):
     path = root / GUIDE / 'census.js'
-    raw = (root / APP_CSS).read_bytes().decode('utf-8')
+    raw = CENSUS.read_files(root)
     expected = CENSUS.render(raw)
     if not path.is_file():
         return [f'[样式清单 · census] 缺少 {GUIDE}/census.js。改法：{CENSUS_FIX}。']
@@ -178,14 +178,14 @@ def check_census(root):
     lines = re.search(r'"lines":\s*(\d+)', actual)
     if not recorded or recorded.group(1) != now['sha256']:
         was = f'{lines.group(1) if lines else "?"} 行、sha256 {recorded.group(1)[:12] if recorded else "（未记录）"}'
-        return [f'[样式清单 · census] census.js 过期：统计时的 app.css 是 {was}，现在是 {now["lines"]} 行、'
-                f'sha256 {now["sha256"][:12]}。app.css 改过之后没有重跑统计，清单页的令牌表会是旧的。改法：{CENSUS_FIX}。']
-    return [f'[样式清单 · census] census.js 与 census.py 现在的输出不一致，但 app.css 没变：census.js 被手改过，'
+        return [f'[样式清单 · census] census.js 过期：统计时的样式是 {was}，现在是 {now["lines"]} 行、'
+                f'sha256 {now["sha256"][:12]}。{STYLES}改过之后没有重跑统计，清单页的令牌表会是旧的。改法：{CENSUS_FIX}。']
+    return [f'[样式清单 · census] census.js 与 census.py 现在的输出不一致，但样式没变：census.js 被手改过，'
             f'或者改了 census.py 的口径没有重跑。改法：{CENSUS_FIX}，不要手改 census.js。']
 
 
 def check_classes(root):
-    app = selector_classes((root / APP_CSS).read_text(encoding='utf-8'))
+    app = set().union(*(selector_classes(text) for text in CENSUS.read_files(root).values()))
     shell, modifiers, overrides = shell_classes((root / GUIDE / 'styleguide.css').read_text(encoding='utf-8'))
     page = _Page()
     page.feed((root / GUIDE / 'index.html').read_text(encoding='utf-8'))
@@ -206,20 +206,20 @@ def check_classes(root):
             missing_listed.setdefault(name, []).append(line)
     errors = []
     for name, lines in sorted(missing.items()):
-        errors.append(f'[样式清单 · class] {GUIDE}/index.html 第 {_lines(lines)} 行：样例用了类 .{name}，web/static/app.css 里没有它的样式。'
-                      '约定：样例是给人和代理照抄的，只能用 app.css 现有的类；类改名或删掉时要同步改这页。'
-                      '改法：照 app.css 现在的类名改样例；类已删就删掉这个样例或换成替代写法；'
+        errors.append(f'[样式清单 · class] {GUIDE}/index.html 第 {_lines(lines)} 行：样例用了类 .{name}，{STYLES}里没有它的样式。'
+                      '约定：样例是给人和代理照抄的，只能用样式里现有的类；类改名或删掉时要同步改这页。'
+                      '改法：照样式现在的类名改样例；类已删就删掉这个样例或换成替代写法；'
                       '如果它只是 JS 钩子、本来就没有样式，把它加进 tools/check_styleguide.py 的 HOOK_CLASSES 并写明出处。')
     for name, lines in sorted(missing_shell.items()):
         errors.append(f'[样式清单 · class] {GUIDE}/index.html 第 {_lines(lines)} 行：页面外壳类 .{name} 在 {GUIDE}/styleguide.css 里没有定义。'
                       '改法：在 styleguide.css 里补上，或改用已有的 sg- 类；sg- 前缀只给清单页自己用，不要拿来画应用组件。')
     for name, lines in sorted(missing_listed.items()):
-        errors.append(f'[样式清单 · listed] {GUIDE}/index.html 第 {_lines(lines)} 行：条目标题列出了 .{name}，web/static/app.css 里没有它的样式。'
-                      '改法：照 app.css 现在的类名改标题里的 <code>，类已删就从标题里去掉。')
+        errors.append(f'[样式清单 · listed] {GUIDE}/index.html 第 {_lines(lines)} 行：条目标题列出了 .{name}，{STYLES}里没有它的样式。'
+                      '改法：照样式现在的类名改标题里的 <code>，类已删就从标题里去掉。')
     for name, selector in sorted(overrides.items()):
         if name not in app and name not in modifiers:
-            errors.append(f'[样式清单 · class] {GUIDE}/styleguide.css 的选择器 `{selector}` 引用了 .{name}，web/static/app.css 里已经没有它。'
-                          '改法：按 app.css 现在的类名改这条覆盖；组件已删就删掉这条。')
+            errors.append(f'[样式清单 · class] {GUIDE}/styleguide.css 的选择器 `{selector}` 引用了 .{name}，{STYLES}里已经没有它。'
+                          '改法：按样式现在的类名改这条覆盖；组件已删就删掉这条。')
     code = '\n'.join(p.read_text(encoding='utf-8') for pattern in ('*.html', '*.js', 'core/*.js', 'ui/*.js')
                      for p in sorted((root / STATIC).glob(pattern)))
     for name, where in sorted(HOOK_CLASSES.items()):

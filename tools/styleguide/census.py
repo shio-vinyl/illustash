@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""统计 web/static/app.css 实际用到的取值，供样式清单页（tools/styleguide/index.html，#318）使用。
+"""统计 web/static 的样式（app.css 和 css/ 下的全部文件，#705）实际用到的取值，供样式清单页（tools/styleguide/index.html，#318）使用。
 
 生成 tools/styleguide/census.js（`window.CENSUS = {...}`），页面用普通的 <script> 读它，所以从 file:// 直接
-打开也不需要服务器和构建步骤。app.css 一改就要重跑；`python3 tools/check_styleguide.py` 会拦下没重跑的情况：
+打开也不需要服务器和构建步骤。样式一改就要重跑；`python3 tools/check_styleguide.py` 会拦下没重跑的情况：
 
     python3 tools/styleguide/census.py          # 改写 census.js
     python3 tools/styleguide/census.py --print  # 只打印摘要，不写文件
@@ -13,9 +13,10 @@
     `10.5px` 和 `11px` 是两种取值，清单页要的正是这个；
   * 字号另读 `font:` 简写里的字号；圆角、gap、padding、z-index 读同名属性；
     高度只数 `height` / `min-height` 里写死的 px 和 `var(--h-N)`（不是每个有高度的元素都是控件）；
-  * 颜色表读两个主题块（`:root{...}` 和 `:root[data-theme=dark]{...}`），块里的注释作为分组标题；
-  * 令牌表读 `/* TOKENS-BEGIN */` 与 `/* TOKENS-END */` 之间的 `:root` 块（#317），引用次数是 `var(--名字)` 的个数；
-  * `sha256` 是 app.css 的字节哈希，检查脚本据此判断 census.js 是否过期。
+  * 颜色表读 css/tokens.css 的两个主题块（第一个 `:root{...}` 和 `:root[data-theme=dark]{...}`），块里的注释作为分组标题；
+  * 令牌表读 css/tokens.css 里 `/* TOKENS-BEGIN */` 与 `/* TOKENS-END */` 之间的块（#317、#705），亮色在 `:root`，
+    暗色另写在 `:root[data-theme=dark]` 的（阴影）记在 dark 里；引用次数是全部样式里 `var(--名字)` 的个数；
+  * `files` 是各文件的字节哈希，`sha256` 是它们合起来的哈希，检查脚本和清单页据此判断 census.js 是否过期。
 
 本模块可以被导入（tools/check_styleguide.py 用 `render()` 在内存里重算一遍做比较），导入时不读写任何文件。
 """
@@ -27,12 +28,20 @@ from collections import Counter, defaultdict
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-CSS = Path('web/static/app.css')
+STATIC = Path('web/static')
+CSS_GLOBS = ('app.css', 'css/*.css')  # 相对 web/static
+TOKENS = 'css/tokens.css'
 OUT = Path('tools/styleguide/census.js')
-HEADER = '// 由 tools/styleguide/census.py 从 web/static/app.css 生成，不要手改。\n'
+HEADER = '// 由 tools/styleguide/census.py 从 web/static/app.css 和 web/static/css/ 生成，不要手改。\n'
 # 令牌族：按前缀归类，长前缀在前（--fs-display- 要先于 --fs- 匹配）。
 TOKEN_FAMILIES = (('fsDisplay', '--fs-display-'), ('fs', '--fs-'), ('radius', '--radius-'), ('space', '--space-'),
-                  ('h', '--h-'), ('z', '--z-'))
+                  ('h', '--h-'), ('z', '--z-'), ('fw', '--fw-'), ('shadow', '--shadow-'), ('dur', '--dur-'), ('ease', '--ease'))
+
+
+def read_files(root=ROOT):
+    """{相对 web/static 的路径: 文字}：app.css 和 css/ 下的全部样式，按路径排好。"""
+    base = root / STATIC
+    return {p.relative_to(base).as_posix(): p.read_bytes().decode('utf-8') for pattern in CSS_GLOBS for p in sorted(base.glob(pattern))}
 
 
 def strip_comments(css):
@@ -50,8 +59,9 @@ def parse_rules(css, context=''):
         while depth and j < n:
             depth += {'{': 1, '}': -1}.get(css[j], 0)
             j += 1
-        prelude, body = css[head:pos].strip(), css[pos + 1:j - 1]
-        if prelude.startswith(('@media', '@supports')):
+        # 前导里可能先有顶层的语句（`@layer a, b;`），只取最后一个 `;` 之后的部分
+        prelude, body = css[head:pos].rsplit(';', 1)[-1].strip(), css[pos + 1:j - 1]
+        if prelude.startswith(('@media', '@supports', '@layer')):
             rules.extend(parse_rules(body, prelude))
         elif not prelude.startswith('@'):  # @keyframes 的各帧不是组件样式
             rules.append((prelude, body, context))
@@ -163,23 +173,37 @@ def theme_groups(raw, header):
 
 
 def token_table(raw, var_uses):
-    """TOKENS-BEGIN/END 之间声明的令牌，按族分好：{族: [{name, value, uses}]}。"""
+    """TOKENS-BEGIN/END 之间声明的令牌，按族分好：{族: [{name, value, uses[, dark]}]}。暗色另写的值记在 dark 里。"""
     m = re.search(r'/\*\s*TOKENS-BEGIN\s*\*/(.*?)/\*\s*TOKENS-END\s*\*/', raw, flags=re.S)
     tokens = {family: [] for family, _ in TOKEN_FAMILIES}
     if not m:
         return tokens
-    for _, body, _ in parse_rules(strip_comments(m.group(1))):
+    found = {}
+    for selector, body, context in parse_rules(strip_comments(m.group(1))):
+        if context:
+            continue  # @media 里的（「减少动态效果」时的时长）不是档位
+        dark = 'data-theme=dark' in selector
         for name, value in declarations(body):
             family = next((f for f, prefix in TOKEN_FAMILIES if name.startswith(prefix)), None)
-            if family:
-                tokens[family].append({'name': name, 'value': norm(value), 'uses': var_uses.get(name, 0)})
+            if not family:
+                continue
+            if dark and name in found:
+                found[name]['dark'] = norm(value)
+            elif not dark:
+                found[name] = {'name': name, 'value': norm(value), 'uses': var_uses.get(name, 0)}
+                tokens[family].append(found[name])
     return tokens
 
 
-def build(raw):
-    """由 app.css 的文字算出 census 数据（dict）。"""
+def build(files):
+    """由各样式文件的文字（{路径: 文字}）算出 census 数据（dict）。只给一段文字时当作 app.css。"""
+    if isinstance(files, str):
+        files = {'app.css': files}
+    raw = '\n'.join(files.values())
+    tokens_raw = files.get(TOKENS, raw)
     css = strip_comments(raw)
     rules = parse_rules(css)
+    token_rules = {(sel, body) for sel, body, _ in parse_rules(strip_comments(files.get(TOKENS, '')))}
     fs, rad, gap, pad, hei, zi, lit = Tally(), Tally(), Tally(), Tally(), Tally(), Tally(), Tally()
     dark_overrides = 0
     for sel, body, _ in rules:
@@ -206,23 +230,25 @@ def build(raw):
             if not prop.startswith('--'):
                 for h in re.findall(r'#[0-9a-fA-F]{3,8}\b', v):
                     lit.add(h.lower(), sel)
-        if dark and top_selector(sel) != ':root[data-theme=dark]':  # 变量块本身不算覆盖
+        if dark and top_selector(sel) != ':root[data-theme=dark]' and (sel, body) not in token_rules:  # 变量块本身不算覆盖
             dark_overrides += 1
     # background-image 的 url(...) 里，# 颜色按百分号编码写成 %23，不会被上面数进去，这是对的。
     var_uses = Counter(re.findall(r'var\((--[\w-]+)', css))
-    light_groups = theme_groups(raw, ':root{')
-    dark_groups = theme_groups(raw, ':root[data-theme=dark]{')
+    light_groups = theme_groups(tokens_raw, ':root{')
+    dark_groups = theme_groups(tokens_raw, ':root[data-theme=dark]{')
     light = {k: v for _, group in light_groups for k, v in group.items()}
     dark = {k: v for _, group in dark_groups for k, v in group.items()}
     by_height = lambda kv: (num(kv[0].split(': ')[1]), kv[0])
+    hashes = {path: hashlib.sha256(text.encode('utf-8')).hexdigest() for path, text in files.items()}
     return {
-        'source': CSS.as_posix(),
-        'sha256': hashlib.sha256(raw.encode('utf-8')).hexdigest(),
-        'lines': raw.count('\n') + 1,
+        'source': '、'.join(f'{STATIC.as_posix()}/{path}' for path in files),
+        'files': hashes,
+        'sha256': hashlib.sha256(''.join(f'{path} {digest}\n' for path, digest in hashes.items()).encode('utf-8')).hexdigest(),
+        'lines': sum(text.count('\n') + 1 for text in files.values()),
         'rules': len(rules),
         'themeVars': {'light': light, 'dark': dark, 'uses': dict(var_uses),
                       'groups': [{'title': title, 'names': list(group)} for title, group in light_groups]},
-        'tokens': token_table(raw, var_uses),
+        'tokens': token_table(tokens_raw, var_uses),
         'darkOverrideRules': dark_overrides,
         'literalHexColors': lit.summary(limit=60),
         'rgbaCalls': len(re.findall(r'rgba?\(', css)),
@@ -235,14 +261,14 @@ def build(raw):
     }
 
 
-def render(raw):
+def render(files):
     """census.js 应有的完整文字。"""
-    return HEADER + 'window.CENSUS = ' + json.dumps(build(raw), ensure_ascii=False, indent=1) + ';\n'
+    return HEADER + 'window.CENSUS = ' + json.dumps(build(files), ensure_ascii=False, indent=1) + ';\n'
 
 
 def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
-    raw = (ROOT / CSS).read_bytes().decode('utf-8')
+    raw = read_files()
     if '--print' in argv:
         data = build(raw)
         for k in ('fontSize', 'radius', 'gap', 'padding', 'height', 'zIndex', 'literalHexColors'):

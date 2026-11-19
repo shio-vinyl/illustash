@@ -4,8 +4,11 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Illustash 样式清单</title>
-<!-- 用的是真实的 web/static/app.css，没有另画一套样式。页面自己的外壳在 styleguide.css（全部带 sg- 前缀）。 -->
+<!-- 用的是真实的 web/static 样式（css/tokens.css 定层的先后，app.css 在最低的 legacy 层，css/base.css 是 0.4 的公共部件），没有另画一套。
+     页面自己的外壳在 styleguide.css（全部带 sg- 前缀，和 app.css 同在 legacy 层，所以和旧组件的先后与以前一样）。 -->
+<link rel="stylesheet" href="../../web/static/css/tokens.css">
 <link rel="stylesheet" href="../../web/static/app.css">
+<link rel="stylesheet" href="../../web/static/css/base.css">
 <link rel="stylesheet" href="styleguide.css">
 </head>
 <body>
@@ -23,9 +26,12 @@
   <a href="#about">关于这页</a>
   <div class="sg-group">令牌</div>
   <a href="#tok-color">颜色</a><a href="#tok-font">字号</a><a href="#tok-rad">圆角</a><a href="#tok-sp">间距 gap / padding</a><a href="#tok-h">控件高度</a><a href="#tok-zi">层级 z-index</a>
-  <div class="sg-group">组件</div>
+  <a href="#tok-new">字重 · 阴影 · 动效 · 图的颜色</a>
+  <div class="sg-group">新部件（0.4，css/base.css）</div>
+  <a href="#n-type">排版与表面</a><a href="#n-controls">胶囊控件与选中</a><a href="#n-head">页头与空状态</a><a href="#n-poster">海报与头像</a><a href="#n-glass">玻璃</a>
+  <div class="sg-group">组件（旧样式，重做中）</div>
   <a href="#c-buttons">按钮</a><a href="#c-forms">输入与开关</a><a href="#c-chips">芯片 · 标签 · 徽标</a><a href="#c-banners">提示条</a>
-  <div class="sg-group">带行为的壳</div>
+  <div class="sg-group">带行为的壳（旧样式，重做中）</div>
   <a href="#s-dialogs">对话框</a><a href="#s-pops">浮层菜单</a><a href="#s-tasks">任务面板</a><a href="#s-toast">toast · 选择栏</a><a href="#s-detail">详情栏</a><a href="#s-other">其它外壳</a>
   <div class="sg-group">附录</div>
   <a href="#x-dups">并行写法一览</a><a href="#x-dead">拼出来的类</a>
@@ -35,24 +41,24 @@
 
 <section id="about">
   <h2>关于这页：是什么，怎么用</h2>
-  <p class="sg-warn sg-stale" id="sg-stale"><b>census.js 过期了。</b>app.css 和统计时不同，令牌表是旧的。重新运行 <code>python3 tools/styleguide/census.py</code>（<code>python3 tools/check_styleguide.py</code> 也会报出这一条）。</p>
+  <p class="sg-warn sg-stale" id="sg-stale"><b>census.js 过期了。</b>样式（app.css、css/）和统计时不同，令牌表是旧的。重新运行 <code>python3 tools/styleguide/census.py</code>（<code>python3 tools/check_styleguide.py</code> 也会报出这一条）。</p>
   <p class="sg-lead"><b>给人看：</b>设计是否统一，一眼比较。<b>给代理看：</b>写新界面前先在这里找现成的写法，复用，不要自己造新类名、新数值。找不到合适的，先在 Issue 里问（见 <code>AGENTS.md</code>）。</p>
-  <p class="sg-lead"><b>样式是真的：</b>页面直接引用 <code>web/static/app.css</code>，没有第二套 CSS。<b>结构分两种，每个条目标题旁都标了是哪种：</b></p>
+  <p class="sg-lead"><b>样式是真的：</b>页面直接引用 <code>web/static/css/tokens.css</code>、<code>app.css</code> 和 <code>css/base.css</code>，没有第二套 CSS。<b>结构分两种，每个条目标题旁都标了是哪种：</b></p>
   <p class="sg-lead"><span class="sg-tag live">调用生成</span> 由 <code>live.js</code> 直接调用 <code>web/static/ui/*.js</code> 里生成组件的函数画出来，和应用里一模一样，不会和代码脱节：全部对话框（<code>openDialog</code> 上的 7 个，加命令面板、关系对比 / 按相似细分、快捷键帮助）、视图选项、作品弹层、任务面板、toast、选择栏、提问条。应用页面里写好的外壳（<code>#toast</code>、<code>#picker</code>…）从 <code>web/static/index.html</code> 原样取来；要读接口的，由 <code>live.js</code> 里的桩回答合成数据。生成之后克隆一份摆进页面，所以是静态的：点了不会做什么。产品代码改了、样例画不出来时，舞台里会写明原因。</p>
   <p class="sg-lead"><span class="sg-tag hand">手写</span> 没有可以单独调用的生成函数（按钮、输入、芯片这些散落在各模板里的写法，标签弹层、更多菜单、详情栏、侧栏、顶栏、图片卡、设置卡、引导、查看器、海报），HTML 是对着模板手抄的；“来源”一栏写了文件和函数名，改模板时回头对一下。</p>
   <p class="sg-lead"><b>有检查兜底：</b><code>tools/check_styleguide.py</code>（接在 <code>tools/check_all.sh</code> 和 CI 里）要求样例和条目标题用到的每个类都在 <code>app.css</code> 里有样式、<code>census.js</code> 和当前 <code>app.css</code> 一致；<code>live.js</code> 导入的每个函数在 <code>web/static</code> 里确实导出、要取的外壳 id 还在、每个舞台都有对应的样例，每个条目都标了来源。改名或删掉一个类或函数、改了 <code>app.css</code> 没重跑统计，都会报出具体的位置和改法。它查不出手写样例的<b>结构</b>和模板不一致，这一点仍要靠“来源”一栏人工对照。</p>
   <p class="sg-lead"><b>怎么打开：</b>在仓库根目录运行 <code>python3 -m http.server 8000</code>，再打开 <code>/tools/styleguide/</code>：调用生成的样例要这样才看得到（浏览器不从 <code>file://</code> 加载 ES 模块），页面也会检查令牌统计是否过期。直接用浏览器打开本文件（<code>file://</code>）也行，只是只有令牌表和手写样例。顶部可切换亮色 / 暗色，和应用里的 <code>html[data-theme]</code> 是同一个机制。</p>
   <p class="sg-lead"><b>不进发布包：</b><code>packaging/build.py</code> 只复制 <code>web/static/</code>，本页在 <code>tools/styleguide/</code>，不会被打进去；迁移清点（<code>tools/migration_inventory.py</code>）也把这个目录当开发工具，不算生产代码。</p>
   <p class="sg-lead"><b>浮层怎么摆在页面里：</b>应用里的 toast、选择栏、任务面板、弹出菜单是 <code>position:fixed/absolute</code>，对话框要 <code>showModal()</code>。这里用 <code>.sg-frozen</code> 把定位和入场动画关掉（<code>styleguide.css</code> 里每条一行），其余样式不动；对话框是不经 <code>showModal()</code> 打开的 <code>&lt;dialog open&gt;</code>，所以没有遮罩。</p>
-  <p class="sg-lead"><b>数字的口径：</b>令牌表由 <code>census.py</code> 从 <code>app.css</code> 数出来：令牌的“引用”是 <code>var(--名字)</code> 出现的次数；“档位之外”的取值是一处 = 一条规则里的一条声明，取值只做 <code>!important</code> / <code>0.5→.5</code> 的规范化，<b>不合并相近的取值</b>。<span id="census-meta"></span>。按钮写法的次数是 <code>ui/*.js</code> 与 <code>index.html</code> 里字面的 <code>&lt;button class="…"&gt;</code> 个数（2026-11-12 的 main），动态拼出来的类名不在内。</p>
+  <p class="sg-lead"><b>数字的口径：</b>令牌表由 <code>census.py</code> 从 <code>app.css</code> 和 <code>css/</code> 下的文件数出来：令牌的“引用”是 <code>var(--名字)</code> 出现的次数；“档位之外”的取值是一处 = 一条规则里的一条声明，取值只做 <code>!important</code> / <code>0.5→.5</code> 的规范化，<b>不合并相近的取值</b>。<span id="census-meta"></span>。按钮写法的次数是 <code>ui/*.js</code> 与 <code>index.html</code> 里字面的 <code>&lt;button class="…"&gt;</code> 个数（2026-11-12 的 main），动态拼出来的类名不在内。</p>
 </section>
 
 <!-- ======================= 令牌 ======================= -->
 <section id="tok-color">
   <h2>令牌 · 颜色</h2>
-  <p class="sg-lead">颜色变量写在 <code>app.css</code> 开头的 <code>:root</code> 里，按用途分组；暗色在 <code>:root[data-theme=dark]</code> 里成对换值。<b>规则里只引用变量</b>，不写十六进制色，暗色就不用再单独覆盖。新颜色先找现成的一组；确实没有，在两个块里成对加一个变量。</p>
+  <p class="sg-lead">颜色变量写在 <code>css/tokens.css</code> 开头的 <code>:root</code> 里，按用途分组；暗色在 <code>:root[data-theme=dark]</code> 里成对换值。<b>规则里只引用变量</b>，不写十六进制色，暗色就不用再单独覆盖。新颜色先找现成的一组；确实没有，在两个块里成对加一个变量。</p>
   <div class="sg-item"><header><h3>语义色（亮色 / 暗色并排）</h3><span class="sg-cls"><code>--canvas</code><code>--sheet</code><code>--ink</code><code>--tone-*</code><code>--atag-*</code>…</span></header>
-    <p class="sg-src">定义：<code>web/static/app.css</code> 开头的两个主题块，分组标题就是块里的注释；切换：<code>web/static/theme.js</code> 设置 <code>html[data-theme]</code>。色块用各自主题的变量画（两栏各自带一套变量值），后面的数字是 <code>var(--名字)</code> 在 app.css 里被引用的次数。</p>
+    <p class="sg-src">定义：<code>web/static/css/tokens.css</code> 开头的两个主题块，分组标题就是块里的注释；切换：<code>web/static/theme.js</code> 设置 <code>html[data-theme]</code>。色块用各自主题的变量画（两栏各自带一套变量值），后面的数字是 <code>var(--名字)</code> 在样式里被引用的次数。</p>
     <div class="sg-stage col" id="tok-colors"></div>
     <p class="sg-note"><b>基础一组的用法：</b>画布 <code>--canvas</code>（页面底）→ 纸面 <code>--sheet</code>（内容区、卡片、浮层）→ <code>--soft</code>（控件底、占位）；文字 <code>--ink</code> / <code>--ink2</code> / <code>--muted</code> / <code>--faint</code> 由深到浅；<code>--line</code> 实线分隔，<code>--hair</code> 是半透明发丝线（卡片轮廓、阴影的 1px 环）；强调色 <code>--accent</code>（环、勾、进度）、<code>--accent-btn</code>（按钮底，更深）、<code>--accent-soft</code>（选中底）、<code>--accent-ink</code>（强调色文字）；<code>--warn</code> 警示；<code>--r18</code> / <code>--r18-soft</code> 仅用于 R18 开关。<b>色调</b> <code>--tone-*-bg</code> / <code>--tone-*-ink</code> 成对用；<code>--ok</code> / <code>--bad</code> / <code>--err</code> 不随主题变。</p>
   </div>
@@ -111,15 +117,93 @@
 <section id="tok-zi">
   <h2>令牌 · 层级</h2>
   <div class="sg-item"><header><h3>z-index 档位</h3><span class="sg-cls"><code>--z-*</code></span></header>
-    <p class="sg-src">由低到高：页面内局部叠放 <code>--z-page-N</code> &lt; 浮动条 &lt; 浮层 &lt; 抽屉 &lt; 菜单 &lt; 全屏浮层 &lt; 提示条 &lt; 引导 &lt; 启动页。只能新增档位，不要改数值的先后（<code>app.css</code> 里的约定）。</p>
+    <p class="sg-src">由低到高：页面内局部叠放 <code>--z-page-N</code> &lt; 浮动条 &lt; 浮层 &lt; 抽屉 &lt; 菜单 &lt; 全屏浮层 &lt; 提示条 &lt; 引导 &lt; 启动页。只能新增档位，不要改数值的先后（<code>css/tokens.css</code> 里的约定）。</p>
     <div class="sg-stage col" id="tok-z"></div>
     <p class="sg-note">toast（<code>--z-toast</code>）压在查看器（<code>--z-overlay</code>）上，所以看大图时 toast 要移到中下方（<code>body.viewing .toast</code>）。引导的清单、提示条比选择栏高。</p>
   </div>
 </section>
 
+<section id="tok-new">
+  <h2>令牌 · 字重、阴影、动效、图的颜色（0.4）</h2>
+  <p class="sg-lead">0.4 的视觉语言（#685、#705）新加的令牌，定义在 <code>web/static/css/tokens.css</code>，亮暗成对写。新代码只用这里的三档；<code>tools/check_frontend.py</code> 规则 13 拦三档以外的字重、阴影、时长和缓动，以及新代码不该用的字号、圆角档位。<b>新写的界面</b>字号只用 11 / 12 / 13 / 20（<code>--fs-N</code>）和 28 / 40（<code>--fs-display-N</code>）；圆角只用 4（40px 以下的小元素）/ 8（缩略图、格子）/ 12（卡片、分组、弹出层）/ 18（内容页、对话框、活页条标签），加胶囊（能点的控件）和圆形（人），嵌套时内层 = 外层 − 间距；2 / 6 / 10 / 14 / 16 只留给旧样式。</p>
+  <div class="sg-item"><header><h3>字重三档</h3><span class="sg-cls"><code>--fw-400</code><code>--fw-600</code><code>--fw-750</code></span></header>
+    <p class="sg-src">正文；强调和节标题；展示字号。Windows 的微软雅黑只有常规和粗体两档，600 和 750 都画成粗体。</p>
+    <div class="sg-stage col" id="tok-fw"></div></div>
+  <div class="sg-item"><header><h3>阴影三档</h3><span class="sg-cls"><code>--shadow-hover</code><code>--shadow-pop</code><code>--shadow-dialog</code></span></header>
+    <p class="sg-src">只给浮起来的东西：悬停；弹出层；对话框。暗色另有一套。不带模糊的描边环（<code>0 0 0 2px var(--accent)</code>）不算阴影，照写。放在 <code>.tint</code> 里的元素，悬停阴影带上图的颜色（最右一块）。</p>
+    <div class="sg-stage canvas" id="tok-shadow"></div></div>
+  <div class="sg-item"><header><h3>动效：时长三档、缓动两条</h3><span class="sg-cls"><code>--dur-1</code><code>--dur-2</code><code>--dur-3</code><code>--ease</code><code>--ease-spring</code></span></header>
+    <p class="sg-src">140ms：出场、悬停；240ms：进场、展开、换页；380ms：共享元素、活页条标签。出场比进场短。<code>--ease</code> 给所有进出场、展开、换页；<code>--ease-spring</code> 带回弹，只给活页条标签和「弹一下」。系统开了「减少动态效果」时三档时长都是 0。脚本里的动画走 <code>web/static/ui/motion.js</code>（用法写在文件开头）。点「播放」看每一档。</p>
+    <div class="sg-stage col" id="tok-motion"></div></div>
+  <div class="sg-item"><header><h3>图的颜色：--tint 和派生的底色</h3><span class="sg-cls"><code>--tint</code><code>--tint-wash</code><code>--tint-soft</code><code>--tint-glow</code><code>--tint-shadow</code><code>.tint</code></span></header>
+    <p class="sg-src">颜色只用、不展示：图的主色只经 <code>web/static/ui/tint.js</code> 的 <code>setTint(el, color)</code> 写，它写 <code>--tint</code> 并给元素加 <code>.tint</code>，派生的几档在那个元素上用 <code>color-mix()</code> 重新算（自定义属性里的 <code>var()</code> 在声明它的元素上就算好了）。wash：作品卡、日历格的底；soft：缩略图读完之前的占位；glow：环境光；shadow：悬停的彩色投影。没写 <code>--tint</code> 时是中性色（第一列）。下面的色值是样例，界面上不出色块、色值。</p>
+    <div class="sg-stage" id="tok-tint">
+      <div class="sg-tint"><b>没有图</b><span style="background:var(--tint-wash)">wash</span><span style="background:var(--tint-soft)">soft</span><span style="background:radial-gradient(closest-side,var(--tint-glow),transparent)">glow</span></div>
+      <div class="sg-tint tint" style="--tint:#d9774f"><b>--tint:#d9774f</b><span style="background:var(--tint-wash)">wash</span><span style="background:var(--tint-soft)">soft</span><span style="background:radial-gradient(closest-side,var(--tint-glow),transparent)">glow</span></div>
+      <div class="sg-tint tint" style="--tint:#4f8fd9"><b>--tint:#4f8fd9</b><span style="background:var(--tint-wash)">wash</span><span style="background:var(--tint-soft)">soft</span><span style="background:radial-gradient(closest-side,var(--tint-glow),transparent)">glow</span></div>
+      <div class="sg-tint tint" style="--tint:#6bb36f"><b>--tint:#6bb36f</b><span style="background:var(--tint-wash)">wash</span><span style="background:var(--tint-soft)">soft</span><span style="background:radial-gradient(closest-side,var(--tint-glow),transparent)">glow</span></div>
+    </div></div>
+</section>
+
+<!-- ======================= 新部件（0.4） ======================= -->
+<section id="n-type">
+  <h2>新部件 · 排版与表面</h2>
+  <p class="sg-lead">0.4 的公共部件都在 <code>web/static/css/base.css</code>（<code>base</code> 层，压在旧样式上面）。各页步骤用这里的部件，不另画一套。「选中」不用 <code>.on</code>、<code>.active</code> 这类类名（旧样式里到处有，会串），写在 <code>aria-pressed</code> / <code>aria-selected</code> / <code>aria-checked</code> / <code>aria-current</code> 上。</p>
+  <div class="sg-item"><header><h3>大字标题三档、次要文字</h3><span class="sg-tag hand">手写</span><span class="sg-cls"><code>.title-hero</code><code>.title-page</code><code>.title-section</code><code>.text-meta</code></span></header>
+    <p class="sg-src">40 / 28 / 20，字重都是 <code>--fw-750</code>；次要文字 11px、<code>--muted</code>。</p>
+    <div class="sg-stage col"><h1 class="title-hero">今天加入 128 张</h1><h2 class="title-page">资料库</h2><h3 class="title-section">常一起出现的角色</h3><span class="text-meta">2026-11-19 · 31 张</span></div></div>
+  <div class="sg-item"><header><h3>表面两层：画布和内容页；分组用浅底</h3><span class="sg-tag hand">手写</span><span class="sg-cls"><code>.canvas</code><code>.sheet</code><code>.group</code></span></header>
+    <p class="sg-src">画布是最底层（活页条也在上面），内容页是白纸，圆角 18。内容页里的分组用浅底，不描边、不套卡。阴影只给浮起来的东西。</p>
+    <div class="sg-stage"><div class="canvas sg-surface"><div class="sheet sg-surface-sheet"><div class="group"><b>分组</b><p class="text-meta">浅底，圆角 12，内边距 16。</p></div><div class="group"><b>另一个分组</b><p class="text-meta">不描边，不套卡。</p></div></div></div></div></div>
+</section>
+
+<section id="n-controls">
+  <h2>新部件 · 胶囊控件与选中</h2>
+  <div class="sg-item"><header><h3>按钮：主要、普通、安静</h3><span class="sg-tag hand">手写</span><span class="sg-cls"><code>.btn</code><code>.is-primary</code><code>.is-quiet</code><code>.is-small</code></span></header>
+    <p class="sg-src">胶囊形，高 32（<code>.is-small</code> 28），字号 12、字重 600。主要按钮的底是 <code>--accent-fill</code>。一页最多一个主要按钮。按下的开关按钮写 <code>aria-pressed="true"</code>，画法同选中。</p>
+    <div class="sg-stage"><button class="btn is-primary">新建画廊</button><button class="btn"><svg viewBox="0 0 24 24"><path d="M4 6h16M7 12h10M10 18h4"/></svg>筛选</button><button class="btn is-quiet">取消</button><button class="btn is-small">小按钮</button><button class="btn" aria-pressed="true">已关注</button><button class="btn is-primary" disabled>不可用</button></div></div>
+  <div class="sg-item"><header><h3>芯片</h3><span class="sg-tag hand">手写</span><span class="sg-cls"><code>.chip</code><code>.avatar</code><code>.chip-count</code></span></header>
+    <p class="sg-src">高 28 的胶囊。能点的用 <code>&lt;button class="chip"&gt;</code>；选中：<code>aria-pressed</code> / <code>aria-selected</code> / <code>aria-current</code>，强调色浅底，文字同时变深变粗。带头像的芯片头像贴左。</p>
+    <div class="sg-stage"><button class="chip">全部</button><button class="chip" aria-pressed="true">已识别<span class="chip-count">31</span></button><button class="chip">未识别</button><span class="chip"><img class="avatar" data-ph="2">合成角色 A<span class="chip-count">31</span></span><button class="chip"><img class="avatar" data-ph="3">合成角色 B<span class="chip-count">12</span></button></div></div>
+  <div class="sg-item"><header><h3>分段控件</h3><span class="sg-tag hand">手写</span><span class="sg-cls"><code>.seg</code></span></header>
+    <p class="sg-src">选中的一段白底浮起（<code>--seg-on</code>、<code>--shadow-hover</code>），文字变深变粗。单选组写 <code>role="radiogroup"</code> 和 <code>aria-checked</code>，切换按钮写 <code>aria-pressed</code>。</p>
+    <div class="sg-stage"><div class="seg" role="group" aria-label="视图"><button aria-pressed="true"><svg viewBox="0 0 24 24"><path d="M4 5h16M4 12h16M4 19h16"/></svg>按天</button><button aria-pressed="false"><svg viewBox="0 0 24 24"><path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z"/></svg>网格</button><button aria-pressed="false">日历</button></div></div></div>
+  <div class="sg-item"><header><h3>搜索框</h3><span class="sg-tag hand">手写</span><span class="sg-cls"><code>.search</code></span></header>
+    <p class="sg-src">胶囊形的外框里放图标、输入框和快捷键提示；聚焦时外框描一圈强调色。</p>
+    <div class="sg-stage"><label class="search" style="width:300px"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6"/><path d="m20 20-4.5-4.5"/></svg><input placeholder="角色、作品或文件名"><kbd>/</kbd></label></div></div>
+</section>
+
+<section id="n-head">
+  <h2>新部件 · 页头与空状态</h2>
+  <div class="sg-item"><header><h3>页头：大标题 + 副标题 + 右侧控件组，下面最多一行工具</h3><span class="sg-tag hand">手写</span><span class="sg-cls"><code>.page-head</code><code>.title-page</code><code>.page-sub</code><code>.page-actions</code><code>.page-tools</code></span></header>
+    <p class="sg-src">每页的页头同一个结构。大标题就是 <code>.title-page</code>（28、字重 750）；副标题 12、<code>--muted</code>。</p>
+    <div class="sg-stage col"><div style="width:100%"><header class="page-head"><hgroup><h1 class="title-page">图库</h1><p class="page-sub">2,431 张 · 最近一次同步 10:21</p></hgroup><div class="page-actions"><div class="seg" role="group" aria-label="视图"><button aria-pressed="true">按天</button><button aria-pressed="false">网格</button><button aria-pressed="false">日历</button></div><button class="btn is-primary">同步</button></div></header>
+      <div class="page-tools"><label class="search" style="width:260px"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6"/><path d="m20 20-4.5-4.5"/></svg><input placeholder="搜索"></label><button class="chip" aria-pressed="true">全部</button><button class="chip">R18</button></div></div></div></div>
+  <div class="sg-item"><header><h3>空状态：大图标 + 一句事实 + 一个去处</h3><span class="sg-tag hand">手写</span><span class="sg-cls"><code>.empty-state</code><code>.empty-icon</code><code>.empty-fact</code></span></header>
+    <p class="sg-src">文案照 <code>docs/I18N_TERMS.md</code>「语气」：写事实，不客套、不安抚，去处是一个按钮或链接。</p>
+    <div class="sg-stage canvas"><div class="sheet" style="width:100%"><div class="empty-state"><div class="empty-icon"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="m21 16-5-5-9 8"/></svg></div><p class="empty-fact">还没有手选画廊</p><button class="btn is-primary">新建画廊</button></div></div></div></div>
+</section>
+
+<section id="n-poster">
+  <h2>新部件 · 海报与头像</h2>
+  <div class="sg-item"><header><h3>海报：满版图 + 渐变压暗 + 白字</h3><span class="sg-tag hand">手写</span><span class="sg-cls"><code>.poster</code><code>.poster-cap</code><code>.tint</code></span></header>
+    <p class="sg-src">角色用海报表示。3:4，圆角 12；图读完之前是 <code>--tint-soft</code>。能点的（<code>a.poster</code>、<code>button.poster</code>）悬停时上浮、图放大一点，阴影是 <code>--shadow-hover</code>，在 <code>.tint</code> 里带上图的颜色（第三张）。</p>
+    <div class="sg-stage"><a class="poster sg-poster" href="#n-poster"><img data-ph="0"><span class="poster-cap"><b>合成角色 A</b><small>合成作品 · 128 张</small></span></a><a class="poster sg-poster" href="#n-poster"><img data-ph="1"><span class="poster-cap"><b>名字很长的合成角色 B</b><small>64 张</small></span></a><a class="poster sg-poster tint" style="--tint:#d9774f" href="#n-poster"><span class="poster-cap"><b>还没读完的图</b><small>占位色是图的主色</small></span></a></div></div>
+  <div class="sg-item"><header><h3>圆头像（圆形代表人）和带进度圆环的头像</h3><span class="sg-tag hand">手写</span><span class="sg-cls"><code>.avatar</code><code>.is-small</code><code>.is-large</code><code>.avatar-ring</code></span></header>
+    <p class="sg-src">头像 28 / 40 / 68。进度圆环的进度是 JS 写的 <code>--p</code>（0–100），角上的小数字用 <code>&lt;em&gt;</code>。</p>
+    <div class="sg-stage"><img class="avatar is-small" data-ph="2"><img class="avatar" data-ph="3"><img class="avatar is-large" data-ph="4"><span class="avatar-ring" style="--p:64"><img class="avatar" data-ph="0"><em>+12</em></span><span class="avatar-ring" style="--p:20"><img class="avatar" data-ph="1"></span></div></div>
+</section>
+
+<section id="n-glass">
+  <h2>新部件 · 玻璃</h2>
+  <div class="sg-item"><header><h3>玻璃表面（只给浮层）和浮在图上的玻璃按钮组</h3><span class="sg-tag hand">手写</span><span class="sg-cls"><code>.glass</code><code>.glass-bar</code></span></header>
+    <p class="sg-src"><code>backdrop-filter</code> 只写在这两处（规则 16）：每个带模糊的元素各占一块显存。不支持模糊、或系统要求降低透明度（<code>prefers-reduced-transparency</code>，Safari 还不认）时是几乎不透明的底。按钮组用来放翻页、收藏、放大、关闭；按下（收藏了）写 <code>aria-pressed="true"</code>。</p>
+    <div class="sg-stage"><div class="sg-glass-bg"><img data-ph="3" alt=""><div class="glass-bar sg-glass-l"><button aria-label="上一张"><svg viewBox="0 0 24 24"><path d="m15 6-6 6 6 6"/></svg></button><button aria-label="下一张"><svg viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></svg></button></div><div class="glass-bar sg-glass-r"><button aria-label="收藏" aria-pressed="true"><svg viewBox="0 0 24 24"><path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/></svg></button><button aria-label="放大"><svg viewBox="0 0 24 24"><path d="M4 10V4h6M20 14v6h-6M4 4l6 6M20 20l-6-6"/></svg></button><button aria-label="关闭"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div><div class="glass sg-glass-panel"><b>玻璃浮层</b><p class="text-meta">弹出层、菜单这类浮在内容上的东西。</p></div></div></div></div>
+</section>
+
 <!-- ======================= 按钮 ======================= -->
 <section id="c-buttons">
-  <h2>组件 · 按钮</h2>
+  <h2>组件 · 按钮 <span class="sg-tag dup">旧样式，重做中</span></h2>
   <p class="sg-lead">按钮收成一组有名字的变体：<code>.primary</code>（强调色主按钮）、<code>.secondary</code>（灰底次要）、<code>.quiet</code>（透明，悬停才有底）、<code>.icon</code>、<code>.link-button</code>；大小 默认 / <code>.small</code> / <code>.large</code>；状态 <code>.on</code> / <code>.armed</code>（#319 合并了原来并行的 <code>.btn</code> / <code>.btn.pri</code>）。另有 <code>.ask-b</code>、<code>.aa-b</code> 等只在局部用的外观和十几种只在一处出现的按钮外观。先看总表，再看每一种的样子。</p>
 
   <div class="sg-item"><header><h3>写法总表</h3><span class="sg-tag hand">手写</span><span class="sg-tag">按钮 class 的字面出现次数</span></header>
@@ -240,7 +324,7 @@
 
 <!-- ======================= 输入与开关 ======================= -->
 <section id="c-forms">
-  <h2>组件 · 输入与开关</h2>
+  <h2>组件 · 输入与开关 <span class="sg-tag dup">旧样式，重做中</span></h2>
   <p class="sg-lead">文本输入至少有九种长相；开关有两套；分段控件有三套。下面按“长什么样 → 在哪个界面出现”排。</p>
 
   <div class="sg-item"><header><h3>搜索框</h3><span class="sg-tag hand">手写</span><span class="sg-cls"><code>.search-wrap</code><code>.search-wrap.wide</code></span></header>
@@ -308,7 +392,7 @@
 
 <!-- ======================= 芯片 · 标签 · 徽标 ======================= -->
 <section id="c-chips">
-  <h2>组件 · 芯片、标签、徽标</h2>
+  <h2>组件 · 芯片、标签、徽标 <span class="sg-tag dup">旧样式，重做中</span></h2>
   <p class="sg-lead">“胶囊形的小块”有二十多个类，分筛选芯片、信息标签、角标、圆点几类。</p>
 
   <div class="sg-item" id="e-filter"><header><h3>筛选芯片</h3><span class="sg-tag hand">手写</span><span class="sg-cls"><code>.chips-row</code><code>.chip-filter</code><code>.chip-filter.on</code></span></header>
@@ -366,7 +450,7 @@
 
 <!-- ======================= 提示条 ======================= -->
 <section id="c-banners">
-  <h2>组件 · 提示条与空状态</h2>
+  <h2>组件 · 提示条与空状态 <span class="sg-tag dup">旧样式，重做中</span></h2>
   <p class="sg-lead">“一块带底色的文字”有十个以上写法，没有统一的 banner 组件。</p>
 
   <div class="sg-item"><header><h3>页面级提示</h3><span class="sg-tag hand">手写</span><span class="sg-cls"><code>#errorBanner</code><code>#damageBanner</code><code>.guide-notice</code><code>.models-notice</code></span></header>
@@ -410,7 +494,7 @@
 
 <!-- ======================= 对话框 ======================= -->
 <section id="s-dialogs" class="sg-frozen">
-  <h2>带行为的壳 · 对话框</h2>
+  <h2>带行为的壳 · 对话框 <span class="sg-tag dup">旧样式，重做中</span></h2>
   <p class="sg-lead">原生 <code>&lt;dialog&gt;</code>，应用里共 11 个：<code>index.html</code> 里写好的 4 个（命令面板 <code>#picker</code>、两个 <code>.relate</code>、快捷键帮助），和运行时由 <code>ui/dialog.js</code> 的 <code>openDialog()</code> 生成的 7 个。后者全部是同一个壳：<code>class="modal …"</code> + <code>&lt;form method="dialog"&gt;</code> + <code>.dialog-top</code>（标题 + ×）+ 内容 + <code>.dialog-actions</code>，关闭 ×、点遮罩关闭、关闭后移除都在 <code>openDialog()</code> 里（#319）。下面每个都是<b>调用产品代码生成</b>的（<code>live.js</code>），排进页面里、不弹出，所以没有遮罩，点了也不会做什么。</p>
 
   <div class="sg-item"><header><h3>壳 A：确认框</h3><span class="sg-tag live">调用生成</span><span class="sg-cls"><code>dialog.modal</code><code>.dialog-top</code><code>.dialog-actions</code></span></header>
@@ -458,7 +542,7 @@
 
 <!-- ======================= 浮层菜单 ======================= -->
 <section id="s-pops" class="sg-frozen">
-  <h2>带行为的壳 · 浮层菜单与弹出面板</h2>
+  <h2>带行为的壳 · 浮层菜单与弹出面板 <span class="sg-tag dup">旧样式，重做中</span></h2>
   <p class="sg-lead">弹出菜单共用外壳 <code>.menu</code>（底色、圆角 18、阴影、淡入；毛玻璃的再加 <code>.menu-glass</code>），位置和尺寸留在各自的类上：<code>.menu-drop</code>（挂在控件下面：标签、<code>.more-menu</code>、<code>.watch-menu</code>）、<code>.view-pop</code>、<code>.task-pop</code>、<code>.cast-pop</code>。<code>.combo-menu</code> 是搜索联想，还没并进来。开关、Esc 和点外关闭由浮层管理器 <code>ui/overlay.js</code> 统一处理（#343）。</p>
 
   <div class="sg-item" id="p-tag"><header><h3>标签弹层 / 更多菜单 / 关注作品联想</h3><span class="sg-tag hand">手写</span><span class="sg-cls"><code>.tag-control</code><code>.menu</code><code>.menu-drop</code><code>.menu-item</code><code>.more-menu</code><code>.watch-menu</code></span></header>
@@ -482,7 +566,7 @@
 
 <!-- ======================= 任务面板 ======================= -->
 <section id="s-tasks" class="sg-frozen">
-  <h2>带行为的壳 · 任务面板</h2>
+  <h2>带行为的壳 · 任务面板 <span class="sg-tag dup">旧样式，重做中</span></h2>
   <div class="sg-item"><header><h3>任务面板与侧栏入口</h3><span class="sg-tag live">调用生成</span><span class="sg-cls"><code>.task-pop</code><code>.task-item</code><code>.task-ask</code><code>.task-entry</code></span></header>
     <p class="sg-src">调用：<code>ui/tasks.js</code> renderTasks()（任务的状态是清单页写进 <code>state</code> 的合成数据）。入口是 <code>index.html</code> 的 <code>button.sidebar-bottom.task-entry#taskButton</code>（<code>.busy</code> / <code>.on</code> 态由 renderTasks 切换）；面板壳 <code>index.html</code> 的 <code>#taskPanel.task-pop</code>（<code>position:fixed</code> 贴在侧栏右边），内容 renderTasks() 拼成；折叠段 <code>fold()</code> 在 <code>ui/dom.js</code>；进度条 <code>.progress</code> 在 taskList()。</p>
     <div class="sg-stage canvas top" data-sg-live="tasks"></div>
@@ -491,7 +575,7 @@
 
 <!-- ======================= toast · 选择栏 ======================= -->
 <section id="s-toast" class="sg-frozen">
-  <h2>带行为的壳 · toast 与选择栏</h2>
+  <h2>带行为的壳 · toast 与选择栏 <span class="sg-tag dup">旧样式，重做中</span></h2>
   <div class="sg-item"><header><h3>toast</h3><span class="sg-tag live">调用生成</span><span class="sg-cls"><code>.toast</code><code>.toast-undo</code></span></header>
     <p class="sg-src">调用：<code>ui/dom.js</code> toast() / toastMore()（后者可再加一个动作按钮，如“关注”），写进 <code>index.html</code> 的 <code>#toast</code>（<code>position:fixed</code>，底部居中，z-index 60，内含 <code>#toastText</code> 和两个按钮）。看大图时（<code>body.viewing</code>）移到 <code>bottom:120px</code>。</p>
     <div class="sg-stage canvas col" data-sg-live="toast"></div></div>
@@ -505,7 +589,7 @@
 
 <!-- ======================= 详情栏 ======================= -->
 <section id="s-detail" class="sg-frozen">
-  <h2>带行为的壳 · 详情栏</h2>
+  <h2>带行为的壳 · 详情栏 <span class="sg-tag dup">旧样式，重做中</span></h2>
   <div class="sg-item"><header><h3>图片详情</h3><span class="sg-tag hand">手写</span><span class="sg-cls"><code>.inspector</code><code>.inspector-head</code><code>.inspector-section</code><code>.cc-card</code><code>.inspector-actions</code></span></header>
     <p class="sg-src">来源：壳 <code>index.html</code> 的 <code>aside#inspector.inspector</code>；内容 <code>ui/detail.js</code> inspect()（整栏）、identityChips()（角色条与“也可能是”），只由 WD 角色扩展给出的项加修饰类 <code>.identity.ext</code>、<code>.alt.ext</code>（名字后面的小字「扩展」，#550）、askHTML()（提问条）、统计区 <code>#charStats</code>（每月加入张数 <code>.cc-line</code>/<code>.cc-bars</code>、同一角色的其它图 <code>.cc-same</code>）。宽 320（≥1600px 370，≤1050px 290，≤760px 变为叠在内容上的抽屉）。</p>
     <div class="sg-stage canvas"><aside class="inspector" style="width:320px;max-width:100%">
@@ -527,7 +611,7 @@
 
 <!-- ======================= 其它外壳 ======================= -->
 <section id="s-other" class="sg-frozen">
-  <h2>带行为的壳 · 其它</h2>
+  <h2>带行为的壳 · 其它 <span class="sg-tag dup">旧样式，重做中</span></h2>
   <p class="sg-lead">不在 #318 点名清单里、但每个页面都会遇到的壳：侧栏、顶栏、图片卡、设置卡、引导、查看器。</p>
 
   <div class="sg-item"><header><h3>侧栏导航</h3><span class="sg-tag hand">手写</span><span class="sg-cls"><code>.sidebar</code><code>.nav</code><code>.nav.active</code><code>.section-label</code><code>a.sidebar-bottom</code></span></header>

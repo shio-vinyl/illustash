@@ -276,7 +276,7 @@ terms 5（`5e7e7f7`）/6（`d9c49b4`）的历史源库定义均含可为 NULL �
 
 ## 原生静态资源与图片服务
 
-显式原生模式直接提供 `/`、`/app.js`、`/app.css`、`/theme.js`、`/favicon.svg`、`/splash.js` 的既有资源字节、Content-Type 和安全响应头，`web/static/core/`、`web/static/ui/` 里的页面模块按 `/core/<名>.js`、`/ui/<名>.js` 提供（名字只含小写字母、数字、`-`、`_`，见 [WEB_V2.md](WEB_V2.md#前端模块2026-10-18199)），以及 `/image?id=&size=`；`/i18n.js` 是 `web/static/i18n.js` 前面写入当前语言设置、可用语言和译文表（见 [WEB_V2.md](WEB_V2.md#界面语言2026-10-18173)）。资产路径只从本次会话的应用库读取，不扫描来源，不启动 Python。尺寸上限沿用 thumb 400、medium 800、preview 1600、full 3000，不放大；原图定位失败和不可读返回 404，非法尺寸返回 400。full 同样输出有界 JPEG，并非原文件下载。
+显式原生模式直接提供 `/`、`/app.js`、`/app.css`、`/theme.js`、`/favicon.svg`、`/splash.js` 的既有资源字节、Content-Type 和安全响应头，`web/static/core/`、`web/static/ui/` 里的页面模块按 `/core/<名>.js`、`/ui/<名>.js` 提供，`web/static/css/` 里的样式表按 `/css/<名>.css` 提供（`text/css`，名字只含小写字母、数字、`-`、`_`，见 [WEB_V2.md](WEB_V2.md#前端模块2026-10-18199)、#705），以及 `/image?id=&size=`；`/i18n.js` 是 `web/static/i18n.js` 前面写入当前语言设置、可用语言和译文表（见 [WEB_V2.md](WEB_V2.md#界面语言2026-10-18173)）。资产路径只从本次会话的应用库读取，不扫描来源，不启动 Python。尺寸上限沿用 thumb 400、medium 800、preview 1600、full 3000，不放大；原图定位失败和不可读返回 404，非法尺寸返回 400。full 同样输出有界 JPEG，并非原文件下载。
 
 缓存键沿用 `sha256(ident:mtime_ns:size_bytes:size).jpg`；命中直接返回旧文件字节，绕过解码槽。未命中先遵循 EXIF 方向（缺失或非法值不旋转），再等比缩小、将透明区域压平到 `#f4f4f2`，输出质量 84 的 JPEG。JPEG 使用 vendored mozjpeg 的 libjpeg 快速配置和分数解码；其他格式使用 image 解码，SIMD 缩放保留 alpha 预乘与调色板及一位 PNG/BMP 的 nearest 规则。锁绑定包内缓存路径，同键在一个服务进程内只生成一次，最多四个解码任务并行；先独占创建随机临时文件，再原子替换，只清理本次临时文件。不宣称跨服务进程只生成一次或缓存写入的断电持久性。图片请求捕获旧会话的源路径与缓存目录后释放会话锁；解码、缓存和慢客户端不阻塞切库，也不会改用新包路径。
 

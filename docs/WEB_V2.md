@@ -37,23 +37,36 @@
 
 ## 样式令牌（2026-11-12，#317）
 
-`web/static/app.css` 顶部是外观令牌的唯一来源（CSS 变量），规则里引用变量，不另写字面值；新增取值先在这里加一档。`tools/check_frontend.py` 规则 8（#349）拦新增的字号、圆角、`gap`/`padding`、`z-index` 和颜色字面量，报错写明该用哪个令牌；下面登记的例外（`margin`、不在档位上的 18px 以上间距）不拦，现有的字面量（主要是颜色）冻结在基线里。总跟踪见 #316，实物对照见样式清单页（#318）。
+`web/static/css/tokens.css` 是外观令牌的唯一来源（CSS 变量），规则里引用变量，不另写字面值；新增取值先在这里成对加一档，并改这一节。`tools/check_frontend.py` 规则 8（#349）拦 `app.css` 和 `css/` 下新增的字号、圆角、`gap`/`padding`、`z-index` 和颜色字面量，报错写明该用哪个令牌；下面登记的例外（`margin`、不在档位上的 18px 以上间距）不拦，`app.css` 现有的字面量（主要是颜色）冻结在基线里，`css/` 下没有基线。总跟踪见 #316，实物对照见样式清单页（#318）。
 
 | 类别 | 令牌 | 档位 |
 |---|---|---|
-| 字号 | `--fs-N` | 10 / 11 / 12 / 13 / 14 / 15 / 16 / 20 / 22 |
-| 展示字号 | `--fs-display-N` | 17 / 18 / 21 / 26 / 28 / 30 / 32 / 40 / 72，只给大标题、空状态、启动页这类一次性的大字，不用于正文 |
-| 圆角 | `--radius-N`、`--radius-pill`（999px）、`--radius-round`（50%） | 2 / 4 / 6 / 8 / 10 / 12 / 14 / 16 / 18 |
+| 字号 | `--fs-N` | 10 / 11 / 12 / 13 / 14 / 15 / 16 / 20 / 22；新写的界面只用 11 / 12 / 13 / 20 |
+| 展示字号 | `--fs-display-N` | 17 / 18 / 21 / 26 / 28 / 30 / 32 / 40 / 72，只给大标题、空状态、启动页这类一次性的大字，不用于正文；新写的界面只用 28 / 40 |
+| 字重 | `--fw-400`、`--fw-600`、`--fw-750` | 正文；强调和节标题；展示字号。三档只对西文都分得开：中文字体只有两档（Windows 的微软雅黑只有常规和粗体，Mac 的苹方没有粗体、最粗是中粗），600 和 750 在中文上是同一档，层次靠字号拉开 |
+| 圆角 | `--radius-N`、`--radius-pill`（999px）、`--radius-round`（50%） | 2 / 4 / 6 / 8 / 10 / 12 / 14 / 16 / 18；新写的界面只用 4（40px 以下的小元素）/ 8（缩略图、格子）/ 12（卡片、分组、弹出层）/ 18（内容页、对话框、活页条标签），加胶囊（能点的控件）和圆形（人），嵌套时内层 = 外层 − 间距；2 / 6 / 10 / 14 / 16 只留给旧样式 |
 | 间距（`gap`、`padding`） | `--space-N` | 1（细缝）/ 2 / 4 / 6 / 8 / 10 / 12 / 14 / 16 / 20 / 24 |
 | 控件高度 | `--h-N` | 28 / 32 / 36，只给按钮、输入框、下拉、药丸标签这类控件；头像缩略图、图标底板、条栏的尺寸不在其内 |
+| 阴影 | `--shadow-hover`、`--shadow-pop`、`--shadow-dialog` | 悬停；弹出层；对话框。只给浮起来的东西，亮暗各一套；不带模糊的描边环（`0 0 0 2px var(--accent)`）不算阴影。旧的 `--sheet-shadow` 只留给旧样式 |
+| 时长 | `--dur-1`、`--dur-2`、`--dur-3` | 140ms：出场、悬停；240ms：进场、展开、换页；380ms：共享元素、活页条标签。出场比进场短。系统开了「减少动态效果」时都是 0 |
+| 缓动 | `--ease`、`--ease-spring` | `--ease`（`cubic-bezier(.2,.8,.2,1)`）给所有进出场、展开、换页；`--ease-spring`（`cubic-bezier(.34,1.42,.5,1)`）带回弹，只给活页条标签和「弹一下」这类强调动作（用户 2026-11-19 定） |
 | 层级 | `--z-*` | 页面内局部 `page-1`…`page-6` < `bar`（选择条）< `popover` < `drawer`（窄屏侧栏）< `menu` < `overlay`（大图、任务面板）< `toast` < `guide-checklist` < `guide-nudge` < `guide-tour` < `splash`；只加档位，不改先后 |
-| 颜色 | 基础色（`--canvas`、`--sheet`、`--ink`…）、语义色（`--tone-*-bg/-ink` 警告与关系类型色调、`--atag-*` 自动标签芯片、`--hint-*`、`--glass-*` 磨砂表面、`--bar-bg`/`--toast-bg`、`--seg-on`、`--switch-off` 等）、固定状态色（`--ok`、`--bad`、`--err`） | 亮暗两套成对写在文件顶部的 `:root` 和 `:root[data-theme=dark]` 两块里，规则里只引用变量；暗色不再逐条覆盖 |
+| 颜色 | 基础色（`--canvas`、`--sheet`、`--ink`…）、语义色（`--tone-*-bg/-ink` 警告与关系类型色调、`--atag-*` 自动标签芯片、`--hint-*`、`--glass-*` 磨砂表面、`--bar-bg`/`--toast-bg`、`--seg-on`、`--switch-off`、`--on-accent` 强调色底上的文字、`--scrim` 海报的压暗渐变等）、固定状态色（`--ok`、`--bad`、`--err`） | 亮暗两套成对写在 `:root` 和 `:root[data-theme=dark]` 两块里，规则里只引用变量；暗色不再逐条覆盖 |
+| 图的颜色 | `--tint`，派生的 `--tint-wash`、`--tint-soft`、`--tint-glow`、`--tint-shadow` | 图的主色（#717）只经 `ui/tint.js` 的 `setTint(el, color)` 写（规则 20）：它写 `--tint` 并给元素加 `.tint`，派生的几档在那个元素上用 `color-mix()` 重算（自定义属性里的 `var()` 在声明它的元素上就算好了），海报、头像上也会重算；没写时是中性色。wash：作品卡、日历格的底；soft：缩略图读完之前的占位；glow：环境光；shadow：`.tint` 里的 `--shadow-hover` 用它画彩色投影。不用相对颜色语法（Safari 18 之前和规范不一致）。界面上不出色块、色值、色带 |
 
 数字就是 px 值。新写的值取最近的一档；两档一样近时取用得更多的一档。2026-11-12 第二段按用户答复把原先不在档位上的值归并进来：半像素字号 9.5 / 10.5 / 11.5 / 12.5 / 13.5px 分别归到 10 / 11 / 11 / 12 / 13；圆角 3 / 5 / 7 / 9 / 13px 归到 4 / 6 / 6 / 10 / 14；`gap`、`padding` 的 3 / 5 / 7 / 9 / 11 / 13px 归到 4 / 6 / 8 / 8 / 10 / 12；控件高度 30 → 32、34 → 36、38 → 36。
 
 不进令牌、仍写在原处的：页面级的大间距（18px 以上的 `padding`、`gap`）、`margin`、头像缩略图、图标底板和条栏（`.nav-icon`、`.palette-item img`、`.caption`、`.footer`）的尺寸。要加新档位先改这一节。
 
 仍直接写色值的一处：`:root[data-theme=dark] dialog::backdrop`（较旧内核里 `::backdrop` 不继承自定义属性，不能引用变量）。暗色下的可见性要求：文字对比度不低于 4.5:1，非文字（图标、边框、开关）不低于 3:1；新增暗色取值先按这个核对。
+
+### 样式文件与层（#705）
+
+- `web/static/css/` 下按层分文件：`tokens.css`（令牌）、`base.css`（公共部件：排版、表面、胶囊控件与「选中」、页头、空状态、海报、圆头像、玻璃），以及每块界面一个文件：`rail.css`、`library.css`、`detail.css`、`galleries.css`、`catalog.css`、`character.css`、`tidy.css`、`settings.css`、`overlays.css`，每个文件开头写明归 0.4 的哪一步。宿主按 `/css/<名>.css` 发这些文件（`text/css`，名字规则同模块，缓存和安全头同 `/app.css`），`index.html` 先引 `tokens.css`，再引 `app.css` 和其余各文件（规则 19 查第一个样式表和每个文件都引了）。
+- 层的先后只在 `tokens.css` 第一行声明：`@layer legacy, tokens, base, pages, overlays;`。`app.css` 整个在最低的 `legacy` 层，新样式不用和旧选择器比权重；`base.css` 在 `base`，`overlays.css` 在 `overlays`，其余各页的文件在 `pages`。没有层的样式比所有层都强，所以 `css/` 下每个文件整个写在自己的层里，层里不再开层（规则 18）；层的声明是 `tokens.css` 的第一条、`tokens.css` 是第一个样式表（规则 19）。旧样式里按元素名写的规则（`button`、`input`…）仍会落到新部件上，部件把自己在意的属性写全。
+- 重写一块，就删掉 `app.css` 里对应的旧规则；升级做完时 `app.css` 只剩没重做的部分，或者删掉。「减少动态效果」的总开关（`*{transition:none!important;animation:none!important}`）还在 `app.css`：`!important` 在最低的层里反而最强，管得到所有层的 CSS 过渡和动画；脚本里的动画由 `ui/motion.js` 自己判断。
+- 公共部件的「选中」写在 `aria-pressed` / `aria-selected` / `aria-checked` / `aria-current` 上，不另起 `.on`、`.active` 这类类名（旧样式里到处有，会串）；变体用 `is-` 前缀（`.btn.is-primary`）。各部件的样子和写法见样式清单「新部件」一组。
+- 检查（`tools/check_frontend.py`，写法见 AGENTS.md「前端结构约定」）：规则 8 查 `app.css` 和 `css/` 的字面量，`css/` 下给的改法只在新档位里找；13 查三档令牌、新代码的字号和圆角档位；14 不写类名子串选择器和后代形式的 `:has()`；15 `var()` 引用的变量要在 `tokens.css` 或登记的「由 JS 写的变量」（如 `--tint`、`--p`）里，`css/` 下不认文件里自己声明的局部变量（否则 `--x: 13px` 就绕过了 8、13；只有 `app.css` 还认旧的局部变量）；16 `backdrop-filter` 只在 `base.css` 的 `.glass`、`.glass-bar`；17 Safari 17.0 没有的 CSS 能力只写在登记的增强块里（探测它的 `@supports`，`@supports not` 不算，块前面紧挨着写明退路的注释），不用 CSS 嵌套、相对颜色语法和 `::backdrop` 里的 `var()`；18 `css/` 下的文件在自己的层里；19 样式表的先后；20 `--tint` 只经 `setTint()` 写。
 
 ## 前端整体升级（2026-11-19，#685、#469）
 
@@ -80,24 +93,9 @@
 - 颜色只用、不展示：图的颜色变成环境光（详情卡片的图片后面、角色页横幅往下、日历月份标题后面）、悬停时的彩色投影、作品卡和日历格的底色，以及缩略图读完之前的占位色。界面上不出色块、色值、色带。每张图的主色由后端给（#717），前端写进元素的 `--tint`，派生的底色用 `color-mix()`。
 - 磨砂玻璃（`backdrop-filter`）只给浮层，卡片上不用：每张卡片上的模糊和投影滤镜都各占一块显存（#683）。
 
-### 令牌
+### 令牌、样式文件与层
 
-在[样式令牌](#样式令牌2026-11-12317)的基础上，新增和限定这些（#705 加进 `css/tokens.css`，样式清单同步）：
-
-| 类别 | 令牌 | 档位与用途 |
-|---|---|---|
-| 字重 | `--fw-400`、`--fw-600`、`--fw-750` | 正文；强调和节标题；展示字号 |
-| 阴影 | `--shadow-hover`、`--shadow-pop`、`--shadow-dialog` | 悬停；弹出层；对话框 |
-| 时长 | `--dur-1`、`--dur-2`、`--dur-3` | 140ms：出场、悬停；240ms：进场、展开、换页；380ms：共享元素、活页条标签。出场比进场短 |
-| 缓动 | `--ease`、`--ease-spring` | `--ease` 给所有进出场、展开、换页；`--ease-spring` 带回弹，只给活页条标签和「弹一下」这类强调动作（用户 2026-11-19 定） |
-| 字号 | 现有令牌 | 新写的界面只用 11 / 12 / 13 / 20 / 28 / 40 |
-| 圆角 | 现有令牌 | 4：40px 以下的小元素；8：缩略图、格子；12：卡片、分组、弹出层；18：内容页、对话框、活页条标签；胶囊：能点的控件；圆形：人。嵌套时内层 = 外层 − 间距。2 / 6 / 10 / 14 / 16 只留给旧样式 |
-| 颜色 | `--tint` | 由 JS 按图的主色写，没有时退回中性色；派生的底色用 `color-mix()`，不用相对颜色语法（Safari 18 之前和规范不一致） |
-
-### 样式文件与层
-
-- `web/static/css/` 下按层分文件：`tokens.css`（令牌，浅深两套）、`base.css`（排版、表面、胶囊控件、选中、页头、空状态、海报、圆头像、玻璃），以及每块界面一个文件：`rail.css`、`library.css`、`detail.css`、`galleries.css`、`catalog.css`、`character.css`、`tidy.css`、`settings.css`、`overlays.css`。宿主按 `/css/<名>.css` 发这些文件（#705）。
-- 用 `@layer` 定先后。旧的 `app.css` 整个在最低的 `legacy` 层，新样式不用和旧选择器比权重；重写一块，就删掉 `app.css` 里对应的旧规则。
+已在 #705 做成现行参考，见[样式令牌](#样式令牌2026-11-12317)和其下的「样式文件与层」。
 
 ### 渲染底座
 
@@ -139,15 +137,12 @@
 1. 规则 10（`inner-html`）：数据不拼进 `innerHTML`、`outerHTML`、`insertAdjacentHTML`：右边只能是不带插值的字符串字面量（方括号写法同样算），`setHTMLUnsafe`、`createContextualFragment`、`parseFromString`、给 `srcdoc` 赋值、把 `tpl` 当函数调按名字报；`ui/el.js` 放行；存量按文件计数进基线。
 2. 规则 11（`animation-entry`）：`requestAnimationFrame` 只在 `ui/frame.js`、`ui/motion.js` 里调，`.animate(`、`startViewTransition` 只在 `ui/motion.js` 里调；存量按文件计数进基线。
 3. 规则 12（`safari17-js`）：Safari 17.0 没有的 JS 能力只出现在登记的增强处（`SAFARI17_ENHANCEMENTS`，现在只有 `ui/motion.js` 的 `startViewTransition`）：import 属性（17.2）；`Promise.withResolvers`、`Object.groupBy`、`Map.groupBy`、`AbortSignal.any`、`checkVisibility`（17.4）；`startViewTransition`、`URL.parse`（18.0）；`Promise.try`（18.2）；迭代器方法和 `Iterator.from`（18.4）；`setHTMLUnsafe`（26）；Navigation API（26.2）；`Temporal`、`CloseWatcher`、`using` 和 `Symbol.dispose`（27.3）。Safari 正式版没有的 `requestIdleCallback`、`scheduler.*`、`Element.moveBefore` 哪里都不用。版本按 MDN browser-compat-data 核对，条目写在脚本注释里。模块和经典脚本 `i18n.js`、`splash.js`、`theme.js` 都查。没有基线。
-4. 规则 8 扩到 `css/` 下的文件，并管字重、阴影、动效的时长和缓动、圆角四档（旧档位进基线）。
-5. 不写类名子串选择器（`[class*=]` 一类）和宽泛的 `:has()`：VS Code 在 3.7k 个节点上实测，前者让样式重算慢 2.4 倍（#469）。存量进基线。
-6. CSS 变量必须有定义：在 `tokens.css` 里，或在登记的「由 JS 写的变量」名单里。
-7. `backdrop-filter` 只写在 `base.css` 的玻璃表面（存量进基线）。
-8. Safari 17.0 没有的 CSS 能力只出现在登记的增强块里，前面有退路。
+
+4–8 已由 #705 做成 `tools/check_frontend.py` 的规则 8（扩到 `css/`）和 13–17，另加 18（层）、19（样式表的先后）、20（`--tint` 的写入者）；现行写法见[样式令牌](#样式令牌2026-11-12317)「样式文件与层」的最后一条。
 
 ### 样式清单要加的
 
-`tools/styleguide/` 随各步加：字重、阴影、动效三张令牌表（动效配一个能点的示意），胶囊控件和「选中」、页头、空状态、海报、圆头像与进度圆环、玻璃表面和浮在图上的按钮组（#705）；活页条的标签和二级项（#706）；详情卡片（#709）；作品卡（#711）。旧部件在重做完之前标成「旧样式，重做中」。
+`tools/styleguide/` 随各步加：活页条的标签和二级项（#706）；详情卡片（#709）；作品卡（#711）。新令牌表和公共部件已在 #705 加好（「新部件」一组）；旧部件在重做完之前标成「旧样式，重做中」。
 
 ## 新图库引导（2026-10-12，#96）
 

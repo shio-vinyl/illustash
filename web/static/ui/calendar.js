@@ -1,4 +1,5 @@
 // 图库的日历视图（#708，0.4 第 C2 步）：一个月一页。数据在 core/calendar.js（按月读接口、汇总当月的角色），这里只画。
+// 文件分两段：日历部件 calendarView（下面的用法），和文件末尾按页面样板登记的日历页（docs/WEB_V2.md「页面样板」）。
 //
 //   const view = calendarView({scope, dayHref: day => '#/library?day=' + day, onMonth: month => …, empty: (box, data) => …});
 //   box.append(view.el);
@@ -11,14 +12,20 @@
 //   有图的格子是链接，点进去由 dayHref 决定去哪。前后月补齐的格子只写日期。
 // - 只看不选：格子没有选择状态。键盘：Tab 走有图的格子，方向键在格子之间按日期挪（跳过没有图的），Enter 照链接打开。
 // - 格子按位置复用（ui/keyed.js，键是第几格）：翻月时节点不重建，只换内容。图按格子的实际宽度取缩略图档位。
-// - 没有图的月份：格子照常排出来（都空着），下面的空状态交给 empty(box, data) 画（页面用 ui/empty.js）。
-import {charHash} from '../core/route.js';
+// - 没有图的月份：格子收起来，空状态交给 empty(box, data) 画（页面用 ui/empty.js）。
+import {charHash, go, hashFor} from '../core/route.js';
 import {I18N, t} from '../core/i18n.js';
 import {composing} from '../core/keys.js';
 import {number, thumbSize} from '../core/format.js';
-import {localDay, monthOf, parseMonth} from '../core/calendar.js';
+import {localDay, monthOf, parseMonth, readMonth} from '../core/calendar.js';
 import {cellTiles, monthGrid} from '../core/layout.js';
+import {implement, libraryFilters} from '../core/pages.js';
+import {viewRoute} from '../core/rail.js';
+import {readError} from '../core/session.js';
+import {state} from '../core/state.js';
+import {$, error} from './dom.js';
 import {attr, cls, css, show, text, tpl} from './el.js';
+import {drawEmpty} from './empty.js';
 import {keyed} from './keyed.js';
 import {enter, thumbs} from './motion.js';
 import {setTint} from './tint.js';
@@ -150,7 +157,7 @@ export function calendarView({scope: parent, dayHref, onMonth, empty, weekStart 
     const today = localDay(), ready = data?.month === month ? data : null;
     text(refs.title, monthTitle(p.year, p.month));
     const facts = [String(p.year)];
-    if (ready) facts.push(t('{n} 张', {n: number(ready.total)}), t('{n} 天有新图', {n: number(ready.active)}));
+    if (ready?.total) facts.push(t('{n} 张', {n: number(ready.total)}), t('{n} 天有新图', {n: number(ready.active)}));
     text(refs.sub, facts.join(' · '));
     setTint(refs.head, ready?.color);
     faces.set((ready?.people || []).slice(0, FACES));
@@ -161,8 +168,9 @@ export function calendarView({scope: parent, dayHref, onMonth, empty, weekStart 
       const day = cell.inMonth && ready?.days.get(cell.date) || null;
       return {cell, day, today, href: day ? dayHref(cell.date) : null, width: width || 120};
     }));
+    // 这个月没有图：格子收起来，只写空状态。
     const none = !!ready && !ready.total;
-    show(refs.empty, none);
+    show(refs.empty, none); show(refs.grid, !none); show(refs.dow, !none);
     if (none) empty?.(refs.empty, ready);
     // 换了月份：格子淡入（数据到的那一次，不是先排空格子的那一次）。
     if (ready && shown && shown !== month) enter(refs.grid, {from: 'fade'});
@@ -171,3 +179,46 @@ export function calendarView({scope: parent, dayHref, onMonth, empty, weekStart 
 
   return {el, update(next) { props = {...props, ...next}; draw(); }, dispose() { s.dispose(); }};
 }
+
+// ---------- 日历页（页面样板） ----------
+// 看哪个月由地址的 at（YYYY-MM-DD，docs/WEB_V2.md「看哪一天：at」）定，没有时是本月；翻月是换 at，后退能回到上一个月。
+// 点一天去按天视图的那一天（#/days?at=…），带着现在的筛选，和活页条的时间轴一样。筛选条和搜索照常生效（#703 第 2 问）。
+const monthAt = route => parseMonth(monthOf(route.at)) ? monthOf(route.at) : monthOf(localDay());
+const atHref = (route, view, day) => hashFor({...viewRoute(route, view), at: day});
+// 这个月没有图：有别的月份就给去处，整个图库（按现在的筛选）都没有图就照实说。
+function drawMonthEmpty(box, data) {
+  const month = m => ({href: atHref(state.route, 'calendar', `${m}-01`)});
+  const next = [data.prev && {label: t('上一个有图的月份'), ...month(data.prev)}, data.next && {label: t('下一个有图的月份'), ...month(data.next)}].filter(Boolean);
+  const filtered = Object.keys(libraryFilters(state.route)).length > 0 || state.nsfw === 'only';
+  drawEmpty(box, {icon: 'calendar', next, fact: next.length ? t('这个月没有图片。') : filtered ? t('没有符合条件的图片。') : t('图库里还没有图片。')});
+}
+// 这一页的部件：进页面时在页面作用域上建一次，之后只 load。
+function calendarPage(scope) {
+  const view = calendarView({scope, empty: drawMonthEmpty,
+    dayHref: day => atHref(state.route, 'days', day),
+    onMonth: month => go({...viewRoute(state.route, 'calendar'), at: `${month}-01`})});
+  $('calendarPage').replaceChildren(view.el);
+  // 上一次读到的 {key, data}：只是刷新（同步、写入之后）时先留着它，读完再换，格子不先闪成空的。
+  let last = null;
+  return {scope, el: view.el, async load(route) {
+    const month = monthAt(route), params = {...libraryFilters(route), ...(state.nsfw ? {nsfw: state.nsfw} : {})}, key = JSON.stringify([month, params]);
+    view.update({month, data: last?.key === key ? last.data : null});
+    let data;
+    try { data = await readMonth(month, params, {signal: scope.signal}); } catch (e) { if (scope.alive && state.route === route) error(readError(e)); return; }
+    if (!scope.alive || state.route !== route) return;
+    last = {key, data};
+    view.update({month, data});
+  }};
+}
+let page = null;
+implement({calendar: {
+  // 刚进这一页（或作用域已经释放）才建，内容淡入；同一页又画一次（翻月、筛选变了）只按新地址重读、更新格子。
+  render: ({samePage, scope}) => {
+    if (!samePage || !page?.scope.alive) { page = calendarPage(scope); enter(page.el, {from: 'fade'}); }
+    return page.load(state.route);
+  },
+  // 同步、写入、撤销、NSFW 设置变了：重读这个月。
+  refresh: () => page?.scope.alive ? page.load(state.route) : undefined,
+  head: () => ({title: t('图库')}),
+  help: () => [t('每天一格，格子里是那天加入的图。点一天去按天看那一天。')],
+}});

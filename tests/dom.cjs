@@ -36,7 +36,6 @@ class Node {
   }
   appendChild(node) { return this.insertBefore(node, null); }
   append(...nodes) { for (const n of nodes) this.appendChild(typeof n === 'string' ? current.createTextNode(n) : n); }
-  replaceChildren(...nodes) { for (const c of [...this.childNodes]) c.remove(); this.append(...nodes); }
   removeChild(node) { node.remove(); return node; }
   // 和浏览器一样：摘掉或挪动（insertBefore 先摘再插）含焦点的节点时，焦点回到 body。
   remove() {

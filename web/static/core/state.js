@@ -48,9 +48,11 @@ export const state = {
   // 角色页「可能也是 TA」「可能认错」两个胶囊的张数。
   maybeCount: 0, doubtCount: null,
 
-  // ---- 网格的布局与缩放：ui/grid.js（fit 用 setFit） ----
+  // ---- 网格的分行：ui/grid_rows.js（layout 按视口宽度和缩放算） ----
+  cols: 1, cellW: 180, rowH: 250, gap: 12,
+  // ---- 网格的缩放、显示方式与 NSFW：ui/grid.js（fit 用 setFit） ----
   // size 由知道缩放范围的 ui/grid.js 设置。
-  cols: 1, cellW: 180, rowH: 250, gap: 12, size: 185, fit: prefs.get('fit', false),
+  size: 185, fit: prefs.get('fit', false),
   nsfw: ['', 'hide', 'only'].includes(prefs.get('nsfw', '')) ? prefs.get('nsfw', '') : '',
 
   // ---- 选择与键盘光标：ui/grid.js（cursor 用 setCursor；换页复位用 resetForRoute） ----

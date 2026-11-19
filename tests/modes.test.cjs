@@ -311,11 +311,13 @@ test('相似组页是整理页：↵ 在有光标时切换选中（#353）', asy
 
 test('⌘滚轮、捏合只在主区是网格的页面缩放网格，也不交给浏览器缩放整页', async () => {
   await wired();
+  // 缩放排到下一帧做（ui/frame.js）：数排了几次帧。每次先换一个新的调度器，清掉上一次没跑的任务。
+  const frame = await web.load('ui/frame.js');
   let frames = 0;
-  globalThis.requestAnimationFrame = () => { frames++; return 0; };
+  const counting = () => frame.setScheduler(() => { frames++; });
   const viewport = page.el('viewport');
-  const wheel = route => { reset({route}); frames = 0; const e = {ctrlKey: false, metaKey: true, deltaY: -50, clientX: 10, clientY: 10, prevented: false, preventDefault() { this.prevented = true; }}; for (const fn of viewport.listeners.wheel) fn(e); return e; };
-  const pinch = route => { reset({route}); frames = 0; const e = {scale: 2, clientX: 10, clientY: 10, prevented: false, preventDefault() { this.prevented = true; }}; for (const fn of viewport.listeners.gesturestart) fn(e); for (const fn of viewport.listeners.gesturechange) fn(e); return e; };
+  const wheel = route => { reset({route}); frames = 0; counting(); const e = {ctrlKey: false, metaKey: true, deltaY: -50, clientX: 10, clientY: 10, prevented: false, preventDefault() { this.prevented = true; }}; for (const fn of viewport.listeners.wheel) fn(e); return e; };
+  const pinch = route => { reset({route}); frames = 0; counting(); const e = {scale: 2, clientX: 10, clientY: 10, prevented: false, preventDefault() { this.prevented = true; }}; for (const fn of viewport.listeners.gesturestart) fn(e); for (const fn of viewport.listeners.gesturechange) fn(e); return e; };
   for (const r of [{page: 'settings', section: 'general'}, {page: 'days'}, {page: 'characters'}, {page: 'identity'}]) {
     assert.equal(wheel(r).prevented, true, r.page); assert.equal(frames, 0, r.page);
     assert.equal(pinch(r).prevented, true, r.page); assert.equal(frames, 0, r.page);
@@ -325,11 +327,11 @@ test('⌘滚轮、捏合只在主区是网格的页面缩放网格，也不交�
     pinch(r); assert.equal(frames, 1, r.page);
   }
   // 不按 ⌘ 的滚轮是普通滚动
-  reset({route: {page: 'library'}}); frames = 0;
+  reset({route: {page: 'library'}}); frames = 0; counting();
   const plain = {ctrlKey: false, metaKey: false, deltaY: 50, prevented: false, preventDefault() { this.prevented = true; }};
   for (const fn of viewport.listeners.wheel) fn(plain);
   assert.deepEqual([plain.prevented, frames], [false, 0]);
-  globalThis.requestAnimationFrame = () => 0;
+  frame.setScheduler(() => 0);
 });
 
 // 组页上不选图按 S：和「全部未识别」一样，当前图先飞走（卡片带 leaving），再发出「跳过」（#385）。

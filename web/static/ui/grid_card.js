@@ -22,7 +22,7 @@ import {REASONS, nameWithWork} from '../core/labels.js';
 import {clampRatio, aspect} from '../core/layout.js';
 import {attr, cls, css, make, show, text, tpl} from './el.js';
 import {HEART_ICON, heartTip} from './favorites.js';
-import {thumbs} from './motion.js';
+import {flip, thumbs} from './motion.js';
 import {setTint} from './tint.js';
 import {releaseImages} from './virtual.js';
 
@@ -52,6 +52,22 @@ export function gridContext({route, view, fit, cellW, hints, hue}) {
   };
 }
 
+// 重复页的角标颜色（#386 的 2-14）：同一组同色，列表里相邻的两组一定不同色。每组先按组的键取 12 种色相之一，和前一组撞色时
+// 往后错开 5 档；前一组要看它自己的颜色，所以从这一段连续读到的第一张往后推。items 是网格的列表，按 version（数据版本）缓存，
+// 新读到一页时重算。返回色相的角度，写进 --dup-hue。
+const hueOf = key => { let h = 0; for (const ch of key) h = (h * 31 + ch.charCodeAt(0)) >>> 0; return h % 12; };
+const hues = {version: -1, at: []};
+export function dupHue(items, version, i) {
+  if (hues.version !== version) { hues.version = version; hues.at = []; }
+  const at = hues.at, grp = k => items[k]?.dup?.grp;
+  let j = i; while (j > 0 && at[j] === undefined && grp(j - 1) !== undefined) j--;
+  for (let k = j; k <= i; k++) {
+    if (at[k] !== undefined) continue;
+    const prev = k > 0 && grp(k - 1) !== undefined ? at[k - 1] : undefined, own = hueOf(grp(k));
+    at[k] = grp(k) === grp(k - 1) && prev !== undefined ? prev : own === prev ? (own + 5) % 12 : own;
+  }
+  return at[i] * 30;
+}
 // 卡片的说明：读屏和悬停提示用。
 export const cardLabel = (item, i) => t('{names}，第 {n} 张', {names: item.memberships.map(m => m.name).join(t('、')) || t('未识别图片'), n: i + 1});
 
@@ -161,6 +177,8 @@ export function gridCard(scope) {
       attr(el, 'aria-current', focused ? 'true' : null);
       cls(el, 'is-cursor', cursor);
     },
+    // 缩放时从旧的框滑到新的框（屏幕坐标）：动里面的 .card-stage，根节点的 transform 是网格写的位置。
+    flip(from, to) { return flip(refs.stage, from, to); },
     dispose() { releaseImages(el); scope.dispose(); },
   };
 }

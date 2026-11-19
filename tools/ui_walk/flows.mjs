@@ -86,7 +86,7 @@ export const FLOWS = [
     async run(w, page) {
       const f = w.config.fixture;
       const pages = [
-        ['图库 · 按天', '#/days', 'home'], ['图库 · 网格', '#/library', 'grid'], ['资料库', '#/characters', 'panel'],
+        ['图库 · 按天', '#/days', 'home'], ['图库 · 网格', '#/library', 'grid'], ['图库 · 日历', '#/calendar', 'panel'], ['资料库', '#/characters', 'panel'],
         ['角色页', `#/library?char=${encodeURIComponent(f.charIds[f.chars[0].name])}`, 'grid'],
         ['资料库 · 作品', '#/characters/works', 'panel'],
         ['未识别 · 按组整理', '#/groups', 'panel'], ['未识别 · 第 1 组', `#/g/${f.groups[0]?.id}`, 'grid'],
@@ -329,6 +329,41 @@ export const FLOWS = [
   },
 
   {
+    name: 'calendar',
+    title: '图库的日历：每天的格子按张数拼图，翻月，点一天去按天视图的那一天；三种视图之间切换，搜索词跟着走（#708）',
+    async run(w, page) {
+      let snap = await w.step('打开日历', () => goto(page, '#/calendar'), {shot: true});
+      const month = () => page.eval(`document.querySelector('#calendarPage .cal-title > :first-child')?.textContent || ''`);
+      const days = () => page.eval(`[...document.querySelectorAll('#calendarPage .cal-day[href]')].map(a => ({href: a.getAttribute('href'),
+        tiles: [...a.querySelectorAll('img')].filter(i => !i.hidden).length, n: Number((a.querySelector('.cal-count')?.textContent || '0').replace(/\\D/g, ''))}))`);
+      w.check('月份标题不空', !!await month(), await month());
+      // 这个月没有图时往前翻到有图的月份（‹ 去筛选后最近有图的月份）
+      for (let i = 0; i < 3 && !(await days()).length; i++) {
+        if (await page.eval(`document.querySelector('#calendarPage .cal-nav > button')?.disabled`)) break;
+        snap = await w.step('上一个有图的月份', p => p.click('#calendarPage .cal-nav > button'), {settle: {quiet: 400}});
+      }
+      const cells = await days();
+      w.check('有图的日子是链接', cells.length > 0, cells.length);
+      w.check('格子按张数拼 1、2 或 4 张', cells.every(c => c.tiles === (c.n >= 4 ? 4 : c.n >= 2 ? 2 : 1)), cells.slice(0, 6));
+      const shown = await month(), day = cells[0]?.href || '';
+      snap = await w.step('点有图的第一天', p => p.click(`#calendarPage .cal-day[href="${day}"]`), {shot: true, settle: {quiet: 500}});
+      w.check('到了按天视图的那一天', snap.hash.startsWith('#/days') && /[?&]at=\d{4}-\d{2}-\d{2}/.test(snap.hash), snap.hash);
+      snap = await w.step('浏览器后退', async p => { await p.eval('history.back()'); await gridReady(p); await sleep(400); });
+      w.check('回到日历的同一个月', snap.hash.startsWith('#/calendar') && await month() === shown, {hash: snap.hash, month: await month(), shown});
+      // 视图切换：在网格里搜一个角色，切到日历和按天，搜索词都在
+      const name = w.config.fixture.chars[0].name;
+      await w.step('打开网格', () => goto(page, '#/library'));
+      await w.step('按 / 聚焦搜索框', p => p.key('/'));
+      await w.step(`输入「${name}」`, async p => { await p.type(name); await sleep(800); });
+      snap = await w.step('页头的「日历」', async p => { await p.click('#heading .seg a[href^="#/calendar"]'); await gridReady(p); }, {shot: true});
+      const q = hash => new URLSearchParams(hash.split('?')[1] || '').get('q');
+      w.check('切到日历，搜索词还在', snap.hash.startsWith('#/calendar') && q(snap.hash) === name, snap.hash);
+      snap = await w.step('页头的「网格」', async p => { await p.click('#heading .seg a[href^="#/library"]'); await gridReady(p); });
+      w.check('切回网格，搜索词还在、网格有图', q(snap.hash) === name && snap.total > 0, {hash: snap.hash, total: snap.total});
+    },
+  },
+
+  {
     name: 'settings-fit',
     title: '设置 › 通用里切「原比例」→ 回图库：网格换成原比例，没有报错',
     covers: ['#386 1-9'],
@@ -339,7 +374,8 @@ export const FLOWS = [
       w.check('切换生效', fit === true, {fit});
       w.check('点的时候没有报错', !w.steps.at(-1).console.length, w.steps.at(-1).console);
       snap = await w.step('回图库', () => goto(page, '#/library'));
-      const cards = await page.eval(`document.querySelectorAll('#grid .card.fit').length`);
+      // 原比例里卡片按图的宽高比排，不全是方的（卡片下面没有标题条，#708）。
+      const cards = await page.eval(`[...document.querySelectorAll('#grid .card[data-id]')].filter(c => Math.abs(c.offsetWidth - c.offsetHeight) > 2).length`);
       w.check('网格是原比例', cards > 0, {cards});
       await w.step('按 R 切回方格', p => p.key('r'));
       w.check('R 切回方格', (await stateOf(page, 'S.fit')) === false, '');

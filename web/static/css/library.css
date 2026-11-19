@@ -2,10 +2,10 @@
    只用 css/tokens.css 的令牌和 css/base.css 的公共部件；重写一块，就删掉 app.css 里对应的旧规则。 */
 @layer pages{
 
-/* ---- 网格（C2 #708）：卡片部件在 ui/grid_card.js ----
+/* ---- 网格（C2 #708）：卡片部件在 ui/grid_card.js，行坐标在 ui/grid_rows.js ----
    图满格、圆角 8，下面没有标题条；读完之前是图的主色。根节点的 transform、宽高是网格写的位置，不加过渡（旧样式里的
    .card 带 transform 过渡，这里关掉）；上浮、缩小、投影都放在里面的 .card-stage 上。 */
-#grid .card{position:absolute;top:0;left:0;overflow:visible;border-radius:var(--radius-8);background:transparent;box-shadow:none;transition:none;cursor:default;contain:layout style}
+.grid .card{position:absolute;top:0;left:0;overflow:visible;border-radius:var(--radius-8);background:transparent;box-shadow:none;transition:none;cursor:default;contain:layout style}
 .card-stage{position:relative;width:100%;height:100%;overflow:hidden;border-radius:var(--radius-8);background:var(--tint-soft);
   transition:transform var(--dur-1) var(--ease),box-shadow var(--dur-1) var(--ease),opacity var(--dur-1) var(--ease)}
 .card-stage>img{display:block;width:100%;height:100%;object-fit:cover;pointer-events:none}
@@ -16,19 +16,23 @@
 .card[data-broken] .card-stage>img{visibility:hidden}
 .card[data-broken] .card-missing{display:grid}
 /* 悬停：上浮一点，投影带图的颜色（.tint 上的 --shadow-hover，css/tokens.css） */
-#grid .card:hover .card-stage{transform:translateY(-2px);box-shadow:var(--shadow-hover)}
+.grid .card:hover .card-stage{transform:translateY(-2px);box-shadow:var(--shadow-hover)}
 /* 「选中」一种画法：强调色环。键盘光标是浅一档的环，详情栏里那张是实环，选中的再缩小一点 */
-#grid .card.is-cursor .card-stage{box-shadow:0 0 0 2px var(--sheet),0 0 0 4px var(--accent-soft)}
-#grid .card[aria-current=true] .card-stage{box-shadow:0 0 0 2px var(--sheet),0 0 0 4px var(--accent)}
-#grid .card[aria-pressed=true] .card-stage{transform:scale(.95);box-shadow:0 0 0 2px var(--sheet),0 0 0 4px var(--accent)}
+.grid .card.is-cursor .card-stage{box-shadow:0 0 0 2px var(--sheet),0 0 0 4px var(--accent-soft)}
+.grid .card[aria-current=true] .card-stage{box-shadow:0 0 0 2px var(--sheet),0 0 0 4px var(--accent)}
+.grid .card[aria-pressed=true] .card-stage{transform:scale(.95);box-shadow:0 0 0 2px var(--sheet),0 0 0 4px var(--accent)}
+/* 网格顶部跟着滚动的头部（角色页的横幅，#712）：ui/grid.js 的 gridHead()；它的高度算进行坐标（ui/grid_rows.js） */
+.grid-head{position:absolute;top:0;right:0;left:0}
+/* 视图选项「图上显示副本数与造型」关掉时 */
+.hide-marks .card-chip,.hide-marks .grid .dup-badge.folded,.hide-marks .grid .machine-dot{display:none}
 /* 写入后要离开本页的卡片先淡出（ui/grid.js 的 write） */
-#grid .card.leaving .card-stage{transform:scale(.86);opacity:0}
-#grid .card.skeleton{background:var(--soft);animation:none}
+.grid .card.leaving .card-stage{transform:scale(.86);opacity:0}
+.grid .card.skeleton{background:var(--soft);animation:none}
 
 /* 悬停、键盘光标在上面时：底部压暗一条，写角色名 */
 .card-info{position:absolute;right:0;bottom:0;left:0;display:flex;align-items:baseline;gap:var(--space-6);min-width:0;padding:var(--space-24) 32px var(--space-8) var(--space-10);
   background:var(--scrim);color:var(--on-image);text-shadow:var(--image-text-shadow);opacity:0;transition:opacity var(--dur-1) var(--ease)}
-#grid .card:hover .card-info,#grid .card.is-cursor .card-info{opacity:1}
+.grid .card:hover .card-info,.grid .card.is-cursor .card-info{opacity:1}
 .card-info>b{min-width:0;overflow:hidden;font-size:var(--fs-12);font-weight:var(--fw-600);white-space:nowrap;text-overflow:ellipsis}
 .card-info>small{flex:none;font-size:var(--fs-11);opacity:.85}
 
@@ -37,30 +41,30 @@
 .card-chip{padding:var(--space-1) var(--space-6);border-radius:var(--radius-pill);background:var(--glass-chip);color:var(--ink);font-size:var(--fs-11);line-height:1.4}
 
 /* 左上的勾：悬停或在选择模式里出现；选中时是强调色底加白勾 */
-#grid .check{position:absolute;top:var(--space-6);left:var(--space-6);z-index:var(--z-page-2);width:22px;height:22px;border:1.5px solid var(--on-image);border-radius:var(--radius-round);
+.grid .check{position:absolute;top:var(--space-6);left:var(--space-6);z-index:var(--z-page-2);width:22px;height:22px;border:1.5px solid var(--on-image);border-radius:var(--radius-round);
   background:rgba(var(--sh),.18);opacity:0;cursor:pointer;transition:opacity var(--dur-1) var(--ease),background-color var(--dur-1) var(--ease)}
-#grid .card:hover .check,#grid.selecting .check,#grid .card[aria-pressed=true] .check{opacity:1}
-#grid .check:hover{background:rgba(var(--sh),.35)}
-#grid .card[aria-pressed=true] .check{background:var(--accent-fill)}
-#grid .card[aria-pressed=true] .check::after{content:"";position:absolute;top:3px;left:6px;width:5px;height:10px;border:solid var(--on-image);border-width:0 2px 2px 0;transform:rotate(45deg)}
+.grid .card:hover .check,.grid.selecting .check,.grid .card[aria-pressed=true] .check{opacity:1}
+.grid .check:hover{background:rgba(var(--sh),.35)}
+.grid .card[aria-pressed=true] .check{background:var(--accent-fill)}
+.grid .card[aria-pressed=true] .check::after{content:"";position:absolute;top:3px;left:6px;width:5px;height:10px;border:solid var(--on-image);border-width:0 2px 2px 0;transform:rotate(45deg)}
 
 /* 右上的副本角标：重复页上同组同色（--dup-hue 由网格按组算），别处折叠的副本是深色的「×N」 */
-#grid .dup-badge{position:absolute;top:var(--space-6);right:var(--space-6);z-index:var(--z-page-1);padding:var(--space-1) var(--space-8);border-radius:var(--radius-pill);
+.grid .dup-badge{position:absolute;top:var(--space-6);right:var(--space-6);z-index:var(--z-page-1);padding:var(--space-1) var(--space-8);border-radius:var(--radius-pill);
   background:hsl(var(--dup-hue) 45% 42%);color:var(--on-image);font-size:var(--fs-11);font-weight:var(--fw-600);font-variant-numeric:tabular-nums;box-shadow:none}
-#grid .dup-badge.folded{background:rgba(var(--sh),.55);font-weight:var(--fw-400)}
+.grid .dup-badge.folded{background:rgba(var(--sh),.55);font-weight:var(--fw-400)}
 
 /* 右下：心形（收藏过的一直在，没收藏的悬停时出现），角色页上机器识别、没人看过的点 */
-#grid .fav-mark{position:absolute;right:var(--space-4);bottom:var(--space-4);z-index:var(--z-page-2);display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;
+.grid .fav-mark{position:absolute;right:var(--space-4);bottom:var(--space-4);z-index:var(--z-page-2);display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;
   margin:0;padding:0;border:0;background:transparent;color:var(--on-image);opacity:0;cursor:pointer;transition:opacity var(--dur-1) var(--ease),transform var(--dur-1) var(--ease)}
-#grid .fav-mark svg{width:19px;height:19px;fill:transparent;stroke:currentColor;stroke-width:1.7;stroke-linejoin:round;filter:drop-shadow(0 0 1.5px rgba(var(--sh),.55))}
-#grid .card:hover .fav-mark,#grid .fav-mark.on{opacity:1}
-#grid .fav-mark:hover{transform:scale(1.1)}
-#grid .fav-mark.on{color:var(--fav)}
-#grid .fav-mark.on svg{fill:currentColor;stroke:var(--on-image);stroke-width:1.4}
-#grid .fav-mark.still{pointer-events:none}
-#grid .machine-dot{position:absolute;right:var(--space-8);bottom:var(--space-8);z-index:var(--z-page-1);width:8px;height:8px;border:1.5px solid var(--line);border-radius:var(--radius-round);
+.grid .fav-mark svg{width:19px;height:19px;fill:transparent;stroke:currentColor;stroke-width:1.7;stroke-linejoin:round;filter:drop-shadow(0 0 1.5px rgba(var(--sh),.55))}
+.grid .card:hover .fav-mark,.grid .fav-mark.on{opacity:1}
+.grid .fav-mark:hover{transform:scale(1.1)}
+.grid .fav-mark.on{color:var(--fav)}
+.grid .fav-mark.on svg{fill:currentColor;stroke:var(--on-image);stroke-width:1.4}
+.grid .fav-mark.still{pointer-events:none}
+.grid .machine-dot{position:absolute;right:var(--space-8);bottom:var(--space-8);z-index:var(--z-page-1);width:8px;height:8px;border:1.5px solid var(--line);border-radius:var(--radius-round);
   background:transparent;box-shadow:0 0 0 .5px rgba(var(--sh),.25)}
-#grid .machine-dot:not([hidden])~.fav-mark{right:18px}
+.grid .machine-dot:not([hidden])~.fav-mark{right:18px}
 
 /* ---- 日历（C2 #708）：部件在 ui/calendar.js ----
    月份标题背后是这个月的环境光（--tint-glow，径向渐变，不用 filter 模糊：每块模糊各占一块显存，#683）；
@@ -71,6 +75,8 @@
   background:radial-gradient(40% 60% at 18% 50%,var(--tint-glow),transparent 70%),radial-gradient(35% 55% at 52% 45%,var(--tint-glow),transparent 70%);opacity:.8}
 /* 光在最底下：::before 是第一个子节点，后面定了位的内容画在它上面 */
 .cal-head>*{position:relative}
+/* 这个月还没读到、或者没有颜色：不亮 */
+.cal-head:not(.tint)::before{display:none}
 .cal-title{min-width:0}
 .cal-sub{margin:var(--space-4) 0 0;color:var(--muted);font-size:var(--fs-12)}
 .cal-people{display:flex;align-items:center;min-width:0;overflow:hidden}

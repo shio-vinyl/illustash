@@ -191,7 +191,7 @@ const CARD = tpl`<article class="dc" aria-busy="false">
         <svg viewBox="0 0 20 20" aria-hidden="true"><path d="m5 5 10 10M15 5 5 15"/></svg></button></div></div>
   <div class="dc-body" data-ref="body"><p class="dc-status text-meta" data-ref="status" hidden></p>
     <div data-ref="askSlot"></div><div data-ref="whoSlot"></div>
-    <div class="dc-stats" data-ref="stats"><p class="dc-stat-line"><span data-ref="total"></span><em data-ref="now"></em></p><div class="dc-bars" data-ref="bars"></div>
+    <div class="dc-stats" data-ref="stats" hidden><p class="dc-stat-line"><span data-ref="total"></span><em data-ref="now"></em></p><div class="dc-bars" data-ref="bars"></div>
       <div class="dc-same" data-ref="same"><h3 class="dc-label"><span data-t>同一角色</span><a data-ref="sameAll"><span data-t>全部</span> ›</a></h3>
         <div class="dc-same-row" data-ref="sameRow"></div></div></div>
     <div data-ref="artistSlot"></div>

@@ -136,3 +136,13 @@ test('日历格里 1 / 2 / 4 张的拼法', () => {
   assert.deepEqual(L.cellTiles(3, box), [{i: 0, x: 0, y: 0, w: 48, h: 80}, {i: 1, x: 52, y: 0, w: 48, h: 80}]);
   assert.deepEqual(L.cellTiles(9, box).map(b => [b.x, b.y, b.w, b.h]), [[0, 0, 48, 38], [52, 0, 48, 38], [0, 42, 48, 38], [52, 42, 48, 38]]);
 });
+
+test('瀑布和马赛克：列宽为 0、尺寸未知、NaN 都不出错', () => {
+  const tiny = L.masonry([1, 1], {width: 10, column: 0, gap: 0});
+  assert.equal(tiny.columns, 10);
+  assert.ok(tiny.boxes.every(b => Number.isFinite(b.h)));
+  assert.equal(L.masonry([0, NaN], {width: 100, column: 100}).boxes[1].h, 100 / .75);
+  const mosaic = L.dayMosaic([0, NaN, 1], {width: 1000, rowHeight: 100, gap: 10});
+  assert.ok(mosaic.boxes.every(b => [b.x, b.y, b.w, b.h].every(Number.isFinite)));
+  assert.equal(mosaic.boxes[0].w, .75 * 210, 'unknown size counts as 3:4, not a 0.5 sliver');
+});

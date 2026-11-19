@@ -116,3 +116,64 @@ test('挂在作用域下：父作用域释放时一起释放', async () => {
   assert.equal(content.childNodes.length, 0);
   assert.equal(viewport.listenerCount('scroll'), 0);
 });
+
+test('部件根节点就是 <img>、或者用 <picture> 时，摘掉前同样去掉地址', () => {
+  const {viewport, content} = page(), roots = {};
+  const list = V.virtual(viewport, content, {create: box => {
+    if (box.key === 'k0') { const img = document.createElement('img'); img.setAttribute('src', '/a.jpg'); img.setAttribute('srcset', '/a@2x.jpg 2x'); roots.img = img; return {el: img}; }
+    const pic = document.createElement('picture'), source = document.createElement('source'), img = document.createElement('img');
+    source.setAttribute('srcset', '/b.avif'); img.setAttribute('src', '/b.jpg'); pic.append(source, img); roots.source = source; return {el: pic};
+  }});
+  list.set([{key: 'k0', x: 0, y: 0, w: 100, h: 100}, {key: 'k1', x: 0, y: 100, w: 100, h: 100}], 200); flush();
+  list.dispose();
+  assert.equal(roots.img.hasAttribute('src'), false);
+  assert.equal(roots.img.hasAttribute('srcset'), false);
+  assert.equal(roots.source.hasAttribute('srcset'), false);
+});
+
+test('DOM 次序按框的先后：从下往上滚回来时新挂的节点插在前面', () => {
+  const {viewport, content} = page(), c = cards();
+  const list = V.virtual(viewport, content, {create: c.create});
+  list.set(column(), 10000); flush();
+  viewport.scrollTop = 3000; viewport.dispatchEvent(dom.event('scroll')); flush();
+  viewport.scrollTop = 1500; viewport.dispatchEvent(dom.event('scroll')); flush();
+  const order = content.childNodes.map(el => Number(el.querySelector('img').getAttribute('src').match(/k(\d+)/)[1]));
+  assert.deepEqual(order, [...order].sort((a, b) => a - b));
+  list.dispose();
+});
+
+test('焦点在里面的节点滚远了先不摘，焦点离开后再摘；键从数据里没了照摘', () => {
+  const {viewport, content} = page(), c = cards();
+  document.body.appendChild(viewport);
+  const list = V.virtual(viewport, content, {create: box => { const comp = c.create(box), b = document.createElement('button'); comp.el.appendChild(b); comp.button = b; return comp; }});
+  list.set(column(), 10000); flush();
+  const first = list.comp('k0');
+  first.button.focus();
+  viewport.scrollTop = 5000; viewport.dispatchEvent(dom.event('scroll')); flush();
+  assert.equal(list.comp('k0'), first, 'kept while focused');
+  assert.equal(document.activeElement, first.button);
+  first.button.blur();
+  viewport.scrollTop = 5100; viewport.dispatchEvent(dom.event('scroll')); flush();
+  assert.equal(list.comp('k0'), null);
+  const again = list.comp('k55'); again.el.querySelector('button').focus();
+  list.set(column(10), 1000); flush();
+  assert.equal(list.comp('k55'), null, 'its key is gone: removed anyway');
+  assert.equal(document.activeElement, document.body);
+  list.dispose(); viewport.remove();
+});
+
+test('content 是 static 时第一次量完给它写上 position: relative', () => {
+  const {viewport, content} = page(), saved = globalThis.getComputedStyle;
+  globalThis.getComputedStyle = el => ({position: el.style.position || 'static'});
+  try {
+    const list = V.virtual(viewport, content, {create: cards().create});
+    list.set(column(3), 300); flush();
+    assert.equal(content.style.position, 'relative');
+    list.dispose();
+    const other = page(); other.content.style.position = 'absolute';
+    const kept = V.virtual(other.viewport, other.content, {create: cards().create});
+    kept.set(column(3), 300); flush();
+    assert.equal(other.content.style.position, 'absolute');
+    kept.dispose();
+  } finally { globalThis.getComputedStyle = saved; }
+});

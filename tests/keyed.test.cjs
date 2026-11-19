@@ -90,3 +90,62 @@ test('退场：设 inert、留在原处，exit 的 promise 落定后才摘掉和
   assert.equal(box.childNodes.length, 0);
   assert.deepEqual(disposed.sort(), ['a', 'b', 'b', 'c']);
 });
+
+test('第一次有数据的 set 不播进场（先 set([]) 也一样），之后新来的才播', () => {
+  const box = document.createElement('div'), log = [];
+  const {list} = chips(box, {enter: (el, item) => log.push(item.id)});
+  list.set([]);
+  list.set(items('ab'));
+  assert.deepEqual(log, []);
+  list.set(items('abc'));
+  assert.deepEqual(log, ['c']);
+});
+
+test('create 中途抛错：这一轮建好的新部件释放掉，列表保持原样', () => {
+  const box = document.createElement('div'), disposed = [], updated = [];
+  const list = K.keyed(box, {
+    key: item => item.id,
+    create: item => {
+      if (item.id === 'x') throw new Error('bad item');
+      const el = document.createElement('b'); el.textContent = item.id;
+      return {el, update: next => updated.push(next.id), dispose: () => disposed.push(item.id)};
+    },
+  });
+  list.set(items('ab'));
+  assert.throws(() => list.set(items('abcx')), /bad item/);
+  assert.deepEqual(disposed, ['c']);
+  assert.deepEqual(updated, [], 'reused parts were not touched');
+  assert.deepEqual(names(box), ['a', 'b']);
+});
+
+test('dispose 立刻释放还在退场的部件；挂在作用域下随它释放', async () => {
+  const S = await web.load('ui/scope.js'), parent = S.scope('page'), box = document.createElement('div'), disposed = [];
+  const list = K.keyed(box, {
+    key: item => item.id, scope: parent, exit: () => new Promise(() => {}),
+    create: item => { const el = document.createElement('b'); el.textContent = item.id; return {el, dispose: () => disposed.push(item.id)}; },
+  });
+  list.set(items('ab'));
+  list.set(items('a'));
+  await new Promise(r => setTimeout(r));
+  assert.deepEqual(disposed, [], 'b is still leaving');
+  parent.dispose();
+  assert.deepEqual(disposed.sort(), ['a', 'b']);
+  assert.equal(box.childNodes.length, 0);
+  list.set(items('c'));
+  assert.equal(box.childNodes.length, 0, 'a disposed list ignores set');
+});
+
+test('被挪的节点里有焦点：挪完放回原处', () => {
+  const box = document.createElement('div');
+  document.body.appendChild(box);
+  const list = K.keyed(box, {
+    key: item => item.id,
+    create: item => { const el = document.createElement('div'), input = document.createElement('input'); el.appendChild(input); el.input = input; return {el}; },
+  });
+  list.set(items('abcd'));
+  const input = list.get('a').el.input;
+  input.focus();
+  list.set(items('bcda'));   // 只有 a 被挪
+  assert.equal(document.activeElement, input);
+  box.remove();
+});

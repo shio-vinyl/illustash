@@ -19,6 +19,8 @@ class Tree(tempfile.TemporaryDirectory):
         base.mkdir(parents=True)
         shutil.copyfile(ROOT / STATIC / 'app.js', base / 'app.js')
         shutil.copyfile(ROOT / STATIC / 'app.css', base / 'app.css')
+        for script in ('i18n.js', 'splash.js', 'theme.js'):
+            shutil.copyfile(ROOT / STATIC / script, base / script)
         for folder in ('core', 'ui'):
             shutil.copytree(ROOT / STATIC / folder, base / folder)
         (self.root / BASELINE).parent.mkdir(parents=True)
@@ -578,7 +580,10 @@ class FrontendArchitectureTest(unittest.TestCase):
             self.write(tree, 'ui/fresh.js', "export const a = (el, html) => { el.innerHTML = html; };\n")
             self.assertViolation(tree, 'inner-html', 'ui/fresh.js（现有 1 处，基线允许 0 处）')
         for line in ("el.outerHTML = '<p>' + text + '</p>';", "el.innerHTML += row(x);",
-                     "el.insertAdjacentHTML('beforeend', `<li>${x}</li>`);", "el.innerHTML = on ? '' : '<b></b>';"):
+                     "el.insertAdjacentHTML('beforeend', `<li>${x}</li>`);", "el.innerHTML = on ? '' : '<b></b>';",
+                     "el['innerHTML'] = text;", 'el["outerHTML"] = x;', 'el.setHTMLUnsafe(text);',
+                     'document.createRange().createContextualFragment(text);', "new DOMParser().parseFromString(text, 'text/html');",
+                     'Document.parseHTMLUnsafe(text);', 'el.srcdoc = text;', 'tpl([text])();'):
             with self.subTest(line=line), Tree() as tree:
                 self.write(tree, 'ui/fresh.js', f'export function f(el, text, x, on) {{ {line} }}\n')
                 self.assertViolation(tree, 'inner-html', 'ui/fresh.js')
@@ -589,6 +594,13 @@ class FrontendArchitectureTest(unittest.TestCase):
                        "  el.insertAdjacentHTML('beforeend', \"<hr>\");\n  if (el.innerHTML === '') return;\n}\n")
             tree.append('ui/el.js', '\nexport function again(holder, source) { holder.innerHTML = source; }\n')
             self.assertEqual(tree.errors(), [])
+        # 不写分号：右边到行尾为止，下一句不算进来；续行（运算符在行尾或下一行开头）照样连起来算
+        with Tree() as tree:
+            self.write(tree, 'ui/fresh.js', "export function f(el, x) {\n  el.innerHTML = ''\n  x.go()\n  el.innerHTML = `<i>\n</i>`\n  x.done()\n}\n")
+            self.assertEqual(tree.errors(), [])
+        with Tree() as tree:
+            self.write(tree, 'ui/fresh.js', "export function f(el, x) {\n  el.innerHTML = '<b>' +\n    x\n  el.innerHTML = '<i>'\n    + x\n}\n")
+            self.assertViolation(tree, 'inner-html', 'ui/fresh.js（现有 2 处，基线允许 0 处）')
 
     # ---------- 规则 11：帧调度和动效的入口（#704） ----------
     def test_animation_frame_outside_frame_js(self):
@@ -602,6 +614,11 @@ class FrontendArchitectureTest(unittest.TestCase):
         with Tree() as tree:
             self.write(tree, 'ui/fresh.js', 'export const go = fn => document.startViewTransition(fn);\n')
             self.assertViolation(tree, 'animation-entry', 'ui/fresh.js: startViewTransition')
+            # 模块里的 startViewTransition 只由规则 11 报，规则 12 不重复报
+            self.assertFalse([e for e in tree.errors() if 'safari17-js' in e])
+        with Tree() as tree:
+            self.write(tree, 'ui/fresh.js', "import * as motion from './motion.js';\nexport const fade = el => motion.animate(el, 'fade');\n")
+            self.assertFalse([e for e in tree.errors() if 'animation-entry' in e])
 
     def test_frame_and_motion_are_the_allowed_entries(self):
         with Tree() as tree:
@@ -618,8 +635,19 @@ class FrontendArchitectureTest(unittest.TestCase):
         for code, needle in (('const {promise, resolve} = Promise.withResolvers();', 'Promise.withResolvers（Safari 17.4 才有）'),
                              ('const groups = Object.groupBy(list, x => x.day);', 'Object.groupBy'),
                              ('const ok = el.checkVisibility();', 'checkVisibility'),
-                             ('requestIdleCallback(work);', 'requestIdleCallback（Safari 没有）'),
-                             ('scheduler.postTask(work);', 'scheduler.postTask')):
+                             ('requestIdleCallback(work);', 'requestIdleCallback（Safari 正式版没有）'),
+                             ('scheduler.postTask(work);', 'scheduler（postTask、yield）'),
+                             ('await scheduler.yield();', 'scheduler（postTask、yield）'),
+                             ('const any = AbortSignal.any([a, b]);', 'AbortSignal.any（Safari 17.4 才有）'),
+                             ('const names = list.values().map(x => x.name).toArray();', '迭代器方法（Safari 18.4 才有）'),
+                             ('const it = Iterator.from(list);', '迭代器方法'),
+                             ('el.parentNode.moveBefore(el, null);', 'Element.moveBefore（Safari 正式版没有）'),
+                             ('const w = new CloseWatcher();', 'CloseWatcher'),
+                             ('navigation.navigate(url);', 'Navigation API'),
+                             ('const d = Temporal.Now.plainDateISO();', 'Temporal'),
+                             ('using res = open();', '显式资源管理'),
+                             ('const s = new DisposableStack();', '显式资源管理'),
+                             ("const m = await import('./x.json', {with: {type: 'json'}});", 'import 属性（with {type}）（Safari 17.2 才有）')):
             with self.subTest(code=code), Tree() as tree:
                 self.write(tree, 'ui/fresh.js', f'export function f(list, el, work) {{ {code} }}\n')
                 error = self.assertViolation(tree, 'safari17-js', needle)
@@ -634,8 +662,21 @@ class FrontendArchitectureTest(unittest.TestCase):
             self.assertIn('requestIdleCallback', errors[0])
             self.assertNotIn('startViewTransition（', errors[0])
         with Tree() as tree:
-            tree.append('ui/grid.js', "\nexport const idle = 'requestIdleCallback' in window;\n")
+            tree.append('ui/grid.js', "\nexport const idle = 'requestIdleCallback' in window;\n"
+                        "export const pairs = obj => Object.entries(obj).map(([k, v]) => k + v);\n"
+                        "export const list = map => [...map.values()].map(x => x);\n")
             self.assertEqual(tree.errors(), [])
+
+    def test_safari_17_rule_covers_the_classic_scripts(self):
+        for script in ('i18n.js', 'splash.js', 'theme.js'):
+            with self.subTest(script=script), Tree() as tree:
+                tree.append(script, '\nconst {promise, resolve} = Promise.withResolvers();\nrequestIdleCallback(() => {});\n')
+                errors = [e for e in tree.errors() if 'safari17-js' in e]
+                self.assertEqual(len(errors), 2, errors)
+                self.assertTrue(all(f'web/static/{script}:' in e for e in errors))
+        with Tree() as tree:
+            tree.append('splash.js', '\ndocument.startViewTransition?.(() => {});\n')
+            self.assertViolation(tree, 'safari17-js', 'splash.js: startViewTransition（Safari 18.0 才有）')
 
 
 if __name__ == '__main__':

@@ -29,14 +29,24 @@ test('按键去重：同一个键只跑最后排进来的，位置是第一次�
   assert.deepEqual(log, ['a2', 'b']);
 });
 
-test('读里排的写在同一帧跑；写里排的读到下一帧；写里排的写也在这一帧', () => {
+test('读里排的写在同一帧跑；写里排的读和写都挪到下一帧', () => {
   const log = [];
-  frame.read(() => { log.push('read'); frame.write(() => { log.push('write'); frame.read(() => log.push('next read')); frame.write(() => log.push('write again')); }); });
+  frame.read(() => { log.push('read'); frame.write(() => { log.push('write'); frame.read(() => log.push('next read')); frame.write(() => log.push('next write')); }); });
   tick();
-  assert.deepEqual(log, ['read', 'write', 'write again']);
+  assert.deepEqual(log, ['read', 'write']);
   assert.equal(frames.length, 1);
   tick();
-  assert.deepEqual(log, ['read', 'write', 'write again', 'next read']);
+  assert.deepEqual(log, ['read', 'write', 'next read', 'next write']);
+  assert.equal(frames.length, 0);
+});
+
+test('总在再排自己的写停得下来：每帧跑一次', () => {
+  let n = 0;
+  const again = () => { n++; frame.write(again, 'loop'); };
+  frame.write(again, 'loop');
+  tick(); tick(); tick();
+  assert.equal(n, 3);
+  assert.equal(frames.length, 1);
 });
 
 test('取消还没跑的任务；一个任务抛错不挡住别的', () => {

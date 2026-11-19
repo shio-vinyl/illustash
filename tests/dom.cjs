@@ -4,6 +4,13 @@
 // 模板：标签、带引号的特性、文字、自闭合和空元素、几个常用实体）、事件的登记与派发（不冒泡），以及记录写入次数
 // （writes），测「值没变不动 DOM」。
 //
+// 焦点：focus() / blur() 改 document.activeElement；摘掉或挪动含焦点的节点时焦点回到 body（和浏览器一样）。
+//
+// 没有模拟的（真浏览器里有，测试过了不代表真浏览器也过）：排版和尺寸（clientWidth / clientHeight / scrollTop 是测试自己
+// 设的普通属性，scrollTop 不按内容高度截断，getBoundingClientRect 只回测试设的 rect）；样式计算（没有 getComputedStyle）；
+// 事件冒泡、捕获和默认动作（dispatchEvent 只调这个节点上的监听）；<select>.value 不随选项变、checked / value 只是普通
+// 属性；inert、hidden 只记特性，不挡焦点和点击；HTML 解析只认不带插值的静态模板，不处理注释、<script> 和容错。
+//
 // 用法：const dom = require('./dom.cjs'); const document = dom.install(); … dom.uninstall();
 // install() 把 document、Node、HTMLElement 设到 globalThis 上，返回 document。
 const VOID = new Set(['area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'source', 'track', 'wbr']);
@@ -30,7 +37,12 @@ class Node {
   appendChild(node) { return this.insertBefore(node, null); }
   append(...nodes) { for (const n of nodes) this.appendChild(typeof n === 'string' ? current.createTextNode(n) : n); }
   removeChild(node) { node.remove(); return node; }
-  remove() { const p = this.parentNode; if (!p) return; writes++; p.childNodes.splice(p.childNodes.indexOf(this), 1); this.parentNode = null; }
+  // 和浏览器一样：摘掉或挪动（insertBefore 先摘再插）含焦点的节点时，焦点回到 body。
+  remove() {
+    const p = this.parentNode; if (!p) return; writes++;
+    if (current && this.contains(current.activeElement) && current.activeElement !== current.body) current.activeElement = current.body;
+    p.childNodes.splice(p.childNodes.indexOf(this), 1); this.parentNode = null;
+  }
   replaceWith(node) { const p = this.parentNode; if (p) { p.insertBefore(node, this); this.remove(); } }
   contains(node) { for (let n = node; n; n = n.parentNode) if (n === this) return true; return false; }
   get textContent() { return this.nodeType === 3 ? this.data : this.childNodes.map(c => c.textContent).join(''); }

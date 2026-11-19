@@ -105,13 +105,13 @@
 
 | 文件 | 做什么 | 用法要点 |
 |---|---|---|
-| `ui/el.js` | 模板与节点，往节点里写数据的唯一入口 | 模块顶层声明 ``const CARD = tpl`<div class="card"><b data-ref="name"></b></div>` ``，`CARD()` 克隆一份得到 `{el, refs}`。模板不带插值（写了 `${…}` 运行时抛错），第一次用到时解析一次、按模板字符串缓存；`data-t`、`data-t-attr` 在解析时翻译（和 `index.html` 同一套写法，键由 `tests/i18n.test.cjs` 从 ``tpl`…` `` 里收集）。数据只经 `text`、`attr`、`prop`、`value`、`cls`、`show`、`css` 写，它们记着上一次的值，没变不动 DOM；`value` 在焦点上时不覆盖。带链接、加粗的译文用 `rich(t('到 {where} 打开'), {where: 节点})` 拼节点，小节点用 `make()` |
-| `ui/keyed.js` | 按键复用的列表 | `keyed(容器, {key, create, enter, exit, move, appear})`，`set(items)`。复用的部件收到 `update(item, index)`；挪位置只挪最长递增子序列以外的节点（没动的不丢焦点）；退场的节点设 `inert`、留在原处，`exit` 返回的 promise 落定后再摘。钩子只收函数，进场、退场、FLIP 由调用方从 `ui/motion.js` 传进来 |
-| `ui/scope.js` | 生命周期 | `scope(名)` 或 `父.child(名)`；`on`、`timeout`、`interval`、`observe`、`add(部件或清理函数)`、`signal`，`dispose()` 一次清掉、可重复调用。`page(名)` 释放上一页的作用域、返回新一页的（页面框架换页时调用，#706）；全应用一直在的部件挂在 `app` 上 |
-| `ui/frame.js` | 每帧一次的读写调度 | `read(fn, key?)`、`write(fn, key?)`，返回取消函数。同一帧先跑完所有读再跑所有写；带 key 的同一帧只跑最后一个；读里排的写同一帧跑，写里排的读挪到下一帧 |
-| `ui/virtual.js` | 只挂视口附近的节点 | `virtual(视口, 内容, {create, margin, scope})`，`set(框, 总高)`；框是 `{key, x, y, w, h}`。挂视口上下各 `margin` 屏（默认 1），超出两倍才摘；按键复用部件；重新布局时以视口顶部那一张为锚；摘掉前去掉 `<img>` 的 `src`、`srcset`，放掉解码后的位图（#683）。定位只写 `transform` 和宽高 |
-| `core/layout.js` | 布局纯函数 | 输入宽高比和宽度，输出框 `{i, x, y, w, h}`：`justifiedRows` / `justified`（等高行，规则见「浏览界面」，图库网格就用它）、`masonry`（瀑布）、`dayMosaic`（按天：一张大图高两行、右边两行小图、放不下的收成最后一格的 `more`，界面盖「+N」）、`monthGrid`（某月的格子，周首默认周一）、`cellTiles`（格内 1 / 2 / 4 张）。FLIP 的起止位置用这里的框，不量 DOM。各页步骤在这里加自己的布局（画廊的拼贴、杂志、展厅由 #710 加） |
-| `ui/rows.js` | 设置的几种行与配置表（#676） | `rows(容器, 配置表, {scope})`，`update(state)`。几种行：`switch`、`action`、`info`、`select`、`field`（输入框）、`list`；每行可带 `hidden(state)`、`disabled(state)`。画一次、按状态更新，轮询时焦点和打了一半的字不丢。文字由调用方用 `t('…')` 翻译好传进来。样式暂沿用 `.switch-line`、`.setting-line`，设置页重写（#714）时换 |
+| `ui/el.js` | 模板与节点，往节点里写数据的唯一入口 | 模块顶层声明 ``const CARD = tpl`<div class="card"><b data-ref="name"></b></div>` ``，`CARD()` 克隆一份得到 `{el, refs}`。模板不带插值（写了 `${…}`、或者把 `tpl` 当函数调，运行时都抛错），第一次用到时解析一次、按模板字符串缓存；`data-t`、`data-t-attr` 在解析时翻译（和 `index.html` 同一套写法，键由 `tests/i18n.test.cjs` 从 ``tpl`…` `` 里收集）。数据只经 `text`、`attr`、`prop`、`value`、`cls`、`show`、`css` 写，它们记着上一次的值，没变不动 DOM；`value` 在焦点上时不覆盖。带链接、加粗的译文用 `rich(t('到 {where} 打开'), {where: 节点})` 拼节点，小节点用 `make()` |
+| `ui/keyed.js` | 按键复用的列表 | `keyed(容器, {key, create, enter, exit, move, appear, scope})`，`set(items)`。复用的部件收到 `update(item, index)`；挪位置只挪最长递增子序列以外的节点，被挪的节点里原来有焦点就挪完放回去；第一次有数据的那次 `set` 不播进场（先 `set([])` 也一样），`appear: true` 才播；`create` 中途抛错时这一轮新建的部件释放掉、列表不变；退场的节点设 `inert`、留在原处，`exit` 返回的 promise 落定后再摘，`dispose()` 立刻释放全部。钩子只收函数，进场、退场、FLIP 由调用方从 `ui/motion.js` 传进来 |
+| `ui/scope.js` | 生命周期 | `scope(名)` 或 `父.child(名)`；`on`（返回 `off`）、`timeout`、`interval`、`read` / `write`（帧任务）、`observe`、`add(部件或清理函数)`、`remove`、`signal`，`dispose()` 一次清掉、可重复调用。触发过的 `timeout`、跑完的帧任务自己从作用域里摘掉，所以长寿的作用域（`app`）可以反复用它们；`add()` 进去的要等 `dispose` 才走，不要每次滚动都 `add` 一个。`page(名)` 释放上一页的作用域、返回新一页的（页面框架换页时调用，#706）；全应用一直在的部件挂在 `app` 上 |
+| `ui/frame.js` | 每帧一次的读写调度 | `read(fn, key?)`、`write(fn, key?)`，返回取消函数（部件里用作用域的 `s.read` / `s.write`）。同一帧先跑完所有读再跑所有写；带 key 的同一帧只跑最后一个；读里排的读、写同一帧跑，写里排的读、写都挪到下一帧，所以一个总在再排自己的写每帧只跑一次、不会卡住这一帧 |
+| `ui/virtual.js` | 只挂视口附近的节点 | `virtual(视口, 内容, {create, margin, scope})`，`set(框, 总高)`；框是 `{key, x, y, w, h}`。挂视口上下各 `margin` 屏（默认 1），超出两倍才摘；按键复用部件；重新布局时以视口顶部那一张为锚；摘掉前去掉 `<img>`（包括根节点自己）的 `src`、`srcset` 和 `<source>` 的 `srcset`，放掉解码后的位图（#683）。调用方要知道：`content` 是定位元素（计算样式是 static 时它写上 `relative`）；部件根节点的 `transform`、宽高归它管；DOM 次序按框的先后插入（重新布局后已挂的节点不挪）；焦点在里面的节点滚远了先不摘，键从数据里没了照摘 |
+| `core/layout.js` | 布局纯函数 | 输入宽高比和宽度，输出框 `{i, x, y, w, h}`：`justifiedRows` / `justified`（等高行，规则见「浏览界面」，图库网格就用它）、`masonry`（瀑布）、`dayMosaic`（按天：一张大图高两行、右边两行小图、放不下的收成最后一格的 `more`，界面盖「+N」；瀑布和马赛克把不是正的有限数的宽高比按 3:4 算）、`monthGrid`（某月的格子，周首默认周一）、`cellTiles`（格内 1 / 2 / 4 张）。FLIP 的起止位置用这里的框，不量 DOM。各页步骤在这里加自己的布局（画廊的拼贴、杂志、展厅由 #710 加） |
+| `ui/rows.js` | 设置的几种行与配置表（#676） | `rows(容器, 配置表, {scope})`，`update(state)`。几种行：`switch`、`action`、`info`、`select`、`field`（输入框）、`list`；每行可带 `hidden(state)`、`disabled(state)`。画一次、按状态更新，轮询时焦点和打了一半的字不丢；改动后记一个「待提交的值」，`set` 返回的 promise 落定或 state 变成这个值之前，轮询带回的旧值不覆盖控件（#469）。配置表先整张校验再建节点；建好后立刻 `update` 一次。文字由调用方用 `t('…')` 翻译好传进来。样式暂沿用 `.switch-line`、`.setting-line`，设置页重写（#714）时换 |
 | `ui/motion.js` | 动效（#705） | 时长和缓动取令牌，进场、退场、FLIP、共享元素过渡、数字滚动，「减少动态效果」；以及「这张图的缩略图在屏幕上哪里」的登记表 |
 
 约定：
@@ -136,9 +136,9 @@
 
 实施时加进 `tools/check_frontend.py`，同时写进 AGENTS.md「前端结构约定」（#704、#705）。前三条已在 #704 落地，脚本里的编号是 10–12：
 
-1. 规则 10（`inner-html`）：数据不拼进 `innerHTML`、`outerHTML`、`insertAdjacentHTML`：右边只能是不带插值的字符串字面量，`ui/el.js` 放行；存量按文件计数进基线。
+1. 规则 10（`inner-html`）：数据不拼进 `innerHTML`、`outerHTML`、`insertAdjacentHTML`：右边只能是不带插值的字符串字面量（方括号写法同样算），`setHTMLUnsafe`、`createContextualFragment`、`parseFromString`、给 `srcdoc` 赋值、把 `tpl` 当函数调按名字报；`ui/el.js` 放行；存量按文件计数进基线。
 2. 规则 11（`animation-entry`）：`requestAnimationFrame` 只在 `ui/frame.js`、`ui/motion.js` 里调，`.animate(`、`startViewTransition` 只在 `ui/motion.js` 里调；存量按文件计数进基线。
-3. 规则 12（`safari17-js`）：Safari 17.0 没有的 JS 能力（`Promise.withResolvers`、`Object.groupBy`、`Map.groupBy`、`checkVisibility`、`startViewTransition`、`Promise.try`、`URL.parse`）只出现在登记的增强处（`SAFARI17_ENHANCEMENTS`，现在只有 `ui/motion.js` 的 `startViewTransition`）；Safari 没有的 `requestIdleCallback`、`scheduler.postTask` 哪里都不用。没有基线。
+3. 规则 12（`safari17-js`）：Safari 17.0 没有的 JS 能力只出现在登记的增强处（`SAFARI17_ENHANCEMENTS`，现在只有 `ui/motion.js` 的 `startViewTransition`）：import 属性（17.2）；`Promise.withResolvers`、`Object.groupBy`、`Map.groupBy`、`AbortSignal.any`、`checkVisibility`（17.4）；`startViewTransition`、`URL.parse`（18.0）；`Promise.try`（18.2）；迭代器方法和 `Iterator.from`（18.4）；`setHTMLUnsafe`（26）；Navigation API（26.2）；`Temporal`、`CloseWatcher`、`using` 和 `Symbol.dispose`（27.3）。Safari 正式版没有的 `requestIdleCallback`、`scheduler.*`、`Element.moveBefore` 哪里都不用。版本按 MDN browser-compat-data 核对，条目写在脚本注释里。模块和经典脚本 `i18n.js`、`splash.js`、`theme.js` 都查。没有基线。
 4. 规则 8 扩到 `css/` 下的文件，并管字重、阴影、动效的时长和缓动、圆角四档（旧档位进基线）。
 5. 不写类名子串选择器（`[class*=]` 一类）和宽泛的 `:has()`：VS Code 在 3.7k 个节点上实测，前者让样式重算慢 2.4 倍（#469）。存量进基线。
 6. CSS 变量必须有定义：在 `tokens.css` 里，或在登记的「由 JS 写的变量」名单里。

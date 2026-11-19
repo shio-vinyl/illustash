@@ -9,6 +9,9 @@
 //   dayMosaic                  按天的马赛克：左边一张大图，右边两行小图，放不下的收成最后一格上的「+N」
 //   monthGrid / cellTiles      日历：某月的格子（含前后月补齐的日子），以及格内 1 / 2 / 4 张图的拼法
 //
+// 宽高比：尺寸还不知道的图，调用方先用 estimateRatio 估（照网格的做法），再交进来。瀑布和马赛克另外兜底：0、负数、
+// NaN 这类不是正的有限数的宽高比按 3:4 算，不会算出 NaN 的框或一张窄条。
+//
 // 新加一种布局：写成「数据进、框出」的纯函数，固定输入在 tests/layout.test.cjs 里比对输出的框；不要在 ui/ 里另算一份。
 
 // ---------- 宽高比 ----------
@@ -19,6 +22,8 @@ export const DEFAULT_RATIO = .75;
 // 图本身的宽高比；尺寸未知时是 0。
 export const aspect = item => item?.width > 0 && item?.height > 0 ? item.width / item.height : 0;
 export const clampRatio = r => Math.min(FIT_MAX, Math.max(FIT_MIN, r));
+// 不是正的有限数（0 表示尺寸未知，或者算坏了的 NaN）按 3:4 算。
+const usable = r => Number.isFinite(r) && r > 0 ? r : DEFAULT_RATIO;
 // 已知尺寸的图（ratioAt(i) 非 0）的平均宽高比（按上下限截过），用来估还没读到尺寸的图；一张都没有时是 3:4。
 export function estimateRatio(n, ratioAt) {
   let sum = 0, known = 0;
@@ -80,11 +85,11 @@ export function justified(ratios, options) {
 // 列数由列宽目标 column 推出（至少一列），每张图按宽高比放进当前最矮的一列（一样矮时取靠左的）。
 // ratios 截不截上下限由调用方定（瀑布通常保留长图的原比例）。返回 {boxes, height, columns, columnWidth}。
 export function masonry(ratios, {width, column, gap = 0}) {
-  const columns = Math.max(1, Math.round((width + gap) / (column + gap)));
+  const columns = Math.max(1, Math.round((width + gap) / (Math.max(1, column) + Math.max(0, gap))));
   const w = Math.max(1, (width - gap * (columns - 1)) / columns), heights = new Array(columns).fill(0), boxes = [];
   for (let i = 0; i < ratios.length; i++) {
     let c = 0; for (let k = 1; k < columns; k++) if (heights[k] < heights[c]) c = k;
-    const h = w / (ratios[i] || DEFAULT_RATIO);
+    const h = w / usable(ratios[i]);
     boxes.push({i, x: c * (w + gap), y: heights[c], w, h}); heights[c] += h + gap;
   }
   return {boxes, height: Math.max(0, Math.max(...heights) - gap), columns, columnWidth: w};
@@ -97,8 +102,8 @@ export function masonry(ratios, {width, column, gap = 0}) {
 // 两行放不下的图不画：最后一格的框带 more = N（N 是从这一格起没展示的张数，包括这一格自己的图），界面在这格图上盖「+N」。
 // 右边窄得放不下一张小图时（< rowHeight × FIT_MIN）只画大图，它带上 more。
 // 返回 {boxes, height, shown}：shown 是画出来的张数（最后一格带 more 时也算一张）。
-export function dayMosaic(ratios, {width, rowHeight, gap = 0}) {
-  const n = ratios.length;
+export function dayMosaic(input, {width, rowHeight, gap = 0}) {
+  const ratios = input.map(usable), n = ratios.length;
   if (!n) return {boxes: [], height: 0, shown: 0};
   const bigH = rowHeight * 2 + gap;
   if (n === 1) {

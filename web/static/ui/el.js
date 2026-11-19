@@ -4,7 +4,8 @@
 //      const CARD = tpl`<div class="card"><img data-ref="img" alt=""><b data-ref="name"></b>
 //        <button data-ref="fav" title="收藏" data-t-attr="title"><span data-t>收藏</span></button></div>`;
 //      const {el, refs} = CARD();          // refs.img、refs.name、refs.fav 是这一份克隆里的节点
-//    - 模板里写 `${…}` 会直接抛错：数据从不经过 HTML 解析，转义也就不靠调用处记得（tools/check_frontend.py 规则 10）。
+//    - 模板里写 `${…}`、或者把 tpl 当函数调（tpl([html])）都会直接抛错：数据从不经过 HTML 解析，转义也就不靠调用处
+//      记得（tools/check_frontend.py 规则 10）。
 //    - data-ref="名" 的节点放进 refs（名字不能重复）；模板只能有一个根元素。
 //    - data-t 的文字、data-t-attr 列出的特性按 web/static/i18n.js 的写法在解析时翻译一次（语言在页面载入时定，改了会重新
 //      载入，所以缓存的模板不用重译）。带占位符的文字（「{n} 张」）不写在模板里，用 text(node, t('{n} 张', {n})) 写。
@@ -22,7 +23,10 @@ const parsed = new WeakMap();   // 模板字符串数组 -> {root, paths}
 const LAST = Symbol('el.last');   // 节点上记着的上一次写入：{键: 值}
 
 // 声明一个模板（标签函数）；返回的函数每调用一次克隆一份，得到 {el, refs}。
+// 只接受标签模板传进来的字符串数组（冻结、带 raw）：tpl([html]) 这样当普通函数调，会把运行时拼的字符串交给 HTML 解析，
+// 绕过「不带插值」，所以直接报错（tools/check_frontend.py 规则 10 另外按名字拦 ui/el.js 以外的 tpl( 调用）。
 export function tpl(strings, ...values) {
+  if (!Array.isArray(strings?.raw) || !Object.isFrozen(strings)) throw new Error('ui/el.js: tpl 只能写成 tpl`…`，不能当函数调用');
   if (values.length) throw new Error('ui/el.js: 模板不带插值；数据用 text() / attr() 写进 data-ref 的节点');
   return () => {
     let entry = parsed.get(strings);

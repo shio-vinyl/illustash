@@ -32,6 +32,10 @@ test('模板带插值、多个根元素或重复的 data-ref 都报错', () => {
   assert.throws(() => el.tpl`<b>${name}</b>`, /不带插值/);
   assert.throws(() => el.tpl`<b></b><i></i>`(), /一个根元素/);
   assert.throws(() => el.tpl`<p><b data-ref="a"></b><i data-ref="a"></i></p>`(), /重复/);
+  // 当普通函数调：运行时拼的字符串不进 HTML 解析。
+  assert.throws(() => el.tpl(['<img src=x onerror=alert(1)>'])(), /只能写成/);
+  const forged = Object.freeze(['<b></b>']);
+  assert.throws(() => el.tpl(forged), /只能写成/);
 });
 
 test('写入函数：值没变不动 DOM', () => {

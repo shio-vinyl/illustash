@@ -2,47 +2,71 @@
 // dispose() 一次清掉。dispose() 可以重复调用，第二次起什么也不做。
 //
 //   const s = scope('detail-card');                 // 或 parent.child('名')：父作用域释放时子作用域跟着释放
-//   s.on(button, 'click', () => …);                  // addEventListener，释放时 removeEventListener
-//   s.timeout(fn, 300); s.interval(fn, 1000);        // 释放时 clear
+//   const off = s.on(button, 'click', () => …);      // addEventListener；释放时 removeEventListener，也可以提前 off()
+//   s.timeout(fn, 300); s.interval(fn, 1000);        // 释放时 clear；timeout 触发后自己从作用域里摘掉
+//   s.read(fn, key); s.write(fn, key);               // ui/frame.js 的 read / write；跑完或释放时取消，跑完后自己摘掉
 //   s.observe(new ResizeObserver(…)).observe(el);    // 任何带 disconnect() 的观察器
-//   s.add(child);                                    // 子部件（带 dispose()）或者一个清理函数，例如 frame.write() 的返回值
+//   s.add(child);                                    // 子部件（带 dispose()）或一个清理函数；s.remove(child) 摘掉不清
 //   s.signal                                         // AbortSignal，释放时 abort（交给 fetch 之类）
 //   s.alive                                          // 还没释放
 //   s.dispose();
+//
+// 作用域活得越久，登记进去的东西越要是「一直用到释放」的：timeout、read、write 跑完会自己摘掉，可以反复用；add() 进去的
+// 清理函数要等 dispose 才走，不要每次滚动、每次输入都 add 一个（例如 add(frame.write(…)) 只适合一次性的任务，反复排的
+// 帧任务用 s.write(fn, 固定的 key)）。活页条这类挂在 app 上的部件尤其如此。
 //
 // 每个页面一个作用域：page('名') 释放上一页的作用域、建一个新的返回（由页面框架在换页时调用，#706）。
 // 全应用一直在的部件（活页条、浮层管理器）挂在 app 上，不随换页释放。部件的作用域应当是这两者之一的后代。
 //
 // 开发模式（docs/WEB_V2.md「渲染底座」：在开发者工具里运行 localStorage['pi.dev'] = 'true' 后重新载入；测试里用
 // setDev(true)）下记着所有还活着的作用域：换页后，上一页期间建的、不属于 app 也不属于新一页的根作用域还没释放，
-// 就在控制台提示（多半是忘了挂到页面作用域上，或者忘了 dispose）。live() 给出还活着的作用域数和各名字的数量，测试读它。
+// 就在控制台提示一次（多半是忘了挂到页面作用域上，或者忘了 dispose）。live() 给出还活着的作用域数和各名字的数量，测试读它。
 import {prefs} from '../core/prefs.js';
+import {read, write} from './frame.js';
 
 let dev = prefs.get('dev', false) === true;
 const living = new Set();
-let current = null;   // 当前页面的作用域
+let current = null, visits = 0;   // 当前页面的作用域；第几次进页面（每次 page() 加一）
 
 class Scope {
   constructor(name, parent = null) {
-    this.name = name; this.parent = parent; this.alive = true; this.cleanups = [];
-    this.page = parent ? parent.page : current?.name ?? '';
+    this.name = name; this.parent = parent; this.alive = true; this.cleanups = new Map();   // 登记的东西 -> 清理函数
+    this.visit = parent ? parent.visit : current?.visit ?? 0;
     if (dev) living.add(this);
   }
   add(thing) {
     if (!thing) return thing;
     const clean = typeof thing === 'function' ? thing : () => thing.dispose();
     if (!this.alive) { clean(); return thing; }   // 已经释放的作用域：登记即释放，不留下孤儿
-    this.cleanups.push(clean);
+    this.cleanups.set(thing, clean);
     return thing;
   }
+  remove(thing) { this.cleanups.delete(thing); return thing; }
   on(target, type, fn, options) {
+    const off = () => { target.removeEventListener(type, fn, options); this.cleanups.delete(off); };
     target.addEventListener(type, fn, options);
-    this.add(() => target.removeEventListener(type, fn, options));
-    return fn;
+    this.add(off);
+    return off;
   }
-  timeout(fn, ms) { const id = setTimeout(fn, ms); this.add(() => clearTimeout(id)); return id; }
+  timeout(fn, ms) {
+    const clean = () => clearTimeout(id), id = setTimeout(() => { this.cleanups.delete(clean); fn(); }, ms);
+    this.add(clean);
+    return id;
+  }
   interval(fn, ms) { const id = setInterval(fn, ms); this.add(() => clearInterval(id)); return id; }
   observe(observer) { this.add(() => observer.disconnect()); return observer; }
+  read(fn, key) { return this.frame(read, fn, key); }
+  write(fn, key) { return this.frame(write, fn, key); }
+  // 帧任务：同一个 key 只记一项（frame.js 按 key 去重，后排的替换先排的）；跑完自己摘掉。
+  frame(queue, fn, key) {
+    if (!this.alive) return () => {};
+    const slot = key ?? Symbol('task');
+    let cancel = null;
+    const clean = () => cancel();
+    cancel = queue(() => { if (this.cleanups.get(slot) === clean) this.cleanups.delete(slot); fn(); }, key);
+    this.cleanups.set(slot, clean);
+    return clean;
+  }
   // 子作用域单独记着、释放时从父作用域里摘掉：父作用域活得久、子部件来来去去（列表项）时不越积越多。
   child(name) {
     const s = new Scope(name, this);
@@ -61,7 +85,9 @@ class Scope {
     this.parent?.children?.delete(this);
     for (const s of [...(this.children || [])].reverse()) s.dispose();
     // 后登记的先清（子部件先于它用到的监听释放）；一项出错不挡住其余几项。
-    for (const clean of this.cleanups.splice(0).reverse()) {
+    const cleans = [...this.cleanups.values()].reverse();
+    this.cleanups.clear();
+    for (const clean of cleans) {
       try { clean(); } catch (error) { console.error(error); }
     }
   }
@@ -74,8 +100,10 @@ export function page(name) {
   const before = current;
   before?.dispose();
   current = new Scope('page:' + name);
+  current.visit = ++visits;
   if (dev && before) {
-    const left = [...living].filter(s => !s.parent && s !== app && s !== current && s.page === before.name);
+    // 只看上一次进页面期间建的：更早漏掉的已经提示过，不再每次换页都报。
+    const left = [...living].filter(s => !s.parent && s !== app && s !== current && s.visit === before.visit);
     if (left.length) console.warn(`[scope] 换页后还有 ${left.length} 个作用域没释放（建于 ${before.name}）：`, left.map(s => s.name).join('、'));
   }
   return current;

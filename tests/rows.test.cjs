@@ -94,3 +94,42 @@ test('挂在作用域下：父作用域释放时摘掉全部行和监听', () =>
   assert.equal(input.listenerCount('change'), 0);
   assert.throws(() => R.rows(box, [{kind: 'table', key: 'x'}]), /没有 table 这种行/);
 });
+
+test('离开输入框后、新状态回来之前来一次轮询：打的字不被冲回旧值（#469）', async () => {
+  const box = document.createElement('div');
+  let resolve, saved = [];
+  const panel = R.rows(box, [
+    {kind: 'field', key: 'mirror', label: '镜像地址', get: s => s.mirror, set: v => new Promise(r => { saved.push(v); resolve = r; })},
+    {kind: 'switch', key: 'updates', label: '自动检查更新', get: s => s.updates, set: () => {}},
+  ]);
+  panel.update({mirror: 'https://a', updates: false});
+  const field = panel.row('mirror').querySelector('input');
+  field.focus(); field.value = 'https://new'; field.blur(); field.dispatchEvent(dom.event('change'));
+  assert.deepEqual(saved, ['https://new']);
+  panel.update({mirror: 'https://a', updates: false});      // 轮询带回的还是旧值
+  assert.equal(field.value, 'https://new');
+  panel.update({mirror: 'https://new', updates: false});    // 存好了：新状态回来，清掉待提交的值
+  resolve();
+  await new Promise(r => setTimeout(r));
+  panel.update({mirror: 'https://other', updates: false});  // 之后照常跟 state 走
+  assert.equal(field.value, 'https://other');
+  // 保存失败：promise 落定以后照 state 写回原值。
+  field.value = 'https://bad'; field.dispatchEvent(dom.event('change'));
+  panel.update({mirror: 'https://other', updates: false});
+  assert.equal(field.value, 'https://bad');
+  resolve(); await new Promise(r => setTimeout(r));
+  panel.update({mirror: 'https://other', updates: false});
+  assert.equal(field.value, 'https://other');
+  // 开关的 set 不返回 promise：当作同步存好，下一次 update 照 state 写。
+  const sw = panel.row('updates').querySelector('input');
+  sw.checked = true; sw.dispatchEvent(dom.event('change'));
+  panel.update({mirror: 'https://other', updates: false});
+  assert.equal(sw.checked, false);
+  panel.dispose();
+});
+
+test('配置表先整张校验：写错 kind 时容器里什么都没插', () => {
+  const box = document.createElement('div');
+  assert.throws(() => R.rows(box, [{kind: 'info', key: 'a', label: 'A', value: () => 1}, {kind: 'table', key: 'x'}]), /没有 table 这种行/);
+  assert.equal(box.childNodes.length, 0);
+});

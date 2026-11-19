@@ -68,3 +68,41 @@ test('开发模式：live() 数还活着的作用域；换页后上一页建的�
     assert.equal(warnings.length, 1, 'nothing left behind this time');
   } finally { console.warn = saved; }
 });
+
+test('触发过的 timeout、跑完的帧任务自己摘掉，长寿的作用域不越积越多；off() 提前摘监听', async () => {
+  const frame = await web.load('ui/frame.js'), frames = [];
+  frame.setScheduler(fn => frames.push(fn));
+  const s = S.scope('rail'), button = document.createElement('button');
+  for (let i = 0; i < 50; i++) s.timeout(() => {}, 1);
+  await new Promise(r => setTimeout(r, 20));
+  assert.equal(s.cleanups.size, 0);
+  let ran = 0;
+  for (let i = 0; i < 20; i++) s.write(() => ran++, 'rail:paint');   // 同一个 key：只记一项、只跑一次
+  for (let i = 0; i < 5; i++) s.read(() => ran++);
+  assert.equal(s.cleanups.size, 6);
+  while (frames.length) frames.shift()();
+  assert.equal(ran, 6);
+  assert.equal(s.cleanups.size, 0);
+  // 释放时取消还没跑的帧任务
+  s.write(() => ran++, 'late');
+  const off = s.on(button, 'click', () => {});
+  off();
+  assert.equal(button.listenerCount('click'), 0);
+  assert.equal(s.cleanups.size, 1);
+  s.dispose();
+  while (frames.length) frames.shift()();
+  assert.equal(ran, 6);
+  assert.equal(s.write(() => ran++)(), undefined, 'a disposed scope schedules nothing');
+});
+
+test('开发模式：同一个漏掉的作用域只提示一次，同名页面来回切不重复报', () => {
+  const warnings = [], saved = console.warn;
+  console.warn = (...args) => warnings.push(args.join(' '));
+  try {
+    S.page('grid');
+    const leaked = S.scope('leaked-once');
+    S.page('home'); S.page('grid'); S.page('home'); S.page('grid');
+    assert.equal(warnings.filter(w => w.includes('leaked-once')).length, 1);
+    leaked.dispose();
+  } finally { console.warn = saved; }
+});

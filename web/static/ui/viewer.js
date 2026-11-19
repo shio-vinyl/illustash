@@ -29,7 +29,7 @@ import {createLayer} from './overlay.js';
 import {scope} from './scope.js';
 
 const img = (uuid, size) => `/image?id=${encodeURIComponent(uuid)}&size=${size}`;
-const SLOT = tpl`<div class="vw-slot" hidden><div class="vw-frame" data-ref="frame"><div class="vw-zoom" data-ref="zoom">
+const SLOT = tpl`<div class="vw-slot"><div class="vw-frame" data-ref="frame"><div class="vw-zoom" data-ref="zoom">
   <img class="vw-low" data-ref="low" alt="" draggable="false"><img class="vw-high" data-ref="high" alt="" draggable="false" hidden></div></div>
   <p class="vw-missing" data-ref="missing" hidden></p></div>`;
 // 开场前等预览图解码的上下限（#709）。
@@ -80,29 +80,36 @@ function ratio(slot, r) {
   css(slot.frame, 'aspect-ratio', String(k));
   css(slot.frame, 'width', `min(100cqw, ${(k * 100).toFixed(3)}cqh)`);
 }
-// 当前那张换成 item，左右邻居换成 i±1（列表里有的话）；已经在槽里的图不重读。
+// 当前那张换成 item。翻页时这一步要快：只换当前那张（邻居多半已经预解码好了，直接显示）；左右邻居、再远一张的预读
+// 和当前那张的原图排到下一帧再做（prepare），点击的处理里不做这些。
 function arrange(item, i) {
   if (!slots.length) return Promise.resolve();   // 还没 wireViewer（Node 测试里只测状态）
-  const wanted = [item, state.items[i - 1], state.items[i + 1]];
-  let cur = slots.find(x => x.uuid === item.uuid);
-  const used = new Set();
-  if (!cur) cur = slots.find(x => !wanted.some(w => w && w.uuid === x.uuid)) || slots[0];
-  used.add(cur);
+  const near = [state.items[i - 1], state.items[i + 1]].filter(Boolean).map(x => x.uuid);
+  const cur = slots.find(x => x.uuid === item.uuid) || slots.find(x => x !== current && !near.includes(x.uuid)) || slots.find(x => x !== current) || slots[0];
   const ready = fill(cur, item);
-  for (const w of wanted.slice(1)) {
-    if (!w) continue;
-    let slot = slots.find(x => x.uuid === w.uuid && !used.has(x));
-    if (!slot) slot = slots.find(x => !used.has(x) && !wanted.some(v => v && v.uuid === x.uuid)) || slots.find(x => !used.has(x));
-    if (!slot) continue;
-    used.add(slot); fill(slot, w);
+  if (current !== cur) {
+    // 只换类名：不当前的槽用 visibility 藏（css/detail.css）。不改 hidden 特性，WebKit 里 hidden 一变就要重查旧样式里
+    // body:has(#viewer:not([hidden])) 这类选择器，每次翻页多花几毫秒（#683 的大图翻页测量）。
+    for (const slot of slots) cls(slot.el, 'is-current', slot === cur);
+    current = cur; resetView();
   }
-  for (const slot of slots) { show(slot.el, slot === cur); cls(slot.el, 'is-current', slot === cur); }
-  // 再远一张只预读，不占槽。
-  for (const d of [-2, 2]) { const x = state.items[i + d]; if (x && typeof Image === 'function') new Image().src = img(x.uuid, 'preview'); }
-  if (current !== cur) { current = cur; resetView(); }
-  // 原图只给当前那张，解码好了由 load 处理盖上去。
-  if (!cur.high.getAttribute('src')) attr(cur.high, 'src', img(item.uuid, 'full'));
+  s.write(prepare, 'viewer:prepare');
   return ready;
+}
+// 下一帧：左右邻居放进另外两张槽并预解码，再远一张只预读、不占槽；当前那张开始读原图，解码好了由 load 盖上去。
+function prepare() {
+  const item = state.viewerItem; if (!item || !current) return;
+  const i = state.items.findIndex(x => x?.uuid === item.uuid);
+  if (i >= 0) {
+    const others = slots.filter(x => x !== current);
+    const near = [state.items[i - 1], state.items[i + 1]].filter(Boolean);
+    for (const w of near) {
+      const slot = others.find(x => x.uuid === w.uuid) || others.find(x => !near.some(v => v.uuid === x.uuid));
+      if (slot) { others.splice(others.indexOf(slot), 1); fill(slot, w); }
+    }
+    for (const d of [-2, 2]) { const x = state.items[i + d]; if (x && typeof Image === 'function') new Image().src = img(x.uuid, 'preview'); }
+  }
+  if (!current.high.getAttribute('src')) attr(current.high, 'src', img(item.uuid, 'full'));
 }
 
 // ---------- 缩放与平移 ----------

@@ -139,8 +139,8 @@
 .viewer-stage{flex:1;min-height:0;overflow:hidden;container-type:size;cursor:zoom-in;touch-action:none}
 .viewer-stage.zoomed{cursor:grab}
 .viewer-stage.zoomed:active{cursor:grabbing}
-.vw-slot{position:absolute;inset:0;display:grid;place-items:center}
-.vw-slot[hidden]{display:none}
+.vw-slot{position:absolute;inset:0;display:grid;place-items:center;visibility:hidden}
+.vw-slot.is-current{visibility:visible}
 .vw-frame{position:relative;max-width:100%;max-height:100%}
 .vw-frame[hidden]{display:none}
 .vw-zoom{position:absolute;inset:0;transform-origin:center}

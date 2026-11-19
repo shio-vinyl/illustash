@@ -4,7 +4,7 @@ GitHub 的版本列表和 Release 下载都由本机替身服务答复（ILLUSTA
 （ILLUSTASH_TEST_PACKS_PUBKEY，只在指向本机测试服务时才认）。包、图片和模型身份都是合成的，夹具见
 tests/fixtures/pack_catalog/。
 """
-from contextlib import contextmanager
+from contextlib import closing, contextmanager
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import hashlib
 import json
@@ -122,6 +122,7 @@ class NativePackCatalogTest(unittest.TestCase):
         (self.resources / 'tags' / 'tags_v3.csv').write_bytes((checkout / 'tags' / 'tags_v3.csv').read_bytes())
         self.env = {**isolated_env(self.root), 'USERPROFILE': str(self.root / 'home'),
                     'ILLUSTASH_TEST_PACKS_PUBKEY': (FIXTURES / 'key-a.pub').read_text().strip()}
+        self.env.pop('ILLUSTASH_RECOGNITION_WORKER', None)
         folder = self.root / 'images'
         folder.mkdir()
         for name, color in (('a.png', 'blue'), ('b.png', 'orange'), ('c.png', 'green')):
@@ -130,17 +131,21 @@ class NativePackCatalogTest(unittest.TestCase):
         self.cli('library-create', '--dest', str(path), '--folder', str(folder))
         self.lib = Library(path)
         self.cli('library-scan', '--library', str(self.lib.path))
+        self.seed_wd_vectors(3)
+        self.port = free_port()
+        self.origin = f'http://127.0.0.1:{self.port}'
+
+    def seed_wd_vectors(self, count):
+        """在没有宿主连接图库时写入合成识别结果。"""
         # 第 i 张图（按 uuid 排）的向量只有第 i 维是 1：合成包的第 i 个头只认它。
-        with sqlite3.connect(self.lib.source) as source:
+        with closing(sqlite3.connect(self.lib.source)) as source, source:
             source.execute('CREATE TABLE IF NOT EXISTS embeddings(uuid TEXT,model TEXT,vec BLOB,PRIMARY KEY(uuid,model))')
             self.ids = [u for u, in source.execute('SELECT uuid FROM assets WHERE in_scope=1 ORDER BY uuid')]
+            self.assertEqual(len(self.ids), count)
             for i, uuid in enumerate(self.ids):
                 vector = [0.] * 1024
                 vector[i] = 1.
                 source.execute("INSERT INTO embeddings VALUES (?,'wd',?)", (uuid, struct.pack('<1024f', *vector)))
-        self.assertEqual(len(self.ids), 3)
-        self.port = free_port()
-        self.origin = f'http://127.0.0.1:{self.port}'
 
     def cli(self, *arguments):
         result = subprocess.run([str(self.binary), *arguments], env=self.env, capture_output=True, timeout=WAIT)
@@ -212,6 +217,16 @@ class NativePackCatalogTest(unittest.TestCase):
 
         wait_until(ended)
         return observed
+
+    def sync_to_pending_recognition(self, count):
+        self.post('/api/sync', {})
+
+        def finished():
+            state = self.get('/api/sync')['state']
+            return state if state.get('finished_at') else None
+
+        state = wait_until(finished)
+        self.assertEqual((state['status'], state['total']), ('needs_recognition', count), state)
 
     def test_one_pack_follows_update_check_then_download_switch_back_and_withdraw(self):
         files = {}
@@ -443,8 +458,7 @@ class NativePackCatalogTest(unittest.TestCase):
             self.assertEqual(self.packs()['library']['prompt'], 'auto')
             self.packs({'action': 'download'})
             self.assertEqual(self.settle('download')['current']['status'], 'ready')
-            self.assertEqual(self.request('/api/sync', {})['status'], 200)
-            wait_until(lambda: json.loads(self.request('/api/sync')['body'])['state']['status'] not in ('scanning', 'running'))
+            self.sync_to_pending_recognition(1)
             packs = self.packs()
             self.assertLessEqual({'enabled': True, 'version': '0.1', 'wd': True, 'ccip': True,
                                   'prompt': None, 'images': 0}.items(), packs['library'].items())
@@ -468,17 +482,12 @@ class NativePackCatalogTest(unittest.TestCase):
         failed = self.settle('download')
         self.assertEqual(failed['download']['status'], 'failed', failed)
         self.assertNotEqual(failed['current']['status'], 'ready')
-        self.assertEqual(self.request('/api/sync', {})['status'], 200)
-        wait_until(lambda: json.loads(self.request('/api/sync')['body'])['state']['status'] not in ('scanning', 'running'))
-        # 第一次同步交付的识别结果（合成向量：第一张图只有第 0 维是 1，内置包的 WD 头认它）。
-        with sqlite3.connect(self.lib.source) as source:
-            source.execute('CREATE TABLE IF NOT EXISTS embeddings(uuid TEXT,model TEXT,vec BLOB,PRIMARY KEY(uuid,model))')
-            self.ids = [u for u, in source.execute('SELECT uuid FROM assets WHERE in_scope=1 ORDER BY uuid')]
-            for i, uuid in enumerate(self.ids):
-                vector = [0.] * 1024
-                vector[i] = 1.
-                source.execute("INSERT INTO embeddings VALUES (?,'wd',?)", (uuid, struct.pack('<1024f', *vector)))
-        self.assertEqual(len(self.ids), 2)
+        self.sync_to_pending_recognition(2)
+        self.assertEqual(self.packs()['library']['prompt'], 'pending')
+        # 等宿主退出，再写入模拟的首次识别结果。重开前先关闭 SQLite 连接。
+        self.stop(self.process)
+        self.seed_wd_vectors(2)
+        self.restart()
         # 已有识别结果，但没当成升级上来的图库去问：还是等包就位后默认启用。
         packs = self.packs()
         self.assertLessEqual({'enabled': False, 'prompt': 'pending'}.items(), packs['library'].items())
@@ -489,10 +498,6 @@ class NativePackCatalogTest(unittest.TestCase):
         with github(files) as (origin, seen):
             files.update(self.serve(origin))
             ccip = self.fresh_library_missing_the_pack(files)
-            # 重启以后照样记得。
-            self.restart()
-            self.assertEqual(self.packs()['library']['prompt'], 'pending')
-
             # 点「重试」补下载：下完以后宿主自己启用，像用户点了启用一样检查已有的识别结果。
             files['/builtin/A-longtail-p75.zip'] = ccip
             self.packs({'action': 'download'})

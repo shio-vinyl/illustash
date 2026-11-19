@@ -1,4 +1,104 @@
 /* 图库：按天、网格、日历。归 0.4 第 C1 步（按天，#707）和第 C2 步（网格与日历，#708）；A2（#705）只建了文件和层，规则由那一步写。
    只用 css/tokens.css 的令牌和 css/base.css 的公共部件；重写一块，就删掉 app.css 里对应的旧规则。 */
 @layer pages{
+
+/* ---- 网格（C2 #708）：卡片部件在 ui/grid_card.js ----
+   图满格、圆角 8，下面没有标题条；读完之前是图的主色。根节点的 transform、宽高是网格写的位置，不加过渡（旧样式里的
+   .card 带 transform 过渡，这里关掉）；上浮、缩小、投影都放在里面的 .card-stage 上。 */
+#grid .card{position:absolute;top:0;left:0;overflow:visible;border-radius:var(--radius-8);background:transparent;box-shadow:none;transition:none;cursor:default;contain:layout style}
+.card-stage{position:relative;width:100%;height:100%;overflow:hidden;border-radius:var(--radius-8);background:var(--tint-soft);
+  transition:transform var(--dur-1) var(--ease),box-shadow var(--dur-1) var(--ease),opacity var(--dur-1) var(--ease)}
+.card-stage>img{display:block;width:100%;height:100%;object-fit:cover;pointer-events:none}
+/* 原始比例里宽高比超出上下限的图：整张放进方框，留底色 */
+.card.is-whole .card-stage>img{object-fit:contain}
+/* 图读坏了：藏起图，写一句话 */
+.card-missing{position:absolute;inset:0;display:none;place-items:center;padding:var(--space-8);color:var(--muted);font-size:var(--fs-11);text-align:center}
+.card[data-broken] .card-stage>img{visibility:hidden}
+.card[data-broken] .card-missing{display:grid}
+/* 悬停：上浮一点，投影带图的颜色（.tint 上的 --shadow-hover，css/tokens.css） */
+#grid .card:hover .card-stage{transform:translateY(-2px);box-shadow:var(--shadow-hover)}
+/* 「选中」一种画法：强调色环。键盘光标是浅一档的环，详情栏里那张是实环，选中的再缩小一点 */
+#grid .card.is-cursor .card-stage{box-shadow:0 0 0 2px var(--sheet),0 0 0 4px var(--accent-soft)}
+#grid .card[aria-current=true] .card-stage{box-shadow:0 0 0 2px var(--sheet),0 0 0 4px var(--accent)}
+#grid .card[aria-pressed=true] .card-stage{transform:scale(.95);box-shadow:0 0 0 2px var(--sheet),0 0 0 4px var(--accent)}
+/* 写入后要离开本页的卡片先淡出（ui/grid.js 的 write） */
+#grid .card.leaving .card-stage{transform:scale(.86);opacity:0}
+#grid .card.skeleton{background:var(--soft);animation:none}
+
+/* 悬停、键盘光标在上面时：底部压暗一条，写角色名 */
+.card-info{position:absolute;right:0;bottom:0;left:0;display:flex;align-items:baseline;gap:var(--space-6);min-width:0;padding:var(--space-24) 32px var(--space-8) var(--space-10);
+  background:var(--scrim);color:var(--on-image);text-shadow:var(--image-text-shadow);opacity:0;transition:opacity var(--dur-1) var(--ease)}
+#grid .card:hover .card-info,#grid .card.is-cursor .card-info{opacity:1}
+.card-info>b{min-width:0;overflow:hidden;font-size:var(--fs-12);font-weight:var(--fw-600);white-space:nowrap;text-overflow:ellipsis}
+.card-info>small{flex:none;font-size:var(--fs-11);opacity:.85}
+
+/* 左下一排芯片：造型、「现为 TA」、排除原因、「可能是」、随机抽查的角色标签 */
+.card-chips{position:absolute;bottom:var(--space-6);left:var(--space-6);z-index:var(--z-page-1);display:flex;flex-wrap:wrap;gap:var(--space-4);max-width:calc(100% - 36px)}
+.card-chip{padding:var(--space-1) var(--space-6);border-radius:var(--radius-pill);background:var(--glass-chip);color:var(--ink);font-size:var(--fs-11);line-height:1.4}
+
+/* 左上的勾：悬停或在选择模式里出现；选中时是强调色底加白勾 */
+#grid .check{position:absolute;top:var(--space-6);left:var(--space-6);z-index:var(--z-page-2);width:22px;height:22px;border:1.5px solid var(--on-image);border-radius:var(--radius-round);
+  background:rgba(var(--sh),.18);opacity:0;cursor:pointer;transition:opacity var(--dur-1) var(--ease),background-color var(--dur-1) var(--ease)}
+#grid .card:hover .check,#grid.selecting .check,#grid .card[aria-pressed=true] .check{opacity:1}
+#grid .check:hover{background:rgba(var(--sh),.35)}
+#grid .card[aria-pressed=true] .check{background:var(--accent-fill)}
+#grid .card[aria-pressed=true] .check::after{content:"";position:absolute;top:3px;left:6px;width:5px;height:10px;border:solid var(--on-image);border-width:0 2px 2px 0;transform:rotate(45deg)}
+
+/* 右上的副本角标：重复页上同组同色（--dup-hue 由网格按组算），别处折叠的副本是深色的「×N」 */
+#grid .dup-badge{position:absolute;top:var(--space-6);right:var(--space-6);z-index:var(--z-page-1);padding:var(--space-1) var(--space-8);border-radius:var(--radius-pill);
+  background:hsl(var(--dup-hue) 45% 42%);color:var(--on-image);font-size:var(--fs-11);font-weight:var(--fw-600);font-variant-numeric:tabular-nums;box-shadow:none}
+#grid .dup-badge.folded{background:rgba(var(--sh),.55);font-weight:var(--fw-400)}
+
+/* 右下：心形（收藏过的一直在，没收藏的悬停时出现），角色页上机器识别、没人看过的点 */
+#grid .fav-mark{position:absolute;right:var(--space-4);bottom:var(--space-4);z-index:var(--z-page-2);display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;
+  margin:0;padding:0;border:0;background:transparent;color:var(--on-image);opacity:0;cursor:pointer;transition:opacity var(--dur-1) var(--ease),transform var(--dur-1) var(--ease)}
+#grid .fav-mark svg{width:19px;height:19px;fill:transparent;stroke:currentColor;stroke-width:1.7;stroke-linejoin:round;filter:drop-shadow(0 0 1.5px rgba(var(--sh),.55))}
+#grid .card:hover .fav-mark,#grid .fav-mark.on{opacity:1}
+#grid .fav-mark:hover{transform:scale(1.1)}
+#grid .fav-mark.on{color:var(--fav)}
+#grid .fav-mark.on svg{fill:currentColor;stroke:var(--on-image);stroke-width:1.4}
+#grid .fav-mark.still{pointer-events:none}
+#grid .machine-dot{position:absolute;right:var(--space-8);bottom:var(--space-8);z-index:var(--z-page-1);width:8px;height:8px;border:1.5px solid var(--line);border-radius:var(--radius-round);
+  background:transparent;box-shadow:0 0 0 .5px rgba(var(--sh),.25)}
+#grid .machine-dot:not([hidden])~.fav-mark{right:18px}
+
+/* ---- 日历（C2 #708）：部件在 ui/calendar.js ----
+   月份标题背后是这个月的环境光（--tint-glow，径向渐变，不用 filter 模糊：每块模糊各占一块显存，#683）；
+   每天一格，格子底色是当天的颜色（--tint-wash），按张数拼 1、2 或 4 张图。 */
+.cal{display:grid;gap:var(--space-12);padding:0 0 var(--space-24)}
+.cal-head{position:relative;isolation:isolate;display:flex;align-items:center;gap:var(--space-20);padding:var(--space-8) 0 var(--space-12)}
+.cal-head::before{content:"";position:absolute;top:-48px;left:-48px;width:min(720px,100%);height:180px;pointer-events:none;
+  background:radial-gradient(40% 60% at 18% 50%,var(--tint-glow),transparent 70%),radial-gradient(35% 55% at 52% 45%,var(--tint-glow),transparent 70%);opacity:.8}
+/* 光在最底下：::before 是第一个子节点，后面定了位的内容画在它上面 */
+.cal-head>*{position:relative}
+.cal-title{min-width:0}
+.cal-sub{margin:var(--space-4) 0 0;color:var(--muted);font-size:var(--fs-12)}
+.cal-people{display:flex;align-items:center;min-width:0;overflow:hidden}
+.cal-face{display:block;flex:none;margin-left:-8px;border-radius:var(--radius-round);box-shadow:0 0 0 2px var(--sheet);transition:transform var(--dur-1) var(--ease)}
+.cal-face:first-child{margin-left:0}
+.cal-face:hover{z-index:var(--z-page-1);transform:translateY(-2px)}
+.cal-face>img[data-broken]{visibility:hidden}
+.cal-nav{flex:none;margin-left:auto}
+.cal-nav>button:disabled{opacity:.4;cursor:default}
+.cal-dow,.cal-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:var(--space-8)}
+.cal-dow>span{padding:0 var(--space-2);color:var(--muted);font-size:var(--fs-11);font-weight:var(--fw-600)}
+.cal-day{position:relative;display:block;overflow:hidden;aspect-ratio:1/.9;border-radius:var(--radius-8);background:var(--soft);color:var(--ink2);text-decoration:none;
+  transition:transform var(--dur-1) var(--ease),box-shadow var(--dur-1) var(--ease)}
+.cal-day.has{background:var(--tint-wash)}
+.cal-day.is-out{background:transparent;box-shadow:inset 0 0 0 1px var(--line);opacity:.5}
+.cal-day[href]:hover{transform:translateY(-2px);box-shadow:var(--shadow-hover)}
+.cal-day:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+/* 今天：强调色环，日期写成强调色 */
+.cal-day[aria-current=date]{box-shadow:0 0 0 2px var(--sheet),0 0 0 4px var(--accent)}
+.cal-day[aria-current=date]:not(.has)>.cal-num{color:var(--accent-ink)}
+.cal-tiles{position:absolute;inset:0}
+.cal-tiles>img{position:absolute;display:block;object-fit:cover;border-radius:var(--radius-4);background:var(--tint-soft)}
+.cal-tiles>img[data-broken]{visibility:hidden}
+/* 有图的格子：上沿压暗一点，日期写白字 */
+.cal-day.has::after{content:"";position:absolute;inset:0;z-index:var(--z-page-1);background:linear-gradient(180deg,rgba(var(--sh),.4),transparent 40%);pointer-events:none}
+.cal-num{position:absolute;top:var(--space-6);left:var(--space-8);z-index:var(--z-page-2);font-size:var(--fs-13);font-weight:var(--fw-750);line-height:1.2}
+.cal-day.has>.cal-num{color:var(--on-image);text-shadow:var(--image-text-shadow)}
+.cal-count{position:absolute;right:var(--space-6);bottom:var(--space-6);z-index:var(--z-page-2);padding:var(--space-1) var(--space-6);border-radius:var(--radius-pill);
+  background:rgba(var(--sh),.55);color:var(--on-image);font-size:var(--fs-11);font-weight:var(--fw-600);font-variant-numeric:tabular-nums}
+.cal-empty{padding:var(--space-24) 0}
 }

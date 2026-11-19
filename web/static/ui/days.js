@@ -173,10 +173,11 @@ function daysView(scope) {
     if (!box || !alive(route)) return;
     scope.read(() => { const top = offsetOf() + box.y; scope.write(() => { viewport.scrollTop = top; }); });
   }
-  // 同步进来新图：只重读最新的两天并进来。
+  // 同步进来新图：只重读最新的两天并进来。还一天都没有（空图库第一次同步）时从头读。
   let syncing = false;
   async function newest() {
-    if (syncing || !v.days.length) return;
+    if (syncing || v.loading) return;
+    if (!v.days.length) { await load(v.route); return; }
     syncing = true;
     const route = v.route, query = v.query;
     try {

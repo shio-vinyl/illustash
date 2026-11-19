@@ -11,10 +11,11 @@ import {charHash, go, hashFor} from '../core/route.js';
 import {api, post, readError} from '../core/session.js';
 import {state} from '../core/state.js';
 import {closeInspector, peekAt, wirePeek} from './detail.js';
-import {$, emptyLink, error, readFailure, reconcileSections, redraw, showArea, toast, written} from './dom.js';
-import {mutate} from './grid.js';
-import {markOc, openPicker, targets} from './palette.js';
-import {navCount, renderHeading} from './shell.js';
+import {$, error, readFailure, reconcileSections, redraw, showArea, toast, written} from './dom.js';
+import {listIds, mutate} from './grid.js';
+import {markOc, openPicker, openRelate, targets} from './palette.js';
+import {renderHeading} from './shell.js';
+import {refresh as refreshRail} from './rail.js';
 
 // ---------- 未匹配图片的相似分组 ----------
 // 'look'：中心接近；'trait'：离得更远，但有相同的独特 WD 特征（较弱的线索）。
@@ -195,7 +196,7 @@ async function renderIdentity(how = '') {
   catch (e) { $('groupsPage').innerHTML = `<p class="empty">${esc(readError(e))}</p>`; return; }
   if (!onPage(state.route, 'identity')) return;
   if (how !== 'more') identity.items = [];
-  identity.items.push(...page.items); identity.total = page.total; setIdentityCount(page.total); navCount('countIdentity', page.total);
+  identity.items.push(...page.items); identity.total = page.total; setIdentityCount(page.total); refreshRail('tidy');
   $('resultCount').textContent = t('{n} 对待判断', {n: number(page.total)});
   renderHeading();
   const box = $('groupsPage');
@@ -342,7 +343,10 @@ implement({
     refresh: why => { if (why === 'undo' || why === 'learned' || why === 'edit' && state.viewer >= 0) return renderGroups(true); else if (why === 'nsfw') renderGroups(); }},
   // 撤销之后重画（#386 的 2-41）：撤销的可能就是「看过了」。撤销、学习落定后按组比对、留在已显示的组数（#601）。
   similar: {render: () => renderSimilar(), refresh: why => { if (why === 'undo' || why === 'learned') return renderSimilar(true); if (why === 'nsfw') return renderSimilar(); }},
-  sgroup: {prepare: readSeen, heading: sgroupHeading, wireHeading: () => $('sgroupSeen')?.addEventListener('click', toggleSeen),
+  sgroup: {prepare: readSeen, heading: sgroupHeading, wireHeading: () => {
+    $('sgroupSeen')?.addEventListener('click', toggleSeen);
+    $('sgroupRelate')?.addEventListener('click', async () => openRelate(await listIds(12)));
+  },
     // 改动、撤销、同步之后组里看得到的张数可能变了，重读一次，免得点「看过了」时张数对不上。
     refresh: async why => { if (why !== 'view' && why !== 'ask') { const route = state.route; if (await readSeen(route) !== false) renderHeading(); } }},
   identity: {render: () => renderIdentity(), refresh: why => { if (why === 'undo') renderIdentity('keep'); else if (why === 'nsfw') renderIdentity(); }},
@@ -357,7 +361,7 @@ implement({
     state.groupOrder = groupOrder(result.clusters).map(x => String(x.cid));
   },
   // 一组整理完了（#386 的 2-12）：去下一组，或回到按组整理。
-  emptyNext: r => (state.groupOrder.some(id => id !== r.id) ? `<button class="quiet" data-empty="next-group">${t('下一组')} →</button>` : '') + emptyLink('#/groups', t('回到按组整理')),
+  emptyNext: r => [...(state.groupOrder.some(id => id !== r.id) ? [{label: t('下一组') + ' →', act: 'next-group'}] : []), {label: t('回到按组整理'), href: '#/groups'}],
   emptyAct: act => { if (act === 'next-group') nextGroup(); }},
 });
 // 「下一组」：重读分组，取原来排在这组后面、还在的第一组；后面都没了就取最前面那组；一组都没了回到按组整理。

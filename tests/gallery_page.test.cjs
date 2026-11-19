@@ -39,7 +39,7 @@ test('条件失效：原因只写在空状态里，下面给「删除画廊」�
   await grid.reload(true);
   assert.equal(page.el('errorBanner').hidden, true);
   assert.equal(page.el('empty').hidden, false);
-  assert.equal(page.el('empty').innerHTML, '<div>条件失效：角色不存在<div><button class="quiet" data-empty="delete-gallery">删除画廊</button></div></div>');
+  assert.deepEqual(web.emptyState(page.el('empty')), {fact: '条件失效：角色不存在', next: [{label: '删除画廊', act: 'delete-gallery'}]});
   assert.ok(!asked.some(p => p.startsWith('/api/assets/count')), '不为页头另数一次');
   shell.renderHeading();
   const h = page.el('heading').innerHTML;

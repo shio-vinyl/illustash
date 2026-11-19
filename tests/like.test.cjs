@@ -36,7 +36,7 @@ test('地址读成相似结果：图库加例图，比较方式只认 ccip', () 
   assert.deepEqual(like.likeIds(r), ['a', 'b']);
   assert.equal(r.by, 'ccip');
   assert.equal(pages.viewOf(r), pages.LIKE, '是相似结果视图，不是图库或角色页');
-  assert.equal(pages.viewOf(r).nav, 'library', '侧栏亮「图库」');
+  assert.equal(pages.viewOf(r).entry, 'library', '活页条亮「图库」');
   assert.equal(pages.viewOf(r).click, 'browse', '点卡片打开详情');
   assert.equal(at(`#/library?like=${examples('a')}&by=wd`).by, '', '按画面是省略 by');
   // 读不出的例图、角色页、别的页面上都不认
@@ -110,7 +110,7 @@ test('例图全都没有特征：网格空着写明原因，不弹错误条', as
   await grid.reload(true);
   assert.equal(page.el('errorBanner').hidden, true);
   assert.equal(page.el('empty').hidden, false);
-  assert.equal(page.el('empty').textContent, '例图还没有特征，识别完成后再试。');
+  assert.equal(web.emptyState(page.el('empty')).fact, '例图还没有特征，识别完成后再试。');
   assert.equal(state.total, 0);
   // 别的失败照旧走错误条
   globalThis.fetch = async () => reply(400, {error: '未知排序'});

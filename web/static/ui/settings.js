@@ -623,7 +623,7 @@ export async function openLibrary(path, name, agreed = null) {
   }
   // 这个页面的状态属于它离开的那个图库：在下面重新载入之前不再读写。
   toast(t('正在打开「{name}」…', {name}));
-  if (await libraryOpened(path)) { location.hash = '#/home'; location.reload(); return; }
+  if (await libraryOpened(path)) { location.hash = '#/days'; location.reload(); return; }
   $('errorBanner').textContent = t('切换图库超时：请检查启动终端，然后刷新页面。'); $('errorBanner').hidden = false;
 }
 
@@ -991,4 +991,5 @@ export function wireSettings() {
 }
 
 // 设置页登记：渲染入口（换了页面或子页时才整页重取）。
-implement({settings: {render: ({samePage}) => renderSettings(true, !samePage)}});
+// 设置的副标题是这一节的内容清单，留在原处；计数到达后重画整页。
+implement({settings: {render: ({samePage}) => renderSettings(true, !samePage), heading: () => [t('设置'), settingsSection()[2]], onMeta: () => renderSettings()}});

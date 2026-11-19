@@ -13,7 +13,7 @@ test('a group page answer that arrives after navigating home does not take over 
   const requests = [], {applyRoute} = await web.load('ui/shell.js'), {state} = web.core();
   await web.load('ui/review.js');
   let answer;
-  Object.assign(state, {route: {page: 'home'}, nsfw: '', guide: undefined});
+  Object.assign(state, {route: {page: 'days'}, nsfw: '', guide: undefined});
   globalThis.location = {hash: '#/g/3'}; globalThis.history = {replaceState() {}};
   globalThis.requestAnimationFrame ??= () => 0;
   const page = web.fakePage(), el = page.el;
@@ -31,7 +31,7 @@ test('a group page answer that arrives after navigating home does not take over 
   await toGroup;
   assert.equal(el('homePage').hidden, false);
   assert.equal(state.groupTraits, null);   // 初值（core/state.js 声明为 null），迟到的回应没有写进来
-  assert.match(el('heading').innerHTML, /首页/);
+  assert.match(el('heading').innerHTML, /图库/);   // 按天视图（原来的首页）的标题是「图库」
   assert.ok(requests.some(p => p.startsWith('/api/home')));
   assert.ok(!requests.some(p => p.startsWith('/api/assets')), 'the group page never reads its pictures');
 });

@@ -25,20 +25,20 @@ async function renderHome(keep = false) {
   if (!keep) { home.days = []; home.next = ''; $('viewport').scrollTop = 0; $('homePage').innerHTML = `<div class="loading-line">${t('读取中…')}</div>`; }
   try {
     const r = await api('/api/home?' + new URLSearchParams({nsfw: state.nsfw, days: Math.min(20, Math.max(5, home.days.length)), ...MARKS}));
-    if (gen !== home.gen || !onPage(state.route, 'home')) return;
+    if (gen !== home.gen || !onPage(state.route, 'days')) return;
     home.days = r.days; home.next = r.next;
-    if (!keep) { home.askSkip = []; home.askOff = new Set(); home.ask = await nextAsk(); if (gen !== home.gen || !onPage(state.route, 'home')) return; }
+    if (!keep) { home.askSkip = []; home.askOff = new Set(); home.ask = await nextAsk(); if (gen !== home.gen || !onPage(state.route, 'days')) return; }
     drawHome();
     if (keep) $('viewport').scrollTop = scroll;
-  } catch (e) { if (gen === home.gen && onPage(state.route, 'home')) $('homePage').innerHTML = `<p class="empty">${esc(readError(e))}</p>`; }
+  } catch (e) { if (gen === home.gen && onPage(state.route, 'days')) $('homePage').innerHTML = `<p class="empty">${esc(readError(e))}</p>`; }
 }
 export async function moreHome() {
-  if (home.loading || !home.next || !onPage(state.route, 'home')) return;
+  if (home.loading || !home.next || !onPage(state.route, 'days')) return;
   home.loading = true; const gen = home.gen; let appended = false;
   $('homeSentinel').textContent = t('正在读取更早的图…');
   try {
     const r = await api('/api/home?' + new URLSearchParams({nsfw: state.nsfw, before: home.next, ...MARKS}));
-    if (gen !== home.gen || !onPage(state.route, 'home')) return;
+    if (gen !== home.gen || !onPage(state.route, 'days')) return;
     const known = new Set(home.days.map(g => g.day)), days = r.days.filter(g => !known.has(g.day) && known.add(g.day));
     home.days.push(...days); home.next = r.next;
     // 已有的几天和哨兵内容不变，留在原处；新的几天接在后面。
@@ -48,14 +48,14 @@ export async function moreHome() {
     showList([...state.items, ...days.flatMap(g => g.items)]);
     if (!home.next) home.observer?.disconnect();
     appended = true;
-  } catch (e) { if (gen === home.gen && onPage(state.route, 'home')) {
+  } catch (e) { if (gen === home.gen && onPage(state.route, 'days')) {
     $('homeSentinel').innerHTML = `<button class="home-retry" data-home-retry>${t('读取失败，重试')}</button>`; toast(e.message);
   } }
   finally {
     if (gen === home.gen) {
       home.loading = false;
       // 每次追加后重新观察，这样仍在边距内的哨兵会再次加载。
-      if (appended && home.next && onPage(state.route, 'home') && $('homeSentinel')) { home.observer?.unobserve($('homeSentinel')); home.observer?.observe($('homeSentinel')); }
+      if (appended && home.next && onPage(state.route, 'days') && $('homeSentinel')) { home.observer?.unobserve($('homeSentinel')); home.observer?.observe($('homeSentinel')); }
     }
   }
 }
@@ -132,7 +132,7 @@ export async function moreOfDay(day) {
   dayLoading.add(day); const gen = home.gen;
   try {
     const r = await api('/api/assets?' + new URLSearchParams({day, nsfw: state.nsfw, order: 'newest', offset: g.items.length, limit: 30, count: 0}));
-    if (gen !== home.gen || !onPage(state.route, 'home')) return;
+    if (gen !== home.gen || !onPage(state.route, 'days')) return;
     const known = new Set(g.items.map(x => x.uuid)); g.items.push(...r.items.filter(x => !known.has(x.uuid)));
     if (!r.items.length) g.count = g.items.length;
     const el = $('homePage').querySelector(`.home-strip[data-day="${day}"]`), left = el?.scrollLeft || 0;
@@ -140,7 +140,7 @@ export async function moreOfDay(day) {
     const tmp = document.createElement('div'); tmp.innerHTML = homeDay(g, home.width); sec.replaceWith(tmp.firstElementChild); markHomeFocus();
     const fresh = $('homePage').querySelector(`.home-strip[data-day="${day}"]`); if (fresh) { fresh.scrollLeft = left; syncStrip(fresh); }
     showList(home.days.flatMap(x => x.items));
-  } catch (e) { if (gen === home.gen && onPage(state.route, 'home')) toast(e.message); } finally { if (gen === home.gen) dayLoading.delete(day); }
+  } catch (e) { if (gen === home.gen && onPage(state.route, 'days')) toast(e.message); } finally { if (gen === home.gen) dayLoading.delete(day); }
 }
 // 首页的各块：每天一块（第一天后面跟「认一认」）和末尾的哨兵。重画时只换内容变了的块（#452）：写入之后没变的那几天
 // 连同图条的横向位置都留着。哪张图开着详情不写进块里，由 markHomeFocus 标。
@@ -151,7 +151,7 @@ function homeSections() {
 }
 const sentinelText = () => home.next ? t('正在读取更早的图…') : t('已经到底了');
 function drawHome() {
-  if (!onPage(state.route, 'home')) return;
+  if (!onPage(state.route, 'days')) return;
   const page = $('homePage'); home.width = page.clientWidth;
   if (!home.days.length) { page.innerHTML = `<p class="empty">${t('没有符合当前 R18 设置的图片。')}</p>`; showList([]); return; }
   reconcileSections(page, homeSections());
@@ -168,7 +168,7 @@ function revealHome(uuid) {
   const all = [...$('homePage').querySelectorAll('.home-j')].filter(x => x.dataset.id === uuid), b = all.find(x => x.closest('.home-strip')) || all[0];
   b?.scrollIntoView({block: 'nearest', inline: 'nearest', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'});
 }
-export function markHomeFocus() { if (onPage(state.route, 'home')) for (const b of $('homePage').querySelectorAll('.home-j')) b.classList.toggle('on', b.dataset.id === state.focused); }
+export function markHomeFocus() { if (onPage(state.route, 'days')) for (const b of $('homePage').querySelectorAll('.home-j')) b.classList.toggle('on', b.dataset.id === state.focused); }
 // 首页「认一认」：一个角色，几张机器识别出的图；点掉错的，然后确认其余的。整批都错时直接点「都不是」；全部点掉以后
 // 主按钮本身就是「都不是」，常驻的那个就不再画（#675）。
 async function nextAsk() {
@@ -222,10 +222,11 @@ export function wireHome() {
     day.classList.add('focus'); for (const b of day.querySelectorAll('.home-j')) b.classList.toggle('hit', b.dataset.chars.split(' ').includes(c.dataset.char));
   });
   $('homePage').addEventListener('mouseleave', () => { for (const d of $('homePage').querySelectorAll('.home-day.focus')) d.classList.remove('focus'); });
-  new ResizeObserver(() => { if (!onPage(state.route, 'home') || !home.days.length || Math.abs($('homePage').clientWidth - home.width) < 8) return; clearTimeout(home.resize); home.resize = setTimeout(drawHome, 120); }).observe($('homePage'));
+  new ResizeObserver(() => { if (!onPage(state.route, 'days') || !home.days.length || Math.abs($('homePage').clientWidth - home.width) < 8) return; clearTimeout(home.resize); home.resize = setTimeout(drawHome, 120); }).observe($('homePage'));
 }
 
 // 首页登记：渲染入口，以及数据变了之后怎么重画（撤销、同步到新图、改动之后保持滚动；切换 R18 重新读；视图选项只重排）。
 // 后退回到首页（restore）时按上次读到的天数重读、不换「认一认」，好让 applyRoute 滚回原来的位置（#526）。
-implement({home: {render: ({restore} = {}) => renderHome(!!restore && home.days.length > 0), reveal: revealHome,
+implement({days: {render: ({restore} = {}) => renderHome(!!restore && home.days.length > 0), reveal: revealHome,
+  heading: () => [t('图库'), state.recentCount ? t('最近一次同步新加入 {n} 张', {n: number(state.recentCount)}) : ''], help: () => [t('按加入日期分组。')],
   refresh: why => { if (why === 'view') drawHome(); else renderHome(why !== 'nsfw' && why !== 'ask'); }}});

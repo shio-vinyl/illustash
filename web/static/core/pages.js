@@ -17,7 +17,13 @@ import {likeParams} from './like.js';
 //   keys       单图快捷键在这页的范围：'grid' 网格页全部生效（主区是 #grid 的页面不写也是它）；'shown' 只对详情栏或大图里
 //              那张图生效，没有网格光标（首页）；主区不是网格、也没写的页面不响应（keyScope）
 //   click      点卡片做什么：'browse' 打开详情（选择要主动进入）、'cleanup' 切换选中、'own' 页面自己处理
-//   nav        侧栏哪一项亮（.nav 的 data-page；设置是侧栏底部的链接）；'' 没有
+//   entry      属于活页条的哪个一级入口（core/rail.js 的 ENTRIES）：'library' 图库、'catalog' 资料库、'galleries' 画廊、'tidy' 整理、
+//              'settings' 设置（底部的齿轮）；'' 哪个都不亮（画师抽查，入口在设置里）
+//   item       在那个入口的二级层里选中哪一项的键（整理的五个队列）；随地址变的（某个画廊、钉住的角色）由 core/rail.js 的
+//              railAt 按地址算，不写在这里
+//   view       图库的三种视图：'days' 按天、'grid' 网格、'calendar' 日历（页头的分段切换按它画）
+//   filters    读图库的筛选参数（has、not、from、to 和旧的单值参数）：图库三种视图和画廊；切换视图时这些参数跟着走
+//   emptyIcon  空状态的大图标（ui/empty.js 的 ICONS 的键）；不写是「图片」
 //   lead       未识别一类的「待认」页（全部未识别、已跳过、组页）：排序偏好共用、默认可按「有线索优先」排；在这些页上设角色之后
 //              那张图会离开本页（详情栏、大图、卡片「+ 角色」建议都先飞走再消失）
 //   skip       能跳过当前这张的页面（全部未识别、组页）：详情栏对还没有角色的图显示「跳过 S」，不选图时 S 跳过当前这张
@@ -36,7 +42,7 @@ const narrowed = r => !!(r.q || r.tag || r.utag || r.check || r.doubt || conditi
 
 // 图库和角色页共用的一组字段：角色页是图库加 char 参数，不是独立页面。
 const libraryBase = {
-  area: 'grid', panel: false, nav: 'library', toolbar: 'library', sorts: NEWEST,
+  area: 'grid', panel: false, entry: 'library', view: 'grid', filters: true, toolbar: 'library', sorts: NEWEST,
   params: r => {
     const f = {};
     if (r.day) f.day = r.day; if (r.work) f.work = r.work; if (r.artist) f.artist = r.artist; if (r.q) f.q = r.q; if (r.tag) f.tag = r.tag; if (r.utag) f.utag = r.utag;
@@ -49,48 +55,53 @@ const libraryBase = {
 };
 
 const list = [
-  {name: 'home', root: true, area: 'homePage', panel: true, keys: 'shown', click: 'own', nav: 'home', toolbar: 'none'},
+  // 图库的三种视图（#706）：按天（原来的首页，#677）、网格（原来的图库）、日历。打开 App 落在按天。
+  {name: 'days', root: true, area: 'homePage', panel: true, keys: 'shown', click: 'own', entry: 'library', view: 'days', filters: true, toolbar: 'none', emptyIcon: 'image'},
   {name: 'library', ...libraryBase, click: 'browse', sortPref: 'sortLibrary'},
+  {name: 'calendar', area: 'calendarPage', panel: true, click: 'own', entry: 'library', view: 'calendar', filters: true, toolbar: 'none', emptyIcon: 'calendar'},
   // 画廊（#445）：全部画廊的封面卡片，和一个画廊里的图（就是带着它的条件的图库）。
-  {name: 'galleries', area: 'groupsPage', panel: true, click: 'own', nav: 'galleries', toolbar: 'none'},
-  {name: 'gallery', prefix: 'gallery', ...libraryBase, click: 'browse', nav: 'galleries', sortPref: 'sortLibrary', gallery: true},
-  {name: 'characters', sections: true, area: 'charIndex', panel: true, click: 'own', nav: 'characters', toolbar: 'index', directory: true, guideTick: 'look'},
-  {name: 'settings', sections: true, area: 'settingsPage', panel: true, click: 'own', nav: 'settings', toolbar: 'none'},
-  {name: 'unmatched', sortPref: 'sortUnmatched', area: 'grid', panel: false, click: 'cleanup', nav: 'unmatched', lead: true, tabs: 'unmatched', tab: 'all',
-    toolbar: 'grid', sorts: ['hinted', ...NEWEST], pool: 'unmatched', bar: 'unmatched', skip: true,
+  {name: 'galleries', area: 'groupsPage', panel: true, click: 'own', entry: 'galleries', toolbar: 'none', emptyIcon: 'gallery'},
+  {name: 'gallery', prefix: 'gallery', ...libraryBase, view: '', click: 'browse', entry: 'galleries', sortPref: 'sortLibrary', gallery: true},
+  {name: 'characters', sections: true, area: 'charIndex', panel: true, click: 'own', entry: 'catalog', toolbar: 'index', directory: true, guideTick: 'look', emptyIcon: 'person'},
+  {name: 'settings', sections: true, area: 'settingsPage', panel: true, click: 'own', entry: 'settings', toolbar: 'none'},
+  // 整理（#706）：未识别、重复、已排除三个页签（tabs 是页签组），随机抽查、身份整理有题时出现在二级层。各页签原来的子页保留。
+  {name: 'unmatched', sortPref: 'sortUnmatched', area: 'grid', panel: false, click: 'cleanup', entry: 'tidy', item: 'unmatched', lead: true, tabs: 'unmatched', tab: 'all',
+    toolbar: 'grid', sorts: ['hinted', ...NEWEST], pool: 'unmatched', bar: 'unmatched', skip: true, emptyIcon: 'check',
     empty: () => t('没有未识别的图。'), hint: () => t('点击或拖动选择 · Space 看大图 · C 设为角色 · S 跳过'), card: {hintMin: 70}},
-  {name: 'skipped', sortPref: 'sortUnmatched', area: 'grid', panel: false, click: 'cleanup', nav: 'unmatched', lead: true, tabs: 'unmatched', tab: 'skipped',
-    toolbar: 'grid', sorts: ['hinted', ...NEWEST], pool: 'skipped', bar: 'skipped',
+  {name: 'skipped', sortPref: 'sortUnmatched', area: 'grid', panel: false, click: 'cleanup', entry: 'tidy', item: 'unmatched', lead: true, tabs: 'unmatched', tab: 'skipped',
+    toolbar: 'grid', sorts: ['hinted', ...NEWEST], pool: 'skipped', bar: 'skipped', emptyIcon: 'check',
     empty: () => t('没有跳过的图片。'), hint: () => t('点击或拖动选择 · Space 看大图')},
-  {name: 'groups', area: 'groupsPage', panel: true, click: 'own', nav: 'unmatched', tabs: 'unmatched', tab: 'groups', toolbar: 'tabs'},
-  {name: 'group', prefix: 'g', sortPref: 'sortUnmatched', area: 'grid', panel: false, click: 'cleanup', nav: 'unmatched', lead: true, tabs: 'unmatched', tab: 'groups',
-    toolbar: 'grid', sorts: ['hinted', ...NEWEST], bar: 'unmatched', skip: true,
+  {name: 'groups', area: 'groupsPage', panel: true, click: 'own', entry: 'tidy', item: 'unmatched', tabs: 'unmatched', tab: 'groups', toolbar: 'tabs', emptyIcon: 'check'},
+  {name: 'group', prefix: 'g', sortPref: 'sortUnmatched', area: 'grid', panel: false, click: 'cleanup', entry: 'tidy', item: 'unmatched', lead: true, tabs: 'unmatched', tab: 'groups',
+    toolbar: 'grid', sorts: ['hinted', ...NEWEST], bar: 'unmatched', skip: true, emptyIcon: 'check',
     pool: 'cluster', params: r => ({cluster: r.id}), empty: () => t('这一组都整理完了。'),
     hint: () => t('点击或拖动选择 · Space 看大图 · C 设为角色 · S 跳过')},
-  {name: 'duplicates', area: 'grid', panel: false, click: 'browse', nav: 'duplicates', tabs: 'duplicates', tab: 'all',
-    toolbar: 'grid', sorts: NEWEST, pool: 'duplicates', bar: 'default', card: {dup: true},
+  {name: 'duplicates', area: 'grid', panel: false, click: 'browse', entry: 'tidy', item: 'duplicates', tabs: 'duplicates', tab: 'all',
+    toolbar: 'grid', sorts: NEWEST, pool: 'duplicates', bar: 'default', card: {dup: true}, emptyIcon: 'check',
     params: r => r.dup ? {dup: r.dup} : {}, empty: r => r.dup ? t('所有副本的角色都一致。') : t('没有重复的图片。'),
     hint: () => t('同色角标是同一组')},
-  {name: 'similar', area: 'groupsPage', panel: true, click: 'own', nav: 'duplicates', tabs: 'duplicates', tab: 'similar', toolbar: 'tabs'},
-  {name: 'sgroup', prefix: 's', area: 'grid', panel: false, click: 'cleanup', nav: 'duplicates', tabs: 'duplicates', tab: 'similar',
-    toolbar: 'grid', sorts: NEWEST, pool: 'similar', params: r => ({cluster: r.id}), bar: 'default', empty: () => t('这一组已经没有图片了。'),
+  {name: 'similar', area: 'groupsPage', panel: true, click: 'own', entry: 'tidy', item: 'duplicates', tabs: 'duplicates', tab: 'similar', toolbar: 'tabs'},
+  {name: 'sgroup', prefix: 's', area: 'grid', panel: false, click: 'cleanup', entry: 'tidy', item: 'duplicates', tabs: 'duplicates', tab: 'similar',
+    toolbar: 'grid', sorts: NEWEST, pool: 'similar', params: r => ({cluster: r.id}), bar: 'default', empty: () => t('这一组已经没有图片了。'), emptyIcon: 'check',
     hint: () => t('点击或拖动选择 · Space 看大图')},
-  {name: 'excluded', area: 'grid', panel: false, click: 'cleanup', nav: 'excluded', tabs: 'excluded', tab: 'all',
-    toolbar: 'grid', sorts: NEWEST, pool: 'excluded', bar: 'excluded', card: {reason: true},
+  {name: 'excluded', area: 'grid', panel: false, click: 'cleanup', entry: 'tidy', item: 'excluded', tabs: 'excluded', tab: 'all',
+    toolbar: 'grid', sorts: NEWEST, pool: 'excluded', bar: 'excluded', card: {reason: true}, emptyIcon: 'check',
     params: r => r.reason ? {reason: r.reason} : {}, empty: () => t('没有被排除的图片。'), hint: () => t('点击或拖动选择 · Space 看大图 · X 恢复收录')},
-  {name: 'pending', area: 'grid', panel: false, click: 'cleanup', nav: 'excluded', tabs: 'excluded', tab: 'pending', toolbar: 'grid', sorts: NEWEST, pool: 'pending', bar: 'pending',
-    empty: () => t('没有待确认的图片。'), hint: () => t('点击或拖动选择 · Space 看大图 · X 排除')},
-  {name: 'audit', area: 'grid', panel: false, click: 'cleanup', nav: 'audit', toolbar: 'grid', sorts: NEWEST, pool: 'audit', bar: 'audit', card: {audit: true},
-    empty: () => t('抽查做完了。'), hint: () => t('点一张或 Space 看大图 · Y 是 · N 不是 · 看不清可以跳过，换一张')},
-  {name: 'identity', area: 'groupsPage', panel: true, click: 'own', nav: 'identity', toolbar: 'none'},
-  {name: 'artist-audit', area: 'groupsPage', panel: true, click: 'own', nav: '', toolbar: 'none'},
+  {name: 'pending', area: 'grid', panel: false, click: 'cleanup', entry: 'tidy', item: 'excluded', tabs: 'excluded', tab: 'pending', toolbar: 'grid', sorts: NEWEST, pool: 'pending',
+    bar: 'pending', emptyIcon: 'check', empty: () => t('没有待确认的图片。'), hint: () => t('点击或拖动选择 · Space 看大图 · X 排除')},
+  {name: 'audit', area: 'grid', panel: false, click: 'cleanup', entry: 'tidy', item: 'audit', toolbar: 'grid', sorts: NEWEST, pool: 'audit', bar: 'audit', card: {audit: true},
+    emptyIcon: 'check', empty: () => t('抽查做完了。'), hint: () => t('点一张或 Space 看大图 · Y 是 · N 不是 · 看不清可以跳过，换一张')},
+  {name: 'identity', area: 'groupsPage', panel: true, click: 'own', entry: 'tidy', item: 'identity', toolbar: 'none'},
+  {name: 'artist-audit', area: 'groupsPage', panel: true, click: 'own', entry: '', toolbar: 'none'},
 ];
 
-// 不再有的页面的旧地址 → 现在落在哪一页。新加入（#/recent）在 2026-10-02 由首页接手，页面本身在 #353 删掉。
-const RETIRED = {recent: 'home'};
+// 不再有的页面的旧地址 → 现在落在哪一页。新加入（#/recent）在 2026-10-02 由首页接手，页面本身在 #353 删掉；首页（#/home）
+// 在 0.4 并进图库，是图库的按天视图（#706）；#/tidy 是整理的入口，落在未识别的按组整理（和二级层「未识别」去的地方一样）。
+const RETIRED = {recent: 'days', home: 'days', tidy: 'groups'};
 
 // 角色页：不是 route.page，而是 library 加 char 参数。点击即选择；排序多「可疑优先」；旧地址 #/c/<id>/<皮肤> 改写成它。
-const character = {name: 'character', virtual: true, legacyPrefix: 'c', ...libraryBase, click: 'cleanup', sorts: ['suspicious', ...NEWEST], sortPref: 'sortCharacter',
+// 活页条上它属于资料库（角色在那里），不是图库；页头没有图库的视图切换。
+const character = {name: 'character', virtual: true, legacyPrefix: 'c', ...libraryBase, entry: 'catalog', view: '', click: 'cleanup', sorts: ['suspicious', ...NEWEST], sortPref: 'sortCharacter',
   empty: (r, ctx = {}) => narrowed(r) || ctx.nsfw === 'only' ? PAGES.library.empty(r, ctx) : t('这个角色已经没有图片了。'),
   hint: () => t('点击或拖动选择 · Space 看大图 · ⌫ 不是 TA · C 换成')};
 
@@ -104,7 +115,7 @@ export const CHARACTER = character;
 export const LIKE = like;
 const VIRTUAL = {character, like};
 // 路由里的页面名没登记时（只有测试会这样）按没有特殊性质的网格页处理。
-const UNKNOWN = {name: '', area: 'grid', panel: false, click: 'own', nav: '', toolbar: 'grid', sorts: NEWEST, bar: 'default'};
+const UNKNOWN = {name: '', area: 'grid', panel: false, click: 'own', entry: '', toolbar: 'grid', sorts: NEWEST, bar: 'default'};
 export const pageOf = route => PAGES[route.page] || UNKNOWN;
 // 主区的全部种类（index.html 里各有一个元素），ui/dom.js 的 showArea 按它切换。
 export const AREAS = [...new Set(list.map(p => p.area))];
@@ -119,14 +130,17 @@ export const onPage = (route, ...names) => names.includes(route.page);
 export const poolIs = (route, ...pools) => pools.includes(pageOf(route).pool);
 
 // ui/ 登记页面的处理函数：{页面名: {render, refresh, heading, ...}}；character、like 是上面两个视图。
-//   render({samePage})   进入本页时画主区；没有的页面是网格页，由 shell 调 reload(true)
+//   render({samePage, restore, scope})  进入本页时画主区；没有的页面是网格页，由 shell 调 reload(true)。scope 是这一页的
+//                        作用域（ui/scope.js 的 page()）：监听、计时器、部件都登记在它上面，换页时一起释放（docs/WEB_V2.md「页面样板」）
+//   subTabs(r)           页签行（整理三个页签下面的子页签）的 HTML；工具栏是 'tabs' 或 'grid' 的页面放在工具栏开头
 //   prepare(route)       进入本页前要先读的数据；返回 false 表示已经导航走了
 //   heading(r, ctx)      [标题, 副标题, 右侧链接 HTML]；角色页另用 drawHeading。副标题只放数量、状态和必须一眼看到的警告
 //   wireHeading(h, r)    heading 画好之后给右侧的按钮挂上处理函数（相似组页的「看过了」）
 //   help(r), helpHint    标题旁「?」里的说明（一行一句）；helpHint 为真时再接上本页的 hint，一个「·」一行（#527）
 //   onMeta(info)         计数等元数据到达后重画什么；没有的页面重画工具栏
-//   emptyNext(r)         网格空了时空状态下面的去处（链接或 data-empty 按钮的 HTML，#386 的 2-12）；没有的页面只有一句话
-//   emptyAct(act)        点了 emptyNext 里的 data-empty 按钮（「显示全部」由 shell 自己处理）
+//   emptyNext(r)         网格空了时空状态下面的去处（#386 的 2-12）：[{label, href}]（链接）或 [{label, act}]（按钮），
+//                        可以有几个；没有的页面只有图标和一句话（ui/empty.js 画）
+//   emptyAct(act)        点了 emptyNext 里 act 的按钮（「显示全部」由 shell 自己处理）
 //   readFailed(e)        网格读取失败时：返回一句话就当作没有结果、把它写进空状态，不弹错误条（相似结果的例图没有特征、
 //                        画廊的条件失效）
 //   failedNext(r)        readFailed 认下的失败在空状态下面给的去处，写法同 emptyNext（画廊的「删除画廊」）

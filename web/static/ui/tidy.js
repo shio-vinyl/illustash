@@ -1,0 +1,62 @@
+// 整理（#706）：未识别、重复、已排除三个页签各自的标题、说明、子页签和空了时的去处，以及随机抽查、身份整理、画师抽查的标题。
+// 三个页签之间的分段切换画在页头上（ui/shell.js）；各页的主区照旧在 ui/review.js 和网格里。整理页那一步（H #713）重做这一页。
+import {esc, number} from '../core/format.js';
+import {t} from '../core/i18n.js';
+import {REASONS} from '../core/labels.js';
+import {implement, viewOf} from '../core/pages.js';
+import {state} from '../core/state.js';
+import {$} from './dom.js';
+import {filters} from './grid.js';
+import {markOc} from './palette.js';
+
+// 同一个页签下的子页签（未识别：按组整理、全部、已跳过；重复：全部、角色不一致、相似的图；已排除：全部、各原因、待确认）。
+// 张数和组数写在子页签上，标题下面不再写一遍（#426）。
+function subTabs(r) {
+  const tab = (href, label, n, on, title = '') => `<a class="chip-filter${on ? ' on' : ''}" href="${href}"${title ? ` title="${esc(title)}"` : ''}>${label}${n ? ` <span>${n}</span>` : ''}</a>`;
+  const p = state.pools, row = tabs => `<div class="chips-row">${tabs.join('')}</div>`;
+  // 页签组和本页对应的页签由页面登记（core/pages.js 的 tabs、tab）。
+  const at = viewOf(r).tab, all = at === 'all';
+  switch (viewOf(r).tabs) {
+    case 'unmatched': return row([
+      // 未识别的总数写在按组整理上：二级层「未识别」落在这里，组里的和没成组的合起来就是它。
+      tab('#/groups', t('按组整理'), p.unmatched ? number(p.unmatched) : '', at === 'groups', t('按长相分组的未识别图')),
+      tab('#/unmatched', t('全部未识别'), '', all),
+      tab('#/skipped', t('已跳过'), p.skipped ? number(p.skipped) : '', at === 'skipped')]);
+    case 'duplicates': return row([
+      tab('#/duplicates', t('全部'), t('{n} 组', {n: number(state.dupInfo.groups)}), all && !r.dup),
+      tab('#/duplicates?dup=mixed', t('角色不一致'), t('{n} 组', {n: number(state.dupInfo.mixed)}), all && r.dup === 'mixed', t('几份副本标的角色不同')),
+      tab('#/similar', t('相似的图'), '', at === 'similar', t('同一幅画的不同文件'))]);
+    case 'excluded': return row([
+      tab('#/excluded', t('全部'), number(state.exclInfo.count), all && !r.reason),
+      ...Object.entries(REASONS).filter(([k]) => state.exclInfo.reasons?.[k]).map(([k, label]) => tab('#/excluded?reason=' + k, label, number(state.exclInfo.reasons[k]), all && r.reason === k)),
+      ...(state.pendingCount || at === 'pending' ? [tab('#/pending', t('待确认'), number(state.pendingCount), at === 'pending', t('像截图，但有人物'))] : [])]);
+  }
+  return '';
+}
+const tidy = () => [t('整理'), ''];
+
+// 标题（[标题, 副标题, 右侧链接]）、子页签、「?」里的说明（#527：help 是这一页的说明，一行一句；helpHint 表示再接上注册表里的
+// 操作提示）、空了时的去处。
+implement({
+  unmatched: {heading: tidy, subTabs, helpHint: true},
+  skipped: {heading: tidy, subTabs, help: () => [t('选中的图可以恢复到未识别。')], helpHint: true, emptyNext: () => [{label: t('回到按组整理'), href: '#/groups'}]},
+  groups: {heading: tidy, subTabs,
+    help: () => [t('按长相分组的未识别图，可以整组确认。'), t('点一下缩略图，把它排除在这组之外。'), t('长按缩略图，或鼠标停在上面按 Space，看大图。'), t('组头的按钮对整组生效。')]},
+  // 一组整理完了，标题不写「0 张」，由空状态给去处（#386 的 2-12）。
+  group: {subTabs, helpHint: true,
+    heading: (r, {n}) => [t('第 {id} 组', {id: esc(r.id)}), [state.totalReady && !state.total ? '' : t('{n} 张长得像的未识别图', {n}), ...(state.groupTraits || []).map(esc)].filter(Boolean).join(' · '),
+      `<span class="heading-links">${state.total ? `<button class="quiet" id="groupOc" title="${t('把这组图都设为「原创角色（未细分）」')}">${t('整组标为原创角色')}</button>` : ''}`
+        + `${state.groupNear ? `<a class="quiet link" href="#/g/${state.groupNearId}">${esc(state.groupNear)} →</a>` : ''}</span>`],
+    wireHeading: () => $('groupOc')?.addEventListener('click', () => markOc({filter: filters(), exclude: [], confirm: state.total > 500}, false))},
+  duplicates: {heading: tidy, subTabs, help: () => [t('同色角标是同一组。'), t('组里的角色不一致时不折叠，对齐以后折叠成一张。')]},
+  similar: {heading: tidy, subTabs, help: () => [t('同一幅画的不同文件。'), t('点一组进去看。')]},
+  sgroup: {subTabs, help: () => [t('选中两张以上可以判断它们的关系。')], helpHint: true},
+  excluded: {heading: tidy, subTabs, helpHint: true},
+  pending: {heading: tidy, subTabs, help: () => [t('像截图，但有人物。')], helpHint: true, emptyNext: () => [{label: t('回到已排除'), href: '#/excluded'}]},
+  audit: {heading: (r, {n}) => [t('随机抽查'), t('还剩 {left} / {n} 张', {left: number(state.pools.audit || 0), n}) + (state.nsfw ? ` · <b>${t('R18 筛选开着：抽查要看全部才准，按 H 切换')}</b>` : '')],
+    help: () => [t('鼠标移到角色 tag 上，点 ✓ 或 ✗ 回答。'), t('选中多张后按 Y（是）或 N（不是）。'), t('打开大图也可以回答。'), t('看不清的可以跳过，换一张。')]},
+  identity: {heading: () => [t('身份整理'), t('{n} 对长得像的角色', {n: number(state.identityCount || 0)})],
+    help: () => [t('按涉及的图片数排序。'), t('高亮的按钮是外部资料建议的做法。')]},
+  'artist-audit': {heading: () => [t('画师抽查'), state.nsfw ? `<b>${t('这页不按 R18 筛选：R18 的图也在里面')}</b>` : ''],
+    help: () => [t('一组固定的随机图，逐张核对「找回画师」找到的画师。'), t('每次打开都是同一批。')]},
+});

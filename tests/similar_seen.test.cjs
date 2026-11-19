@@ -58,7 +58,7 @@ const group = (gid, seen, size = 2) => ({gid, size, covers: ['a', 'b'].slice(0, 
 test('看过的组不在列表里，「看过的 N 组」只列它们', async () => {
   await wired();
   globalThis.location = {hash: ''};
-  Object.assign(state, {route: {page: 'home'}, nsfw: '', guide: undefined});
+  Object.assign(state, {route: {page: 'days'}, nsfw: '', guide: undefined});
   groups = [group(3, false), group(7, true)];
   await visit('#/similar');
   assert.ok(requests.some(p => p.startsWith('/api/similar?') && p.includes('seen=1')));

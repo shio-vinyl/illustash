@@ -16,15 +16,13 @@ export function conditions(value) {
 }
 // 写入以后这张图是不是离开本页：「只看收藏」里取消，「不含收藏」里收藏。
 export const favLeaves = (add, route = state.route) => add ? conditions(route.not).includes(FAV) : conditions(route.has).includes(FAV);
-// 侧栏的「收藏」：图库只按收藏筛选、没有别的条件时亮，「图库」不亮。
+// 只按收藏筛选的图库（没有别的条件）：活页条上亮「画廊 › 收藏」（core/rail.js 的 railAt，#706），标题写「收藏」。
 const OTHER = ['q', 'tag', 'utag', 'work', 'day', 'artist', 'char', 'from', 'to', 'like'];
 export function favoritesOnly(route = state.route) {
   if (!onPage(route, 'library') || OTHER.some(k => Array.isArray(route[k]) ? route[k].length : route[k])) return false;
   const has = conditions(route.has);
   return has.length === 1 && has[0] === FAV && !conditions(route.not).length;
 }
-// 侧栏里哪一项亮：收藏筛选是「收藏」，其余照页面登记的 nav。
-export const navFor = (route, page) => favoritesOnly(route) ? 'favorites' : page.nav;
 // 在一组查询参数的 key（has 或 not）里加一个条件，返回新的一组；参数里条件写成 JSON 字符串数组，同 /api/assets。
 export function withCondition(params, key, condition) {
   const list = conditions(params[key]);

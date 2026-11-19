@@ -17,8 +17,9 @@ export function parseHash() {
   // 打开 App 落在首页；只有查询的地址（#/?artist=… 和其他旧链接）仍表示图库；#/c/id/skin 是旧的角色页，现在是按这个角色
   // 筛选的图库；资料库和设置有各自地址的子视图。哪个路径对应哪个页面由 core/pages.js 登记。
   Object.assign(route, matchPath(parts, !!query));
-  // 角色、画师和检查筛选只属于图库（有图库工具栏的页面）。
-  if (pageOf(route).toolbar !== 'library') Object.assign(route, {char: '', variant: '', check: '', doubt: '', artist: '', has: [], not: [], from: '', to: ''});
+  // 角色和检查筛选只属于有图库工具栏的页面（网格、画廊）；画师和组合条件另外属于按天、日历（注册表的 filters，#706）。
+  if (pageOf(route).toolbar !== 'library') Object.assign(route, {char: '', variant: '', check: '', doubt: ''});
+  if (!pageOf(route).filters) Object.assign(route, {artist: '', has: [], not: [], from: '', to: ''});
   // 「更多像这张的」（#449）只属于图库本身，不和角色页叠在一起。
   Object.assign(route, readLike(q, pageOf(route).toolbar === 'library' && !route.char));
   if (!route.like && route.sort === 'similar') route.sort = '';   // 「最相似」离开例图就没有意义

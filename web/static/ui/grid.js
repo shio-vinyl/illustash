@@ -18,6 +18,8 @@ import {api, post, readError} from '../core/session.js';
 import {state} from '../core/state.js';
 import {offerWatch} from './catalog.js';
 import {$, error, showArea, toast, written} from './dom.js';
+import {drawEmpty} from './empty.js';
+import {railKey, railNsfw} from './rail.js';
 import {renderChrome, renderHeading} from './shell.js';
 import {findArtists} from './artists.js';
 import {openExport, startDrag} from './files.js';
@@ -100,8 +102,8 @@ export async function reload(reset = false, place = null) {
     if (place) restorePlace(place);
     renderGrid(); updateCount(); renderSelection();
     $('empty').hidden = !!state.total;
-    const view = viewOf(state.route), text = view.empty?.(state.route, {nsfw: state.nsfw}) || '', next = text && view.emptyNext?.(state.route);
-    $('empty').innerHTML = next ? `<div>${text}<div>${next}</div></div>` : text;
+    const view = viewOf(state.route), fact = view.empty?.(state.route, {nsfw: state.nsfw}) || '';
+    if (!state.total) drawEmpty($('empty'), {icon: emptyIcon(view), fact, next: fact ? view.emptyNext?.(state.route) : []});
     renderHeading();
     if (state.route.char) refreshMaybe(gen);
   } catch (e) {
@@ -118,11 +120,15 @@ function reuseSame(items) {
   for (const x of items) if (x) shown.set(x.uuid, x);
   return item => { const was = shown.get(item.uuid); return was && JSON.stringify(was) === JSON.stringify(item) ? was : item; };
 }
-function showNone(text, next = '') {
+// 空状态的图标：「只看 R18」时是搜索（多半是这个筛选造成的），否则是这一页登记的。
+const emptyIcon = view => state.nsfw === 'only' ? 'search' : (typeof view.emptyIcon === 'function' ? view.emptyIcon(state.route) : view.emptyIcon) || 'image';
+// 本页符合条件的前 limit 张图的 id（相似组页「判断关系」用）。
+export const listIds = limit => api('/api/ids?' + new URLSearchParams({...filters(), limit}));
+function showNone(text, next = []) {
   state.total = 0; state.totalReady = true; state.countDirty = false; state.items = []; state.pages = new Set(); state.dataVersion++; state.gridKey = '';
   renderGrid(); updateCount(); renderSelection();
   $('empty').hidden = false;
-  if (next) $('empty').innerHTML = `<div>${esc(text)}<div>${next}</div></div>`; else $('empty').textContent = text;
+  drawEmpty($('empty'), {icon: 'search', fact: text, next});
   renderHeading();
 }
 // 首页借用网格的列表放它自己的图（详情栏翻页、大图都按这个列表走）。
@@ -826,11 +832,11 @@ function favButton(n, arm) {
 
 // ---------- 视图选项 ----------
 // 这里的一切都是可选的细节：默认保持安静，每个开关按浏览器保存。
-const VIEW_DEFAULTS = {captions: true, marks: true, hints: true, railCount: false, footer: false, chart: true, same: true, meta: true, homeSize: 1, hero: true, people: false, ask: true};
+const VIEW_DEFAULTS = {captions: true, marks: true, hints: true, footer: false, chart: true, same: true, meta: true, homeSize: 1, hero: true, people: false, ask: true};
 export const viewOpts = {...VIEW_DEFAULTS, ...prefs.get('view', {})};
 function applyViewClasses() {
   const b = document.body.classList;
-  b.toggle('hide-marks', !viewOpts.marks); b.toggle('show-rail-count', viewOpts.railCount); b.toggle('hide-footer', !viewOpts.footer);
+  b.toggle('hide-marks', !viewOpts.marks); b.toggle('hide-footer', !viewOpts.footer);
 }
 const viewSwitch = (key, label, hint = '') => `<button class="view-opt" data-view="${key}" role="switch" aria-checked="${viewOpts[key]}"><span>${label}${hint ? `<small>${hint}</small>` : ''}</span><i class="view-sw${viewOpts[key] ? ' on' : ''}"></i></button>`;
 // 导出给样式清单页调用（tools/styleguide/live.js，#352）：改名或改参数时，tools/check_styleguide.py 会报出来。
@@ -846,8 +852,7 @@ export function renderViewPop() {
       ${viewSwitch('captions', t('图片下方显示角色名'), t('浏览页、格子够大时'))}
       ${viewSwitch('marks', t('图上显示副本数与造型'))}
       ${viewSwitch('hints', t('未识别的图上显示「可能是」'), t('点一下就设为该角色'))}
-    </div>` : '') + `<h6>${t('侧栏与提示')}</h6><div class="view-group">
-      ${viewSwitch('railCount', t('侧栏显示数量'))}
+    </div>` : '') + `<h6>${t('提示')}</h6><div class="view-group">
       ${viewSwitch('footer', t('底部状态栏'), t('已加载张数与操作提示'))}
     </div><h6>${t('详情面板')}</h6><div class="view-group">
       ${viewSwitch('chart', t('每月加入张数'), t('这个角色每月收了多少张'))}
@@ -885,6 +890,7 @@ export function setNsfw(mode) {
   if (!pageOf(state.route).panel) reload(true);
   else pageOf(state.route).refresh?.('nsfw');
   refreshMeta().catch(e => error(readError(e)));
+  railNsfw();
 }
 
 // 帮助对话框的快捷键表从 core/modes.js 的 SHORTCUTS 生成，和键盘处理是同一张表。wireGrid 调用一次；
@@ -975,6 +981,8 @@ export function wireGrid() {
     // 浏览器自己的后退会退出图库页面，这里改走 stepHistory，只在这个图库的页面之间走。
     const back = isMac ? e.metaKey && !e.altKey && (e.key === '[' || e.key === ']') : e.altKey && !mod && (e.key === 'ArrowLeft' || e.key === 'ArrowRight');
     if (back) { e.preventDefault(); stepHistory(e.key === '[' || e.key === 'ArrowLeft' ? -1 : 1); return; }
+    // 活页条（#706）：⌘1–4 切一级，⌥↑↓ 在二级里移动，⌥⇧↑↓ 挪动钉住的项。
+    if (railKey(e)) return;
     // ⌘＋／⌘－：大图打开时缩放大图；否则只在有网格的页面改网格列数，别的页面什么也不做（也不交给浏览器缩放）。
     if (mod && (key === '=' || key === '+' || key === '-')) {
       e.preventDefault(); const bigger = key !== '-';

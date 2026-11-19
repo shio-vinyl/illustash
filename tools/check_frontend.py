@@ -1029,6 +1029,7 @@ JS_VARIABLES = {
     '--dup-hue': 'ui/grid.js 重复组的色调',
     '--depth': 'ui/catalog.js 作品树的缩进层级',
     '--w': 'ui/like.js 例图条的宽度',
+    '--at': 'ui/rail.js 活页条标签停在第几个一级入口（css/rail.css 的 .rail-tab）',
 }
 # 规则 16：可以写 backdrop-filter 的地方。
 GLASS_FILE = 'css/base.css'

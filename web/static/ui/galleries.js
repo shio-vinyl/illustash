@@ -1,4 +1,4 @@
-// 画廊（#445）：侧栏的「画廊」入口、全部画廊的封面卡片（#/galleries）、一个画廊的页头（#/gallery/<id>），以及工具栏上的
+// 画廊（#445）：活页条画廊的二级层随列表变、全部画廊的封面卡片（#/galleries）、一个画廊的页头（#/gallery/<id>），以及工具栏上的
 // 「保存为画廊」。画廊里的图就是带着它的条件的图库，网格和筛选条与图库共用；数据和接口在 core/galleries.js。
 import {exclusive} from '../core/edits.js';
 import {esc, number} from '../core/format.js';
@@ -7,20 +7,18 @@ import {defaultName, routeFields, savable, sameParams, savedParams} from '../cor
 import {countOf, coversFor, createGallery, deleteGallery, forgetCovers, galleryOf, loadGalleries, setGallery, updateGallery} from '../core/galleries.js';
 import {composing} from '../core/keys.js';
 import {onMeta} from '../core/meta.js';
-import {implement, onPage, pageOf, viewOf} from '../core/pages.js';
+import {implement, onPage, pageOf} from '../core/pages.js';
 import {go, replaceRoute} from '../core/route.js';
 import {readError} from '../core/session.js';
 import {state} from '../core/state.js';
 import {$, error, readFailure, toast, written} from './dom.js';
 import {conditionLabel} from './filters.js';
 import {createLayer} from './overlay.js';
+import {loadGalleryCovers} from './rail.js';
 
 const galleryRoute = g => ({page: 'gallery', id: String(g.id), ...routeFields(g.params)});
-// 侧栏的「画廊」：有画廊时才显示，在画廊页上总显示。
-function showNav() {
-  const nav = $('navGalleries'); if (!nav) return;
-  nav.hidden = !state.galleries?.length && viewOf(state.route).nav !== 'galleries';
-}
+// 画廊列表变了：活页条画廊的二级层跟着换（收藏在最前，封面按 R18 筛选批量读）。
+function showNav() { loadGalleryCovers(); }
 async function reloadList() {
   try { await loadGalleries(); } catch (e) { error(readError(e)); }
   showNav();
@@ -186,10 +184,10 @@ async function refresh(why) {
 implement({
   galleries: {render: () => renderIndex(), heading: indexHeading, refresh},
   gallery: {prepare, drawHeading: drawGalleryHeading, refresh, onMeta: () => {},
-    emptyNext: () => state.nsfw === 'only' ? `<button class="quiet" data-empty="nsfw">${t('显示全部')}</button>` : '',
+    emptyNext: () => state.nsfw === 'only' ? [{label: t('显示全部'), act: 'nsfw'}] : [],
     // 条件失效：后端对条件引用的角色、作品、标签不存在回 400。在筛选条上改掉失效的条件后可以「更新画廊」，或者删掉它。
     readFailed: e => e.status === 400 ? t('条件失效：{reason}', {reason: e.message}) : '',
-    failedNext: () => `<button class="quiet" data-empty="delete-gallery">${t('删除画廊')}</button>`,
+    failedNext: () => [{label: t('删除画廊'), act: 'delete-gallery'}],
     emptyAct: act => { const g = act === 'delete-gallery' && galleryOf(state.route.id); if (g) remove(g); }},
 });
 // 页面启动时调用一次：每次读元数据（启动、写入、撤销、同步之后）顺带重读画廊列表，侧栏入口跟着显示或隐藏。

@@ -24,14 +24,15 @@ libc = "0.2"
 # 词条核心链进外壳：外壳兼当 illustash-terms 命令行（main.rs），版本与外壳一致，不另带边车程序。
 illustash-terms = { path = "../native/terms" }
 
-# macOS：关窗后在后台继续时的系统通知和 App Nap 声明（#451，notify.rs）；把图拖到别的应用（#450，drag.rs）。
-# 都用 Tauri 已经带进来的同一版本，只多开几个 feature。
+# macOS：关窗后在后台继续时的系统通知和 App Nap 声明（#451，notify.rs）；把图拖到别的应用（#450，drag.rs）；
+# 监听系统「降低透明度」设置并同步给页面（#755，transparency.rs）。都用 Tauri 已经带进来的同一版本，只多开几个 feature。
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6"
 block2 = "0.6"
-objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSArray", "NSBundle", "NSError", "NSGeometry", "NSObject", "NSProcessInfo", "NSString", "NSURL"] }
-objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSApplication", "NSDragging", "NSDraggingItem", "NSDraggingSession", "NSEvent", "NSGraphicsContext", "NSImage", "NSPasteboard", "NSResponder", "NSView", "NSWindow", "NSWorkspace"] }
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "block2", "NSArray", "NSBundle", "NSError", "NSGeometry", "NSNotification", "NSObject", "NSOperation", "NSProcessInfo", "NSString", "NSURL"] }
+objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSAccessibility", "NSApplication", "NSDragging", "NSDraggingItem", "NSDraggingSession", "NSEvent", "NSGraphicsContext", "NSImage", "NSPasteboard", "NSResponder", "NSView", "NSWindow", "NSWorkspace"] }
 objc2-user-notifications = { version = "0.3", default-features = false, features = ["std", "bitflags", "block2", "UNUserNotificationCenter", "UNNotification", "UNNotificationContent", "UNNotificationRequest", "UNNotificationResponse", "UNNotificationTrigger"] }
+objc2-web-kit = { version = "0.3", default-features = false, features = ["std", "WKUserContentController", "WKUserScript"] }
 
 # Windows：后台时的托盘图标、toast 通知、再次打开时回到已在运行的那个（#451）；拖出（#450，drag.rs，Win32_* 那几项）。
 [target.'cfg(windows)'.dependencies]

@@ -34,6 +34,16 @@ class Tree(tempfile.TemporaryDirectory):
         path = self.root / STATIC / relative
         path.write_text(path.read_text(encoding='utf-8') + text, encoding='utf-8')
 
+    def append_same_length(self, relative, text):
+        """往文件末尾加代码，同时去掉同样多的空行：行数不变，已经超过 600 行的 ui/ 文件不会因此碰到规则 21。"""
+        path = self.root / STATIC / relative
+        old = path.read_text(encoding='utf-8')
+        added, new = text.count('\n'), old
+        for _ in range(added):
+            new = new.replace('\n\n', '\n', 1)
+        assert new.count('\n') == old.count('\n') - added, f'{relative} 里没有足够的空行'
+        path.write_text(new + text, encoding='utf-8')
+
     def errors(self):
         return check(self.root)[0]
 
@@ -287,6 +297,45 @@ class FrontendArchitectureTest(unittest.TestCase):
             message = self.assertViolation(tree, 'long-line', 'ui/home.js')
             self.assertIn('200', message)
 
+    def test_ui_file_length(self):
+        # 规则 21：ui/ 下新文件超过 600 行报错；已经超长的文件再加一行也报错，缩短了算可收紧
+        with Tree() as tree:
+            tree.append('ui/home.js', '\n'.join(['// 行'] * 200) + '\n')
+            self.assertEqual(tree.errors(), [])
+            path = tree.root / STATIC / 'ui/brand_new.js'
+            path.write_text('// 新模块\n' + 'export const x = 1;\n' * 600, encoding='utf-8')
+            message = self.assertViolation(tree, 'ui-file-length', 'ui/brand_new.js')
+            self.assertIn('600', message)
+        with Tree() as tree:
+            tree.append('ui/grid.js', '// 再加一行\n')
+            self.assertViolation(tree, 'ui-file-length', 'ui/grid.js')
+        with Tree() as tree:
+            # core/ 不管行数
+            tree.append('core/format.js', '\n'.join(['// 行'] * 700) + '\n')
+            self.assertEqual(tree.errors(), [])
+
+    def test_ui_must_not_send_requests(self):
+        # 规则 22：ui/ 从 core/session.js 导入 api、post、shared（改名、import * as 也算），或者直接调 fetch（带 window.、globalThis.、?.() 也算），
+        # 都报；core/ 里照写；同名的方法定义、别的对象上的 fetch 方法不算
+        cases = ["\nimport {api} from '../core/session.js';\n",
+                 "\nimport {readError, post as send} from '../core/session.js';\n",
+                 "\nimport * as session from '../core/session.js';\n",
+                 "\nexport const raw = () => fetch('/api/home');\n",
+                 "\nexport const raw = () => window.fetch('/b');\n",
+                 "\nexport const raw = () => globalThis.fetch?.('/c');\n",
+                 "\nexport const beacon = () => navigator.sendBeacon('/d', '');\n",
+                 "\nexport const stream = () => new EventSource('/e');\n",
+                 "\nexport const xhr = () => new XMLHttpRequest();\n"]
+        for text in cases:
+            with self.subTest(text=text), Tree() as tree:
+                tree.append('ui/rail.js', text)
+                self.assertViolation(tree, 'ui-request', 'ui/rail.js')
+        with Tree() as tree:
+            tree.append('core/rail.js', "\nimport {post} from './session.js';\nexport const more = () => fetch('/api/home');\n")
+            tree.append('ui/rail.js', "\nimport {readError} from '../core/session.js';\nconst x = {post() {}, api() {}};\n"
+                                      "export const y = () => x.post('b') + cache.fetch('c') + '\\napi(';\n// fetch('/api/home')\n")
+            self.assertEqual(tree.errors(), [])
+
     def test_long_comment_line_counts(self):
         with Tree() as tree:
             tree.append('core/format.js', '\n// ' + 'word ' * 50 + '\n')
@@ -294,8 +343,8 @@ class FrontendArchitectureTest(unittest.TestCase):
 
     def test_baseline_is_not_keyed_by_line_number(self):
         with Tree() as tree:
-            # 在文件开头插入无关行、让所有行号后移，检查结果不变
-            path = tree.root / STATIC / 'ui/settings.js'
+            # 在文件开头插入无关行、让所有行号后移，检查结果不变（换一个不到 600 行的文件，免得碰到规则 21）
+            path = tree.root / STATIC / 'ui/catalog.js'
             path.write_text('// one\n// two\n// three\n' + path.read_text(encoding='utf-8'), encoding='utf-8')
             self.assertEqual(tree.errors(), [])
 
@@ -405,7 +454,7 @@ class FrontendArchitectureTest(unittest.TestCase):
             tree.append('ui/home.js', '\nif (state.cursor === 3 || state.cursor >= 2 || state.cursor <= 1 || state.cursor !== 0) go(state.cursor == 1);\n'
                                       'const f = state.items.filter(x => x).length; state.pending.add(1); const s = "state.cursor = 3";\n'
                                       '// state.cursor = 3;\n')
-            tree.append('ui/grid.js', '\nstate.cursor = 3; state.items[0] = null; state.sel.ids = new Set();\n')
+            tree.append_same_length('ui/grid.js', '\nstate.cursor = 3; state.items[0] = null; state.sel.ids = new Set();\n')
             tree.append('core/route.js', '\nObject.assign(state.route, {q: ""});\n')
             self.assertEqual(tree.errors(), [])
 
@@ -842,7 +891,7 @@ class FrontendArchitectureTest(unittest.TestCase):
             self.assertIn('requestIdleCallback', errors[0])
             self.assertNotIn('startViewTransition（', errors[0])
         with Tree() as tree:
-            tree.append('ui/grid.js', "\nexport const idle = 'requestIdleCallback' in window;\n"
+            tree.append_same_length('ui/grid.js', "\nexport const idle = 'requestIdleCallback' in window;\n"
                         "export const pairs = obj => Object.entries(obj).map(([k, v]) => k + v);\n"
                         "export const list = map => [...map.values()].map(x => x);\n")
             self.assertEqual(tree.errors(), [])

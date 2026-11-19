@@ -1,4 +1,144 @@
-/* 活页条（一级入口、选中标签、二级层、同步圆环）。归 0.4 第 B 步（活页条与页面框架，#706）；A2（#705）只建了文件和层，规则由那一步写。
-   只用 css/tokens.css 的令牌和 css/base.css 的公共部件；重写一块，就删掉 app.css 里对应的旧规则。 */
+/* 活页条（#706）：一级入口和选中的标签、二级层、指示条、悬停预览、底部的同步圆环和设置、标志上的图库切换。
+   只用 css/tokens.css 的令牌和 css/base.css 的公共部件。结构在 index.html，行为在 ui/rail.js。
+   - 选中的入口长出一张和内容页同色的标签（.rail-tab），右边和内容页连成一张纸，上下两个内凹圆角（::before / ::after）。
+   - 二级项一律 46px 见方、间隔 10px：ui/rail.js 按这个间距算让位动画，改尺寸时两边一起改。
+   - 悬停和选中的位移用 transform，只动 transform 和 opacity。 */
 @layer pages{
+
+/* ---- 骨架：左边是画布上的活页条，右边是内容页（.content，app.css 的白底圆角） ---- */
+.app{background:var(--canvas)}
+.rail{position:relative;z-index:var(--z-page-2);display:flex;flex:none;flex-direction:column;align-items:center;width:84px;min-height:0;padding:var(--space-16) 0 var(--space-12)}
+.rail-top{display:grid;justify-items:center;margin-bottom:var(--space-20)}
+.rail-brand{display:grid;justify-items:center;gap:var(--space-2);margin:0;padding:var(--space-4);border:0;border-radius:var(--radius-12);background:transparent;color:var(--ink2);cursor:pointer}
+.rail-brand:hover,.rail-brand[aria-expanded=true]{background:var(--wash-hover)}
+.rail-brand .logo-mark{display:block;width:30px;height:30px}
+.brand-lib{max-width:72px;overflow:hidden;color:var(--warn);font-size:var(--fs-11);font-weight:var(--fw-600);white-space:nowrap;text-overflow:ellipsis}
+.brand-lib:empty{display:none}
+
+/* ---- 一级入口和标签 ---- */
+.rail-l1{position:relative;display:grid;gap:var(--space-8);width:100%;padding-left:var(--space-14)}
+.rail-entry{position:relative;z-index:var(--z-page-2);display:grid;place-items:center;width:56px;height:48px;border-radius:var(--radius-12);color:var(--muted);text-decoration:none;
+  transition:color var(--dur-1) var(--ease)}
+.rail-entry>svg{width:21px;height:21px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;transition:transform var(--dur-2) var(--ease)}
+.rail-entry:hover{color:var(--ink)}
+.rail-entry:hover>svg{transform:scale(1.08)}
+.rail-entry[aria-current=page]{color:var(--accent)}
+.rail-entry:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+/* 悬停一级入口时探出竖排的名字（选中的入口不用：标签已经说明了它是哪个） */
+.rail-name{position:absolute;top:50%;left:60px;z-index:var(--z-page-3);padding:var(--space-10) var(--space-6);border-radius:0 var(--radius-8) var(--radius-8) 0;background:var(--sheet);
+  color:var(--ink);font-size:var(--fs-12);font-weight:var(--fw-750);letter-spacing:4px;white-space:nowrap;writing-mode:vertical-rl;box-shadow:var(--shadow-hover);
+  opacity:0;pointer-events:none;transform:translate(-10px,-50%);transition:opacity var(--dur-1) var(--ease),transform var(--dur-2) var(--ease)}
+.rail-entry:not([aria-current=page]):hover .rail-name{opacity:1;transform:translate(0,-50%)}
+/* 整理有待处理时亮一个点 */
+.rail-dot{position:absolute;top:10px;right:13px;width:7px;height:7px;border-radius:var(--radius-round);background:var(--accent);box-shadow:0 0 0 2px var(--canvas)}
+.rail-entry[aria-current=page] .rail-dot{box-shadow:0 0 0 2px var(--sheet)}
+/* 标签：一级入口高 48、间隔 8，第 n 个在 n × 56px */
+.rail-tab{position:absolute;top:0;right:0;left:var(--space-14);z-index:var(--z-page-1);height:48px;border-radius:var(--radius-18) 0 0 var(--radius-18);background:var(--sheet);
+  opacity:0;transform:translateY(calc(var(--at, 0) * 56px));transition:transform var(--dur-3) var(--ease-spring),opacity var(--dur-1) var(--ease)}
+.rail-tab.is-on{opacity:1}
+.rail-tab::before,.rail-tab::after{content:"";position:absolute;right:0;width:18px;height:18px;background:transparent;pointer-events:none}
+.rail-tab::before{top:-18px;border-bottom-right-radius:var(--radius-18);box-shadow:9px 9px 0 9px var(--sheet)}
+.rail-tab::after{bottom:-18px;border-top-right-radius:var(--radius-18);box-shadow:9px -9px 0 9px var(--sheet)}
+.rail-sep{flex:none;width:28px;height:2px;margin:var(--space-16) 0 var(--space-14);border-radius:var(--radius-4);background:var(--line)}
+
+/* ---- 二级层：比活页条长时自己滚动；滚动条不占位 ---- */
+.rail-l2{position:relative;flex:1 1 auto;width:100%;min-height:0;padding:var(--space-4) 0 var(--space-8);overflow-x:hidden;overflow-y:auto;scrollbar-width:none}
+.rail-l2::-webkit-scrollbar{display:none}
+.rail.is-empty .rail-l2{visibility:hidden}
+.rail-hint{height:0;overflow:hidden;color:var(--muted);font-size:var(--fs-11);text-align:center;opacity:0;transition:opacity var(--dur-1) var(--ease)}
+.rail-hint.is-on{height:auto;margin-bottom:var(--space-8);opacity:1}
+.rail-group{display:grid;gap:var(--space-10);justify-items:center}
+.rail-item{position:relative;display:block;width:46px;height:46px;border-radius:var(--radius-12);color:var(--ink2);text-decoration:none;transition:transform var(--dur-2) var(--ease)}
+.rail-item.is-round{border-radius:var(--radius-round)}
+.rail-cover{position:absolute;inset:0;border-radius:inherit;background:var(--tint-soft);transition:box-shadow var(--dur-1) var(--ease)}
+.rail-cover>img{position:absolute;inset:0;display:block;width:100%;height:100%;border-radius:inherit;object-fit:cover;object-position:50% 20%}
+/* 月、年：叠成一摞的封面（在封面图前面，所以画在它下面） */
+.rail-stack{position:absolute;inset:0;overflow:hidden;border-radius:inherit;background:var(--soft);opacity:.75;transform:translate(5px,-5px) rotate(8deg)}
+.rail-stack>img{width:100%;height:100%;object-fit:cover}
+/* 整理的队列：图标 */
+.rail-icon{position:absolute;inset:0;display:grid;place-items:center;border-radius:inherit;color:var(--ink2)}
+.rail-icon:empty{display:none}
+.rail-item.is-icon .rail-cover{background:var(--sheet)}
+.rail-icon>svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+/* 日期、月份、作品的首字：写在封面上 */
+.rail-mark{position:absolute;bottom:2px;left:5px;color:var(--on-image);font-size:var(--fs-13);font-weight:var(--fw-750);letter-spacing:-.4px;text-shadow:var(--image-text-shadow);pointer-events:none}
+.rail-item[data-kind=month] .rail-mark,.rail-item[data-kind=year] .rail-mark{font-size:var(--fs-11)}
+.rail-item[data-kind=work] .rail-mark{inset:0;display:grid;place-items:center;font-size:var(--fs-20)}
+/* 数字（整理的队列）和收藏的心 */
+.rail-count{position:absolute;top:-7px;right:-9px;min-width:20px;padding:0 var(--space-4);border-radius:var(--radius-pill);background:var(--accent-btn);color:var(--on-accent);
+  font-size:var(--fs-11);font-style:normal;font-weight:var(--fw-750);line-height:17px;text-align:center;box-shadow:0 0 0 2px var(--canvas)}
+.rail-heart{position:absolute;top:-5px;right:-5px;display:grid;place-items:center;width:18px;height:18px;border-radius:var(--radius-round);background:var(--fav);box-shadow:0 0 0 2px var(--canvas)}
+.rail-heart>svg{width:10px;height:10px;fill:var(--on-image);stroke:var(--on-image)}
+/* 悬停：像从一叠卡里抽出来，相邻的项微微探出（ui/rail.js 给它们加 .is-hover / .is-near） */
+.rail-item.is-hover{transform:translateX(8px)}
+.rail-item.is-near{transform:translateX(3px)}
+.rail-item.is-hover .rail-cover{box-shadow:var(--shadow-hover)}
+/* 选中：外圈一道强调色 */
+.rail-item[aria-current=page] .rail-cover{box-shadow:0 0 0 2px var(--canvas),0 0 0 4px var(--accent)}
+.rail-item:focus-visible{outline:none}
+.rail-item:focus-visible .rail-cover{box-shadow:0 0 0 2px var(--canvas),0 0 0 4px var(--accent-ink)}
+.rail-item.is-dragging{z-index:var(--z-page-3);cursor:grabbing;transition:none}
+/* 指示条：一根，跟着选中项滑 */
+.rail-ind{position:absolute;top:0;left:0;width:4px;height:26px;border-radius:0 var(--radius-4) var(--radius-4) 0;background:var(--accent);opacity:0;pointer-events:none;
+  transition:transform var(--dur-3) var(--ease-spring),opacity var(--dur-1) var(--ease)}
+.rail-ind.is-on{opacity:1}
+/* 悬停预览：画在二级层外面（position: fixed），不被滚动区裁掉。位置由 ui/rail.js 写进 transform */
+.rail-peek{position:fixed;top:0;left:0;z-index:var(--z-popover);display:grid;width:214px;padding:var(--space-12);pointer-events:none}
+.rail-peek-in{display:grid;gap:var(--space-2)}
+.rail-peek-in>b{color:var(--ink);font-size:var(--fs-13);font-weight:var(--fw-750)}
+.rail-peek-in>small{color:var(--muted);font-size:var(--fs-11)}
+.rail-peek-pics{display:flex;gap:var(--space-4);margin-top:var(--space-8)}
+.rail-peek-pics>img{flex:1;min-width:0;height:56px;border-radius:var(--radius-8);object-fit:cover}
+
+/* ---- 底部：更新、同步圆环（任务按钮）、设置 ---- */
+.rail-foot{display:grid;flex:none;gap:var(--space-4);justify-items:center;margin-top:auto;padding-top:var(--space-8)}
+.rail-foot-button{position:relative;display:grid;place-items:center;width:40px;height:40px;margin:0;padding:0;border:0;border-radius:var(--radius-pill);background:transparent;
+  color:var(--muted);cursor:pointer;transition:background-color var(--dur-1) var(--ease),color var(--dur-1) var(--ease)}
+.rail-foot-button:hover,.rail-foot-button.on,.rail-foot-button[aria-current=page]{background:var(--wash-hover);color:var(--ink)}
+.rail-foot-button[aria-current=page]{color:var(--accent)}
+.rail-foot-button>svg:not(.sync-ring){width:19px;height:19px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+.rail-foot-button:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.sync-ring{width:28px;height:28px;transform:rotate(-90deg)}
+.sync-ring circle{fill:none;stroke:color-mix(in srgb,var(--accent) 22%,transparent);stroke-width:3}
+.sync-ring .sync-arc{stroke:var(--ok);stroke-dasharray:100 100;stroke-linecap:round}
+/* 同步或任务在跑：圆环转起来 */
+.rail-sync.busy .sync-ring{animation:rail-spin calc(var(--dur-3) * 2.5) linear infinite}
+.rail-sync.busy .sync-arc{stroke:var(--accent);stroke-dasharray:28 100}
+@keyframes rail-spin{to{transform:rotate(270deg)}}
+.task-badge{position:absolute;top:5px;right:5px;width:8px;height:8px;border-radius:var(--radius-round);background:var(--accent-btn);box-shadow:0 0 0 2px var(--canvas)}
+.task-badge.warn{background:var(--bad)}
+/* 底部按钮的文字只给读屏和悬停提示，不画出来 */
+.rail-label{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+
+/* ---- 标志上的图库切换（ui/library_pop.js） ---- */
+.library-pop{position:fixed;top:var(--space-12);left:80px;z-index:var(--z-menu);width:280px;padding:var(--space-12)}
+.library-pop-in{display:grid;gap:var(--space-12)}
+.library-now,.library-list{display:grid;gap:var(--space-2)}
+.library-now>small,.library-list>small{color:var(--muted);font-size:var(--fs-11)}
+.library-now>b{color:var(--ink);font-size:var(--fs-13);font-weight:var(--fw-750)}
+.library-now>span,.library-row>span{overflow:hidden;color:var(--muted);font-size:var(--fs-11);white-space:nowrap;text-overflow:ellipsis}
+.library-row{display:grid;gap:var(--space-2);margin:0;padding:var(--space-8);border:0;border-radius:var(--radius-8);background:transparent;color:var(--ink);font:inherit;text-align:left;cursor:pointer}
+.library-row>b{font-size:var(--fs-12);font-weight:var(--fw-600)}
+.library-row:hover,.library-row:focus-visible{background:var(--wash-hover);outline:none}
+.library-acts{display:flex;flex-wrap:wrap;gap:var(--space-8)}
+
+/* 页头左边打开二级层抽屉的按钮：只在窄窗口里有（页头本身的样式在 css/base.css） */
+#sidebarToggle{display:none}
+
+/* ---- 窄窗口（≤760px）：活页条只留一级入口和底部，二级层收进抽屉（页头左边的按钮打开） ---- */
+@media (max-width:760px){
+  .rail{width:64px;padding-top:var(--space-12)}
+  .rail-l1{padding-left:var(--space-8)}
+  .rail-entry{width:48px}
+  .rail-tab{left:var(--space-8)}
+  .rail-name{left:52px}
+  .rail-sep{display:none}
+  .rail-l2{position:fixed;top:var(--space-8);bottom:var(--space-8);left:64px;z-index:var(--z-drawer);width:84px;flex:none;padding:var(--space-12) 0;border-radius:var(--radius-18);
+    background:var(--canvas);box-shadow:var(--shadow-pop);visibility:hidden;opacity:0;transform:translateX(-12px);
+    transition:opacity var(--dur-1) var(--ease),transform var(--dur-2) var(--ease),visibility 0s var(--ease) var(--dur-2)}
+  .rail.is-drawer .rail-l2{visibility:visible;opacity:1;transform:none;transition:opacity var(--dur-2) var(--ease),transform var(--dur-2) var(--ease)}
+  .rail.is-drawer.is-empty .rail-l2{visibility:hidden}
+  #sidebarToggle{display:inline-flex}
+  .library-pop{left:60px}
+}
 }

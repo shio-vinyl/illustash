@@ -70,7 +70,7 @@ export function queryParams(r) {
   return f;
 }
 
-// 存成画廊的条件：has、not、from、to、day、q。在角色页上存，角色（有造型时是造型）也是一个条件。排序和 R18 不存。
+// 存成画廊的条件：has、not、from、to、day、q。在角色页上存，角色（有造型时是造型）也是一个条件。排序和 NSFW 不存。
 export function savedParams(r) {
   const x = conditions(r), has = [...x.has];
   const char = r.char ? `char:${r.variant || r.char}` : '';

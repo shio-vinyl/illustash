@@ -14,7 +14,7 @@ export function likeIds(r) {
   return Array.isArray(ids) ? [...new Set(ids.filter(id => typeof id === 'string' && id))].slice(0, LIKE_MAX) : [];
 }
 const encode = ids => JSON.stringify([...new Set(ids)].slice(0, LIKE_MAX));
-// 去找像这几张的图：从图库的空白条件开始，R18 开关是全局的，照旧。
+// 去找像这几张的图：从图库的空白条件开始，NSFW 开关是全局的，照旧。
 export const likeRoute = (ids, by = '') => ({page: 'library', like: encode(ids), by: by === 'ccip' ? 'ccip' : ''});
 // 换一组例图，其余筛选和比较方式不变；一张都不剩时回到同样筛选的图库。
 export const withExamples = (r, ids) => ids.length ? {...r, like: encode(ids)} : {...r, like: '', by: '', sort: r.sort === 'similar' ? '' : r.sort};

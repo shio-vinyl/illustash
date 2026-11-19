@@ -20,7 +20,7 @@ import {refreshMeta} from './core/meta.js';
 import {pageOf} from './core/pages.js';
 import {parseHash, stepHistory} from './core/route.js';
 import {applyRoute, wireShell} from './ui/shell.js';
-import {renderGrid, undo, wireGrid} from './ui/grid.js';
+import {undo, wireGrid} from './ui/grid.js';
 import {wirePalette} from './ui/palette.js';
 import {wireDetail} from './ui/detail.js';
 // 相似结果页（#449）只在载入时登记它的标题，没有 wire。
@@ -34,6 +34,10 @@ import {wireModels} from './ui/models.js';
 import {wirePacks} from './ui/packs.js';
 import {onPack} from './core/packs.js';
 import {wireIntegrity} from './ui/integrity.js';
+import {wireRail} from './ui/rail.js';
+import {wireLibraryPop} from './ui/library_pop.js';
+import './ui/library.js';
+import './ui/tidy.js';
 platformHints(document.body);
 wireDom();
 onPost(afterWrite);
@@ -43,6 +47,8 @@ wireToast(() => undo());
 // 浮层管理器的 Esc / 点外监听要排在最前（捕获阶段先于页面其余处理）；其余按页面原来注册它们的顺序。
 wireOverlays();
 wireShell();
+wireRail();
+wireLibraryPop();
 // 桌面 App 菜单的「后退／前进」（desktop/src/main.rs）调它。
 window.illustashHistory = stepHistory;
 // 点系统通知时外壳调它：回到窗口并打开任务面板（desktop/src/background.rs，#451）。
@@ -60,7 +66,6 @@ wireIntegrity();
 wireModels();
 wirePacks();
 $('undoButton').onclick = undo; $('helpButton').onclick = () => openModal($('help'), {backdropClose: true, id: 'help'});
-$('sidebarToggle').onclick = () => { if (innerWidth <= 760) $('sidebar').classList.toggle('mobile-open'); else $('sidebar').hidden = !$('sidebar').hidden; requestAnimationFrame(() => renderGrid()); };
 
 // 启动：本会话的 token 和撤销步骤、各项计数，然后是地址指向的页面。
 (async () => {

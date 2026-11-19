@@ -1,4 +1,4 @@
-// 图片网格（桌面布局，#199）：分页加载图片、虚拟网格和它的缩放、选择、选择栏的操作、键盘快捷键、视图选项和 R18
+// 图片网格（桌面布局，#199）：分页加载图片、虚拟网格和它的缩放、选择、选择栏的操作、键盘快捷键、视图选项和 NSFW
 // 筛选。
 import {edits, exclusive, undoLatest, undoneText} from '../core/edits.js';
 import {esc, isMac, number, platformText, screenScale, shortcut, thumbSize} from '../core/format.js';
@@ -18,6 +18,8 @@ import {api, post, readError} from '../core/session.js';
 import {state} from '../core/state.js';
 import {offerWatch} from './catalog.js';
 import {$, error, showArea, toast, written} from './dom.js';
+import {drawEmpty} from './empty.js';
+import {railKey, railNsfw} from './rail.js';
 import {renderChrome, renderHeading} from './shell.js';
 import {findArtists} from './artists.js';
 import {openExport, startDrag} from './files.js';
@@ -57,7 +59,7 @@ function visibleOffsets() { const v = $('viewport'); return pagesBetween(rowStar
 // 离开网格页时按地址记下位置：第一张可见的图的序号、在它那一行里滚过的比例、这一屏到哪一张，以及详情栏里的图和键盘光标。
 // 回到同一地址（侧栏、后退、从角色页返回）时，reload 先读这几张所在的页，再一步定位到那里，不先读顶部再跳。
 // 记的是序号而不是像素：窗口宽度、缩放或方格／原比例变了，回来时第一行仍是同一张。只存在这个页面里，重新载入就没了；
-// R18 筛选不同算不同的列表。
+// NSFW 筛选不同算不同的列表。
 const places = new Map(), PLACES_MAX = 30;
 const placeKey = route => `${hashFor(route)}|${state.nsfw}`;
 // 换页之前调用（ui/shell.js applyRoute），此时 state.route 和滚动位置还是要离开的那一页的。
@@ -100,8 +102,8 @@ export async function reload(reset = false, place = null) {
     if (place) restorePlace(place);
     renderGrid(); updateCount(); renderSelection();
     $('empty').hidden = !!state.total;
-    const view = viewOf(state.route), text = view.empty?.(state.route, {nsfw: state.nsfw}) || '', next = text && view.emptyNext?.(state.route);
-    $('empty').innerHTML = next ? `<div>${text}<div>${next}</div></div>` : text;
+    const view = viewOf(state.route), fact = view.empty?.(state.route, {nsfw: state.nsfw}) || '';
+    if (!state.total) drawEmpty($('empty'), {icon: emptyIcon(view), fact, next: fact ? view.emptyNext?.(state.route) : []});
     renderHeading();
     if (state.route.char) refreshMaybe(gen);
   } catch (e) {
@@ -118,11 +120,13 @@ function reuseSame(items) {
   for (const x of items) if (x) shown.set(x.uuid, x);
   return item => { const was = shown.get(item.uuid); return was && JSON.stringify(was) === JSON.stringify(item) ? was : item; };
 }
-function showNone(text, next = '') {
+// 空状态的图标：「只看 NSFW」时是搜索（多半是这个筛选造成的），否则是这一页登记的。
+const emptyIcon = view => state.nsfw === 'only' ? 'search' : (typeof view.emptyIcon === 'function' ? view.emptyIcon(state.route) : view.emptyIcon) || 'image';
+function showNone(text, next = []) {
   state.total = 0; state.totalReady = true; state.countDirty = false; state.items = []; state.pages = new Set(); state.dataVersion++; state.gridKey = '';
   renderGrid(); updateCount(); renderSelection();
   $('empty').hidden = false;
-  if (next) $('empty').innerHTML = `<div>${esc(text)}<div>${next}</div></div>`; else $('empty').textContent = text;
+  drawEmpty($('empty'), {icon: 'search', fact: text, next});
   renderHeading();
 }
 // 首页借用网格的列表放它自己的图（详情栏翻页、大图都按这个列表走）。
@@ -426,7 +430,7 @@ function setSelected(id, on) {
 function clearSelection() { state.sel = {all: false, ids: new Set(), exclude: new Set()}; state.anchor = -1; state.armed = null; renderSelection(); }
 export function selectAll() { if (!state.total) return; state.sel = {all: true, ids: new Set(), exclude: new Set()}; state.selecting = true; renderSelection(); }
 export function toggleSelecting() { state.selecting = !state.selecting; if (!state.selecting) clearSelection(); renderSelection(); }
-// 取消选择并退出选择模式（Esc、选择栏的 ×、写入之后、切换 R18）。
+// 取消选择并退出选择模式（Esc、选择栏的 ×、写入之后、切换 NSFW）。
 function quitSelecting() { state.selecting = false; clearSelection(); }
 // 换页时复位网格这一侧的状态：退出选择模式、清空选择、光标归位、张数等新读取（ui/shell.js applyRoute 调用）。
 export function resetForRoute() { quitSelecting(); state.cursor = -1; state.totalReady = false; }
@@ -826,11 +830,11 @@ function favButton(n, arm) {
 
 // ---------- 视图选项 ----------
 // 这里的一切都是可选的细节：默认保持安静，每个开关按浏览器保存。
-const VIEW_DEFAULTS = {captions: true, marks: true, hints: true, railCount: false, footer: false, chart: true, same: true, meta: true, homeSize: 1, hero: true, people: false, ask: true};
+const VIEW_DEFAULTS = {captions: true, marks: true, hints: true, footer: false, chart: true, same: true, meta: true, homeSize: 1, hero: true, people: false, ask: true};
 export const viewOpts = {...VIEW_DEFAULTS, ...prefs.get('view', {})};
 function applyViewClasses() {
   const b = document.body.classList;
-  b.toggle('hide-marks', !viewOpts.marks); b.toggle('show-rail-count', viewOpts.railCount); b.toggle('hide-footer', !viewOpts.footer);
+  b.toggle('hide-marks', !viewOpts.marks); b.toggle('hide-footer', !viewOpts.footer);
 }
 const viewSwitch = (key, label, hint = '') => `<button class="view-opt" data-view="${key}" role="switch" aria-checked="${viewOpts[key]}"><span>${label}${hint ? `<small>${hint}</small>` : ''}</span><i class="view-sw${viewOpts[key] ? ' on' : ''}"></i></button>`;
 // 导出给样式清单页调用（tools/styleguide/live.js，#352）：改名或改参数时，tools/check_styleguide.py 会报出来。
@@ -846,8 +850,7 @@ export function renderViewPop() {
       ${viewSwitch('captions', t('图片下方显示角色名'), t('浏览页、格子够大时'))}
       ${viewSwitch('marks', t('图上显示副本数与造型'))}
       ${viewSwitch('hints', t('未识别的图上显示「可能是」'), t('点一下就设为该角色'))}
-    </div>` : '') + `<h6>${t('侧栏与提示')}</h6><div class="view-group">
-      ${viewSwitch('railCount', t('侧栏显示数量'))}
+    </div>` : '') + `<h6>${t('提示')}</h6><div class="view-group">
       ${viewSwitch('footer', t('底部状态栏'), t('已加载张数与操作提示'))}
     </div><h6>${t('详情面板')}</h6><div class="view-group">
       ${viewSwitch('chart', t('每月加入张数'), t('这个角色每月收了多少张'))}
@@ -872,19 +875,20 @@ function toggleViewPop(open = $('viewPopover').hidden, reason) {
 }
 // ---------- NSFW 筛选 ----------
 // 一次点击在 显示 → 隐藏 → 仅 NSFW 之间循环；H 切换隐藏。NSFW = WD 评级 questionable/explicit。
-// R18 标牌：空心 = 全部显示，划线 = 隐藏，实心 = 只看 R18。
-const NSFW_TIP = {'': t('R18：显示中 · 点击隐藏（H）'), hide: t('R18：已隐藏 · 点击只看 R18'), only: t('R18：只看 R18 · 点击恢复全部')};
-const R18_ICON = '<svg class="r18" viewBox="0 0 34 20" aria-hidden="true"><rect class="plate" x="1.2" y="1.2" width="31.6" height="17.6" rx="5.5"/><text x="17" y="14.1" text-anchor="middle">R18</text><path class="cut" d="M5 17.5 29 2.5"/><path class="slash" d="M5 17.5 29 2.5"/></svg>';
+// NSFW 标牌：空心 = 全部显示，划线 = 隐藏，实心 = 只看 NSFW。
+const NSFW_TIP = {'': t('NSFW：显示中 · 点击隐藏（H）'), hide: t('NSFW：已隐藏 · 点击只看 NSFW'), only: t('NSFW：只看 NSFW · 点击恢复全部')};
+const R18_ICON = '<svg class="r18" viewBox="0 0 44 20" aria-hidden="true"><rect class="plate" x="1.2" y="1.2" width="41.6" height="17.6" rx="5.5"/><text x="22" y="14.1" text-anchor="middle">NSFW</text><path class="cut" d="M6 17.5 38 2.5"/><path class="slash" d="M6 17.5 38 2.5"/></svg>';
 function renderNsfw() {
   const b = $('nsfwButton'); if (!b.firstChild) b.innerHTML = R18_ICON;
   b.className = 'nsfw-toggle s-' + (state.nsfw || 'all'); b.title = NSFW_TIP[state.nsfw]; b.setAttribute('aria-label', NSFW_TIP[state.nsfw]);
 }
 export function setNsfw(mode) {
   state.nsfw = mode; prefs.set('nsfw', mode); renderNsfw(); quitSelecting();
-  toast({'': t('已显示全部内容'), hide: t('已隐藏 R18'), only: t('只看 R18')}[mode]);
+  toast({'': t('已显示全部内容'), hide: t('已隐藏 NSFW'), only: t('只看 NSFW')}[mode]);
   if (!pageOf(state.route).panel) reload(true);
   else pageOf(state.route).refresh?.('nsfw');
   refreshMeta().catch(e => error(readError(e)));
+  railNsfw();
 }
 
 // 帮助对话框的快捷键表从 core/modes.js 的 SHORTCUTS 生成，和键盘处理是同一张表。wireGrid 调用一次；
@@ -975,6 +979,8 @@ export function wireGrid() {
     // 浏览器自己的后退会退出图库页面，这里改走 stepHistory，只在这个图库的页面之间走。
     const back = isMac ? e.metaKey && !e.altKey && (e.key === '[' || e.key === ']') : e.altKey && !mod && (e.key === 'ArrowLeft' || e.key === 'ArrowRight');
     if (back) { e.preventDefault(); stepHistory(e.key === '[' || e.key === 'ArrowLeft' ? -1 : 1); return; }
+    // 活页条（#706）：⌘1–4 切一级，⌥↑↓ 在二级里移动，⌥⇧↑↓ 挪动钉住的项。
+    if (railKey(e)) return;
     // ⌘＋／⌘－：大图打开时缩放大图；否则只在有网格的页面改网格列数，别的页面什么也不做（也不交给浏览器缩放）。
     if (mod && (key === '=' || key === '+' || key === '-')) {
       e.preventDefault(); const bigger = key !== '-';

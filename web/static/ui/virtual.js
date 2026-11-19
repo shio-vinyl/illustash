@@ -86,6 +86,7 @@ export function virtual(viewport, content, {create, margin = 1, scope: parent = 
 
   function set(next, total) {
     read(() => {
+      if (!s.alive) return;
       measure();
       // 锚：视口顶部那条线穿过的第一个框（没有就取顶部以下最近的一个），以及视口顶部在它里面的偏移。
       const top = view.top - view.offset;
@@ -94,6 +95,7 @@ export function virtual(viewport, content, {create, margin = 1, scope: parent = 
       if (!anchor) for (const k of within(top, top + view.height)) if (!anchor || boxes[k].y < anchor.y) anchor = boxes[k];
       const shift = anchor ? top - anchor.y : 0, anchorKey = anchor?.key;
       write(() => {
+        if (!s.alive) return;
         boxes = next; height = total; byKey = new Map(boxes.map((box, k) => [box.key, k])); index();
         content.style.height = `${height}px`;
         const moved = anchorKey !== undefined && byKey.has(anchorKey) ? boxes[byKey.get(anchorKey)] : null;

@@ -22,7 +22,7 @@ import {findArtistWorks, findArtists} from './artists.js';
 import {markHomeFocus} from './home.js';
 import {wireDragOut} from './files.js';
 import {write} from './frame.js';
-import {enter, exit} from './motion.js';
+import {cancelExit, enter, exit} from './motion.js';
 import {detailCard} from './detail_card.js';
 import {bindViewer, closeViewer, openViewer, showViewer, wireViewer} from './viewer.js';
 
@@ -71,7 +71,7 @@ export async function inspect(ident, quiet = false) {
   state.focused = ident;
   if (!quiet || c.uuid !== ident) c.loading(ident);
   if (box.hidden || c.el.hidden) { box.hidden = false; c.el.hidden = false; enter(c.el, {from: SLIDE_IN}); }
-  else enter(c.el, {from: [{opacity: 1}, {opacity: 1}], dur: 1});   // 正在滑出时接回来
+  else cancelExit(c.el);   // 正在滑出时接回来
   markHomeFocus(); syncCards(); relayout();
   let d;
   try { d = await readDetail(ident); } catch (e) { if (gen === detailGen) c.failed(e.message); return; }

@@ -54,7 +54,7 @@ function tileWidget(cell, ctx, s) {
   ts.on(refs.img, 'load', () => cls(el, 'is-in', true));
   function update(next) {
     const {item, hero, more} = next, b = next.box;
-    el.dataset.id = item.uuid; thumbs.mark(el, item.uuid);
+    el.dataset.id = item.uuid; thumbs.mark(refs.img, item.uuid);   // 看图器从这张 <img> 展开、缩回（#709）
     setTint(el, item.color);
     const want = SIZES.indexOf(thumbSize(b.h));
     if (want > size) { size = want; cls(el, 'is-in', false); attr(refs.img, 'src', thumbUrl(item.uuid, SIZES[want])); }

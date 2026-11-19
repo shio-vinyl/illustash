@@ -20,7 +20,7 @@ import {charHash} from '../core/route.js';
 import {workLabel} from '../core/labels.js';
 import {attr, cls, css, make, rich, show, text, tpl} from './el.js';
 import {keyed} from './keyed.js';
-import {exit} from './motion.js';
+import {exit, thumbs} from './motion.js';
 import {scope} from './scope.js';
 import {releaseImages} from './virtual.js';
 
@@ -67,7 +67,7 @@ export function syncCard({open}) {
 function askTile(x, toggle) {
   const {el, refs} = ASK_TILE();
   el.dataset.peek = x.uuid;
-  attr(refs.img, 'src', thumbUrl(x.uuid));
+  attr(refs.img, 'src', thumbUrl(x.uuid)); thumbs.mark(refs.img, x.uuid);   // 看图器从这张 <img> 展开、缩回（#709）
   css(el, 'aspect-ratio', String(ratio(x)));
   el.addEventListener('click', () => toggle(x.uuid));
   return {el, update() {}, dispose() { releaseImages(el); }};
@@ -78,7 +78,7 @@ export function askCard({answer, other, later}) {
   const toggle = uuid => { if (off.has(uuid)) off.delete(uuid); else off.add(uuid); paint(); };
   const tiles = keyed(refs.tiles, {key: x => x.uuid, create: x => askTile(x, toggle), exit: el => exit(el, {to: 'scale'}), scope: s});
   const peek = keyed(refs.peek, {key: x => x.uuid, scope: s, create: x => {
-    const {el} = PEEK_IMG(); attr(el, 'src', thumbUrl(x.uuid)); return {el, update() {}, dispose() { releaseImages(el); }};
+    const {el} = PEEK_IMG(); attr(el, 'src', thumbUrl(x.uuid)); thumbs.mark(el, x.uuid); return {el, update() {}, dispose() { releaseImages(el); }};
   }});
   s.on(refs.open, 'click', () => { open = true; paint(); refs.tiles.querySelector('button')?.focus(); });
   s.on(refs.ok, 'click', () => answer(off.size === batch.items.length ? 'none' : 'ok', new Set(off)));

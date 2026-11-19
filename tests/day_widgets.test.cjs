@@ -35,6 +35,8 @@ test('一天：大图在前、带角色名；新图进来时已有的图块原�
   assert.deepEqual(tiles(d).map(b => b.dataset.id), ['h', 'a', 'b']);
   const first = new Map(tiles(d).map(b => [b.dataset.id, b])), src = new Map(tiles(d).map(b => [b.dataset.id, b.querySelector('img').getAttribute('src')]));
   assert.equal(first.get('h').querySelector('b').textContent, 'Alice');
+  // 看图器（#709）按 <img> 上的 data-thumb 找缩略图
+  for (const [id, el] of first) assert.equal(el.querySelector('img').dataset.thumb, id);
   // 同步进来一张新图 n（后端这时把 n 选成 hero）：大图仍是 h，旧的三个节点和地址都没变
   d.update(box({...g, count: 4, hero: 'n', items: [item('n'), item('a'), hero, item('b')]})); flush();
   assert.deepEqual(tiles(d).map(b => b.dataset.id), ['h', 'n', 'a', 'b']);
@@ -90,6 +92,7 @@ test('认一认：收起时「不全是」「都对」；展开后点掉一张�
   assert.equal(card.el.hidden, false);
   assert.equal(btn('不全是').hidden, false); assert.equal(btn('都对').hidden, false); assert.equal(btn('点掉的是…').hidden, true);
   assert.match(card.el.querySelector('[id]').textContent, /Alice/);
+  assert.deepEqual([...card.el.querySelectorAll('img')].map(img => img.dataset.thumb), ['a', 'b', 'c', 'a', 'b', 'c']);
   btn('不全是').dispatchEvent(dom.event('click'));
   assert.equal(btn('不全是').hidden, true); assert.equal(btn('都不是').hidden, false);
   tile('b').dispatchEvent(dom.event('click'));

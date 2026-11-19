@@ -657,10 +657,12 @@ class NativeLibraryUpgradeTest(unittest.TestCase):
                 if raw.decode().startswith('图库已启动：'):
                     return
         reader = threading.Thread(target=read, daemon=True)
-        reader.start(); reader.join(PAUSE + 60)
+        reader.start(); reader.join(PAUSE + WAIT)
         self.assertTrue(lines and lines[-1][1].startswith('图库已启动：'), lines)
-        times = [started] + [at for at, _ in lines]
-        self.assertLess(max(b - a for a, b in zip(times, times[1:])), PAUSE * 0.75, lines)
+        events = [(started, '<started>')] + lines
+        worst = max(((b_at - a_at, a_line, b_line) for (a_at, a_line), (b_at, b_line) in zip(events, events[1:])),
+                    key=lambda item: item[0])
+        self.assertLess(worst[0], PAUSE * 0.75, (worst, lines))
         progress = [line.split('：', 1)[1].split(' ', 1) for _, line in lines if line.startswith('启动进度：')]
         permille = [int(p) for p, _ in progress]
         self.assertEqual(permille, sorted(permille))

@@ -9,6 +9,10 @@
 .gallery-shows>button>span{white-space:nowrap}
 @media (max-width:980px){.gallery-shows>button>span{display:none}.gallery-shows>button{padding:0 var(--space-10)}}
 
+/* ---- 给画廊起名的对话框（ui/gallery_actions.js 的 askName）：输入框占满一行 ---- */
+.gallery-name{display:block;padding:var(--space-4) 0 var(--space-12)}
+.gallery-name>input{box-sizing:border-box;width:100%;min-width:320px;height:var(--h-36)}
+
 /* ---- 全部画廊 ---- */
 .gallery-index{padding:var(--space-8) 0 40px}
 .gcards{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:28px var(--space-20)}

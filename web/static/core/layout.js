@@ -85,14 +85,14 @@ export function justified(ratios, options) {
 
 // ---------- 瀑布 ----------
 // 列数由列宽目标 column 推出（至少一列），每张图按宽高比放进当前最矮的一列（一样矮时取靠左的）。
-// ratios 截不截上下限由调用方定（瀑布通常保留长图的原比例）。返回 {boxes, height, columns, columnWidth}。
+// ratios 截不截上下限由调用方定（瀑布通常保留长图的原比例）。返回 {boxes, height, columns, columnWidth}；框另带 col（第几列）。
 export function masonry(ratios, {width, column, gap = 0}) {
   const columns = Math.max(1, Math.round((width + gap) / (Math.max(1, column) + Math.max(0, gap))));
   const w = Math.max(1, (width - gap * (columns - 1)) / columns), heights = new Array(columns).fill(0), boxes = [];
   for (let i = 0; i < ratios.length; i++) {
     let c = 0; for (let k = 1; k < columns; k++) if (heights[k] < heights[c]) c = k;
     const h = w / usable(ratios[i]);
-    boxes.push({i, x: c * (w + gap), y: heights[c], w, h}); heights[c] += h + gap;
+    boxes.push({i, x: c * (w + gap), y: heights[c], w, h, col: c}); heights[c] += h + gap;
   }
   return {boxes, height: Math.max(0, Math.max(...heights) - gap), columns, columnWidth: w};
 }
@@ -180,33 +180,26 @@ export function seeded(seed) {
   };
 }
 
-// 瀑布按行（给 ui/grid.js 的虚拟网格）：放法同 masonry（每张放进当前最矮的一列），结果写进可复用的类型化数组。
+// 瀑布按行（给 ui/grid.js 的虚拟网格）：就是上面的 masonry，把它的框改写成网格那一套「行」的形状，不另算一遍。
 // 每张图的顶部随序号不减（总是放进最矮的一列），所以可以把每 columns 张连着的图算一「行」，网格按行挂卡片的窗口照用：
 //   {rows, starts, tops, heights}  同 justifiedRows：starts[r] 是第 r 行第一张，tops[r] 是那一张的顶，tops[rows] 是总高
-//   x, y, w, h                     每张图的框；col 是它在第几列
+//   x, y, w, h, col                每张图的框和它在第几列（类型化数组，传入上一次的结果就复用）
 //   reach                          最高的一张有多高：挂卡片的窗口上沿要往上多挂这么多，前几行的长图才不会缺
 //   columns, columnWidth           列数和列宽
 export function masonryRows(n, ratioAt, {width, column, gap = 0}, reuse = null) {
-  const columns = Math.max(1, Math.round((width + gap) / (Math.max(1, column) + Math.max(0, gap))));
-  const cw = Math.max(1, (width - gap * (columns - 1)) / columns);
-  let {x, y, w, h, col, starts, tops, heights, colH} = reuse || {};
+  const ratios = new Array(n);
+  for (let i = 0; i < n; i++) ratios[i] = ratioAt(i);
+  const laid = masonry(ratios, {width, column, gap});
+  let {x, y, w, h, col, starts, tops, heights} = reuse || {};
   if (!x || x.length < n) { x = new Float64Array(n); y = new Float64Array(n); w = new Float64Array(n); h = new Float64Array(n); col = new Int32Array(n); }
   if (!starts || starts.length < n + 2) { starts = new Int32Array(n + 2); tops = new Float64Array(n + 2); heights = new Float64Array(n + 1); }
-  if (!colH || colH.length < columns) colH = new Float64Array(columns);
-  colH.fill(0, 0, columns);
   let reach = 0;
-  for (let i = 0; i < n; i++) {
-    let c = 0; for (let k = 1; k < columns; k++) if (colH[k] < colH[c]) c = k;
-    x[i] = c * (cw + gap); y[i] = colH[c]; w[i] = cw; h[i] = cw / usable(ratioAt(i)); col[i] = c;
-    colH[c] += h[i] + gap; if (h[i] > reach) reach = h[i];
-  }
-  let total = 0; for (let k = 0; k < columns; k++) total = Math.max(total, colH[k]);
-  total = n ? total - gap : 0;
-  const rows = Math.ceil(n / columns);
-  for (let r = 0; r < rows; r++) { starts[r] = r * columns; tops[r] = y[r * columns]; }
-  starts[rows] = n; tops[rows] = total;
+  for (const b of laid.boxes) { x[b.i] = b.x; y[b.i] = b.y; w[b.i] = b.w; h[b.i] = b.h; col[b.i] = b.col; if (b.h > reach) reach = b.h; }
+  const rows = Math.ceil(n / laid.columns);
+  for (let r = 0; r < rows; r++) { starts[r] = r * laid.columns; tops[r] = y[r * laid.columns]; }
+  starts[rows] = n; tops[rows] = n ? laid.height : 0;
   for (let r = 0; r < rows; r++) heights[r] = tops[r + 1] - tops[r];
-  return {rows, starts, tops, heights, x, y, w, h, col, colH, reach, columns, columnWidth: cw};
+  return {rows, starts, tops, heights, x, y, w, h, col, reach, columns: laid.columns, columnWidth: laid.columnWidth};
 }
 // 瀑布里 ↑↓：同一列的上一张、下一张；到头了停在原处。
 export function masonryStep(packed, n, i, dir) {

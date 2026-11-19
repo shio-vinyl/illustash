@@ -8,6 +8,7 @@ import {addTo, createManual, forgetCovers, isFav, isManual, loadGalleries, setGa
 import {readError} from '../core/session.js';
 import {openDialog} from './dialog.js';
 import {error, toast, written} from './dom.js';
+import {text, tpl} from './el.js';
 import {paintHearts} from './favorites.js';
 import {conditionLabel} from './filters.js';
 import {loadGalleryCovers} from './rail.js';
@@ -28,16 +29,19 @@ export async function write(run, text) {
   return result;
 }
 
-// 起名（新建手选画廊、改名）：一个输入框，回车或「确定」交回名字，取消交回 null。名字 1–60 个字。
-const NAME_BODY = '<label class="dialog-field"><input name="name" maxlength="60" autocomplete="off" spellcheck="false" required></label>';
+// 起名（新建手选画廊、改名）：一个输入框，回车或确认按钮交回名字，取消交回 null。名字 1–60 个字。
+// 对话框的外壳用 openDialog（ui/dialog.js），里面的输入框和按钮由静态模板建，挂进它的表单。
+const NAME = tpl`<div><label class="gallery-name"><input name="name" maxlength="60" autocomplete="off" spellcheck="false" required data-ref="input"
+  aria-label="画廊名称" data-t-attr="aria-label"></label><div class="dialog-actions"><button value="cancel" class="quiet" formnovalidate data-t>取消</button><button
+  value="ok" class="primary" data-ref="ok"></button></div></div>`;
 export function askName(title, value = '', ok = t('确定')) {
   return new Promise(resolve => {
-    const d = openDialog({title, body: NAME_BODY, backdropClose: false, focus: 'input',
-      actions: `<button value="cancel" class="quiet" formnovalidate>${t('取消')}</button><button value="ok" class="primary">${ok}</button>`,
-      dirty: () => d.querySelector('input').value.trim() !== value,
-      onClose: d => resolve(d.returnValue === 'ok' ? d.querySelector('input').value.trim() || null : null)});
-    const input = d.querySelector('input');
-    input.value = value; input.setAttribute('aria-label', t('画廊名称')); input.select();
+    const {el, refs} = NAME();
+    const d = openDialog({title, backdropClose: false, dirty: () => refs.input.value.trim() !== value,
+      onClose: () => resolve(d.returnValue === 'ok' ? refs.input.value.trim() || null : null)});
+    d.querySelector('form').append(...el.childNodes);
+    text(refs.ok, ok);
+    refs.input.value = value; refs.input.focus(); refs.input.select();
   });
 }
 

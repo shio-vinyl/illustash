@@ -256,6 +256,7 @@ illustash/
 | `build_db.py` | 重建旧格式分析源库；`test_native_library_upgrade` 用它造旧库 |
 | `dev_preview.py` | 浏览器走查用的隔离宿主（临时目录、合成图库），`.claude/launch.json` 的 `web-isolated` 调用它，见上文「快速开始」；`--fixture walk` 改用带识别结果的走查图库；再加 `--wd-extension`、`--ccip-longtail` 时提供本机合成的数据包（`web-packs` 调用） |
 | `ui_walk/` | 浏览器界面走查（#453）：合成图库夹具、跨页面流程、两次运行的比较，`python3 -m tools.ui_walk run`，见 [本地验收](LOCAL_CHECKS.md#界面走查浏览器453) |
+| `ui_perf/` | 界面性能测量（#683）：合成大图库夹具，Chromium（DevTools 性能记录）和 WebKit（WKWebView 小程序）跑同一组场景，`python3 -m tools.ui_perf run`，见 [本地验收](LOCAL_CHECKS.md#界面性能测量683) |
 | `version.py` | 版本号的唯一来源是 `native/terms/application.json`（#189）：检查或改写 `tauri.conf.json`、各发布 crate 的 `Cargo.toml` 与 `Cargo.lock` |
 | `updater_release.py` | 应用内更新的发布文件（#279）：打 macOS 更新包、生成 `latest.json`，步骤见上文「发布」 |
 | `pack_catalog.py` | 角色资料包的签名目录（#602）：生成专签数据包的密钥、从两个组成部分的包文件写条目、组目录、签名、核对、打离线包，步骤见上文「发布角色资料包」；测试夹具由 `tests/fixtures/pack_catalog/make.py` 用测试密钥生成 |

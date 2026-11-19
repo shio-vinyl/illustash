@@ -24,10 +24,11 @@ export function keyed(container, {key, create, enter, exit, move, appear = false
 
   function set(items) {
     if (disposed) return;
-    const next = new Map(), order = [];
+    const next = new Map(), order = [], keys = items.map(key);
+    // 先查键重复，再动部件：抛错时列表保持原样。
+    if (new Set(keys).size !== keys.length) throw new Error(`ui/keyed.js: 键重复：${String(keys.find((k, i) => keys.indexOf(k) !== i))}`);
     items.forEach((item, index) => {
-      const k = key(item, index);
-      if (next.has(k)) throw new Error(`ui/keyed.js: 键重复：${String(k)}`);
+      const k = keys[index];
       let entry = live.get(k);
       if (entry) { entry.from = entry.index; entry.item = item; entry.index = index; entry.comp.update?.(item, index); }
       else entry = {item, index, from: -1, comp: create(item, index), fresh: true};

@@ -189,17 +189,19 @@
 
  "desktop/src/i18n.rs":"23c2c7c2c6ee4e51e44b8088913f3b3b8b601ff164a5bca94ecd461d4de1d165",
 
- "desktop/src/main.rs":"befeab4561eecc4950f4a4175f68d75093ddb6deeafaeccf72a1e4219a0165fb",
+ "desktop/src/main.rs":"93922e4c9cba6ea7ccbc526696bf29e0e2b753b6aed80458de1a330c184a1744",
 
  "desktop/src/notify.rs":"9d22270643d502829f409d5164d83abefe30da5b044533551daceba2a66c7891",
 
  "desktop/src/picker.rs":"8e922d33eea80581499ab5973d8a341d6905f30c874edecfed907b1af947c9bd",
 
- "desktop/src/pixiv.rs":"511b8003b2068c801f336d96a6c130a6796ed1866d1102e64678760d3a906c65",
+ "desktop/src/pixiv.rs":"346750cd1adeeed040359c1e310f98f7182bcdb1e5037c695ff1d89e82160791",
 
  "desktop/src/server.rs":"e47bf5e33f38258356c777382bd7cc8e61188bc5ca1edcbc36b8d361282ee8cf",
 
  "desktop/src/updater.rs":"4c17b2aeb89bf8c81e84167e18c4bf32522865e6d7b7322d9b17770031fbfada",
+
+ "desktop/src/webview.rs":"62977ba98aedfc8f378f143e874a13a74cf034f0a293c0a9ed37792b3b14d104",
 
  "desktop/src/welcome.rs":"79c4c120ab8e4e6fef3459e8452655c00ecd0b9a328f894df911474cd3a2b80b",
 

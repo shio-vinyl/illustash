@@ -13,6 +13,7 @@ mod picker;
 mod pixiv;
 mod server;
 mod updater;
+mod webview;
 mod welcome;
 mod window_state;
 
@@ -120,24 +121,25 @@ fn main() {
                 }
                 app.set_menu(menu)?;
             }
-            let main = WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
-                .title("Illustash")
-                .initialization_script(i18n::page_script())
-                .inner_size(1280.0, 840.0)
-                .min_inner_size(MIN_SIZE.0, MIN_SIZE.1)
-                // 先不显示：放回记下的位置和大小以后再显示，免得窗口先在默认位置闪一下（#451）。
-                .visible(false)
-                .on_page_load(|window, payload| {
-                    if payload.event() == tauri::webview::PageLoadEvent::Finished {
-                        server::page_loaded(&window);
-                    }
-                })
-                .on_navigation(server::keep_inside)
-                .on_new_window(|url, _| {
-                    server::open_outside(&url);
-                    tauri::webview::NewWindowResponse::Deny
-                })
-                .build()?;
+            let main = webview::build(
+                WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
+                    .title("Illustash")
+                    .initialization_script(i18n::page_script())
+                    .inner_size(1280.0, 840.0)
+                    .min_inner_size(MIN_SIZE.0, MIN_SIZE.1)
+                    // 先不显示：放回记下的位置和大小以后再显示，免得窗口先在默认位置闪一下（#451）。
+                    .visible(false)
+                    .on_page_load(|window, payload| {
+                        if payload.event() == tauri::webview::PageLoadEvent::Finished {
+                            server::page_loaded(&window);
+                        }
+                    })
+                    .on_navigation(server::keep_inside)
+                    .on_new_window(|url, _| {
+                        server::open_outside(&url);
+                        tauri::webview::NewWindowResponse::Deny
+                    }),
+            )?;
             window_state::restore(&main, MIN_SIZE);
             main.show()?;
             if let Err(error) = &computation {

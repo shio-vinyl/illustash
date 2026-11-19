@@ -1,6 +1,6 @@
 # 本地图库 V2
 
-状态：现行参考，2026-11-12；「前端整体升级」一节是进行中的方案（2026-11-19，#703）。本文记录图库数据模型、API 与浏览界面；原生入口及核心架构见 [ARCHITECTURE_DIRECTION.md](ARCHITECTURE_DIRECTION.md)。
+状态：现行参考，2026-11-12；「前端整体升级」一节是进行中的方案（2026-11-19，#703），其中「渲染底座」一小节已是现行参考（#704）。本文记录图库数据模型、API 与浏览界面；原生入口及核心架构见 [ARCHITECTURE_DIRECTION.md](ARCHITECTURE_DIRECTION.md)。
 
 ## 浏览界面
 
@@ -101,28 +101,29 @@
 
 ### 渲染底座
 
-都是 `web/static` 下的原生 ES 模块；碰 DOM 的在 `ui/`，纯计算的在 `core/`。
+现行参考（2026-11-19，#704）；`ui/motion.js` 由 #705 加。新写的界面照这一节画：节点建一次，之后只改变了的地方；数据不进 HTML 字符串；先量后改；长页面只挂视口附近的节点。都是 `web/static` 下的原生 ES 模块，碰 DOM 的在 `ui/`，纯计算的在 `core/`。每个文件开头的注释写了完整的用法和例子，这里只写各管什么、怎么配合。
 
-| 文件 | 做什么 |
-|---|---|
-| `ui/el.js` | 不带插值的静态模板解析一次，按 `data-ref` 取节点；数据只写进 `textContent`、特性和属性，值没变不动 DOM；带链接或加粗的文字用节点拼 |
-| `ui/keyed.js` | 按键复用的列表，带进场、退场、移动的钩子 |
-| `ui/scope.js` | 生命周期：监听、计时器、观察器、子部件登记在一个作用域里，一次释放；每个页面一个作用域；开发模式下提示没释放的 |
-| `ui/frame.js` | 每帧一次的调度：先跑完所有读，再跑所有写 |
-| `ui/virtual.js` | 只挂视口附近的节点，按键复用，滚远的图片节点摘掉 |
-| `core/layout.js` | 布局纯函数：等高行、瀑布、按天的马赛克、日历格、画廊的展示布局。输入宽高比和宽度，输出框 |
-| `ui/rows.js` | 设置的几种行和配置表（#676）：开关、操作、信息、选择、列表 |
-| `ui/motion.js` | 动效：时长和缓动取令牌，进场、退场、FLIP、共享元素过渡、数字滚动，「减少动态效果」；以及「这张图的缩略图在屏幕上哪里」的登记表 |
+| 文件 | 做什么 | 用法要点 |
+|---|---|---|
+| `ui/el.js` | 模板与节点，往节点里写数据的唯一入口 | 模块顶层声明 ``const CARD = tpl`<div class="card"><b data-ref="name"></b></div>` ``，`CARD()` 克隆一份得到 `{el, refs}`。模板不带插值（写了 `${…}`、或者把 `tpl` 当函数调，运行时都抛错），第一次用到时解析一次、按模板字符串缓存；`data-t`、`data-t-attr` 在解析时翻译（和 `index.html` 同一套写法，键由 `tests/i18n.test.cjs` 从 ``tpl`…` `` 里收集）。数据只经 `text`、`attr`、`prop`、`value`、`cls`、`show`、`css` 写，它们记着上一次的值，没变不动 DOM；`value` 在焦点上时不覆盖。带链接、加粗的译文用 `rich(t('到 {where} 打开'), {where: 节点})` 拼节点，小节点用 `make()` |
+| `ui/keyed.js` | 按键复用的列表 | `keyed(容器, {key, create, enter, exit, move, appear, scope})`，`set(items)`。复用的部件收到 `update(item, index)`；挪位置只挪最长递增子序列以外的节点，被挪的节点里原来有焦点就挪完放回去；第一次有数据的那次 `set` 不播进场（先 `set([])` 也一样），`appear: true` 才播；`create` 中途抛错时这一轮新建的部件释放掉、列表不变；退场的节点设 `inert`、留在原处，`exit` 返回的 promise 落定后再摘，`dispose()` 立刻释放全部。钩子只收函数，进场、退场、FLIP 由调用方从 `ui/motion.js` 传进来 |
+| `ui/scope.js` | 生命周期 | `scope(名)` 或 `父.child(名)`；`on`（返回 `off`）、`timeout`、`interval`、`read` / `write`（帧任务）、`observe`、`add(部件或清理函数)`、`remove`、`signal`，`dispose()` 一次清掉、可重复调用。触发过的 `timeout`、跑完的帧任务自己从作用域里摘掉，所以长寿的作用域（`app`）可以反复用它们；`add()` 进去的要等 `dispose` 才走，不要每次滚动都 `add` 一个。`page(名)` 释放上一页的作用域、返回新一页的（页面框架换页时调用，#706）；全应用一直在的部件挂在 `app` 上 |
+| `ui/frame.js` | 每帧一次的读写调度 | `read(fn, key?)`、`write(fn, key?)`，返回取消函数（部件里用作用域的 `s.read` / `s.write`）。同一帧先跑完所有读再跑所有写；带 key 的同一帧只跑最后一个；读里排的读、写同一帧跑，写里排的读、写都挪到下一帧，所以一个总在再排自己的写每帧只跑一次、不会卡住这一帧 |
+| `ui/virtual.js` | 只挂视口附近的节点 | `virtual(视口, 内容, {create, margin, scope})`，`set(框, 总高)`；框是 `{key, x, y, w, h}`。挂视口上下各 `margin` 屏（默认 1），超出两倍才摘；按键复用部件；重新布局时以视口顶部那一张为锚；摘掉前去掉 `<img>`（包括根节点自己）的 `src`、`srcset` 和 `<source>` 的 `srcset`，放掉解码后的位图（#683）。调用方要知道：`content` 是定位元素（计算样式是 static 时它写上 `relative`）；部件根节点的 `transform`、宽高归它管；DOM 次序按框的先后插入（重新布局后已挂的节点不挪）；焦点在里面的节点滚远了先不摘，键从数据里没了照摘 |
+| `core/layout.js` | 布局纯函数 | 输入宽高比和宽度，输出框 `{i, x, y, w, h}`：`justifiedRows` / `justified`（等高行，规则见「浏览界面」，图库网格就用它）、`masonry`（瀑布）、`dayMosaic`（按天：一张大图高两行、右边两行小图、放不下的收成最后一格的 `more`，界面盖「+N」；瀑布和马赛克把不是正的有限数的宽高比按 3:4 算）、`monthGrid`（某月的格子，周首默认周一）、`cellTiles`（格内 1 / 2 / 4 张）。FLIP 的起止位置用这里的框，不量 DOM。各页步骤在这里加自己的布局（画廊的拼贴、杂志、展厅由 #710 加） |
+| `ui/rows.js` | 设置的几种行与配置表（#676） | `rows(容器, 配置表, {scope})`，`update(state)`。几种行：`switch`、`action`、`info`、`select`、`field`（输入框）、`list`；每行可带 `hidden(state)`、`disabled(state)`。画一次、按状态更新，轮询时焦点和打了一半的字不丢；改动后记一个「待提交的值」，`set` 返回的 promise 落定或 state 变成这个值之前，轮询带回的旧值不覆盖控件（#469）。配置表先整张校验再建节点；建好后立刻 `update` 一次。文字由调用方用 `t('…')` 翻译好传进来。样式暂沿用 `.switch-line`、`.setting-line`，设置页重写（#714）时换 |
+| `ui/motion.js` | 动效（#705） | 时长和缓动取令牌，进场、退场、FLIP、共享元素过渡、数字滚动，「减少动态效果」；以及「这张图的缩略图在屏幕上哪里」的登记表 |
 
 约定：
 
-- **部件**：热路径（图库网格与按天视图、看图器、活页条、拖放、画廊布局），以及会被轮询刷新或带输入框的面板，写成自己持有节点的部件 `{el, update(props), dispose()}`。节点建一次，之后只改变了的地方；轮询时输入框的焦点和打了一半的字不丢。
-- **转义**：数据不拼进 `innerHTML`。不常变、也没有输入框的内容可以照旧用模板字符串，但插进去的只能是静态文字。
+- **部件**：热路径（图库网格与按天视图、看图器、活页条、拖放、画廊布局），以及会被轮询刷新或带输入框的面板，写成自己持有节点的部件 `{el, update(props), dispose()}`：`el` 建一次；`update` 只经 `ui/el.js` 的写入函数改，所以每次把全部字段写一遍也不会多动 DOM；`dispose` 里调自己作用域的 `dispose()`。列表交给 `ui/keyed.js`，长列表交给 `ui/virtual.js`，它们都按这个约定调用部件。部件的作用域挂在页面作用域或 `app` 下面。
+- **转义**：数据不拼进 `innerHTML`、`outerHTML`、`insertAdjacentHTML`（规则 10）。不常变、也没有输入框的内容可以照旧用这三个写静态的字面量，插值一律改走 `ui/el.js`。
 - **先量后改**：读布局放进 `frame.read`，改 DOM 放进 `frame.write`；滚动、缩放的处理函数只排队。
-- **动画**：只动 `transform` 和 `opacity`。`el.animate`、`startViewTransition` 只在 `ui/motion.js` 里调，`requestAnimationFrame` 只在 `ui/frame.js` 和 `ui/motion.js` 里调。系统开了「减少动态效果」时直接到终态。
-- **虚拟化**：`content-visibility` 在 macOS 14 上没有，长页面靠 `ui/virtual.js` 只挂视口附近的节点。FLIP 的起止位置用 `core/layout.js` 算出的框，不量 DOM。
+- **动画**：只动 `transform` 和 `opacity`。`requestAnimationFrame` 只在 `ui/frame.js` 和 `ui/motion.js` 里调，`el.animate`、`startViewTransition` 只在 `ui/motion.js` 里调（规则 11）。系统开了「减少动态效果」时直接到终态。
+- **虚拟化**：`content-visibility` 在 macOS 14 上没有，长页面靠 `ui/virtual.js`。现有图库网格（`ui/grid.js`）的行坐标缓存、虚拟滚动、选择和键盘照旧，只有分行改调 `core/layout.js` 的 `justifiedRows`，和按天视图、画廊共用一份。
 - **分层不变**：请求和状态在 `core/`，`state` 的写入者规则照旧；部件只画，不发请求；异步回来判断还在不在这一页照旧用 `onPage`。页面注册表、浮层管理器的规则不变。
-- 现有网格的行坐标、虚拟滚动、选择和键盘不重写；分行规则挪进 `core/layout.js`，网格和按天视图、画廊共用。
+- **开发模式**：在开发者工具里运行 `localStorage['pi.dev'] = 'true'` 后重新载入页面（关掉：`localStorage.removeItem('pi.dev')`）。开发模式下 `ui/scope.js` 记着所有还活着的作用域，换页后上一页期间建的根作用域还没释放（不属于 `app`，也不属于新一页）时在控制台提示 `[scope] 换页后还有 N 个作用域没释放`；`live()` 返回还活着的个数和各名字的数量。偏好存在浏览器本地，不进图库、不随包发出，正常使用不受影响。
+- **测试**：每个模块一组 Node 测试（`tests/el.test.cjs`、`keyed`、`scope`、`frame`、`virtual`、`rows`、`layout`）。`tests/dom.cjs` 是底座用的最小假 DOM：有真正的节点树、`<template>` 的静态 HTML 解析、事件和写入计数（测「值没变不动 DOM」）；`tests/web.cjs` 的 `fakePage()` 只记 `innerHTML` 文本，旧模块的测试照旧用它。`core/layout.js` 用固定输入比对输出的框，等高行另和网格原来的分行逐项对照。`ui/frame.js` 在 Node 里没有 `requestAnimationFrame`，测试用 `setScheduler()` 换成手动的。
 
 ### 兼容底线
 
@@ -133,11 +134,11 @@
 
 ### 检查
 
-实施时加进 `tools/check_frontend.py`，同时写进 AGENTS.md「前端结构约定」（#704、#705）：
+实施时加进 `tools/check_frontend.py`，同时写进 AGENTS.md「前端结构约定」（#704、#705）。前三条已在 #704 落地，脚本里的编号是 10–12：
 
-1. 数据不拼进 `innerHTML`、`outerHTML`、`insertAdjacentHTML`（存量进基线）。
-2. `requestAnimationFrame`、`.animate(`、`startViewTransition` 只在上面写的模块里调（存量进基线）。
-3. Safari 17.0 没有的 JS 能力只出现在登记的增强处。
+1. 规则 10（`inner-html`）：数据不拼进 `innerHTML`、`outerHTML`、`insertAdjacentHTML`：右边只能是不带插值的字符串字面量（方括号写法同样算），`setHTMLUnsafe`、`createContextualFragment`、`parseFromString`、给 `srcdoc` 赋值、把 `tpl` 当函数调按名字报；`ui/el.js` 放行；存量按文件计数进基线。
+2. 规则 11（`animation-entry`）：`requestAnimationFrame` 只在 `ui/frame.js`、`ui/motion.js` 里调，`.animate(`、`startViewTransition` 只在 `ui/motion.js` 里调；存量按文件计数进基线。
+3. 规则 12（`safari17-js`）：Safari 17.0 没有的 JS 能力只出现在登记的增强处（`SAFARI17_ENHANCEMENTS`，现在只有 `ui/motion.js` 的 `startViewTransition`）：import 属性（17.2）；`Promise.withResolvers`、`Object.groupBy`、`Map.groupBy`、`AbortSignal.any`、`checkVisibility`（17.4）；`startViewTransition`、`URL.parse`（18.0）；`Promise.try`（18.2）；迭代器方法和 `Iterator.from`（18.4）；`setHTMLUnsafe`（26）；Navigation API（26.2）；`Temporal`、`CloseWatcher`、`using` 和 `Symbol.dispose`（27.3）。Safari 正式版没有的 `requestIdleCallback`、`scheduler.*`、`Element.moveBefore` 哪里都不用。版本按 MDN browser-compat-data 核对，条目写在脚本注释里。模块和经典脚本 `i18n.js`、`splash.js`、`theme.js` 都查。没有基线。
 4. 规则 8 扩到 `css/` 下的文件，并管字重、阴影、动效的时长和缓动、圆角四档（旧档位进基线）。
 5. 不写类名子串选择器（`[class*=]` 一类）和宽泛的 `:has()`：VS Code 在 3.7k 个节点上实测，前者让样式重算慢 2.4 倍（#469）。存量进基线。
 6. CSS 变量必须有定义：在 `tokens.css` 里，或在登记的「由 JS 写的变量」名单里。

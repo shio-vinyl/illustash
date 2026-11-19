@@ -150,6 +150,34 @@
    "outline: #76768f55": 1,
    "text-shadow: rgba(0,0,0,.25)": 1,
    "text-shadow: rgba(0,0,0,.28)": 1
+  },
+  "inner-html": {
+   "ui/artist_dir.js": 1,
+   "ui/catalog.js": 8,
+   "ui/combo.js": 1,
+   "ui/detail.js": 6,
+   "ui/dialog.js": 1,
+   "ui/dom.js": 4,
+   "ui/filters.js": 1,
+   "ui/galleries.js": 7,
+   "ui/grid.js": 7,
+   "ui/guide.js": 2,
+   "ui/home.js": 6,
+   "ui/human.js": 2,
+   "ui/integrity.js": 2,
+   "ui/like.js": 1,
+   "ui/palette.js": 13,
+   "ui/review.js": 8,
+   "ui/settings.js": 11,
+   "ui/shell.js": 6
+  },
+  "animation-entry": {
+   "app.js: requestAnimationFrame": 1,
+   "ui/catalog.js: requestAnimationFrame": 2,
+   "ui/detail.js: requestAnimationFrame": 2,
+   "ui/grid.js: .animate(": 2,
+   "ui/grid.js: requestAnimationFrame": 3,
+   "ui/guide.js: requestAnimationFrame": 3
   }
  }
 }

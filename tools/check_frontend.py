@@ -13,6 +13,9 @@ tools/check_architecture.py 对 crate 依赖方向的检查。规则（说明见
   7 state-writer         state 字段只能由 core/state.js 组标题写明的写入者文件赋值（#353；硬规则，没有基线）
   8 css-literal          app.css 不得新增写死的字号、圆角、gap/padding、z-index 和颜色，改用顶部的令牌（#349）
   9 ime-composing        每个 keydown/keyup/keypress 处理函数先问 core/keys.js 的 composing(e)；别处不得直接读 isComposing / keyCode（#388）
+ 10 inner-html           innerHTML / outerHTML / insertAdjacentHTML 的右边只能是不带插值的字符串字面量，数据经 ui/el.js 写（#704）
+ 11 animation-entry      requestAnimationFrame 只在 ui/frame.js、ui/motion.js；.animate( 和 startViewTransition 只在 ui/motion.js（#704）
+ 12 safari17-js          Safari 17.0（macOS 14 的 WKWebView）没有的 JS 能力只在登记的增强处；Safari 没有的不用（#704；硬规则，没有基线）
 
 基线（tools/frontend_baseline.json）按「文件 + 内容特征」登记（导入边、字段名、每个文件的数量），不按行号，
 所以文件里别处的改动不会让它失效。基线只能缩小：`--shrink` 只调低、不新增；`--base-ref REF` 在基线比 REF
@@ -28,6 +31,10 @@ tools/check_all.sh 两个都带上。新规则就是 new_rules() 里多一个 Ru
 
 规则 9 只认「处理函数里出现了 composing(」，认不出它是不是真的放在最前面、是不是对着同一个事件；处理函数交给变量、
 再从别处传进来（`addEventListener('keydown', handlers[kind])`）时找不到函数体，按没有调用算。
+
+规则 10 认的是赋值号或括号右边的整段表达式：只有一个单引号、双引号字符串，或没有 `${` 的模板字符串，才算静态；
+`a ? '' : '<b>'` 这种由字面量拼成的也算带变量。ui/el.js 解析的是 tpl`…` 的静态模板（它在运行时拒绝插值），放行。
+规则 12 只按名字认（`Promise.withResolvers`、`Object.groupBy` 这类），认不出经变量间接调用的；字符串里的名字（`'requestIdleCallback' in window`）不算。
 
 已知盲区（文本级检查做不到）：规则 2 认不出 `state[key]`、`Object.assign(state, …)` 和解构写法，名为 state
 的函数参数会被误报；正则字面量与除号靠前一个字符判断，`if (ok) /re/.test(s)` 这种写法会被当成除号。规则 8 不查
@@ -53,6 +60,25 @@ GLOBAL_LISTENER_ALLOWED = frozenset({'ui/overlay.js'})
 # 用户 2026-11-15 批准（#470），只此一个文件；别的文件拼 <dialog> 仍然报错。
 DIALOG_ALLOWED = frozenset({'ui/dialog.js'})
 MAX_LINE = 200
+# 规则 10 的放行项：ui/el.js 把 tpl`…` 的静态模板交给 <template> 解析，是唯一把字符串变成节点的地方（#704）。
+HTML_SINK_ALLOWED = frozenset({'ui/el.js'})
+# 规则 11 的放行项（#704）：每帧调度和动效各有唯一入口。ui/motion.js 由 #705 新建，先写进名单。
+FRAME_ALLOWED = frozenset({'ui/frame.js', 'ui/motion.js'})
+ANIMATE_ALLOWED = frozenset({'ui/motion.js'})
+# 规则 12：Safari 17.0 没有的 JS 能力（docs/WEB_V2.md「兼容底线」）。值是 (正则, 从哪个版本起有)；None 表示 Safari 没有，哪里都不用。
+SAFARI17_JS = {
+    'Promise.withResolvers': (r'\bPromise\s*\.\s*withResolvers\b', 'Safari 17.4'),
+    'Object.groupBy': (r'\bObject\s*\.\s*groupBy\b', 'Safari 17.4'),
+    'Map.groupBy': (r'\bMap\s*\.\s*groupBy\b', 'Safari 17.4'),
+    'checkVisibility': (r'\.\s*checkVisibility\s*\(', 'Safari 17.4'),
+    'startViewTransition': (r'\bstartViewTransition\b', 'Safari 18.0'),
+    'Promise.try': (r'\bPromise\s*\.\s*try\b', 'Safari 18.2'),
+    'URL.parse': (r'\bURL\s*\.\s*parse\b', 'Safari 18.0'),
+    'requestIdleCallback': (r'\brequestIdleCallback\b', None),
+    'scheduler.postTask': (r'\bscheduler\s*\.\s*postTask\b', None),
+}
+# 规则 12 登记的增强处：文件 -> 允许作增强的能力（旁边要写明 Safari 17.0 上的退路）。新增登记先在 Issue 里提。
+SAFARI17_ENHANCEMENTS = {'ui/motion.js': frozenset({'startViewTransition'})}
 # 规则检查的模块文件。i18n.js、splash.js、theme.js 是经典脚本，locales/ 是数据，都不在范围内。
 MODULE_GLOBS = ('app.js', 'core/*.js', 'ui/*.js')
 
@@ -281,6 +307,28 @@ def new_rules():
              "在处理函数开头加 `if (composing(e)) return;`（`import {composing} from '../core/keys.js'`），不要自己读 e.isComposing 或 e.keyCode；"
              '处理函数交给变量再传进来时，改成直接写在 addEventListener 里，或让函数体里出现 composing(。见 docs/WEB_V2.md「输入框的键盘处理」。',
              baselined=False),
+        Rule('inner-html', '10', '新增了把数据拼进 innerHTML / outerHTML / insertAdjacentHTML 的写法',
+             '数据不拼进 HTML 字符串（#703「底座设计」，#704）：转义不靠调用处记得，节点建一次、之后只改变了的地方。'
+             'innerHTML、outerHTML、insertAdjacentHTML 的右边只能是不带插值的字符串字面量（清空写 `el.textContent = \'\'`）；'
+             'ui/el.js 解析 tpl`…` 的静态模板，是唯一放行的文件。现有的按文件计数冻结为基线，不得新增。',
+             '改用 ui/el.js：静态结构写成模块顶层的 tpl`…` 模板（不带插值），数据用 text() / attr() / cls() 写进 data-ref 的节点；'
+             '带链接或加粗的译文用 rich() 拼节点，小的动态节点用 make()；列表用 ui/keyed.js。写法见 docs/WEB_V2.md「渲染底座」。'
+             '改掉存量的一处后运行 `python tools/check_frontend.py --shrink`。'),
+        Rule('animation-entry', '11', '在 ui/frame.js、ui/motion.js 以外调了 requestAnimationFrame、.animate( 或 startViewTransition',
+             '每帧的读写和动效各有唯一入口（#704）：requestAnimationFrame 只在 ui/frame.js 和 ui/motion.js 里调，'
+             'el.animate、document.startViewTransition 只在 ui/motion.js 里调。这样「先量后改」、减少动态效果、'
+             'Safari 17 上的退路都只在一处写。现有的按文件计数冻结为基线，不得新增。',
+             '要在下一帧量或改，用 ui/frame.js 的 read(fn, key) / write(fn, key)（滚动、缩放的处理函数只排队）；'
+             '要动画，用 ui/motion.js 的 animate / enter / exit / flip 和共享元素过渡。改掉存量的一处后运行 `python tools/check_frontend.py --shrink`。'),
+        Rule('safari17-js', '12', '用了 Safari 17.0（macOS 14 的 WKWebView）没有的 JS 能力',
+             'macOS 14.0 的 WKWebView 按 Safari 17.0 算（docs/WEB_V2.md「兼容底线」）：17.0 以后才有的能力只能写在登记的增强处'
+             '（SAFARI17_ENHANCEMENTS，现在只有 ui/motion.js 的 startViewTransition），旁边写明退路；Safari 没有的'
+             '（requestIdleCallback、scheduler.postTask）哪里都不用。没有基线。',
+             '换成 Safari 17.0 就有的写法：Promise.withResolvers() → `new Promise((resolve, reject) => …)` 把两个函数存出来；'
+             'Object.groupBy / Map.groupBy → 一个循环往 Map 里放；requestIdleCallback → ui/frame.js 或 setTimeout；'
+             'checkVisibility → 量 getBoundingClientRect（放进 frame.read）。确实要作增强时写在登记的增强处、先判断有没有、写好退路，'
+             '新的增强处在 Issue 里提出，由用户同意后登记进 tools/check_frontend.py 的 SAFARI17_ENHANCEMENTS。',
+             baselined=False),
     ]}
 
 
@@ -344,6 +392,32 @@ def key_handlers(source):
         found.append((source.line_of(m.start()), body))
     return found
 
+
+# 规则 10：往 HTML 里写的三个入口。赋值（= 和 +=）取右边的整段表达式，insertAdjacentHTML 取第二个参数。
+HTML_ASSIGN_RE = re.compile(r'\.\s*(?:innerHTML|outerHTML)\s*\+?=(?![=>])')
+HTML_INSERT_RE = re.compile(r'\.\s*insertAdjacentHTML\s*\(')
+# 静态的右边：一个引号字符串，或一个不带 `${` 的模板字符串。
+STATIC_HTML_RE = re.compile(r'''(['"])(?:\\.|(?!\1)[^\\\n])*\1|`(?:\\.|\$(?!\{)|[^`\\$])*`''', re.S)
+
+
+def html_sinks(source):
+    """这个文件里每处往 HTML 写的地方：[(起点, 右边的代码文字)]。"""
+    found = []
+    for m in HTML_ASSIGN_RE.finditer(source.code):
+        found.append((m.start(), source.code[m.end():_expression_end(source.bare, m.end())]))
+    for m in HTML_INSERT_RE.finditer(source.code):
+        comma = _expression_end(source.bare, m.end())
+        if comma < len(source.bare) and source.bare[comma] == ',':
+            found.append((m.start(), source.code[comma + 1:_expression_end(source.bare, comma + 1)]))
+    return found
+
+
+# 规则 11：(名字, 正则, 放行的文件)。在注释和字符串都抹空的代码里找。
+ANIMATION_ENTRIES = (
+    ('requestAnimationFrame', re.compile(r'\brequestAnimationFrame\b'), FRAME_ALLOWED),
+    ('.animate(', re.compile(r'\.\s*animate\s*\('), ANIMATE_ALLOWED),
+    ('startViewTransition', re.compile(r'\bstartViewTransition\b'), ANIMATE_ALLOWED),
+)
 
 STATE_RE = re.compile(r'(?<![\w$.])state\s*\.\s*([A-Za-z_$][\w$]*)')
 
@@ -740,6 +814,25 @@ def run_rules(sources, css=None):
             for line, body in key_handlers(s):
                 if not COMPOSING_CALL_RE.search(body):
                     rules['ime-composing'].add(f'{p}: 键盘处理函数没有调用 composing()', f'{STATIC}/{p}:{line}: {s.raw_line(line)[:110]}')
+        # 规则 10、11、12
+        if p not in HTML_SINK_ALLOWED:
+            for start, rhs in html_sinks(s):
+                if not STATIC_HTML_RE.fullmatch(rhs.strip()):
+                    line = s.line_of(start)
+                    rules['inner-html'].add(p, f'{STATIC}/{p}:{line}: {s.raw_line(line)[:110]}')
+        for what, pattern, allowed in ANIMATION_ENTRIES:
+            if p in allowed:
+                continue
+            for m in pattern.finditer(s.bare):
+                line = s.line_of(m.start())
+                rules['animation-entry'].add(f'{p}: {what}', f'{STATIC}/{p}:{line}: {s.raw_line(line)[:110]}')
+        for what, (pattern, since) in SAFARI17_JS.items():
+            if since and what in SAFARI17_ENHANCEMENTS.get(p, ()):
+                continue
+            for m in re.finditer(pattern, s.bare):
+                line = s.line_of(m.start())
+                when = f'{since} 才有' if since else 'Safari 没有'
+                rules['safari17-js'].add(f'{p}: {what}（{when}）', f'{STATIC}/{p}:{line}: {s.raw_line(line)[:110]}')
         if p != 'core/pages.js':
             for m in PAGE_NAME_RE.finditer(s.code):
                 line = s.line_of(m.start())

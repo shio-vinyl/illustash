@@ -564,5 +564,79 @@ class FrontendArchitectureTest(unittest.TestCase):
             self.assertNotIn('首次登记', output)
 
 
+    # ---------- 规则 10：数据不拼进 innerHTML（#704） ----------
+    def write(self, tree, relative, text):
+        (tree.root / STATIC / relative).write_text(text, encoding='utf-8')
+
+    def test_data_in_inner_html(self):
+        with Tree() as tree:
+            tree.append('ui/home.js', "\nexport function bad(el, name) { el.innerHTML = `<b>${name}</b>`; }\n")
+            error = self.assertViolation(tree, 'inner-html', 'ui/home.js')
+            self.assertIn('ui/el.js', error)
+            self.assertIn('tpl`', error)
+        with Tree() as tree:
+            self.write(tree, 'ui/fresh.js', "export const a = (el, html) => { el.innerHTML = html; };\n")
+            self.assertViolation(tree, 'inner-html', 'ui/fresh.js（现有 1 处，基线允许 0 处）')
+        for line in ("el.outerHTML = '<p>' + text + '</p>';", "el.innerHTML += row(x);",
+                     "el.insertAdjacentHTML('beforeend', `<li>${x}</li>`);", "el.innerHTML = on ? '' : '<b></b>';"):
+            with self.subTest(line=line), Tree() as tree:
+                self.write(tree, 'ui/fresh.js', f'export function f(el, text, x, on) {{ {line} }}\n')
+                self.assertViolation(tree, 'inner-html', 'ui/fresh.js')
+
+    def test_static_inner_html_and_the_template_parser_are_fine(self):
+        with Tree() as tree:
+            self.write(tree, 'ui/fresh.js', "export function f(el) {\n  el.innerHTML = '';\n  el.innerHTML = `<i class=\"a\"></i>`;\n"
+                       "  el.insertAdjacentHTML('beforeend', \"<hr>\");\n  if (el.innerHTML === '') return;\n}\n")
+            tree.append('ui/el.js', '\nexport function again(holder, source) { holder.innerHTML = source; }\n')
+            self.assertEqual(tree.errors(), [])
+
+    # ---------- 规则 11：帧调度和动效的入口（#704） ----------
+    def test_animation_frame_outside_frame_js(self):
+        with Tree() as tree:
+            tree.append('ui/home.js', '\nexport const later = fn => requestAnimationFrame(fn);\n')
+            error = self.assertViolation(tree, 'animation-entry', 'ui/home.js: requestAnimationFrame')
+            self.assertIn('ui/frame.js', error)
+        with Tree() as tree:
+            tree.append('ui/frame.js', '\nexport const fade = el => el.animate([{opacity: 0}, {opacity: 1}], 200);\n')
+            self.assertViolation(tree, 'animation-entry', 'ui/frame.js: .animate(')
+        with Tree() as tree:
+            self.write(tree, 'ui/fresh.js', 'export const go = fn => document.startViewTransition(fn);\n')
+            self.assertViolation(tree, 'animation-entry', 'ui/fresh.js: startViewTransition')
+
+    def test_frame_and_motion_are_the_allowed_entries(self):
+        with Tree() as tree:
+            tree.append('ui/frame.js', '\nexport const again = fn => requestAnimationFrame(fn);\n')
+            self.write(tree, 'ui/motion.js', "// 不支持 View Transitions 时直接换（Safari 17）\n"
+                       "export const swap = fn => document.startViewTransition ? document.startViewTransition(fn) : fn();\n"
+                       "export const fade = el => el.animate([{opacity: 0}, {opacity: 1}], 200);\n"
+                       "export const next = fn => requestAnimationFrame(fn);\n// requestAnimationFrame in a comment\n"
+                       "export const name = 'requestIdleCallback';\n")
+            self.assertEqual(tree.errors(), [])
+
+    # ---------- 规则 12：Safari 17.0 没有的 JS 能力（#704） ----------
+    def test_js_newer_than_safari_17(self):
+        for code, needle in (('const {promise, resolve} = Promise.withResolvers();', 'Promise.withResolvers（Safari 17.4 才有）'),
+                             ('const groups = Object.groupBy(list, x => x.day);', 'Object.groupBy'),
+                             ('const ok = el.checkVisibility();', 'checkVisibility'),
+                             ('requestIdleCallback(work);', 'requestIdleCallback（Safari 没有）'),
+                             ('scheduler.postTask(work);', 'scheduler.postTask')):
+            with self.subTest(code=code), Tree() as tree:
+                self.write(tree, 'ui/fresh.js', f'export function f(list, el, work) {{ {code} }}\n')
+                error = self.assertViolation(tree, 'safari17-js', needle)
+                self.assertIn('Safari 17.0', error)
+
+    def test_registered_enhancements_only_cover_their_feature(self):
+        with Tree() as tree:
+            self.write(tree, 'ui/motion.js', 'export const swap = fn => document.startViewTransition ? document.startViewTransition(fn) : fn();\n'
+                       'export const idle = fn => requestIdleCallback(fn);\n')
+            errors = [e for e in tree.errors() if 'safari17-js' in e]
+            self.assertEqual(len(errors), 1, errors)
+            self.assertIn('requestIdleCallback', errors[0])
+            self.assertNotIn('startViewTransition（', errors[0])
+        with Tree() as tree:
+            tree.append('ui/grid.js', "\nexport const idle = 'requestIdleCallback' in window;\n")
+            self.assertEqual(tree.errors(), [])
+
+
 if __name__ == '__main__':
     unittest.main()

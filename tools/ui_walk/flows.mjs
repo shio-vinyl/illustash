@@ -108,6 +108,51 @@ export const FLOWS = [
   },
 
   {
+    name: 'days',
+    title: '图库按天视图：两张卡、各天和到底的说明；认一认点掉一张再「点掉的是…」；点图开详情；深色；at= 滚到那一天；去网格看这一天',
+    covers: ['#707', '#675'],
+    async run(w, page) {
+      const ready = () => page.waitFor(`document.querySelector('#homePage .day-tile img')`, 8000);
+      let snap = await w.step('打开图库（按天）', async p => { await goto(p, '#/days'); await ready(); }, {shot: true});
+      w.check('标题是图库', /图库|Library/.test(snap.heading), snap.heading);
+      const days = await page.eval(`[...document.querySelectorAll('#homePage .day')].map(d => d.dataset.day).sort().reverse()`);
+      w.check('合成图库的几天都画出来了', days.length >= 3, days);
+      await w.step('滚到底（接着读更早的几天，读完写到底的说明）', async p => {
+        await p.eval(`(async () => { const v = document.getElementById('viewport'); for (let i = 0; i < 20; i++) { v.scrollTop = v.scrollHeight;
+          await new Promise(r => setTimeout(r, 250)); const e = document.querySelector('#homePage .day-end'); if (e && !e.hidden) return; } })()`);
+      }, {shot: true});
+      w.check('读到底：写着最早的一张和总张数', await page.eval(`(() => { const e = document.querySelector('#homePage .day-end'); return !!e && !e.hidden && /\\d/.test(e.textContent); })()`), '');
+      await w.step('回到顶上', p => p.eval(`document.getElementById('viewport').scrollTop = 0`));
+      w.check('同步卡在', await page.eval(`!document.querySelector('#homePage .day-sync').hidden`), '');
+      const asking = await page.eval(`!document.querySelector('#homePage .day-ask').hidden`);
+      w.check('认一认卡在（合成图库有可问的）', asking, '');
+      if (asking) {
+        await w.step('认一认：点「不全是」展开', p => p.click('#homePage .day-ask button[data-ref="open"]'));
+        snap = await w.step('点掉第一张', p => p.click('#homePage .day-ask .day-ask-tile'), {shot: true});
+        w.check('第一张标成「不是 TA」', await page.eval(`document.querySelector('#homePage .day-ask .day-ask-tile').getAttribute('aria-pressed') === 'true'`), '');
+        w.check('有了「点掉的是…」', await page.eval(`!document.querySelector('#homePage .day-ask button[data-ref="other"]').hidden`), '');
+        await w.step('点「点掉的是…」', p => p.click('#homePage .day-ask button[data-ref="other"]'));
+        w.check('角色选择器打开了', await page.waitFor(`document.getElementById('picker').open`, 3000), '');
+        await w.step('Esc 关选择器', p => p.key('Escape'));
+      }
+      snap = await w.step('点第一天的大图（开详情）', p => p.click('#homePage .day .day-tile'), {shot: true});
+      w.check('详情打开在点的那张', !!snap.focused, snap.focused);
+      const focusedId = await stateOf(page, 'S.focused');
+      w.check('那张图标成当前（只有它一张）', await page.eval(`(() => { const on = [...document.querySelectorAll('#homePage .day-tile[aria-current="true"]')];
+        return on.length === 1 && on[0].dataset.id === ${JSON.stringify(focusedId || '')}; })()`), focusedId);
+      await w.step('Esc 关详情', p => p.key('Escape'));
+      await w.step('深色', p => p.eval(`document.documentElement.dataset.theme = 'dark'`), {shot: true});
+      await w.step('换回浅色', p => p.eval(`document.documentElement.dataset.theme = 'light'`));
+      const last = days.at(-1);
+      await w.step('地址带 at= 最早那天', async p => { await p.eval(`location.hash = '#/days?at=${last}'`); await p.settle({quiet: 500}); });
+      w.check('滚到了最早那天', await page.eval(`(() => { const v = document.getElementById('viewport'), d = document.querySelector('#homePage .day[data-day="${last}"]');
+        if (!d) return false; const top = d.getBoundingClientRect().top - v.getBoundingClientRect().top; return v.scrollTop > 0 && top > -40 && top < v.clientHeight / 2; })()`), '');
+      snap = await w.step('点「在网格里看」', async p => { await p.click('#homePage .day .day-grid'); await gridReady(p); }, {shot: true});
+      w.check('进了网格，按那一天筛选', /#\/library\?.*day=\d{4}-\d{2}-\d{2}/.test(decodeURIComponent(snap.hash || '')) && snap.total > 0, {hash: snap.hash, total: snap.total});
+    },
+  },
+
+  {
     name: 'viewer-detail',
     title: '图库点图开详情栏 → Space 进大图翻几张 → 关大图：详情栏、光标和 Space 指向同一张',
     covers: ['#386 1-4'],

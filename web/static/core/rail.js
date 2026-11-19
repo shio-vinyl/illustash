@@ -7,6 +7,7 @@
 //   kind   'day' | 'month' | 'year' | 'gallery' | 'char' | 'work' | 'queue'，决定画成什么样
 //   cover  封面图的 uuid（没有时画占位色）；count 是数字角标（整理的队列）；first 是月、年里最新的那一天（点它滚到那里）
 import {castWorks} from './catalog.js';
+import {galleryHref, isFav, isManual, withFav} from './galleries.js';
 import {listeners} from './events.js';
 import {favoritesOnly} from './favorites.js';
 import {t} from './i18n.js';
@@ -31,7 +32,8 @@ export const ENTRIES = [
 export function railAt(route, char = route.char) {
   if (favoritesOnly(route)) return {entry: 'galleries', item: 'fav'};
   const view = viewOf(route, char);
-  if (view.gallery) return {entry: 'galleries', item: 'g:' + route.id};
+  // 一个画廊（网格那几种展示方式和展示页都算）；收藏是 id 为 fav 的内置画廊（#710）。
+  if (view.entry === 'galleries' && route.id) return {entry: 'galleries', item: route.id === 'fav' ? 'fav' : 'g:' + route.id};
   if (view === CHARACTER) return {entry: 'catalog', item: 'c:' + route.char};
   // 只按一部作品筛选的图库就是作品页（F #711 另做作品页之前），在资料库下，钉住了就选中它。
   if (workOnly(route)) return {entry: 'catalog', item: 'w:' + route.work};
@@ -92,10 +94,11 @@ export function queues(route = state.route) {
 }
 
 // ---------- 画廊：收藏在最前，后面是保存的画廊 ----------
+// 点了去这个画廊（按它记着的展示方式落在网格页或展示页，core/galleries.js 的 galleryHref）。gallery 是画廊本身：拖图进画廊时
+// （ui/drag.js）按它判断收不收。
 export function galleryItems(covers = {}) {
-  const fav = {key: 'fav', kind: 'gallery', label: t('收藏'), heart: true, href: hashFor({page: 'library', has: ['fav']}), meta: t('在详情面板或大图里点心形，或者按 F 收藏。')};
-  return [fav, ...(state.galleries || []).map(g => ({key: 'g:' + g.id, kind: 'gallery', label: g.name, cover: covers[g.id] || null,
-    href: hashFor({page: 'gallery', id: String(g.id), has: []}), meta: ''}))];
+  return withFav().map(g => ({key: isFav(g.id) ? 'fav' : 'g:' + g.id, kind: 'gallery', label: g.name, heart: isFav(g.id), cover: covers[g.id] || null,
+    href: galleryHref(g.id), meta: isManual(g) ? t('手选画廊') : t('按条件的画廊'), gallery: g}));
 }
 
 // ---------- 图库：时间轴 ----------

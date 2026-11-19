@@ -5,8 +5,9 @@
 // 新增一个页面要做什么，见 docs/WEB_UI_MAP.md「新增一个页面」。
 import {isMac} from './format.js';
 import {t} from './i18n.js';
-import {count as conditionCount, queryParams} from './filters.js';
+import {conditions as conditionLists, count as conditionCount, queryParams} from './filters.js';
 import {likeParams} from './like.js';
+import {showFor, showOf} from './gallery_shows.js';
 import {state} from './state.js';
 
 // 字段：
@@ -40,6 +41,8 @@ import {state} from './state.js';
 //   guideTick  进入本页算上手清单的哪一步
 //   gallery    画廊页（#445）：地址总带着条件，不带查询时按保存的条件打开
 const NEWEST = ['newest', 'oldest'];
+// 地址上的条件（has 里的），画廊页的空状态用。
+const conditions = r => conditionLists(r).has;
 const narrowed = r => !!(r.q || r.tag || r.utag || r.check || r.doubt || conditionCount(r) || r.from || r.to);
 
 // 图库和角色页共用的一组字段：角色页是图库加 char 参数，不是独立页面。
@@ -76,9 +79,20 @@ const list = [
   {name: 'library', ...libraryBase, click: 'browse', sortPref: 'sortLibrary', emptyIcon: r => favoritesOnly(r) ? 'heart' : 'image',
     empty: (r, ctx = {}) => favoritesOnly(r) && !ctx.nsfw ? t('还没有收藏。在详情面板或大图里点心形，或者按 F 收藏。') : libraryBase.empty(r, ctx)},
   {name: 'calendar', area: 'calendarPage', panel: true, click: 'own', entry: 'library', view: 'calendar', filters: true, toolbar: 'filters', emptyIcon: 'calendar'},
-  // 画廊（#445）：全部画廊的封面卡片，和一个画廊里的图（就是带着它的条件的图库）。
+  // 画廊（#445、#710）：全部画廊（收藏在最前），和一个画廊。一个画廊按它的展示方式（core/gallery_shows.js）落在两页之一：
+  // gallery 是显示全部图的几种（瀑布、色彩），就是带着它的条件的图库网格，分行和排序随展示方式（gridLayout、params）；
+  // showcase 是展示页（拼贴、杂志、展厅），只放前几张。收藏是 id 为 fav 的内置手选画廊（core/galleries.js）。
   {name: 'galleries', area: 'groupsPage', panel: true, click: 'own', entry: 'galleries', toolbar: 'none', emptyIcon: 'gallery'},
-  {name: 'gallery', prefix: 'gallery', ...libraryBase, view: '', click: 'browse', entry: 'galleries', sortPref: 'sortLibrary', gallery: true},
+  {name: 'gallery', prefix: 'gallery', ...libraryBase, view: '', click: 'browse', entry: 'galleries', sortPref: 'sortLibrary', gallery: true,
+    params: r => ({...libraryBase.params(r), ...showOf(showFor(r.id)).params}),
+    sorts: r => showOf(showFor(r.id)).params?.order ? [showOf(showFor(r.id)).params.order] : NEWEST,
+    gridLayout: r => showOf(showFor(r.id)).grid || null,
+    emptyIcon: r => r.id === 'fav' ? 'heart' : 'gallery',
+    // 收藏空着时说怎么收藏（#679）；隐藏或只看 NSFW 时空着不等于没有收藏，照图库的说法。手选画廊空着时说怎么放进来。
+    empty: (r, ctx = {}) => ctx.nsfw || conditionCount(r) > 1 || r.q ? libraryBase.empty(r, ctx)
+      : r.id === 'fav' ? t('还没有收藏。在详情面板或大图里点心形，或者按 F 收藏。')
+        : conditions(r).includes(`gallery:${r.id}`) ? t('这个画廊还没有图。把图拖到活页条上的画廊封面，或者在选择栏里点「放进画廊…」。') : libraryBase.empty(r, ctx)},
+  {name: 'showcase', prefix: 'showcase', area: 'groupsPage', panel: true, keys: 'shown', click: 'own', entry: 'galleries', toolbar: 'none', emptyIcon: 'gallery'},
   {name: 'characters', sections: true, area: 'charIndex', panel: true, click: 'own', entry: 'catalog', toolbar: 'index', directory: true, guideTick: 'look', emptyIcon: 'person'},
   {name: 'settings', sections: true, area: 'settingsPage', panel: true, click: 'own', entry: 'settings', toolbar: 'none'},
   // 整理（#706）：未识别、重复、已排除三个页签（tabs 是页签组），随机抽查、身份整理有题时出现在二级层。各页签原来的子页保留。

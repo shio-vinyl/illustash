@@ -8,6 +8,8 @@
 //   masonry                    瀑布：固定列宽，每张放进当前最矮的一列
 //   dayMosaic                  按天的马赛克：左边一张大图，右边两行小图，放不下的收成最后一格上的「+N」
 //   monthGrid / cellTiles      日历：某月的格子（含前后月补齐的日子），以及格内 1 / 2 / 4 张图的拼法
+//   masonryRows                瀑布按行：和 justifiedRows 一样的行数组，给图库网格那一套（画廊的瀑布，#710）
+//   collage / magazine / hall  画廊的展示：拼贴、杂志、展厅（#710）；seeded、hashSeed 是它们用的固定种子随机数
 //
 // 宽高比：尺寸还不知道的图，调用方先用 estimateRatio 估（照网格的做法），再交进来。瀑布和马赛克另外兜底：0、负数、
 // NaN 这类不是正的有限数的宽高比按 3:4 算，不会算出 NaN 的框或一张窄条。
@@ -155,4 +157,137 @@ export function cellTiles(n, {width, height, gap = 0}) {
   if (n < 4) return [0, 1].map(i => ({i, x: i * (w + gap), y: 0, w, h: height}));
   const h = (height - gap) / 2;
   return [0, 1, 2, 3].map(i => ({i, x: (i % 2) * (w + gap), y: Math.floor(i / 2) * (h + gap), w, h}));
+}
+
+// ---------- 画廊的展示布局（#710） ----------
+// 画廊有几种展示方式（core/gallery_shows.js 登记）。瀑布、色彩显示全部图，走图库网格那一套（masonryRows、justifiedRows）；
+// 拼贴、杂志、展厅只放前几张，框在这里算。随机的部分用固定种子：同一个画廊每次排得一样。
+
+// 字符串的 32 位哈希（FNV-1a），当种子用：画廊的 id 进、种子出。
+export function hashSeed(text) {
+  let h = 0x811c9dc5;
+  for (const ch of String(text)) { h ^= ch.codePointAt(0); h = Math.imul(h, 0x01000193) >>> 0; }
+  return h;
+}
+// 固定种子的随机数（mulberry32）：返回一个函数，每次调用给 [0, 1) 里的下一个数。
+export function seeded(seed) {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let x = Math.imul(a ^ (a >>> 15), 1 | a);
+    x = (x + Math.imul(x ^ (x >>> 7), 61 | x)) ^ x;
+    return ((x ^ (x >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+// 瀑布按行（给 ui/grid.js 的虚拟网格）：放法同 masonry（每张放进当前最矮的一列），结果写进可复用的类型化数组。
+// 每张图的顶部随序号不减（总是放进最矮的一列），所以可以把每 columns 张连着的图算一「行」，网格按行挂卡片的窗口照用：
+//   {rows, starts, tops, heights}  同 justifiedRows：starts[r] 是第 r 行第一张，tops[r] 是那一张的顶，tops[rows] 是总高
+//   x, y, w, h                     每张图的框；col 是它在第几列
+//   reach                          最高的一张有多高：挂卡片的窗口上沿要往上多挂这么多，前几行的长图才不会缺
+//   columns, columnWidth           列数和列宽
+export function masonryRows(n, ratioAt, {width, column, gap = 0}, reuse = null) {
+  const columns = Math.max(1, Math.round((width + gap) / (Math.max(1, column) + Math.max(0, gap))));
+  const cw = Math.max(1, (width - gap * (columns - 1)) / columns);
+  let {x, y, w, h, col, starts, tops, heights, colH} = reuse || {};
+  if (!x || x.length < n) { x = new Float64Array(n); y = new Float64Array(n); w = new Float64Array(n); h = new Float64Array(n); col = new Int32Array(n); }
+  if (!starts || starts.length < n + 2) { starts = new Int32Array(n + 2); tops = new Float64Array(n + 2); heights = new Float64Array(n + 1); }
+  if (!colH || colH.length < columns) colH = new Float64Array(columns);
+  colH.fill(0, 0, columns);
+  let reach = 0;
+  for (let i = 0; i < n; i++) {
+    let c = 0; for (let k = 1; k < columns; k++) if (colH[k] < colH[c]) c = k;
+    x[i] = c * (cw + gap); y[i] = colH[c]; w[i] = cw; h[i] = cw / usable(ratioAt(i)); col[i] = c;
+    colH[c] += h[i] + gap; if (h[i] > reach) reach = h[i];
+  }
+  let total = 0; for (let k = 0; k < columns; k++) total = Math.max(total, colH[k]);
+  total = n ? total - gap : 0;
+  const rows = Math.ceil(n / columns);
+  for (let r = 0; r < rows; r++) { starts[r] = r * columns; tops[r] = y[r * columns]; }
+  starts[rows] = n; tops[rows] = total;
+  for (let r = 0; r < rows; r++) heights[r] = tops[r + 1] - tops[r];
+  return {rows, starts, tops, heights, x, y, w, h, col, colH, reach, columns, columnWidth: cw};
+}
+// 瀑布里 ↑↓：同一列的上一张、下一张；到头了停在原处。
+export function masonryStep(packed, n, i, dir) {
+  for (let j = i + dir; j >= 0 && j < n; j += dir) if (packed.col[j] === packed.col[i]) return j;
+  return i;
+}
+
+// 拼贴：前几张图像拍立得一样散放。cols 列（按宽度 2–6 列）、一行一行往下排，每张宽度、偏移、角度（±7°）、叠放次序和
+// 胶带都由 seed 定；行与行稍微叠上一点。框是整张拍立得：图在里面，四周留 pad，下边再留 caption 写名字。
+// 返回 {boxes, height}；框带 rot（度）、z（叠放次序 1–9）、tape（null 或 {at: 0–1 横向位置, rot}）。
+export function collage(ratios, {width, seed = 1, pad = 8, caption = 22, columns = 0}) {
+  const n = ratios.length, boxes = [];
+  if (!n) return {boxes, height: 0};
+  const cols = columns || Math.max(2, Math.min(6, Math.round(width / 210)));
+  const cell = width / cols, rnd = seeded(seed);
+  let top = 0, bottom = 0;
+  for (let start = 0; start < n; start += cols) {
+    const row = [];
+    for (let c = 0; c < cols && start + c < n; c++) {
+      const i = start + c, fw = cell * (.74 + rnd() * .2), fh = (fw - pad * 2) / clampRatio(usable(ratios[i])) + pad + caption;
+      const x = Math.min(width - fw, Math.max(0, c * cell + (cell - fw) / 2 + (rnd() - .5) * cell * .18));
+      const lift = (rnd() - .5) * cell * .14, rot = Math.round((rnd() - .5) * 140) / 10, z = 1 + Math.floor(rnd() * 9);
+      const tape = rnd() > .55 ? {at: Math.round((.3 + rnd() * .4) * 100) / 100, rot: Math.round((rnd() - .5) * 200) / 10} : null;
+      row.push({i, x, w: fw, h: fh, lift, rot, z, tape});
+    }
+    const tall = Math.max(...row.map(b => b.h));
+    for (const b of row) {
+      const yy = Math.max(0, top + (tall - b.h) / 2 + b.lift);
+      boxes.push({i: b.i, x: b.x, y: yy, w: b.w, h: b.h, rot: b.rot, z: b.z, tape: b.tape});
+      bottom = Math.max(bottom, yy + b.h);
+    }
+    top += tall * .84;
+  }
+  return {boxes, height: bottom};
+}
+
+// 杂志：封面一张大图（宽的时候占左边约 3/5，高按封面宽 × 1.15，不超过 maxCover），右边上面一段导语（lead 高），下面两张；
+// 再下面一排带编号的图（一行等高行，放得下几张放几张）。窄的时候（< 720）封面占满宽，导语在下，两张并排，再一排。
+// 返回 {boxes, lead, height}：框带 role（'cover'、'side'、'row'）和 no（编号，封面没有，从 1 起）；lead 是导语的框。
+// 杂志的图在框里裁切（铺满），所以宽高比只影响下面那一排的分法。
+export function magazine(ratios, {width, gap = 16, lead = 96, maxCover = 720, rowTarget = 220}) {
+  const n = ratios.length, boxes = [];
+  if (!n) return {boxes, lead: null, height: 0};
+  const wide = width >= 720;
+  const coverW = wide ? Math.round((width - gap) * .6) : width, coverH = Math.min(maxCover, Math.round(coverW * (wide ? 1.15 : .8)));
+  boxes.push({i: 0, x: 0, y: 0, w: coverW, h: coverH, role: 'cover'});
+  let no = 1, next = 1, bottom = coverH, leadBox;
+  if (wide) {
+    const sx = coverW + gap, sw = width - sx, sides = Math.min(2, n - 1);
+    leadBox = {x: sx, y: 0, w: sw, h: lead};
+    const sh = sides ? (coverH - lead - gap * sides) / sides : 0;
+    for (let k = 0; k < sides; k++) boxes.push({i: next++, x: sx, y: lead + gap + k * (sh + gap), w: sw, h: sh, role: 'side', no: no++});
+  } else {
+    leadBox = {x: 0, y: coverH + gap, w: width, h: lead};
+    bottom = coverH + gap + lead;
+    const sides = Math.min(2, n - 1), sw = (width - gap) / 2, sh = Math.round(sw * 1.2);
+    for (let k = 0; k < sides; k++) boxes.push({i: next++, x: k * (sw + gap), y: bottom + gap, w: sw, h: sh, role: 'side', no: no++});
+    if (sides) bottom += gap + sh;
+  }
+  const rest = ratios.slice(next).map(r => clampRatio(usable(r)));
+  if (rest.length) {
+    const packed = justifiedRows(rest.length, k => rest[k], {width, target: rowTarget, gap});
+    const end = packed.starts[1], hh = packed.heights[0], y = bottom + gap * 2;
+    let x = 0;
+    for (let k = 0; k < end; k++) { const w = rest[k] * hh; boxes.push({i: next + k, x, y, w, h: hh, role: 'row', no: no++}); x += w + gap; }
+    bottom = y + hh;
+  }
+  return {boxes, lead: leadBox, height: bottom};
+}
+
+// 展厅：一面墙上挂一排画框，墙横向延伸（宽度不限，界面横向滚动）。画框里的图高按 HALL_STEPS 轮换（墙高 height 的比例），
+// 宽按宽高比；框外再加 frame 宽的画框；画框中心对齐视线高度（墙高的 42%）。左右各留 pad，画框之间留 gap。
+// 返回 {boxes, width}：框是画框的外沿。
+export const HALL_STEPS = [.56, .44, .6, .48, .54, .42, .52];
+export function hall(ratios, {height, gap = 72, frame = 12, pad = 64}) {
+  const boxes = [], eye = height * .42;
+  let x = pad;
+  ratios.forEach((r, i) => {
+    const ih = height * HALL_STEPS[i % HALL_STEPS.length], iw = ih * clampRatio(usable(r));
+    const w = iw + frame * 2, h = ih + frame * 2;
+    boxes.push({i, x, y: Math.max(0, eye - h / 2), w, h}); x += w + gap;
+  });
+  return {boxes, width: boxes.length ? x - gap + pad : 0};
 }

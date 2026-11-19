@@ -136,6 +136,8 @@ function usedKeys() {
   const used = new Set(), dynamic = [];
   const add = found => { found.keys.forEach(k => used.add(k)); dynamic.push(...found.dynamic); };
   for (const name of scripts) add(scriptKeys(name));
+  // 模块里 ui/el.js 的静态模板（tpl`…`）和 index.html 一样用 data-t / data-t-attr 标出要翻译的文字（#704）。
+  for (const name of scripts) for (const m of read(name).matchAll(/\btpl`([^`]*)`/g)) markupKeys(m[1]).forEach(k => used.add(k));
   // i18n.js 只翻译交给它的内容，后端消息的连接符除外。
   used.add('join\u0004；');
   markupKeys(read('index.html')).forEach(k => used.add(k));

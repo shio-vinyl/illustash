@@ -5,6 +5,7 @@ import {esc, isMac, number, platformText, screenScale, shortcut, thumbSize} from
 import {t} from '../core/i18n.js';
 import {composing} from '../core/keys.js';
 import {leaves} from '../core/filters.js';
+import {DEFAULT_RATIO, aspect, clampRatio, estimateRatio, justifiedRows} from '../core/layout.js';
 import {REASONS, nameWithWork} from '../core/labels.js';
 import {undoRefusal} from '../core/human.js';
 import {afterSyncLearning, learningNow, learningSettled, learningShown, metaSoon, refreshMeta} from '../core/meta.js';
@@ -158,17 +159,15 @@ function updateCount() {
 }
 
 // ---------- 网格 ----------
-// 方形裁切，或像「照片」那样的两端对齐行：每行在目标高度附近塞进尽量多的图，并拉伸到边缘；最后一行保持目标高度、
-// 靠左，所以结果很少时不会变成几张巨大的图。
+// 方形裁切，或像「照片」那样的两端对齐行：分行规则（core/layout.js 的 justifiedRows，#704）每行在目标高度附近塞进
+// 尽量多的图，并拉伸到边缘；最后一行保持目标高度、靠左，所以结果很少时不会变成几张巨大的图。
 const isSquare = () => !state.fit;
-// 方框的宽高比有上下限，这样全景图或长条图不会把它那一行压扁或撑大；这样的图在方框里整张显示（加黑边），而不是裁切。
-const FIT_MIN = .5, FIT_MAX = 2.4;
 // 行的几何数据放在复用的类型化数组里：rowStarts[r] 是第 r 行的第一个下标，rowTops[r] 是它的顶部位置。
 // 还没加载的图用已加载图片的平均宽高比，这样分页到达时各行尽量少移动。
-let gridLayoutKey = '', fitRows = 0, fitEstimate = .75;
+let gridLayoutKey = '', fitRows = 0, fitEstimate = DEFAULT_RATIO, packed = null;
 let rowStarts = new Int32Array(1), rowTops = new Float64Array(1), rowHeights = new Float64Array(0);
-const rawRatio = item => item?.width > 0 && item?.height > 0 ? item.width / item.height : 0;
-export const imageRatio = item => { const r = rawRatio(item); return r ? Math.min(FIT_MAX, Math.max(FIT_MIN, r)) : fitEstimate; };
+const rawRatio = aspect;
+export const imageRatio = item => { const r = rawRatio(item); return r ? clampRatio(r) : fitEstimate; };
 export const rowCount = () => state.fit ? fitRows : Math.ceil(state.total / state.cols);
 export const rowStart = row => state.fit ? rowStarts[Math.max(0, Math.min(row, fitRows))] : Math.max(0, Math.min(row * state.cols, state.total));
 export function rowOf(i) {
@@ -211,31 +210,10 @@ export function toggleFit() {
   for (const b of $('fitToggle')?.querySelectorAll('[data-fit]') || []) b.classList.toggle('on', Boolean(Number(b.dataset.fit)) === state.fit);
 }
 function packRows(width, target) {
-  const n = state.total, items = state.items, gap = state.gap, extra = captionH() + gap;
-  let sum = 0, known = 0;
-  for (let i = 0; i < n; i++) { const r = rawRatio(items[i]); if (r) { sum += Math.min(FIT_MAX, Math.max(FIT_MIN, r)); known++; } }
-  fitEstimate = known ? sum / known : .75;
-  if (rowStarts.length < n + 2) { rowStarts = new Int32Array(n + 2); rowTops = new Float64Array(n + 2); rowHeights = new Float64Array(n + 1); }
-  let row = 0, i = 0;
-  rowTops[0] = 0; rowStarts[0] = 0;
-  while (i < n) {
-    const start = i; let total = 0;
-    for (;;) {
-      const r = imageRatio(items[i]), count = i - start + 1;
-      if (count > 1 && (total + r) * target + gap * (count - 1) > width) {
-        // 只有这样更接近目标高度时，才把溢出的那张图收进来。
-        const shrunk = (width - gap * (count - 1)) / (total + r), grown = (width - gap * (count - 2)) / total;
-        if (target - shrunk < grown - target) { total += r; i++; }
-        break;
-      }
-      total += r; i++;
-      if (i >= n) break;
-    }
-    const natural = (width - gap * (i - start - 1)) / total;
-    rowStarts[row] = start; rowHeights[row] = (i >= n ? Math.min(natural, target) : natural) + extra;
-    rowTops[row + 1] = rowTops[row] + rowHeights[row]; row++;
-  }
-  rowStarts[row] = n; fitRows = row;
+  const n = state.total, items = state.items;
+  fitEstimate = estimateRatio(n, i => rawRatio(items[i]));
+  packed = justifiedRows(n, i => imageRatio(items[i]), {width, target, gap: state.gap, extra: captionH() + state.gap}, packed);
+  ({starts: rowStarts, tops: rowTops, heights: rowHeights, rows: fitRows} = packed);
 }
 export function layout() {
   const v = $('viewport'), width = Math.max(1, v.clientWidth - 2);

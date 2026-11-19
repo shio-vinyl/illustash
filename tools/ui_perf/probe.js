@@ -16,7 +16,7 @@
   const viewport = () => $('viewport');
   const PAGES = {
     // 应用启动完、能接受跳转的标志。
-    booted: () => !!viewport() && !$('splash') && !!document.querySelector('.nav[data-page]'),
+    booted: () => !!viewport() && !$('splash') && !!document.querySelector('#rail .rail-entry[data-entry]'),
     home: {hash: '#/home', ready: () => !!document.querySelector('#homePage .home-day img'), scroller: viewport,
       // 同步导入时盯着的「最上面那一天」：新图都进这一块。
       watch: () => $('homePage')},

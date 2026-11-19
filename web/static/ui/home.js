@@ -153,7 +153,7 @@ const sentinelText = () => home.next ? t('正在读取更早的图…') : t('已
 function drawHome() {
   if (!onPage(state.route, 'days')) return;
   const page = $('homePage'); home.width = page.clientWidth;
-  if (!home.days.length) { page.innerHTML = `<p class="empty">${t('没有符合当前 R18 设置的图片。')}</p>`; showList([]); return; }
+  if (!home.days.length) { page.innerHTML = `<p class="empty">${t('没有符合当前 NSFW 设置的图片。')}</p>`; showList([]); return; }
   reconcileSections(page, homeSections());
   $('homeSentinel').textContent = sentinelText();   // 留下来的哨兵可能还写着「读取失败，重试」
   showList(home.days.flatMap(g => g.items));

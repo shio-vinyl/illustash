@@ -70,7 +70,7 @@
 - 标题、按钮、菜单用句首大写（View options，不写 View Options）；句子照常加句号。
 - 引用界面上的名字用弯引号：the “Duplicates” page。省略号用一个字符 `…`。
 - 计数放在名词前，按复数规则写（`{n} pictures`）；不方便写复数的句子改写成不依赖单复数的说法。
-- `R18`、`Danbooru`、`Pixiv`、`X`、`iCloud`、`Photos` 等专名不译。
+- `NSFW`、`Danbooru`、`Pixiv`、`X`、`iCloud`、`Photos` 等专名不译。内容筛选（含 Pixiv 上不公开的作品）在中英文界面上都叫 NSFW，不写 R18（用户 2026-11-19 定，#706）。
 
 ## 语气
 

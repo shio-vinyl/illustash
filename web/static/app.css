@@ -488,13 +488,13 @@ p{color:var(--muted)}
 .icon{border-radius:var(--radius-8);color:var(--ink2)}
 .icon:hover,.quiet:hover{background:var(--soft)}
 button:active:not(:disabled){transform:scale(.97)}
-/* R18 三态标牌 */
+/* NSFW 三态标牌（类名 .r18 是早先的叫法） */
 .nsfw-toggle{height:var(--h-36);padding:0 var(--space-8);border:0;border-radius:var(--radius-pill);display:inline-flex;align-items:center;justify-content:center;background:var(--soft);color:var(--muted);transition:background .2s,color .2s}
 .nsfw-toggle:hover{background:rgba(var(--sh),.09);color:var(--ink2)}
-.r18{width:34px;height:20px;display:block;overflow:visible}
+.r18{width:44px;height:20px;display:block;overflow:visible}
 .r18 .plate{fill:transparent;stroke:currentColor;stroke-width:1.5;transition:fill .25s,stroke .25s}
 .r18 text{font:800 9px/1 -apple-system,BlinkMacSystemFont,"SF Pro Text",sans-serif;letter-spacing:.3px;fill:currentColor;transition:fill .25s,fill-opacity .25s}
-.r18 .cut,.r18 .slash{fill:none;stroke-linecap:round;stroke-dasharray:29;stroke-dashoffset:29;transition:stroke-dashoffset .32s var(--ease)}
+.r18 .cut,.r18 .slash{fill:none;stroke-linecap:round;stroke-dasharray:36;stroke-dashoffset:36;transition:stroke-dashoffset .32s var(--ease)}
 .r18 .cut{stroke:var(--accent-soft);stroke-width:4.2}
 .r18 .slash{stroke:currentColor;stroke-width:1.7}
 .nsfw-toggle.s-hide{color:var(--accent-ink);background:var(--accent-soft)}

@@ -86,7 +86,7 @@ test('the empty page says why: a search, R18 only, or no artists yet with the wa
   await dirs.renderArtistDir();
   assert.match(document.getElementById('charIndex').innerHTML, /还没有画师。.*href="#\/settings\/artists"/s);
   dirs.dir.q = '无'; assert.match(dirs.emptyText(), /没有符合的画师。/);
-  dirs.dir.q = ''; state.nsfw = 'only'; assert.match(dirs.emptyText(), /只看 R18/);
+  dirs.dir.q = ''; state.nsfw = 'only'; assert.match(dirs.emptyText(), /只看 NSFW/);
 });
 
 test('the order is remembered and a new order reads from the start', async () => {

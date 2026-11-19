@@ -97,7 +97,7 @@ export const card = a => `<a class="cast-rs" href="${hashFor({page: 'library', a
 // 没有画师时说什么：搜索没结果、「只看 R18」开着，或者还没有找回过画师（给去处：设置里的「画师」）。
 export function emptyText() {
   if (dir.q) return `<p class="empty">${t('没有符合的画师。')}</p>`;
-  if (state.nsfw === 'only') return `<p class="empty">${t('「只看 R18」开着，没有画过 R18 图的画师。')}</p>`;
+  if (state.nsfw === 'only') return `<p class="empty">${t('「只看 NSFW」开着，没有画过 NSFW 图的画师。')}</p>`;
   return `<div class="empty"><div>${t('还没有画师。')}<div>${emptyLink('#/settings/artists', t('设置 › 画师'))}</div></div></div>`;
 }
 export function dirBody() {

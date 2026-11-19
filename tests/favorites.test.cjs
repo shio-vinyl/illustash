@@ -82,7 +82,7 @@ test('收藏：标题是「收藏」，空着时说怎么收藏；加了别的�
   assert.equal(empty(state.route, {nsfw: ''}), '还没有收藏。在详情面板或大图里点心形，或者按 F 收藏。');
   // 隐藏或只看 R18 时空着不等于没有收藏
   assert.equal(empty(state.route, {nsfw: 'hide'}), '没有符合条件的图片。');
-  assert.match(empty(state.route, {nsfw: 'only'}), /只看 R18/);
+  assert.match(empty(state.route, {nsfw: 'only'}), /只看 NSFW/);
   for (const r of [{page: 'library', has: ['fav', 'tag:x']}, {page: 'library', has: ['fav'], q: 'miku'}, {page: 'library'}]) {
     state.route = r; renderHeading();
     assert.match(heading(), /<h1>图库/);

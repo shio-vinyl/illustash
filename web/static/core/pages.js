@@ -49,7 +49,7 @@ const libraryBase = {
     return Object.assign(f, queryParams(r), likeParams(r));
   },
   // 「只看 R18」时没有图，多半是这个筛选造成的：写明，旁边给「显示全部」（#386 的 2-16）。
-  empty: (r, {nsfw} = {}) => nsfw === 'only' ? t('「只看 R18」开着，没有符合条件的 R18 图片。') : t('没有符合条件的图片。'),
+  empty: (r, {nsfw} = {}) => nsfw === 'only' ? t('「只看 NSFW」开着，没有符合条件的 NSFW 图片。') : t('没有符合条件的图片。'),
   hint: () => t('点击查看 · 拖动或 {key} 点击多选 · Space 看大图', {key: isMac ? '⌘' : 'Ctrl'}),
   bar: 'default',
 };

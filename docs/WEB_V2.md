@@ -16,9 +16,9 @@
 
 图库、角色页和画廊页的工具栏在搜索框后面是筛选条（`ui/filters.js`，条件的读写在 `core/filters.js`）：每个条件一枚胶囊，点名字在「含」和「不含」之间切换，× 去掉；日期一枚。「＋ 条件」打开一个浮层，一个输入框跨种类搜画面标签（中文页面显示 #446 的中文名）、我的标签、角色、作品、画师、出处和年份，另有收藏和「起止日期…」。条件写进地址：`has`、`not` 是和接口相同的 JSON 数组，`from`、`to` 是日期。详情栏点画师、作品、标签带来的旧单值参数（`tag`、`utag`、`work`、`artist`、`day`）照样显示在筛选条上，在筛选条上一改就整体改写成 `has`。
 
-有条件或搜索词时工具栏出现「保存为画廊」：一键保存，名字由前端按胶囊上的文字生成（所以跟着界面语言），随后进入新画廊、标题处于改名状态。存下的是 `has`、`not`、`from`、`to`、`day`、`q`；在角色页上存时角色（或造型）也是一个 `char:` 条件。排序和 R18 不存。
+有条件或搜索词时工具栏出现「保存为画廊」：一键保存，名字由前端按胶囊上的文字生成（所以跟着界面语言），随后进入新画廊、标题处于改名状态。存下的是 `has`、`not`、`from`、`to`、`day`、`q`；在角色页上存时角色（或造型）也是一个 `char:` 条件。排序和 NSFW 不存。
 
-侧栏「图库」下面的「画廊」只在有画廊时显示，进 `#/galleries`：封面卡片，按保存的顺序，封面按当前 R18 筛选批量读（`/api/galleries/covers`，#590；没有这个接口时退回读带封面的列表），张数逐个读 `/api/assets/count`。`#/gallery/<id>` 是带着保存条件的图库，点击是浏览；不带查询打开时按保存的条件，并把条件写进地址。改了条件后页头出现「更新画廊」「另存为新画廊」；标题点一下改名；「⋯」里有设封面（用详情栏里那张）、封面改回自动、往前移、往后移、删除。每一步都进撤销栈。保存的条件失效时（引用的作品、标签没了），卡片写「条件失效」；画廊页的网格读取回 400，空状态写「条件失效：{后端的原因}」，下面给「删除画廊」，不弹错误条，页头不另写（#647）。用户在筛选条上去掉那个条件后更新画廊。
+侧栏「图库」下面的「画廊」只在有画廊时显示，进 `#/galleries`：封面卡片，按保存的顺序，封面按当前 NSFW 筛选批量读（`/api/galleries/covers`，#590；没有这个接口时退回读带封面的列表），张数逐个读 `/api/assets/count`。`#/gallery/<id>` 是带着保存条件的图库，点击是浏览；不带查询打开时按保存的条件，并把条件写进地址。改了条件后页头出现「更新画廊」「另存为新画廊」；标题点一下改名；「⋯」里有设封面（用详情栏里那张）、封面改回自动、往前移、往后移、删除。每一步都进撤销栈。保存的条件失效时（引用的作品、标签没了），卡片写「条件失效」；画廊页的网格读取回 400，空状态写「条件失效：{后端的原因}」，下面给「删除画廊」，不弹错误条，页头不另写（#647）。用户在筛选条上去掉那个条件后更新画廊。
 
 ## 前端模块（2026-10-18，#199）
 
@@ -27,7 +27,7 @@
 - `web/static/core/`：任何布局都能复用的一层（以后的移动端也用），不引用 `document`、`$()` 和元素 ID，可以直接在 Node 里导入。`format.js`（转义、数字、日期、快捷键名）、`keys.js`（键盘事件的公共判断，现在只有 `composing(e)`：输入法是否在组字，#388）、`prefs.js`（浏览器本地偏好）、`session.js`（`api()` / `post()`、会话令牌与过期：页面只属于启动时的会话，见 #33）、`edits.js`（最近一步可撤销的操作、撤销，以及「同一时间只做一项修改」的锁）。会话令牌和过期标记只由 `session.js` 写，撤销状态只由 `edits.js` 写；界面通过 `onStale()`、`onPost()`、`onLatest()` 得知变化，各返回一个取消监听的函数。
   `models.js`：识别模型（#168）的状态、下载进度轮询和请求，整个 App 共用；`onModels(before)` 在每次读取或改动后通知界面。
   `jobs.js`：后台任务（同步、检查新角色、角色名称、相似图片、找回画师、导入）的轮询、状态文字和开始 / 取消；同一任务的轮询重叠时旧回复不会把状态改回去（#34），任务在跑时轮询自己续上。每次回复生效后 `onJob(job, change)` 通知界面（`change.ended` 表示一次运行刚结束，同步的 `change.arrived` 表示进来了新图或运行告一段落）。`state.js`：页面共用的状态（地址、图库列表与选择、计数、各任务最近一次回复等），全部字段在这里声明，按归属分组，每组只有一个写入者（组标题写明），别的模块要改就调用写入者的函数（#344）。`modes.js`：图片交互的四个模式（浏览、选择、详情、大图）、当前图的来源和快捷键动作表，只读 `state`（见 [WEB_UI_MAP.md](WEB_UI_MAP.md) 第 6 节）。`events.js`：各模块通知界面用的监听表。`settings.js`：设置页读写的数据（启动开关、折叠、备份与缓存、界面语言、名称的联网授权与模型接口、图库与来源、账号与 Pixiv 登录等待、检查更新），`onSettings(what, detail)` 通知。`labels.js`：排除原因、相似关系等名称，以及角色名的悬停提示。`catalog.js`：资料库的数据（按作品分组的角色、近 30 天新增、列表的分档与排序、搜索、作品树、关注列表与作品的新建和编辑）。`pages.js`：页面注册表（每个页面一个声明：地址、主区、点击语义、侧栏高亮、子页签、工具栏、排序、后端 pool 参数、空状态、底栏提示、选择栏种类；`ui/` 在加载时用 `implement()` 登记渲染入口、标题和重画方式，见 [WEB_UI_MAP.md](WEB_UI_MAP.md)「新增一个页面要做什么」）。`route.js`：地址与路由（`#/页面/子页?参数` 的读写；`cleanup()`／`browsing()` 等「这是哪类页面」的判断从注册表派生）。`meta.js`：图库元数据（角色、待整理计数、用户标签、最近一步撤销）一起读取，读的过程中有写入时不会被旧回复覆盖，`onMeta()` 通知。会话令牌和过期标记只由 `session.js` 写（切换图库时用 `leaveSession()`）。
-- `web/static/ui/`：桌面布局。`dom.js`（`$()`、`⌘` 改写为 Ctrl、提示条与其中的撤销、错误横幅、工具栏的撤销按钮、可折叠块；`wireDom()` 在启动时挂上停用横幅与撤销按钮）、`tasks.js`（任务面板：列表、等你确认的事、按钮；面板打开时顺带读取图库列表，每次刷新后做一次更新检查；`wireTasks()`）、`settings.js`（设置各页与卡片；`wireSettings()` 在启动时注册事件）、`catalog.js`（资料库：角色书架与列表、作品树、编辑作品与添加新角色的对话框、关注作品的选择框；`wireCatalog()` 在启动时注册事件）、`shell.js`（页面框架：按地址打开页面、侧栏计数、各页的标题与工具栏；`wireShell()`）、`palette.js`（对角色的操作：命令面板「换成 / 也是 / 设为角色 / 跳到角色」、原创角色、编辑资料、合并、判断所选图片的关系；`wirePalette()`）、`detail.js`（单张图：详情面板、偶尔一问「是 TA 吗？」、全屏大图；`wireDetail()`）、`grid.js`（图片网格：分页读取、虚拟网格与缩放、选择与选择栏的操作、撤销、快捷键、视图选项、R18 筛选；`wireGrid()`；`kept.hold` 是列表变化时保持在视野里的那张图，详情面板和大图也用它）、`dialog.js`（运行时模态对话框的唯一生成函数 `openDialog`，以及建在它上面的确认对话框和选择本地作品；`catalog.js`、`palette.js` 的对话框也走它）、`overlay.js`（浮层管理器：浮层的栈、Esc、点外关闭、焦点归还，不 import 别的 ui/ 模块；`wireOverlays()` 要排在其他 wire 之前，规则见 [WEB_UI_MAP.md](WEB_UI_MAP.md) 第 3 节）、`home.js`（首页：按加入日期分组的新图、同步进度条、「认一认」卡片；`wireHome()`）、`review.js`（整理各页：未识别图片的分组、相似图片、相似角色、画师核对；`wireReview()`）、`artists.js`（详情面板里的画师一节和查找画师，第一次查找前先征得同意）、`artist_dir.js`（资料库的画师页签：按画师浏览的头像卡片、搜索、排序和分页接着读，#448；工具栏和标题副标题由 `shell.js` 向它要，不导入 `shell.js`、`catalog.js`）、`guide.js`（新图库引导：导览、上手清单、适时的提问；`wireGuide()`）、`models.js`（识别模型的提示条、设置卡片和按钮，#168；`wireModels()`）、`effects.js`（一次写入或任务回复对页面其他地方的影响：重读计数、重画图库与首页、设置卡片、引导）。
+- `web/static/ui/`：桌面布局。`dom.js`（`$()`、`⌘` 改写为 Ctrl、提示条与其中的撤销、错误横幅、工具栏的撤销按钮、可折叠块；`wireDom()` 在启动时挂上停用横幅与撤销按钮）、`tasks.js`（任务面板：列表、等你确认的事、按钮；面板打开时顺带读取图库列表，每次刷新后做一次更新检查；`wireTasks()`）、`settings.js`（设置各页与卡片；`wireSettings()` 在启动时注册事件）、`catalog.js`（资料库：角色书架与列表、作品树、编辑作品与添加新角色的对话框、关注作品的选择框；`wireCatalog()` 在启动时注册事件）、`shell.js`（页面框架：按地址打开页面、侧栏计数、各页的标题与工具栏；`wireShell()`）、`palette.js`（对角色的操作：命令面板「换成 / 也是 / 设为角色 / 跳到角色」、原创角色、编辑资料、合并、判断所选图片的关系；`wirePalette()`）、`detail.js`（单张图：详情面板、偶尔一问「是 TA 吗？」、全屏大图；`wireDetail()`）、`grid.js`（图片网格：分页读取、虚拟网格与缩放、选择与选择栏的操作、撤销、快捷键、视图选项、NSFW 筛选；`wireGrid()`；`kept.hold` 是列表变化时保持在视野里的那张图，详情面板和大图也用它）、`dialog.js`（运行时模态对话框的唯一生成函数 `openDialog`，以及建在它上面的确认对话框和选择本地作品；`catalog.js`、`palette.js` 的对话框也走它）、`overlay.js`（浮层管理器：浮层的栈、Esc、点外关闭、焦点归还，不 import 别的 ui/ 模块；`wireOverlays()` 要排在其他 wire 之前，规则见 [WEB_UI_MAP.md](WEB_UI_MAP.md) 第 3 节）、`home.js`（首页：按加入日期分组的新图、同步进度条、「认一认」卡片；`wireHome()`）、`review.js`（整理各页：未识别图片的分组、相似图片、相似角色、画师核对；`wireReview()`）、`artists.js`（详情面板里的画师一节和查找画师，第一次查找前先征得同意）、`artist_dir.js`（资料库的画师页签：按画师浏览的头像卡片、搜索、排序和分页接着读，#448；工具栏和标题副标题由 `shell.js` 向它要，不导入 `shell.js`、`catalog.js`）、`guide.js`（新图库引导：导览、上手清单、适时的提问；`wireGuide()`）、`models.js`（识别模型的提示条、设置卡片和按钮，#168；`wireModels()`）、`effects.js`（一次写入或任务回复对页面其他地方的影响：重读计数、重画图库与首页、设置卡片、引导）。
 - `ui/` 模块之间互相导入，`core/` 不导入 `ui/`。`ui/` 模块之间有循环导入，但载入时都不调用其他 `ui/` 模块的导出，所以没有问题；新模块也要保持这一点。依赖方向、`state` 字段声明、全局监听、`<dialog>` 外壳和行长由 `tools/check_frontend.py` 检查，存量冻结在 `tools/frontend_baseline.json`、只能缩小（#320，规则见 [AGENTS.md](../AGENTS.md#前端结构约定)）。
 - **输入框的键盘处理（2026-11-13，#388）**：用中文、日文输入法时，选候选词要按回车、挑候选要按方向键和数字键、取消组字要按 Esc，这些按键不是页面的操作。所以每个 `keydown`（以及 `keyup`、`keypress`）处理函数的第一句都是 `if (composing(e)) return;`，`composing` 来自 `core/keys.js`，判断是 `e.isComposing || e.keyCode === 229`。只判断 `isComposing` 不够：WebKit（macOS 桌面 App 的 WKWebView）里结束组字的那一次按键，`isComposing` 已经是 false，只有 `keyCode` 仍是 229（WebKit bug 165004）。这条判断只在 `core/keys.js` 写一处，别处不直接读 `isComposing` 或 `keyCode`；`document` 级的快捷键处理（`ui/grid.js`）和浮层管理器的 Esc（`ui/overlay.js`）同样先判断，组字时一律放行给输入法。新写的键盘处理函数没有调用 `composing(` 时，`tools/check_frontend.py` 规则 9 报错（没有基线）。输入框之外的元素（海报、按钮）上的键盘处理也要写，为的是规则不用区分元素；`input` 事件不受影响，组字过程中它照常触发。
 
@@ -127,7 +127,7 @@
 
 - **注册表**（`core/pages.js`）：每个页面声明属于活页条的哪个一级入口（`entry`：`library`、`catalog`、`galleries`、`tidy`、`settings`，画师抽查是 `''`）和在二级层里选中哪一项（`item`，整理的五个队列）；随地址变的那一项（某个画廊、收藏、钉住的角色）由 `core/rail.js` 的 `railAt(route)` 算。图库有三种视图：`days`（按天，`#/days`，原来的首页；`#/`、`#/home`、`#/recent` 改写到这里）、`library`（网格，`#/library`，地址和查询照旧）、`calendar`（日历，`#/calendar`）；`view` 写是哪一种，`filters` 标出读图库筛选的页面（三种视图和画廊），切换视图时筛选跟着走。整理的入口 `#/tidy` 改写到按组整理。角色页在活页条上属于资料库。
 - **活页条**（`ui/rail.js`，数据在 `core/rail.js`，样式 `css/rail.css`）：全应用一个，挂在 `app` 作用域上。各页要换二级层的内容用 `provide(entry, fn)`（`fn()` 返回项的列表，`refresh(entry)` 时重新调），选中某项用 `select(key)`，按天视图滚到某一天用 `selectDay(day)`，点了二级项要自己处理（滚到那一天）用 `onPick(entry, fn)`，改队列的数字用 `count(key, n)`，拖放时临时换一组项用 `mode(name, items, hint)`。每一项的字段写在 `core/rail.js` 开头。图库的时间轴：最近 5 天各一项，更早的同一年按月、再早的按年（用户 2026-11-19 定）；数据按 `/api/calendar` 的 `prev` 一个月一个月往前读。资料库钉住的项按图库存在浏览器本地（`libraryPrefs`，键 `railPins`）。⌘1–4（Windows 上 Ctrl）切一级，⌥↑↓ 在二级里移动，⌥⇧↑↓ 挪动钉住的项，走 `ui/grid.js` 现有的键盘处理。窄窗口（≤760px）二级层收进抽屉，页头左边的按钮打开。
-- **页头**：标题、副标题和本页的链接由各页的 `heading` 返回（`ui/shell.js` 画）；图库三种视图之间、整理三个页签之间的分段切换由框架按注册表画；右侧是全局的控件组（跳到角色、R18、视图选项、撤销、快捷键）。下面的工具栏是 `#toolbar`，空的页面藏起来。
+- **页头**：标题、副标题和本页的链接由各页的 `heading` 返回（`ui/shell.js` 画）；图库三种视图之间、整理三个页签之间的分段切换由框架按注册表画；右侧是全局的控件组（跳到角色、NSFW、视图选项、撤销、快捷键）。下面的工具栏是 `#toolbar`，空的页面藏起来。
 - **空状态**：`ui/empty.js` 的 `drawEmpty(box, {icon, fact, next})`；网格页按注册表的 `emptyIcon`、`empty`、`emptyNext` 画，`emptyNext` 返回 `[{label, href}]` 或 `[{label, act}]`。
 
 ### 页面样板（#706）
@@ -342,7 +342,7 @@ change/reassign 的选择方式二选一：
 
 相似组的「看过了」（#427）：`POST /api/similar/seen {"gid":组号,"size":张数,"nsfw":"","seen":true}` 记下这组现在看得到的成员（按 `nsfw` 筛选，和列表同一口径），`seen:false` 把这组的图从覆盖它的标记里去掉。`size` 是界面显示的张数，和现在的成员数对不上时回 409（组刚变过），组不存在或只剩一张回 400，已经是要的状态也回 400。返回 `undo`，撤销恢复原来的行，不触发学习。存储见 [词条 schema](TERMS_SCHEMA.md#相似组的看过了427)。
 
-条件画廊将当前筛选保存到图库。对 `POST /api/galleries` 传 `action=create` 和 `params`，可带 `name`，省略时由条件生成。传 `action=update`、`id` 和待改字段 `name,params,cover,position`，其中 `cover:null` 恢复自动封面。传 `action=delete` 与 `id` 可删除。每次操作随 `undo` 返回一步历史，创建和更新另返回 `gallery`，写入回复中的封面按隐藏 R18 解析。手选画廊用 `action=create, kind=manual, name` 新建，可带 `ids` 或整批筛选选区。传 `action=add` 或 `action=remove` 与 `id`，目标按 `/api/change` 的 `ids` 或 `filter` 加 `exclude` 给出，超过 500 张以 `confirm:true` 确认。放入已在画廊里的图时成员保持唯一。增删成员各返回 `gallery`、`undo`。条件和手选画廊共用改名、排序、封面和删除操作，手选画廊的成员通过 `add`、`remove` 改动。图库的 `has` 和 `not` 接受 `gallery:<id>`，其中 `id` 是手选画廊编号。现行存储和备份口径见 [词条 schema](TERMS_SCHEMA.md#17-第-11-版04)。
+条件画廊将当前筛选保存到图库。对 `POST /api/galleries` 传 `action=create` 和 `params`，可带 `name`，省略时由条件生成。传 `action=update`、`id` 和待改字段 `name,params,cover,position`，其中 `cover:null` 恢复自动封面。传 `action=delete` 与 `id` 可删除。每次操作随 `undo` 返回一步历史，创建和更新另返回 `gallery`，写入回复中的封面按隐藏 NSFW 解析。手选画廊用 `action=create, kind=manual, name` 新建，可带 `ids` 或整批筛选选区。传 `action=add` 或 `action=remove` 与 `id`，目标按 `/api/change` 的 `ids` 或 `filter` 加 `exclude` 给出，超过 500 张以 `confirm:true` 确认。放入已在画廊里的图时成员保持唯一。增删成员各返回 `gallery`、`undo`。条件和手选画廊共用改名、排序、封面和删除操作，手选画廊的成员通过 `add`、`remove` 改动。图库的 `has` 和 `not` 接受 `gallery:<id>`，其中 `id` 是手选画廊编号。现行存储和备份口径见 [词条 schema](TERMS_SCHEMA.md#17-第-11-版04)。
 
 ## 阶段 1.5–3（2026-09-23，Claude 直接实现）
 
@@ -433,7 +433,7 @@ change/reassign 的选择方式二选一：
 ### 数据与 API
 
 - `curation(uuid,status,origin,created_at)` 是人工决定（`included / excluded`），**不可重建**，永远优先于规则，刷新不覆盖。`auto_rules`、`excluded` 为派生表；`excluded` = 人工排除，或规则排除且没有人工决定。写操作在同一事务内按图重算；测试 `tearDown` 核对它与重新计算的结果一致。
-- `VISIBLE` = 未被折叠 且 未被排除，用于全部列表、`/api/ids`、按条件批量操作和各类计数。`pool=excluded`（可加 `reason=photo|screenshot|text|manual`），`pool=pending`；重复页不显示已排除的图。这个条件、内容筛选（R18 指评级 `questionable`、`explicit`）以及其他 HTTP 读取共用的 SQL 条件，只在 `native/terms/src/sql_fragments.rs` 里定义一处（#205）。
+- `VISIBLE` = 未被折叠 且 未被排除，用于全部列表、`/api/ids`、按条件批量操作和各类计数。`pool=excluded`（可加 `reason=photo|screenshot|text|manual`），`pool=pending`；重复页不显示已排除的图。这个条件、内容筛选（NSFW 指评级 `questionable`、`explicit`）以及其他 HTTP 读取共用的 SQL 条件，只在 `native/terms/src/sql_fragments.rs` 里定义一处（#205）。
 - `POST /api/curate {ids|filter,exclude,action}`，`action=exclude|include|reset`；会扩展到同组副本，整批撤销。每张图返回 `excluded`（原因）；详情返回 `excluded:{reason,origin}`、`curation`、`pending`；`/api/review-pools` 增加 `excluded:{count,reasons}` 与 `pending`。`schema_version` 升为 9。
 - **前端**：侧栏「已排除」，按原因筛选，右上角进入「待确认」；已排除页选中后「恢复收录」，待确认页「排除 / 保留」；其他页面的选择栏和详情里有「排除」，快捷键 X（在已排除页为恢复收录）。
 - **真实库**：图库约少 1%，未识别相应减少；有图的角色少了 28 个（只出现在照片/截图上）。角色列表 97 ms、未识别 86 ms、已排除页 23 ms、侧栏计数 54 ms。
@@ -470,7 +470,7 @@ change/reassign 的选择方式二选一：
 
 - 同步状态显示在侧栏「任务」面板里（2026-10-05 起，原先在侧栏底部的设置入口上）：检查中 / 识别新图 n/N · 约几分钟（预计剩余时间满两小时按小时显示，如「约 13 小时」，2026-11-12，#360）/ 已同步 · 时间 / 出错。同步期间每 2 秒刷新一次，新图导入后各处计数随之更新，完成时弹提示。
 - **新加入**（`#/recent`，`pool=recent`）：最近一次同步加入的图，和图库一样浏览、整理；没有新图时不显示这个入口。
-- **设置**（`#/settings/<分组>`，2026-10-05 起分页）：「图库」页有同步开关、iCloud 照片按 App 的收录统计、排除规则各排除了多少张（可点进对应页面）；「通用」页是显示偏好（方形/原比例、R18、默认排序）；「数据」页是备份（立即备份、最近的备份）和数据位置与大小。「立即同步」和同步记录在任务面板里。
+- **设置**（`#/settings/<分组>`，2026-10-05 起分页）：「图库」页有同步开关、iCloud 照片按 App 的收录统计、排除规则各排除了多少张（可点进对应页面）；「通用」页是显示偏好（方形/原比例、NSFW、默认排序）；「数据」页是备份（立即备份、最近的备份）和数据位置与大小。「立即同步」和同步记录在任务面板里。
 - API：`GET/POST /api/sync`、`GET /api/settings`、`POST /api/backup`。服务参数：`--no-sync`（不同步）、`--no-auto-sync`（只关自动触发）、`--sync-limit N`（每次最多识别最近保存的 N 张，试跑用）；Photos 图库路径在 `library.json` 的来源配置里。
 
 ### 撤回方式
@@ -541,7 +541,7 @@ change/reassign 的选择方式二选一：
 `order` 可取 `count`（默认）、`recent` 或 `name`（按大小写折叠后的显示名排序），同序时按 key 排定。
 `offset` 默认 0，`limit` 默认 60（1–200）；空页仍返回查询对应的总画师数。
 
-界面是资料库的「画师」页签（`#/characters/artists`，`ui/artist_dir.js`）：一次读 120 位，滚到底接着读；排序选过的记在偏好 `artistOrder`；张数跟着全局 R18 开关；点一位画师进入 `#/library?artist=<key>`。从那里后退回目录时沿用已经读过的页和滚动位置。
+界面是资料库的「画师」页签（`#/characters/artists`，`ui/artist_dir.js`）：一次读 120 位，滚到底接着读；排序选过的记在偏好 `artistOrder`；张数跟着全局 NSFW 开关；点一位画师进入 `#/library?artist=<key>`。从那里后退回目录时沿用已经读过的页和滚动位置。
 
 ## 画师 OC（2026-09-24）
 

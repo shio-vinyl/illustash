@@ -305,7 +305,7 @@ export const FLOWS = [
     covers: ['#386 1-8'],
     async run(w, page) {
       let snap = await w.step('打开图库', () => goto(page, '#/library'));
-      await w.step('R18 只看全年龄（页头按钮，等提示消失）', async p => {
+      await w.step('NSFW 只看全年龄（页头按钮，等提示消失）', async p => {
         await p.key('h');
         if (!await p.waitFor(`document.getElementById('toast').hidden`, 6000)) throw new Error('筛选提示没有消失');
       });
@@ -319,7 +319,7 @@ export const FLOWS = [
       w.check('到了设置页', snap.hash.startsWith('#/settings'), snap.hash);
       snap = await w.step('浏览器后退', async p => { await p.eval('history.back()'); await gridReady(p); await sleep(400); }, {shot: true});
       w.check('后退回到图库，地址一样', snap.hash === before.hash, {before: before.hash, now: snap.hash});
-      w.check('张数一样（R18 筛选还在）', snap.total === before.total, {before: before.total, now: snap.total});
+      w.check('张数一样（NSFW 筛选还在）', snap.total === before.total, {before: before.total, now: snap.total});
       w.check('滚动位置回来了', Math.abs(snap.scroll - before.scroll) < 60, {before: before.scroll, now: snap.scroll});
       w.check('详情栏还是那张', snap.focused === before.focused, {before: before.focused, now: snap.focused});
       await w.step('点活页条的资料库', p => goto(p, '#/characters'));

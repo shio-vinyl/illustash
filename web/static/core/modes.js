@@ -128,7 +128,7 @@ export const SHORTCUTS = [
   {keys: '⌘+ / ⌘−', codes: ['=', '+', '-'], does: () => t('缩放图片网格；大图打开时缩放大图')},
   {keys: () => t('捏合 · ⌘ 滚动'), codes: [], does: () => t('缩放图片网格；在大图上缩放大图')},
   {keys: 'R', codes: ['r'], does: () => t('切换原比例 / 方形裁切')},
-  {keys: 'H', codes: ['h'], does: () => t('隐藏 / 显示 R18 内容（页头的 R18 按钮还可以切换为只看 R18）')},
+  {keys: 'H', codes: ['h'], does: () => t('隐藏 / 显示 NSFW 内容（页头的 NSFW 按钮还可以切换为只看 NSFW）')},
   {keys: '⌘Z', codes: ['z'], does: () => t('撤销')},
   {keys: 'Esc', codes: ['Escape'], does: () => t('关闭最上面的菜单、对话框或大图，然后是详情栏，最后取消选择；在输入框里先离开输入框')},
   {keys: () => t('命令面板里'), codes: [], does: () => t('↑ ↓ 移动，↵ 选中，Shift ↵ 暂存多个一起设，输入框为空时 1–9 直接选')},

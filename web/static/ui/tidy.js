@@ -53,10 +53,10 @@ implement({
   sgroup: {subTabs, help: () => [t('选中两张以上可以判断它们的关系。')], helpHint: true},
   excluded: {heading: tidy, subTabs, helpHint: true},
   pending: {heading: tidy, subTabs, help: () => [t('像截图，但有人物。')], helpHint: true, emptyNext: () => [{label: t('回到已排除'), href: '#/excluded'}]},
-  audit: {heading: (r, {n}) => [t('随机抽查'), t('还剩 {left} / {n} 张', {left: number(state.pools.audit || 0), n}) + (state.nsfw ? ` · <b>${t('R18 筛选开着：抽查要看全部才准，按 H 切换')}</b>` : '')],
+  audit: {heading: (r, {n}) => [t('随机抽查'), t('还剩 {left} / {n} 张', {left: number(state.pools.audit || 0), n}) + (state.nsfw ? ` · <b>${t('NSFW 筛选开着：抽查要看全部才准，按 H 切换')}</b>` : '')],
     help: () => [t('鼠标移到角色 tag 上，点 ✓ 或 ✗ 回答。'), t('选中多张后按 Y（是）或 N（不是）。'), t('打开大图也可以回答。'), t('看不清的可以跳过，换一张。')]},
   identity: {heading: () => [t('身份整理'), t('{n} 对长得像的角色', {n: number(state.identityCount || 0)})],
     help: () => [t('按涉及的图片数排序。'), t('高亮的按钮是外部资料建议的做法。')]},
-  'artist-audit': {heading: () => [t('画师抽查'), state.nsfw ? `<b>${t('这页不按 R18 筛选：R18 的图也在里面')}</b>` : ''],
+  'artist-audit': {heading: () => [t('画师抽查'), state.nsfw ? `<b>${t('这页不按 NSFW 筛选：NSFW 的图也在里面')}</b>` : ''],
     help: () => [t('一组固定的随机图，逐张核对「找回画师」找到的画师。'), t('每次打开都是同一批。')]},
 });

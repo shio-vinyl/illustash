@@ -395,7 +395,7 @@ export async function renderSettings(fetchMissing = true, refresh = false) {
     setDisplay: () => cardHead(t('显示'), '', 'browser') + `
       <div class="setting-line"><span>${t('外观')}</span>${segment('theme', [['', t('跟随系统')], ['light', t('浅色')], ['dark', t('深色')]], prefs.get('theme', ''))}</div>
       <div class="setting-line"><span>${t('图片网格')}</span>${segment('fit', [['0', t('方形裁切')], ['1', t('原比例')]], state.fit ? '1' : '0')}</div>
-      <div class="setting-line"><span>${t('R18 内容')}</span>${segment('nsfw', [['', t('显示')], ['hide', t('隐藏')], ['only', t('只看 R18')]], state.nsfw)}</div>
+      <div class="setting-line"><span>${t('NSFW 内容')}</span>${segment('nsfw', [['', t('显示')], ['hide', t('隐藏')], ['only', t('只看 NSFW')]], state.nsfw)}</div>
       <div class="setting-line"><span>${t('图库默认排序')}</span>${segment('sortLibrary', [['newest', t('最新加入')], ['oldest', t('最早加入')]], sort)}</div>
       <div class="setting-line"><span>${t('按角色筛选时的默认排序')}</span>${segment('sortCharacter', [['suspicious', t('可疑优先')], ['newest', t('最新加入')], ['oldest', t('最早加入')]], csort)}</div>
       <p class="set-foot">${t('缩略图大小、图上显示什么、详情面板的内容，在顶栏的「视图选项」里调。')}</p>`,
@@ -660,7 +660,7 @@ function pixivAccount(a) {
       : `<p class="muted-note">${t('请从 Illustash 桌面 app 打开设置，在它的 Pixiv 窗口里登录。')}</p>`;
   const login = label => state.pixivWaiting ? `<span class="muted-note">${t('正在等你在 Pixiv 窗口里登录…')}</span>` : `<button class="quiet" data-acct-login>${label}</button>`;
   if (!p.bound) {
-    return desk ? `<p class="muted-note">${t('打开 Pixiv 官方登录页，由你亲手登录（出现人机验证请自己完成）；登录状态只留在 app 的 Pixiv 窗口里。登录后才能看到 R18 作品。Pixiv 没有给第三方开放接口，这里用的是网页自己的接口，低频只读。Illustash 不是 pixiv 开发或分发的应用。')}</p>
+    return desk ? `<p class="muted-note">${t('打开 Pixiv 官方登录页，由你亲手登录（出现人机验证请自己完成）；登录状态只留在 app 的 Pixiv 窗口里。登录后才能看到 NSFW 作品。Pixiv 没有给第三方开放接口，这里用的是网页自己的接口，低频只读。Illustash 不是 pixiv 开发或分发的应用。')}</p>
       <div class="setting-line"><span>${t('尚未登录')}</span><span>${login(t('登录 Pixiv…'))}</span></div>` : pasteHint + (devMode ? paste(t('绑定')) : '');
   }
   const line = `<div class="setting-line"><span>${p.expired ? `<span class="acct-expired">${t('登录已过期')}</span>` : t('已绑定')}<small class="line-hint">`
@@ -669,7 +669,7 @@ function pixivAccount(a) {
       + `<span>${desk && !p.expired ? login(inApp ? t('打开 Pixiv 窗口') : t('改用窗口登录…')) : ''}<button class="quiet" data-acct-check="pixiv">${t('重新检查')}</button>`
       + `<button class="quiet" data-acct-unbind="pixiv">${t('解绑')}</button></span></div>`;
   if (!p.expired) return line;
-  const why = t('找回画师会暂停查 Pixiv，免得在没登录的状态下漏掉 R18 作品。');
+  const why = t('找回画师会暂停查 Pixiv，免得在没登录的状态下漏掉 NSFW 作品。');
   if (desk) return line + `<p class="muted-note">${t('Pixiv 不再接受这个登录（退出过，或者过期了）。')}${why}${t('在 Pixiv 窗口里重新登录一次就能恢复。')}${p.window_logged_in ? t('窗口里已经重新登录了，点「重新检查」确认。') : ''}</p>
       <div class="setting-line"><span>${t('重新登录')}</span><span>${login(t('重新登录 Pixiv…'))}</span></div>`;
   if (inApp) return line + `<p class="muted-note">${t('Pixiv 登录在桌面 app 的 Pixiv 窗口里。')}${why}${t('请从 Illustash 桌面 app 打开，再重新登录。')}</p>`;
@@ -706,7 +706,7 @@ export function renderProvenanceCard() {
           : t('新加入的图只在本机做签名识别；要联网查，在任务面板里每次授权')}${p.frozen ? ' · ' + t('测试图库不同步，这个开关不起作用') : ''}</small></span>`
       + `<input type="checkbox" class="switch" id="provAuto" ${p.auto ? 'checked' : ''}></label>
     ${cov ? `<a class="setting-line set-link" href="#/artist-audit"><span>${t('画师抽查')}<small class="line-hint">${t('50 张随机图，逐张核对找到的画师')}</small></span><span>›</span></a>` : ''}
-    ${state.accounts && !state.accounts.pixiv?.bound ? `<p class="settings-note net-foot">${t('登录 Pixiv 后才能比对 R18 作品（见下方「账号」）。')}</p>` : ''}`;
+    ${state.accounts && !state.accounts.pixiv?.bound ? `<p class="settings-note net-foot">${t('登录 Pixiv 后才能比对 NSFW 作品（见下方「账号」）。')}</p>` : ''}`;
   // 运行期间会轮询：只在有变化时重画，这样点击绝不会因为按钮被替换而丢失。
   if (!redraw(card, html)) return;
   wireFolds(card);

@@ -2,6 +2,15 @@
   "reference_terms_version": 7,
   "tables": [
     {
+      "name": "gallery_members",
+      "introduced_in": 11,
+      "checks": [
+        "native/terms/tests/contracts.rs::manual_gallery_http_contract",
+        "native/terms/src/app_upgrade.rs::v10_gallery_and_favorite_survive_upgrade_and_legacy_undo",
+        "native/terms/src/app_archives.rs::gallery_roundtrips_in_exported_library"
+      ]
+    },
+    {
       "name": "galleries",
       "introduced_in": 10,
       "checks": [

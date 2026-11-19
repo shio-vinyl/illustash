@@ -151,6 +151,7 @@ pub(crate) struct Session {
     pub(crate) auto_sync: bool,
     pub(crate) research: crate::app_research::Research,
     pub(crate) examples: Arc<crate::example_cache::Cache>,
+    colors: crate::app_colors::Worker,
     pub(crate) onboarding: crate::app_onboarding::Onboarding,
     /// 与会话绑定的人工结论自动保护；关闭时取消，不等待整库哈希。
     pub(crate) human_backups: crate::app_human_conclusions::Backups,
@@ -214,6 +215,7 @@ impl Session {
             auto_sync: true,
             research,
             examples: Default::default(),
+            colors: Default::default(),
             onboarding,
             human_backups: Default::default(),
             human_exports: Default::default(),
@@ -238,6 +240,9 @@ impl Session {
     }
     /// 启动到期的后台检查（`delay` 让页面先加载）。
     pub(crate) fn start_checks(&mut self, delay: std::time::Duration) {
+        if !self.halted {
+            self.colors.start(&self.library);
+        }
         if let Err(error) = self.human_backups.start(&self.library, self.generation, &self.token) {
             eprintln!("人工备份未能启动：{error}");
         }
@@ -393,6 +398,7 @@ impl Application {
             auto_sync,
             research,
             examples: Default::default(),
+            colors: Default::default(),
             onboarding,
             human_backups: Default::default(),
             human_exports: Default::default(),
@@ -619,6 +625,7 @@ impl Session {
     }
     /// 发现损坏：停止所有任务，不在图库包里排队或记录任何东西。
     fn halt(&mut self) {
+        self.colors.stop();
         self.human_backups.stop();
         self.human_exports.stop();
         self.asset_exports.stop();

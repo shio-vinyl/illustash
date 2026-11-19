@@ -472,6 +472,90 @@ mod tests {
         }
     }
     #[test]
+    fn v10_gallery_and_favorite_survive_upgrade_and_legacy_undo() {
+        use crate::{http_json::parse_request, store};
+        use rusqlite::params;
+        use serde_json::json;
+
+        let f = Fixture::new(10);
+        let mut c = f.connection();
+        let tx = c.transaction().unwrap();
+        crate::schema::begin_writing(&tx).unwrap();
+        tx.execute("INSERT INTO assets(uuid) VALUES ('a'),('b')", []).unwrap();
+        let term = store::create_term(&tx, crate::Kind::Mark, Some(crate::schema::FAVORITE_KEY), "user").unwrap();
+        let asset = store::library_asset(&tx, "a").unwrap().unwrap();
+        store::judge_in(
+            &tx,
+            &[store::VerdictTarget::Image { asset, term }],
+            store::Verdict::Yes,
+            "user",
+            "",
+            "已收藏 1 张",
+        )
+        .unwrap();
+        let filters = json!({"has":"[\"fav\"]","order":"oldest"});
+        let ts = "2026-11-10 00:00:00";
+        tx.execute("INSERT INTO galleries VALUES (12,'条件画廊',?,'a',4,?,?)", params![filters.to_string(), ts, ts])
+            .unwrap();
+        // 保留 v10 的历史数据形状，新 schema 继续能撤销此前的改名。
+        let before = json!([{"gallery":{"id":12,"row":{"id":12,"name":"原来名字","params":filters.to_string(),
+            "cover":"a","position":4,"created_at":ts,"updated_at":ts}}}]);
+        tx.execute("INSERT INTO actions(label,before_json) VALUES (?,?)", ["已更新画廊", &before.to_string()]).unwrap();
+        let action = tx.last_insert_rowid();
+        crate::schema::commit_writing(tx).unwrap();
+        drop(c);
+
+        let report = run(&needed(&f.0).unwrap(), None).unwrap();
+        assert_eq!((report.before, report.after, f.backups()), (10, 11, 1));
+        let backup = app_library::read_connection(&report.backup).unwrap();
+        assert_eq!(crate::schema::version(&backup).unwrap(), 10);
+        let c = f.connection();
+        assert_eq!(c.query_row("SELECT count(*) FROM gallery_members", [], |r| r.get::<_, i64>(0)).unwrap(), 0);
+        let context = crate::http::LibraryContext {
+            examples: None,
+            db: f.0.join("library.sqlite"),
+            generation: "synthetic".into(),
+            library: Some(f.0.clone()),
+            tags: f.0.join("unused.csv"),
+            source: Some(f.0.join("source.sqlite")),
+            token: Some("synthetic".into()),
+            read_only: None,
+        };
+        let expect_gallery = |name: &str| {
+            let rows = crate::app_galleries::read(&c, "").unwrap();
+            let crate::http_json::Json::Array(rows) = rows else {
+                panic!("画廊列表应为数组");
+            };
+            assert_eq!(rows.len(), 1);
+            assert_eq!(rows[0].field("name").text(), name);
+            assert_eq!(rows[0].field("id").integer(), 12);
+            assert_eq!(rows[0].field("params").field("has").text(), filters["has"].as_str().unwrap());
+            assert_eq!(rows[0].field("position").integer(), 4);
+            assert!(rows[0].get("kind").is_none());
+            let covers = crate::app_galleries::covers(&c, &context, "", "[12]").unwrap();
+            let crate::http_json::Json::Array(covers) = covers else {
+                panic!("封面列表应为数组");
+            };
+            assert_eq!(covers[0].field("cover").text(), "a");
+        };
+        expect_gallery("条件画廊");
+        let filters = std::collections::HashMap::from([("has".into(), "[\"fav\"]".into())]);
+        let (where_, args, _) = crate::http_browse::selection(&c, &context, &filters).unwrap();
+        let ids = c
+            .prepare(&format!("SELECT a.uuid FROM assets a WHERE {where_}"))
+            .unwrap()
+            .query_map(rusqlite::params_from_iter(args), |r| r.get::<_, String>(0))
+            .unwrap()
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .unwrap();
+        assert_eq!(ids, ["a"]);
+        let req = |path, data: &serde_json::Value| {
+            crate::app_commands::request(&context, path, &parse_request(&data.to_string()).unwrap()).unwrap()
+        };
+        req("/api/undo", &json!({"id":action}));
+        expect_gallery("原来名字");
+    }
+    #[test]
     fn v8_curation_history_survives_normal_upgrade_and_application_undo() {
         use illustash_core::human_conclusions::state::{self, Domain, State};
         use serde_json::json;

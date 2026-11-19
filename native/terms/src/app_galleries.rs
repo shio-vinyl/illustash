@@ -1,4 +1,4 @@
-//! 保存浏览选区的参数、手动封面和排序。派生的封面使用同一事务内的浏览选区查询。
+//! 保存画廊的条件、手选成员、封面和顺序。封面沿用同一事务内的图库选区查询。
 
 use crate::{app_commands, http::LibraryContext, http_browse, http_json::Json, Error, Result};
 use illustash_core::error::invalid;
@@ -11,7 +11,28 @@ use std::collections::{BTreeMap, HashMap};
 
 const SAVED: &[&str] =
     &["has", "not", "from", "to", "q", "tag", "utag", "work", "artist", "day", "like", "like_by", "order"];
-const COLUMNS: &str = "id,name,params,cover,position,created_at,updated_at";
+const COLUMNS: &str = "id,name,params,cover,position,created_at,updated_at,kind";
+
+#[derive(Clone, Copy, Default, Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
+enum Kind {
+    #[default]
+    Condition,
+    Manual,
+}
+
+impl Kind {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Condition => "condition",
+            Self::Manual => "manual",
+        }
+    }
+
+    fn is_condition(&self) -> bool {
+        matches!(self, Self::Condition)
+    }
+}
 
 #[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -23,6 +44,24 @@ struct Row {
     position: i64,
     created_at: String,
     updated_at: String,
+    #[serde(default, skip_serializing_if = "Kind::is_condition")]
+    kind: Kind,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct Before {
+    id: i64,
+    row: Option<Row>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    members: Option<Members>,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+enum Members {
+    Added(Vec<String>),
+    Removed(Vec<String>),
 }
 
 impl Row {
@@ -35,23 +74,43 @@ impl Row {
             position: row.get(4)?,
             created_at: row.get(5)?,
             updated_at: row.get(6)?,
+            kind: if row.get_ref(7)?.as_str()? == "manual" { Kind::Manual } else { Kind::Condition },
         })
     }
 
     fn params(&self) -> Result<HashMap<String, String>> {
+        if matches!(self.kind, Kind::Manual) {
+            let token = format!("gallery:{}", self.id);
+            return Ok(HashMap::from([("has".into(), json!([token]).to_string())]));
+        }
         serde_json::from_str(&self.params)
             .map_err(|e| Error::Io(std::io::Error::new(std::io::ErrorKind::InvalidData, e)))
     }
 
     fn describe(&self) -> Result<Json> {
-        let params: Value = serde_json::from_str(&self.params)
-            .map_err(|e| Error::Io(std::io::Error::new(std::io::ErrorKind::InvalidData, e)))?;
-        Ok(Json::object([
+        let params = if matches!(self.kind, Kind::Manual) {
+            json!(self.params()?)
+        } else {
+            serde_json::from_str(&self.params)
+                .map_err(|e| Error::Io(std::io::Error::new(std::io::ErrorKind::InvalidData, e)))?
+        };
+        let mut gallery = Json::object([
             ("id", self.id.into()),
             ("name", self.name.clone().into()),
             ("params", params.into()),
             ("position", self.position.into()),
-        ]))
+        ]);
+        if matches!(self.kind, Kind::Manual) {
+            gallery.set("kind", self.kind.as_str().into());
+        }
+        Ok(gallery)
+    }
+
+    fn require_manual(&self) -> Result<()> {
+        if self.kind.is_condition() {
+            return invalid("请选择手选画廊");
+        }
+        Ok(())
     }
 
     fn current_cover(&self, c: &Connection, context: &LibraryContext, nsfw: &str) -> Result<Option<String>> {
@@ -201,30 +260,77 @@ fn name(body: &Json) -> Result<Option<String>> {
         .transpose()
 }
 
+fn change_members(c: &Connection, id: i64, ids: &[String], add: bool) -> Result<Vec<String>> {
+    let ids = json!(ids).to_string();
+    let sql = if add {
+        "INSERT INTO gallery_members(gallery_id,uuid) SELECT ?1,value FROM json_each(?2) WHERE 1
+         ON CONFLICT(gallery_id,uuid) DO NOTHING RETURNING uuid"
+    } else {
+        "DELETE FROM gallery_members WHERE gallery_id=?1 AND uuid IN (SELECT value FROM json_each(?2)) RETURNING uuid"
+    };
+    let mut stmt = c.prepare(sql)?;
+    let changed = stmt.query_map(params![id, ids], |r| r.get(0))?.collect::<rusqlite::Result<_>>()?;
+    Ok(changed)
+}
+
+fn create(c: &Connection, context: &LibraryContext, body: &Json, now: &str) -> Result<i64> {
+    let kind = match body.get("kind") {
+        None => Kind::Condition,
+        Some(value) if text(value) == Some("condition") => Kind::Condition,
+        Some(value) if text(value) == Some("manual") => Kind::Manual,
+        _ => return invalid("画廊类型不正确"),
+    };
+    let (name, saved, ids) = match kind {
+        Kind::Condition => {
+            let filter = canonical(c, context, body.get("params").ok_or_else(|| Error::invalid("筛选参数不正确"))?)?;
+            let name = name(body)?.unwrap_or_else(|| default_name(&filter));
+            (name, json!(filter).to_string(), Vec::new())
+        }
+        Kind::Manual => {
+            if body.get("params").is_some() {
+                return invalid("手选画廊使用图片列表");
+            }
+            let name = name(body)?.ok_or_else(|| Error::invalid("画廊名称应为 1–60 个字符"))?;
+            let ids = match (body.get("ids"), body.get("filter"), body.get("exclude")) {
+                (None, None, None) => Vec::new(),
+                (Some(Json::Array(ids)), None, None) if ids.is_empty() => Vec::new(),
+                _ => app_commands::selected(c, context, body)?,
+            };
+            (name, "{}".into(), ids)
+        }
+    };
+    let last: i64 = c.query_row("SELECT coalesce(max(position),-1) FROM galleries", [], |r| r.get(0))?;
+    let position = last.checked_add(1).ok_or_else(|| Error::invalid("画廊顺序不正确"))?;
+    c.execute(
+        "INSERT INTO galleries(name,params,position,created_at,updated_at,kind) VALUES (?1,?2,?3,?4,?4,?5)",
+        params![name, saved, position, now, kind.as_str()],
+    )?;
+    let id = c.last_insert_rowid();
+    if !ids.is_empty() {
+        change_members(c, id, &ids, true)?;
+    }
+    Ok(id)
+}
+
 pub(crate) fn write(c: &mut Connection, context: &LibraryContext, body: &Json) -> Result<Json> {
     app_commands::initialized(c)?;
     let tx = c.transaction_with_behavior(TransactionBehavior::Immediate)?;
     let action = body.get("action").and_then(text).unwrap_or("");
     let id = || body.get("id").and_then(integer).ok_or_else(|| Error::invalid("画廊不存在"));
     let now: String = tx.query_row("SELECT CURRENT_TIMESTAMP", [], |r| r.get(0))?;
-    let (id, before, label) = match action {
+    let (before, label) = match action {
         "create" => {
-            let filter = canonical(&tx, context, body.get("params").ok_or_else(|| Error::invalid("筛选参数不正确"))?)?;
-            let name = name(body)?.unwrap_or_else(|| default_name(&filter));
-            let params = serde_json::to_string(&filter).expect("筛选参数可序列化");
-            let last: i64 = tx.query_row("SELECT coalesce(max(position),-1) FROM galleries", [], |r| r.get(0))?;
-            let position = last.checked_add(1).ok_or_else(|| Error::invalid("画廊顺序不正确"))?;
-            tx.execute(
-                "INSERT INTO galleries(name,params,position,created_at,updated_at) VALUES (?1,?2,?3,?4,?4)",
-                params![name, params, position, now],
-            )?;
-            (tx.last_insert_rowid(), None, "已保存画廊")
+            let id = create(&tx, context, body, &now)?;
+            (Before { id, row: None, members: None }, "已保存画廊")
         }
         "update" => {
             let id = id()?;
             let before = stored(&tx, id)?;
             let name = name(body)?.unwrap_or_else(|| before.name.clone());
             let params = if let Some(params) = body.get("params") {
+                if !before.kind.is_condition() {
+                    return invalid("手选画廊使用图片列表");
+                }
                 serde_json::to_string(&canonical(&tx, context, params)?).expect("筛选参数可序列化")
             } else {
                 before.params.clone()
@@ -252,17 +358,37 @@ pub(crate) fn write(c: &mut Connection, context: &LibraryContext, body: &Json) -
                 "UPDATE galleries SET name=?,params=?,cover=?,position=?,updated_at=? WHERE id=?",
                 params![name, params, cover, position, now, id],
             )?;
-            (id, Some(before), "已更新画廊")
+            (Before { id, row: Some(before), members: None }, "已更新画廊")
+        }
+        "add" | "remove" => {
+            let id = id()?;
+            let before = stored(&tx, id)?;
+            before.require_manual()?;
+            let ids = app_commands::selected(&tx, context, body)?;
+            let (members, label) = if action == "add" {
+                (Members::Added(change_members(&tx, id, &ids, true)?), "已放进画廊")
+            } else {
+                (Members::Removed(change_members(&tx, id, &ids, false)?), "已移出画廊")
+            };
+            (Before { id, row: Some(before), members: Some(members) }, label)
         }
         "delete" => {
             let id = id()?;
             let before = stored(&tx, id)?;
+            let members = if matches!(before.kind, Kind::Manual) {
+                let mut stmt = tx.prepare("SELECT uuid FROM gallery_members WHERE gallery_id=? ORDER BY uuid")?;
+                let ids = stmt.query_map([id], |r| r.get(0))?.collect::<rusqlite::Result<_>>()?;
+                Some(Members::Removed(ids))
+            } else {
+                None
+            };
             tx.execute("DELETE FROM galleries WHERE id=?", [id])?;
-            (id, Some(before), "已删除画廊")
+            (Before { id, row: Some(before), members }, "已删除画廊")
         }
         _ => return invalid("画廊操作不正确"),
     };
-    let snapshot = json!([{"gallery":{"id":id,"row":before}}]);
+    let id = before.id;
+    let snapshot = json!([{"gallery":before}]);
     tx.execute("INSERT INTO actions(label,before_json) VALUES (?,?)", [label, &snapshot.to_string()])?;
     let undo = app_commands::last_action(&tx)?;
     let mut result = Json::object([("undo", undo)]);
@@ -279,27 +405,30 @@ pub(crate) fn write(c: &mut Connection, context: &LibraryContext, body: &Json) -
 }
 
 pub(crate) fn restore(c: &Connection, before: &Value) -> Result<()> {
-    #[derive(Deserialize)]
-    #[serde(deny_unknown_fields)]
-    struct Before {
-        id: i64,
-        row: Option<Row>,
-    }
     if before.get("row").is_none() {
         return Err(Error::Io(std::io::Error::other("画廊历史缺少原来的数据")));
     }
     let before: Before = serde_json::from_value(before.clone())
         .map_err(|e| Error::Io(std::io::Error::new(std::io::ErrorKind::InvalidData, e)))?;
     if let Some(row) = before.row {
-        if row.id != before.id {
-            return Err(Error::Io(std::io::Error::other("画廊历史 ID 不一致")));
+        if row.id != before.id || (row.kind.is_condition() && before.members.is_some()) {
+            return Err(Error::Io(std::io::Error::other("画廊历史不一致")));
         }
         c.execute(
-            "INSERT INTO galleries(id,name,params,cover,position,created_at,updated_at) VALUES (?,?,?,?,?,?,?)
+            "INSERT INTO galleries(id,name,params,cover,position,created_at,updated_at,kind) VALUES (?,?,?,?,?,?,?,?)
              ON CONFLICT(id) DO UPDATE SET name=excluded.name,params=excluded.params,cover=excluded.cover,
-               position=excluded.position,created_at=excluded.created_at,updated_at=excluded.updated_at",
-            params![row.id, row.name, row.params, row.cover, row.position, row.created_at, row.updated_at],
+               position=excluded.position,created_at=excluded.created_at,updated_at=excluded.updated_at,kind=excluded.kind",
+            params![row.id, row.name, row.params, row.cover, row.position, row.created_at, row.updated_at, row.kind.as_str()],
         )?;
+        if let Some(members) = before.members {
+            let (ids, add) = match members {
+                Members::Added(ids) => (ids, false),
+                Members::Removed(ids) => (ids, true),
+            };
+            change_members(c, row.id, &ids, add)?;
+        }
+    } else if before.members.is_some() {
+        return Err(Error::Io(std::io::Error::other("画廊历史不一致")));
     } else {
         c.execute("DELETE FROM galleries WHERE id=?", [before.id])?;
     }

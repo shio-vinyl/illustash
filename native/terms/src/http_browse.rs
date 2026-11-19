@@ -105,6 +105,27 @@ pub(crate) fn day_bounds(day: &str) -> Result<(String, String)> {
     }
     Ok((day.to_owned(), format!("{:04}-{:02}-{:02}", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday)))
 }
+/// `added_at` 直接存本地日期，与按天视图一样，读取时不再转换时区。
+fn month_bounds(month: &str) -> Result<(String, String)> {
+    let Some((year, number)) = month.split_once('-') else {
+        return invalid("月份不正确");
+    };
+    if year.len() != 4 || number.len() != 2 || !year.bytes().chain(number.bytes()).all(|c| c.is_ascii_digit()) {
+        return invalid("月份不正确");
+    }
+    let year: u32 = year.parse().map_err(|_| Error::invalid("月份不正确"))?;
+    let number: u32 = number.parse().map_err(|_| Error::invalid("月份不正确"))?;
+    if year == 0 || !(1..=12).contains(&number) {
+        return invalid("月份不正确");
+    }
+    let end = if number == 12 && year < 9999 {
+        format!("{:04}-01-01", year + 1)
+    } else {
+        // 9999-12 使用排序在所有合法月份之后的上界。
+        format!("{year:04}-{:02}-01", number + 1)
+    };
+    Ok((format!("{month}-01"), end))
+}
 fn value<'a>(q: &'a HashMap<String, String>, k: &str) -> &'a str {
     q.get(k).map(String::as_str).unwrap_or("")
 }
@@ -176,6 +197,10 @@ const FILTERS: [&str; 21] = [
     "entity", "variant", "status", "q", "tag", "utag", "pool", "order", "nsfw", "dup", "reason", "cluster", "work",
     "day", "artist", "has", "not", "from", "to", "like", "like_by",
 ];
+fn browse_filters(q: &HashMap<String, String>) -> HashMap<String, String> {
+    q.iter().filter(|(key, _)| FILTERS.contains(&key.as_str())).map(|(k, v)| (k.clone(), v.clone())).collect()
+}
+
 const FAVORITE_TERM: &str = "(SELECT id FROM terms WHERE key=? AND kind='mark')";
 
 /// 解析、限长和去重用于浏览与持久化，保留条件的输入顺序。
@@ -251,6 +276,28 @@ fn condition_filter(
                     }
                     "utag" => clause.add("a.uuid IN (SELECT uuid FROM asset_tags WHERE tag=?)", [key.into()]),
                     "source" => source_filter(c, context, key, &mut clause)?,
+                    "gallery" => {
+                        let id = key
+                            .parse::<i64>()
+                            .ok()
+                            .filter(|n| *n > 0 && key.bytes().all(|b| b.is_ascii_digit()))
+                            .ok_or_else(|| Error::invalid("画廊编号不正确"))?
+                            .to_string();
+                        if !exists(c, "SELECT 1 FROM galleries WHERE id=? AND kind='manual'", &[&id])? {
+                            return invalid("手选画廊不存在");
+                        }
+                        clause.add(
+                            "a.uuid IN (
+                               WITH members AS MATERIALIZED (
+                                 SELECT m.uuid FROM gallery_members m JOIN assets x ON x.uuid=m.uuid
+                                 WHERE m.gallery_id=?)
+                               SELECT uuid FROM members
+                               UNION ALL
+                               SELECT y.uuid FROM members m JOIN duplicates d ON d.uuid=m.uuid
+                               JOIN duplicates y ON y.grp=d.grp)",
+                            [id],
+                        );
+                    }
                     _ => return invalid("筛选参数不正确"),
                 }
             }
@@ -439,7 +486,9 @@ pub(crate) fn selection(
     condition_filter(c, context, f, &mut filter)?;
     let like = crate::http_example_search::Search::parse(f)?;
     let order = f.get("order").map(String::as_str).unwrap_or(if like.is_some() { "similar" } else { "newest" });
-    let ordering = if like.is_some() {
+    let ordering = if order == "color" {
+        crate::app_colors::ordering(c, context)
+    } else if like.is_some() {
         match order {
             "similar" => "(SELECT rank FROM temp.like_rank WHERE uuid=a.uuid)".into(),
             "oldest" => "a.added_at ASC,a.uuid".into(),
@@ -912,7 +961,7 @@ fn page_members(
     Ok(members)
 }
 /// 批量处理的一页，保持「取第一条最好线索」和同键后者覆盖前者的语义（沿用旧实现）。
-fn decorate(c: &Connection, page: &mut [Json]) -> Result<()> {
+fn decorate(c: &Connection, q: &HashMap<String, String>, page: &mut [Json]) -> Result<()> {
     if page.is_empty() {
         return Ok(());
     }
@@ -933,7 +982,7 @@ fn decorate(c: &Connection, page: &mut [Json]) -> Result<()> {
     let renderer = Renderer { c, page: PageDisplay::load(c, entity_ids)? };
     let members = page_members(&renderer, variant_rows, member_rows)?;
     let extras = PageExtras::load(c, &ids)?;
-    for row in page {
+    for row in page.iter_mut() {
         let id = get(row, "uuid").text().to_owned();
         let m = members.get(&id).cloned().unwrap_or_default();
         row.set("memberships", Json::Array(m.clone()));
@@ -953,6 +1002,9 @@ fn decorate(c: &Connection, page: &mut [Json]) -> Result<()> {
             }
             row.set(key, info);
         }
+    }
+    if marks_favorite(q) {
+        decorate_favorite(c, page)?;
     }
     Ok(())
 }
@@ -974,6 +1026,9 @@ pub fn validate(path: &str, q: &HashMap<String, String>) -> Result<()> {
             return Err(Error::Invalid("分页参数不正确".into()));
         }
         rating("a", value(q, "nsfw"))?;
+    }
+    if path == "/api/calendar" {
+        month_bounds(value(q, "month"))?;
     }
     Ok(())
 }
@@ -1276,11 +1331,17 @@ fn pools(c: &Connection, nsfw: &str) -> Result<Json> {
         basic("audit", "随机抽查", audit.into(), null()),
     ]))
 }
-fn home(c: &Connection, q: &HashMap<String, String>) -> Result<Json> {
+fn home(c: &Connection, context: &LibraryContext, q: &HashMap<String, String>) -> Result<Json> {
     let before = value(q, "before");
     let days = python_int(q.get("days").map(String::as_str).unwrap_or("5")).map_err(Error::Invalid)?;
-    let seen = format!("{}{}", visible("a"), rating("a", value(q, "nsfw"))?);
-    let mut args = Vec::new();
+    let filters = browse_filters(q);
+    let (seen, filter_args, order) = if filters.keys().all(|k| k == "nsfw") {
+        // 原来的首页请求仍走同一可见性、排序和验证规则。
+        (format!("{}{}", visible("a"), rating("a", value(q, "nsfw"))?), Vec::new(), "a.added_at DESC,a.uuid".into())
+    } else {
+        selection(c, context, &filters)?
+    };
+    let mut args = filter_args.clone();
     if !before.is_empty() {
         args.push(Value::Text(before.to_owned()));
     }
@@ -1299,15 +1360,15 @@ fn home(c: &Connection, q: &HashMap<String, String>) -> Result<Json> {
         "SELECT m.entity,count(*) AS n
          FROM memberships m
          JOIN assets a ON a.uuid=m.uuid
-         WHERE a.added_at>=? AND a.added_at<? AND {seen}
+         WHERE {seen} AND a.added_at>=? AND a.added_at<?
          GROUP BY m.entity
          ORDER BY n DESC,m.entity"
     );
     let latest = format!(
         "SELECT a.uuid,a.width,a.height
          FROM assets a
-         WHERE a.added_at>=? AND a.added_at<? AND {seen}
-         ORDER BY a.added_at DESC,a.uuid
+         WHERE {seen} AND a.added_at>=? AND a.added_at<?
+         ORDER BY {order}
          LIMIT ?"
     );
     let mut result = Vec::new();
@@ -1316,8 +1377,11 @@ fn home(c: &Connection, q: &HashMap<String, String>) -> Result<Json> {
     for g in groups {
         let day = get(&g, "day");
         let (lo, hi) = day_bounds(day.text())?;
-        let people = rows(c, &day_people, &[&lo, &hi])?;
-        let items = typed_rows(c, &latest, &[Value::Text(lo.clone()), Value::Text(hi.clone()), Value::Integer(18)])?;
+        let mut args = filter_args.clone();
+        args.extend([Value::Text(lo), Value::Text(hi)]);
+        let people = typed_rows(c, &day_people, &args)?;
+        args.push(Value::Integer(18));
+        let items = typed_rows(c, &latest, &args)?;
         lengths.push(items.len());
         all.extend(items);
         let mut chars = Vec::new();
@@ -1338,10 +1402,7 @@ fn home(c: &Connection, q: &HashMap<String, String>) -> Result<Json> {
             ("characters", Json::Array(chars)),
         ]));
     }
-    decorate(c, &mut all)?;
-    if marks_favorite(q) {
-        decorate_favorite(c, &mut all)?;
-    }
+    decorate(c, q, &mut all)?;
     let mut at = 0;
     for (g, n) in result.iter_mut().zip(lengths) {
         let items = all[at..at + n].to_vec();
@@ -1370,6 +1431,72 @@ fn home(c: &Connection, q: &HashMap<String, String>) -> Result<Json> {
     };
     Ok(Json::object([("days", Json::Array(result)), ("next", next)]))
 }
+fn adjacent_month(
+    c: &Connection,
+    conditions: &str,
+    filter_args: &[Value],
+    edge: &Value,
+    earlier: bool,
+) -> Result<Json> {
+    let (comparison, direction) = if earlier { ("<", "DESC") } else { (">=", "ASC") };
+    let sql = format!(
+        "SELECT substr(a.added_at,1,7)
+         FROM assets a
+         WHERE {conditions} AND a.added_at{comparison}?
+         ORDER BY a.added_at {direction}
+         LIMIT 1"
+    );
+    let month = c
+        .query_row(&sql, rusqlite::params_from_iter(filter_args.iter().chain(std::iter::once(edge))), |r| {
+            r.get::<_, String>(0)
+        })
+        .optional()?;
+    Ok(month.into())
+}
+
+fn calendar(c: &Connection, context: &LibraryContext, q: &HashMap<String, String>) -> Result<Json> {
+    let (start, end) = month_bounds(value(q, "month"))?;
+    let (conditions, mut args, order) = selection(c, context, &browse_filters(q))?;
+    let (start, end) = (Value::Text(start), Value::Text(end));
+    let prev = adjacent_month(c, &conditions, &args, &start, true)?;
+    let next = adjacent_month(c, &conditions, &args, &end, false)?;
+    args.extend([start, end]);
+    // 范围过滤可用 assets_date。先数当天全部匹配图片，再给最多四张样图加载展示字段。
+    let sql = format!(
+        "WITH ranked AS (
+           SELECT a.uuid,substr(a.added_at,1,10) AS day,
+                  count(*) OVER (PARTITION BY substr(a.added_at,1,10)) AS n,
+                  row_number() OVER (PARTITION BY substr(a.added_at,1,10) ORDER BY {order}) AS pos
+           FROM assets a
+           WHERE {conditions} AND a.added_at>=? AND a.added_at<?
+         )
+         SELECT r.day,r.n,a.uuid,a.width,a.height
+         FROM ranked r JOIN assets a ON a.uuid=r.uuid
+         WHERE r.pos<=4
+         ORDER BY r.day,r.pos"
+    );
+    let rows = typed_rows(c, &sql, &args)?;
+    let mut samples: Vec<_> = rows
+        .iter()
+        .map(|r| Json::object([("uuid", get(r, "uuid")), ("width", get(r, "width")), ("height", get(r, "height"))]))
+        .collect();
+    decorate(c, q, &mut samples)?;
+    let mut samples = samples.into_iter();
+    let mut days = Vec::new();
+    let mut total = 0;
+    for group in rows.chunk_by(|a, b| a.get("day").map(Json::text) == b.get("day").map(Json::text)) {
+        let count = get(&group[0], "n");
+        total += count.integer();
+        days.push(Json::object([
+            ("day", get(&group[0], "day")),
+            ("count", count),
+            ("samples", Json::Array(samples.by_ref().take(group.len()).collect())),
+            ("color", null()),
+        ]));
+    }
+    Ok(Json::object([("days", Json::Array(days)), ("total", total.into()), ("prev", prev), ("next", next)]))
+}
+
 /// 走日期索引分页（#48）时，隐藏 NSFW 后图库至少还要剩下的比例，单位千分之一。
 /// 在合成图库上测得（debug 宿主，1 万和 5 万张资产）：计数两次会从词条投影重建两次 NSFW 列表，所以只有
 /// NSFW 占少数时，日期索引分页才比筛选副本快；见 docs/TERMS_PERFORMANCE.md 第 3 节。
@@ -1423,7 +1550,8 @@ pub fn read(c: &Connection, context: &LibraryContext, path: &str, q: &HashMap<St
             }
             item
         }
-        "/api/home" => home(c, q)?,
+        "/api/home" => home(c, context, q)?,
+        "/api/calendar" => calendar(c, context, q)?,
         "/api/assets" | "/api/assets/count" | "/api/ids" => assets(c, context, path, q)?,
         _ => return Err(Error::Invalid("未迁移浏览接口".into())),
     };
@@ -1431,7 +1559,7 @@ pub fn read(c: &Connection, context: &LibraryContext, path: &str, q: &HashMap<St
 }
 /// 选区的数量（/api/assets/count）、id 列表（/api/ids）或其中一页（/api/assets）。
 fn assets(c: &Connection, context: &LibraryContext, path: &str, q: &HashMap<String, String>) -> Result<Json> {
-    let mut f = q.clone();
+    let mut f = if path == "/api/assets" { browse_filters(q) } else { q.clone() };
     let paged = |k: &str, default: &str| -> Result<i64> {
         if path == "/api/assets/count" {
             return Ok(if k == "offset" { 0 } else { 100 });
@@ -1443,8 +1571,6 @@ fn assets(c: &Connection, context: &LibraryContext, path: &str, q: &HashMap<Stri
     if path == "/api/ids" {
         f.remove("offset");
         f.remove("limit");
-    } else if path == "/api/assets" {
-        f.retain(|k, _| FILTERS.contains(&k.as_str()));
     }
     let (where_, mut args, order) = selection(c, context, &f)?;
     let total_sql = format!("SELECT count(*) AS total FROM assets a WHERE {where_}");
@@ -1468,9 +1594,10 @@ fn assets(c: &Connection, context: &LibraryContext, path: &str, q: &HashMap<Stri
         && f.iter().all(|(k, v)| k == "nsfw" || k == "order" || v.is_empty())
         && date_page_pays(c, offset, limit)?;
     let (total, sql) = if total_needed && !nsfw.is_empty() && !date_page && !f.contains_key("like") {
+        let source = if value(&f, "order") == "color" { ",a.src_path" } else { "" };
         let copy = format!(
             "CREATE TEMP TABLE selected_assets AS
-             SELECT a.uuid,a.width,a.height,a.added_at FROM assets a WHERE {where_}"
+             SELECT a.uuid,a.width,a.height,a.added_at{source} FROM assets a WHERE {where_}"
         );
         c.execute(&copy, rusqlite::params_from_iter(&args))?;
         let n = count(c, "SELECT count(*) FROM selected_assets", &[])?;
@@ -1485,10 +1612,7 @@ fn assets(c: &Connection, context: &LibraryContext, path: &str, q: &HashMap<Stri
     };
     args.extend([Value::Integer(limit), Value::Integer(offset)]);
     let mut items = typed_rows(c, &sql, &args)?;
-    decorate(c, &mut items)?;
-    if marks_favorite(q) {
-        decorate_favorite(c, &mut items)?;
-    }
+    decorate(c, q, &mut items)?;
     Ok(Json::object([("items", Json::Array(items)), ("total", total), ("offset", offset.into())]))
 }
 

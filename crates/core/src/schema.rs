@@ -202,7 +202,7 @@ pub const HUMAN_ORIGINS: [&str; 3] = ["user", "album", "legacy"];
 /// 证据来源不能冒充人。
 pub const RESERVED_SOURCES: [&str; 5] = ["user", "human", "album", "legacy", "verdict"];
 
-pub const SCHEMA_VERSION: i64 = 10;
+pub const SCHEMA_VERSION: i64 = 11;
 
 /// 收藏在各图库中共用的人工标记词条键。
 pub const FAVORITE_KEY: &str = "mark:favorite";
@@ -439,8 +439,8 @@ CREATE TABLE IF NOT EXISTS actions(id INTEGER PRIMARY KEY AUTOINCREMENT,label TE
 ";
 
 /// 每个版本一段，按顺序执行；已发布的段不再修改。
-const MIGRATIONS: [fn(&Connection) -> Result<()>; 10] =
-    [v1, v2, v3, v4, v5, v6, v7, v8, crate::human_conclusions::migrate, v10];
+const MIGRATIONS: [fn(&Connection) -> Result<()>; 11] =
+    [v1, v2, v3, v4, v5, v6, v7, v8, crate::human_conclusions::migrate, v10, v11];
 
 fn v1(conn: &Connection) -> Result<()> {
     Ok(conn.execute_batch(V1)?)
@@ -723,6 +723,30 @@ fn v10(conn: &Connection) -> Result<()> {
            seen_at TEXT NOT NULL,
            PRIMARY KEY(id,uuid)) WITHOUT ROWID;
          CREATE INDEX similar_seen_uuid ON similar_seen(uuid);",
+    )?;
+    Ok(())
+}
+
+/// 第 11 版增加手选画廊。已删除的画廊编号不再分配给新画廊，避免旧筛选链接指到新画廊。
+fn v11(conn: &Connection) -> Result<()> {
+    conn.execute_batch(
+        "ALTER TABLE galleries RENAME TO galleries_v10;
+         CREATE TABLE galleries(
+           id INTEGER PRIMARY KEY AUTOINCREMENT,
+           name TEXT NOT NULL,
+           params TEXT NOT NULL,
+           cover TEXT,
+           position INTEGER NOT NULL,
+           created_at TEXT NOT NULL,
+           updated_at TEXT NOT NULL,
+           kind TEXT NOT NULL DEFAULT 'condition' CHECK(kind IN ('condition','manual')));
+         INSERT INTO galleries(id,name,params,cover,position,created_at,updated_at)
+           SELECT id,name,params,cover,position,created_at,updated_at FROM galleries_v10;
+         DROP TABLE galleries_v10;
+         CREATE TABLE gallery_members(
+           gallery_id INTEGER NOT NULL REFERENCES galleries(id) ON DELETE CASCADE,
+           uuid TEXT NOT NULL,
+           PRIMARY KEY(gallery_id,uuid)) WITHOUT ROWID;",
     )?;
     Ok(())
 }
@@ -1788,6 +1812,8 @@ mod tests {
         assert_eq!(migrate_to(&mut c, 10).unwrap(), 9);
         assert!(store::term_by_key(&c, FAVORITE_KEY).unwrap().is_none());
         assert_eq!(store::state(&c, asset, tag).unwrap().as_deref(), Some("confirmed"));
+        // 撤销只认当前版本的库；第 10 版以后的升级不碰撤销记录和类型触发器，先升到当前版本再撤销。
+        migrate_to(&mut c, SCHEMA_VERSION).unwrap();
         store::undo(&mut c, Some(action)).unwrap();
         assert_ne!(store::state(&c, asset, tag).unwrap().as_deref(), Some("confirmed"));
         let mark = store::create_term(&c, Kind::Mark, Some(FAVORITE_KEY), "user").unwrap();

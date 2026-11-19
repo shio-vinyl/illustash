@@ -1,6 +1,6 @@
 # 词条核心 schema
 
-状态：现行参考，2026-11-16。当前词条 schema 为 **10**，应用 schema 为 **36**，包格式为 **1**；第 1 版见第 1–4 节，第 2–7 版的增量见第 7–12 节，第 8 版见第 14 节，第 9 版见第 15 节，第 10 版见第 16 节，宿主退役后的兼容职责与恢复边界见第 13 节。画师、标签、角色 / 皮肤 / 作品、名字都已收编，第 8 版起 `term_*` 是唯一权威，旧兼容表已删除（第 14 节）：[TERMS_ARTISTS.md](TERMS_ARTISTS.md)、[TERMS_LABELS.md](TERMS_LABELS.md)、[TERMS_CHARACTERS.md](TERMS_CHARACTERS.md)。下面第 1–6 节是第 1 版交付时写的，已按现状更正的地方都有注明（2026-09-29，词条第 4、5 步 S6）。
+状态：现行参考，2026-11-19。当前词条 schema 为 **11**，应用 schema 为 **36**，包格式为 **1**；第 1 版见第 1–4 节，第 2–7 版的增量见第 7–12 节，第 8 版见第 14 节，第 9 版见第 15 节，第 10 版见第 16 节，第 11 版见第 17 节，宿主退役后的兼容职责与恢复边界见第 13 节。画师、标签、角色 / 皮肤 / 作品、名字都已收编，第 8 版起 `term_*` 是唯一权威，旧兼容表已删除（第 14 节）：[TERMS_ARTISTS.md](TERMS_ARTISTS.md)、[TERMS_LABELS.md](TERMS_LABELS.md)、[TERMS_CHARACTERS.md](TERMS_CHARACTERS.md)。下面第 1–6 节是第 1 版交付时写的，已按现状更正的地方都有注明（2026-09-29，词条第 4、5 步 S6）。
 
 2026-09-28，[TERMS.md](TERMS.md) 第 4 节第 1 步的交付。代码在 `crates/core/`（Rust crate `illustash-core`，rusqlite 自持连接）；命令行和原生宿主在 `native/terms/`（`illustash-terms`）。证据包格式见 [EVIDENCE_PACKAGES.md](EVIDENCE_PACKAGES.md)。第 1 版只建了新表和规则，画师收编是第 2 步。
 
@@ -340,3 +340,10 @@ HTTP 沿用本机认证与会话门槛：`POST /api/human-conclusions/export {}`
 ### 相似组的看过了（#427）
 
 同一次升级创建 `similar_seen(id, uuid, seen_at)`，主键 `(id, uuid)`，另有 `uuid` 索引。一个 `id` 是一次「看过了」，行是当时这组按调用方 R18 设置看得到的图。相似组的组号随 `similar_groups` 重建而变，所以按成员记：一组现在看得到的成员全部落在某一次标记里，就算看过。标为没看过时，只从覆盖这组的标记里删掉这组的图。标记和取消各在同一事务写入统一历史，撤销恢复原行，不插 `backend_effects`，不触发学习。表和它的历史都不算学习输入（`app_research.rs` 的 `UNREAD`）。随整库备份和 `.pilib.zip` 归档保存，不进人工结论快照：它记的是整理进度，不是对图的人工结论。
+
+
+## 17. 第 11 版（0.4）
+
+手选画廊（#727）在现有 `galleries` 上加 `kind`，取值为 `condition` 或 `manual`。升级先按原有流程备份，再保留每条画廊的编号、筛选、封面、顺序和时间，既有画廊都是 `condition`。新增画廊编号不再复用，旧筛选链接不会指到另一画廊。收藏仍由 `mark:favorite` 提供。
+
+`gallery_members(gallery_id, uuid)` 以两列为主键。图片失去可见性或从资产表移除时仍保留成员记录。图库的统一筛选决定哪些成员可见，重复组继承任一在册副本的成员关系。增删成员时历史保存实际改动的 UUID。删除画廊级联删除成员，撤销恢复画廊及全部成员。画廊及其历史随整库备份和 `.pilib.zip` 归档保存，继续排除在人工结论快照（#533）和学习输入之外。接口见 [Web API](WEB_V2.md#api-契约)。

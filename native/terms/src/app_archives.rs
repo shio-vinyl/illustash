@@ -700,10 +700,21 @@ mod tests {
         crate::app_create::create_folder(&package, &root.join("folder"), Some("合成原图库"), None, None).unwrap();
         let library = Library::open(&package).unwrap();
         let params = r#"{"has":"[\"fav\"]","order":"oldest"}"#;
-        crate::open(&library.db()).unwrap().execute(
-            "INSERT INTO galleries VALUES (12,'合成收藏',?,'synthetic-cover',2,'2026-11-01 00:00:00','2026-11-02 00:00:00')",
-            [params],
-        ).unwrap();
+        crate::open(&library.db())
+            .unwrap()
+            .execute(
+                "INSERT INTO galleries(id,name,params,cover,position,created_at,updated_at)
+             VALUES (12,'合成收藏',?,'synthetic-cover',2,'2026-11-01 00:00:00','2026-11-02 00:00:00')",
+                [params],
+            )
+            .unwrap();
+        crate::open(&library.db())
+            .unwrap()
+            .execute_batch(
+                "INSERT INTO galleries VALUES (13,'合成手选','{}','synthetic-b',3,'2026-11-01','2026-11-02','manual');
+                 INSERT INTO gallery_members VALUES (13,'synthetic-b'),(13,'synthetic-removed');",
+            )
+            .unwrap();
         // 相似组的「看过了」（#427）同样随归档走。
         crate::open(&library.db())
             .unwrap()
@@ -714,9 +725,11 @@ mod tests {
         let (restored, _) = import(&archive, &cancel, &crate::app_imports::Silent).unwrap();
         let c = crate::open(&restored.join("library.sqlite")).unwrap();
         let result: (i64, String, String, String, i64, String, String) = c
-            .query_row("SELECT id,name,params,cover,position,created_at,updated_at FROM galleries", [], |r| {
-                Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?, r.get(6)?))
-            })
+            .query_row(
+                "SELECT id,name,params,cover,position,created_at,updated_at FROM galleries WHERE kind='condition'",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?, r.get(6)?)),
+            )
             .unwrap();
         assert_eq!(
             result,
@@ -730,6 +743,20 @@ mod tests {
                 "2026-11-02 00:00:00".into()
             )
         );
+        let restored_manual: (String, String, i64) = c
+            .query_row("SELECT name,cover,position FROM galleries WHERE id=13 AND kind='manual'", [], |r| {
+                Ok((r.get(0)?, r.get(1)?, r.get(2)?))
+            })
+            .unwrap();
+        assert_eq!(restored_manual, ("合成手选".into(), "synthetic-b".into(), 3));
+        let members = c
+            .prepare("SELECT uuid FROM gallery_members WHERE gallery_id=13 ORDER BY uuid")
+            .unwrap()
+            .query_map([], |r| r.get::<_, String>(0))
+            .unwrap()
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .unwrap();
+        assert_eq!(members, ["synthetic-b", "synthetic-removed"]);
         let seen: (i64, String, String) = c
             .query_row("SELECT id,uuid,seen_at FROM similar_seen", [], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
             .unwrap();

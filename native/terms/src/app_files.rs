@@ -1,5 +1,5 @@
 //! 原生静态字节和现有的按内容寻址的 JPEG 缓存。不扫描来源。
-use crate::{app_library::Library, Error};
+use crate::{app_colors, app_library::Library, Error};
 use image::{metadata::Orientation, DynamicImage, ImageReader};
 use rusqlite::OptionalExtension;
 use sha2::{Digest, Sha256};
@@ -43,7 +43,7 @@ impl From<Error> for Failure {
         Self::Core(e)
     }
 }
-pub enum Prepared {
+pub(crate) enum Prepared {
     Static(PathBuf, &'static str),
     /// 按语言设置和 web/static/locales 里的各语言表生成的 web/static/i18n.js（#173、#182）。
     I18n {
@@ -51,7 +51,9 @@ pub enum Prepared {
         locales: PathBuf,
     },
     Image {
-        source: PathBuf,
+        asset: app_colors::Asset,
+        package: PathBuf,
+        stamp: String,
         target: PathBuf,
         bound: u32,
     },
@@ -84,16 +86,23 @@ pub fn prepare(library: &Library, root: &Path, url: &str) -> Result<Prepared, Fa
     };
     let ident = query.get("id").map(String::as_str).unwrap_or("");
     let connection = crate::app_library::read_connection(&library.db())?;
-    let source: Option<String> = connection
-        .query_row("SELECT src_path FROM assets WHERE uuid=?", [ident], |r| r.get(0))
+    let sql = format!("SELECT {} FROM assets a WHERE a.uuid=?", app_colors::ASSET_FIELDS);
+    let asset = connection
+        .query_row(&sql, [ident], app_colors::Asset::from_row)
         .optional()
         .map_err(Error::from)?
-        .flatten();
-    let source = source.filter(|p| !p.is_empty()).ok_or(Failure::Status(404))?;
-    let source = PathBuf::from(source);
-    let stat = fs::metadata(&source).map_err(|_| Failure::Status(404))?;
+        .filter(|asset| !asset.source.as_os_str().is_empty())
+        .ok_or(Failure::Status(404))?;
+    let stat = fs::metadata(&asset.source).map_err(|_| Failure::Status(404))?;
     let key = cache_key(ident, &stat, size).ok_or(Failure::Status(404))?;
-    Ok(Prepared::Image { source, target: library.thumbnails().join(format!("{key}.jpg")), bound })
+    let stamp = cache_key(ident, &stat, "thumb").ok_or(Failure::Status(404))?;
+    Ok(Prepared::Image {
+        asset,
+        package: library.instance_path().to_owned(),
+        stamp,
+        target: library.thumbnails().join(format!("{key}.jpg")),
+        bound,
+    })
 }
 /// 页面的静态文件：固定的几个根目录文件、按语言生成的 i18n.js，以及 core/、ui/、css/ 下的模块和样式表。不读图库。
 fn static_file(root: &Path, path: &str) -> Result<Prepared, Failure> {
@@ -117,7 +126,7 @@ fn static_file(root: &Path, path: &str) -> Result<Prepared, Failure> {
     Ok(Prepared::Static(root.join("web/static").join(name), kind))
 }
 /// 缓存文件名：图片 ID、原文件的修改时间和大小、尺寸档。原文件改了就是新的键。
-fn cache_key(ident: &str, stat: &fs::Metadata, size: &str) -> Option<String> {
+pub(crate) fn cache_key(ident: &str, stat: &fs::Metadata, size: &str) -> Option<String> {
     // SystemTime 也允许纪元之前的时间戳；旧实现的 st_mtime_ns 也是有符号的。
     let modified = stat.modified().ok()?;
     let nanos = match modified.duration_since(UNIX_EPOCH) {
@@ -239,34 +248,38 @@ impl Images {
                 let bytes = i18n_script(&language, &fs::read(script).map_err(Error::from)?, &locales);
                 Ok(File { bytes, kind: "text/javascript", cache: false })
             }
-            Prepared::Image { source, target, bound } => {
-                let bytes = self.cached(&source, &target, bound).map_err(|e| {
+            Prepared::Image { asset, package, stamp, target, bound } => {
+                let (bytes, rgb) = self.cached(&asset.source, &target, bound).map_err(|e| {
                     eprintln!("HTTP image: {e}");
                     Failure::Status(404)
                 })?;
+                if let Some(rgb) = rgb {
+                    app_colors::generated(&package, asset, stamp, &rgb);
+                }
                 Ok(File { bytes, kind: "image/jpeg", cache: true })
             }
         }
     }
-    fn cached(&self, source: &Path, target: &Path, bound: u32) -> io::Result<Vec<u8>> {
+    fn cached(&self, source: &Path, target: &Path, bound: u32) -> io::Result<(Vec<u8>, Option<image::RgbImage>)> {
         let cache = self.cache_lock(target.parent().expect("internal file path must have a parent"))?;
         let _cache_guard = cache.read().expect("app_files session lock poisoned");
         match fs::read(target) {
-            Ok(bytes) => return Ok(bytes),
+            Ok(bytes) => return Ok((bytes, None)),
             Err(e) if e.kind() == io::ErrorKind::NotFound => {}
             Err(e) => return Err(e),
         }
         let lock = self.key_lock(target);
         let _guard = lock.lock().expect("app_files mutex poisoned");
         match fs::read(target) {
-            Ok(bytes) => return Ok(bytes),
+            Ok(bytes) => return Ok((bytes, None)),
             Err(e) if e.kind() == io::ErrorKind::NotFound => {}
             Err(e) => return Err(e),
         }
         let _slot = self.slot();
         #[cfg(test)]
         self.generated.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-        let bytes = generate(source, bound)?;
+        let rgb = thumbnail_rgb(source, bound)?;
+        let bytes = encode_jpeg(&rgb)?;
         fs::create_dir_all(target.parent().expect("internal file path must have a parent"))?;
         let mut nonce = [0u8; 12];
         getrandom::fill(&mut nonce).map_err(|e| io::Error::other(e.to_string()))?;
@@ -281,7 +294,7 @@ impl Images {
         })();
         let _ = fs::remove_file(temp);
         result?;
-        Ok(bytes)
+        Ok((bytes, Some(rgb)))
     }
 }
 /// 页面在 app.js 运行之前同步读取这项设置，所以首次绘制就已经是对应的语言。可选的每种语言都按名称列出，供设置页使用。
@@ -306,7 +319,7 @@ fn i18n_script(language: &str, script: &[u8], locales: &[crate::app_preferences:
     out.extend_from_slice(script);
     out
 }
-fn generate(source: &Path, bound: u32) -> io::Result<Vec<u8>> {
+fn thumbnail_rgb(source: &Path, bound: u32) -> io::Result<image::RgbImage> {
     let mut reader = BufReader::new(fs::File::open(source)?);
     // PIL 也容忍缺失或格式错误的 EXIF。按容器解析可以覆盖 PNG（image 0.25.6 的解码器不提供），以及 JPEG/TIFF/WebP。
     let orientation = exif::Reader::new()
@@ -326,41 +339,7 @@ fn generate(source: &Path, bound: u32) -> io::Result<Vec<u8>> {
     let mut reader = ImageReader::new(reader).with_guessed_format()?;
     reader.no_limits();
     let mut im = if reader.format() == Some(image::ImageFormat::Jpeg) {
-        // mozjpeg 的错误管理器遇到损坏的 JPEG 会展开栈；在进入 HTTP worker 和键锁之前兜住它，
-        // 这样失败返回 404，从不毒化共享状态。
-        std::panic::catch_unwind(|| -> io::Result<DynamicImage> {
-            let mut decoder = mozjpeg::Decompress::new_reader(reader.into_inner())?;
-            pixel_limit(decoder.width() as u32, decoder.height() as u32)?;
-            let ratio = decoder.width().min(decoder.height()) / bound as usize;
-            decoder.scale(if ratio >= 8 {
-                1
-            } else if ratio >= 4 {
-                2
-            } else if ratio >= 2 {
-                4
-            } else {
-                8
-            });
-            let cmyk = matches!(decoder.color_space(), mozjpeg::ColorSpace::JCS_CMYK | mozjpeg::ColorSpace::JCS_YCCK);
-            let mut decoder =
-                if cmyk { decoder.to_colorspace(mozjpeg::ColorSpace::JCS_CMYK)? } else { decoder.rgb()? };
-            let (width, height) = (decoder.width() as u32, decoder.height() as u32);
-            let pixels = decoder.read_scanlines::<u8>()?;
-            let pixels = if cmyk {
-                // Pillow 的 JPEG 插件假定 Adobe（反相 CMYK）极性。
-                pixels
-                    .chunks_exact(4)
-                    .flat_map(|p| [0, 1, 2].map(|i| ((u32::from(p[i]) * u32::from(p[3]) + 127) / 255) as u8))
-                    .collect()
-            } else {
-                pixels
-            };
-            decoder.finish()?;
-            let rgb = image::RgbImage::from_raw(width, height, pixels)
-                .ok_or_else(|| io::Error::other("invalid JPEG buffer"))?;
-            Ok(DynamicImage::ImageRgb8(rgb))
-        })
-        .map_err(|_| io::Error::other("JPEG decoder failed"))??
+        DynamicImage::ImageRgb8(jpeg_rgb(reader.into_inner(), bound)?)
     } else {
         let decoder = reader.into_decoder().map_err(io::Error::other)?;
         let (width, height) = image::ImageDecoder::dimensions(&decoder);
@@ -371,7 +350,7 @@ fn generate(source: &Path, bound: u32) -> io::Result<Vec<u8>> {
     if im.width() > bound || im.height() > bound {
         im = resize(im, bound, nearest)?;
     }
-    let rgb = if im.color().has_alpha() {
+    Ok(if im.color().has_alpha() {
         let rgba = im.into_rgba8();
         image::RgbImage::from_fn(rgba.width(), rgba.height(), |x, y| {
             let pixel = rgba.get_pixel(x, y);
@@ -383,7 +362,52 @@ fn generate(source: &Path, bound: u32) -> io::Result<Vec<u8>> {
         })
     } else {
         im.into_rgb8()
-    };
+    })
+}
+
+fn jpeg_rgb(reader: impl BufRead + std::panic::UnwindSafe, bound: u32) -> io::Result<image::RgbImage> {
+    // mozjpeg 的错误管理器遇到损坏的 JPEG 会展开栈；在进入 HTTP worker 和键锁之前兜住它，
+    // 这样失败返回 404，从不毒化共享状态。
+    std::panic::catch_unwind(|| -> io::Result<image::RgbImage> {
+        let mut decoder = mozjpeg::Decompress::new_reader(reader)?;
+        pixel_limit(decoder.width() as u32, decoder.height() as u32)?;
+        let ratio = decoder.width().min(decoder.height()) / bound as usize;
+        decoder.scale(if ratio >= 8 {
+            1
+        } else if ratio >= 4 {
+            2
+        } else if ratio >= 2 {
+            4
+        } else {
+            8
+        });
+        let cmyk = matches!(decoder.color_space(), mozjpeg::ColorSpace::JCS_CMYK | mozjpeg::ColorSpace::JCS_YCCK);
+        let mut decoder = if cmyk { decoder.to_colorspace(mozjpeg::ColorSpace::JCS_CMYK)? } else { decoder.rgb()? };
+        let (width, height) = (decoder.width() as u32, decoder.height() as u32);
+        let pixels = decoder.read_scanlines::<u8>()?;
+        let pixels = if cmyk {
+            // Pillow 的 JPEG 插件假定 Adobe（反相 CMYK）极性。
+            pixels
+                .chunks_exact(4)
+                .flat_map(|p| [0, 1, 2].map(|i| ((u32::from(p[i]) * u32::from(p[3]) + 127) / 255) as u8))
+                .collect()
+        } else {
+            pixels
+        };
+        decoder.finish()?;
+        image::RgbImage::from_raw(width, height, pixels).ok_or_else(|| io::Error::other("invalid JPEG buffer"))
+    })
+    .map_err(|_| io::Error::other("JPEG decoder failed"))?
+}
+
+/// 补算优先用已有的缩略图。缺失或解不开时，用相同的尺寸与解码规则读原图，不预写 JPEG。
+pub(crate) fn color_input(source: &Path, thumbnail: &Path) -> io::Result<image::RgbImage> {
+    fs::File::open(thumbnail)
+        .and_then(|file| jpeg_rgb(BufReader::new(file), 400))
+        .or_else(|_| thumbnail_rgb(source, 400))
+}
+
+fn encode_jpeg(rgb: &image::RgbImage) -> io::Result<Vec<u8>> {
     std::panic::catch_unwind(|| -> io::Result<Vec<u8>> {
         let mut encoder = mozjpeg::Compress::new(mozjpeg::ColorSpace::JCS_RGB);
         encoder.set_fastest_defaults();
@@ -619,16 +643,31 @@ mod tests {
             fs::create_dir(root.join("other")).unwrap();
             assert!(images.cache_lock(&root.join("other")).unwrap().try_write().is_ok());
             drop(key_guard);
-            assert!(!generator.join().unwrap().is_empty());
+            assert!(!generator.join().unwrap().0.is_empty());
             assert_eq!(receive.recv_timeout(crate::test_wait::limit()).unwrap(), 1);
             cleaner.join().unwrap();
         });
         assert!(!target.exists());
         assert_eq!(fs::read_dir(root.join("cache")).unwrap().count(), 0);
-        assert!(!images.cached(&source, &target, 400).unwrap().is_empty());
+        assert!(!images.cached(&source, &target, 400).unwrap().0.is_empty());
         assert_eq!(images.generated.load(Ordering::SeqCst), 2);
         fs::remove_dir_all(root).unwrap();
     }
+    #[test]
+    fn color_backfill_uses_the_real_cached_jpeg_without_reading_the_source() {
+        let root = std::env::temp_dir().join(format!("illustash-color-{}", crate::store::new_key().unwrap()));
+        fs::create_dir(&root).unwrap();
+        let thumbnail = root.join("cached.jpg");
+        let source = root.join("unavailable.png");
+        let blue = image::RgbImage::from_pixel(32, 24, image::Rgb([0, 0, 200]));
+        fs::write(&thumbnail, encode_jpeg(&blue).unwrap()).unwrap();
+        let from_thumbnail = color_input(&source, &thumbnail).unwrap();
+        assert_eq!(from_thumbnail.dimensions(), (32, 24));
+        assert!(from_thumbnail.pixels().all(|p| p[0] < 4 && p[1] < 4 && p[2] > 195));
+        assert!(color_input(&source, &root.join("missing.jpg")).is_err());
+        fs::remove_dir_all(root).unwrap();
+    }
+
     #[test]
     fn concurrent_cache_miss_generates_once_and_drops_key_owners() {
         let mut nonce = [0u8; 12];
@@ -645,7 +684,7 @@ mod tests {
                 .map(|_| {
                     scope.spawn(|| {
                         barrier.wait();
-                        images.cached(&source, &target, 400).unwrap()
+                        images.cached(&source, &target, 400).unwrap().0
                     })
                 })
                 .collect();

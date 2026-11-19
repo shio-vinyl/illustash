@@ -179,7 +179,8 @@ fn a_consistent_library_upgrades_retires_the_key_tables_and_fills_in_counted_ste
     assert!(old_views.len() >= 5, "{old_views:?}");
     assert!(old_aliases.iter().any(|a| a.contains("合成别名")) && old_display.iter().any(|a| a.contains("合成作品名")));
     drop(before);
-    assert_eq!(upgrade(&lib.db).unwrap(), "{\"from\":7,\"to\":10}\n");
+    let current = illustash_terms::SCHEMA_VERSION;
+    assert_eq!(upgrade(&lib.db).unwrap(), format!("{{\"from\":7,\"to\":{current}}}\n"));
     let c = Connection::open(&lib.db).unwrap();
     assert_eq!(rows(&c, &aliases.replace("{}", "term_key_aliases")), old_aliases, "aliases move to the core unchanged");
     assert_eq!(rows(&c, &display.replace("{}", "term_key_names")), old_display, "display names move unchanged");
@@ -286,7 +287,7 @@ fn a_consistent_library_upgrades_retires_the_key_tables_and_fills_in_counted_ste
         filled.iter().map(|(_, k, n)| (k.as_deref(), n.as_deref())).collect();
     assert_eq!(kinds, [(None, None), (Some("swap"), Some("1")), (Some("sweep"), Some("3")), (Some("set"), Some("2"))]);
     let version: String = c.query_row("SELECT value FROM meta WHERE key='terms_schema'", [], |r| r.get(0)).unwrap();
-    assert_eq!(version, "10");
+    assert_eq!(version, current.to_string());
 }
 
 #[test]

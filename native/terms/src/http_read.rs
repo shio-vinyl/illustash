@@ -24,6 +24,7 @@ pub const CORE_ROUTES: &[&str] = &[
     "/api/ids",
     "/api/detail",
     "/api/home",
+    "/api/calendar",
     "/api/galleries",
     "/api/galleries/covers",
     "/api/fold",
@@ -514,6 +515,27 @@ pub(crate) fn works(c: &Connection, q: &str) -> Result<Json> {
     });
     Ok(Json::Array(result))
 }
+/// 作品配色与切片共用同一组可见图片。一个 UUID 即使匹配多个角色也只出现一次。
+fn work_covers(c: &Connection, works: &mut Json, nsfw: &str) -> Result<()> {
+    let Json::Array(works) = works else { return Ok(()) };
+    let rating = crate::sql_fragments::rating("a", nsfw)?;
+    let sql = format!(
+        "{TREE} SELECT DISTINCT a.uuid, a.added_at
+         FROM memberships m JOIN {ENTITIES} e ON e.id=m.entity
+         JOIN assets a ON a.uuid=m.uuid
+         WHERE e.work_id IN (SELECT id FROM tree) AND {visible}{rating}
+         ORDER BY a.added_at DESC,a.uuid LIMIT 4",
+        visible = visible("a"),
+    );
+    let mut statement = c.prepare(&sql)?;
+    for work in works {
+        let covers = statement
+            .query_map([work.field("id").text()], |row| Ok(Json::object([("uuid", row.get::<_, String>(0)?.into())])))?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        work.set("covers", Json::Array(covers));
+    }
+    Ok(())
+}
 pub(crate) fn sqlite_uri(path: &std::path::Path) -> String {
     let path = crate::sqlite::path(path);
     let path = path.to_string_lossy();
@@ -559,13 +581,22 @@ pub(crate) fn tag_vocabulary(context: &LibraryContext) -> Result<Arc<Vec<String>
     Ok(tags)
 }
 
-const BROWSE_ROUTES: [&str; 7] =
-    ["/api/assets", "/api/assets/count", "/api/ids", "/api/detail", "/api/home", "/api/fold", "/api/review-pools"];
+const BROWSE_ROUTES: &[&str] = &[
+    "/api/assets",
+    "/api/assets/count",
+    "/api/ids",
+    "/api/detail",
+    "/api/home",
+    "/api/calendar",
+    "/api/fold",
+    "/api/review-pools",
+];
 /// 会渲染名字的模块读取。计数、ID 以及原始的身份和偏好读取不渲染；它们的查询路径保持在本地。
-const NAMED_ROUTES: [&str; 9] = [
+const NAMED_ROUTES: &[&str] = &[
     "/api/assets",
     "/api/detail",
     "/api/home",
+    "/api/calendar",
     "/api/galleries/covers",
     "/api/characters",
     "/api/tagged",
@@ -625,11 +656,14 @@ pub fn read(context: &LibraryContext, url: &str) -> Result<Option<(Json, u16)>> 
         // 新读接口可拒绝参数。库中其他接口保留原来的错误处理。
         let result = read_library(&tx, context, path, &q, audit_n);
         return match result {
-            Ok(payload) => {
+            Ok(mut payload) => {
+                crate::app_colors::decorate_response(&tx, context, path, &q, &mut payload);
                 tx.commit()?;
                 Ok(Some((payload, 200)))
             }
-            Err(Error::Invalid(m)) if path == ARTIST_DIRECTORY => Ok(refused(m)),
+            Err(Error::Invalid(m)) if path == ARTIST_DIRECTORY || crate::app_colors::wants_work_covers(path, &q) => {
+                Ok(refused(m))
+            }
             Err(e) => Err(e),
         };
     }
@@ -648,9 +682,10 @@ pub fn read(context: &LibraryContext, url: &str) -> Result<Option<(Json, u16)>> 
         crate::http_app::read(&tx, context, &q)
     };
     match result {
-        Ok(v) => {
+        Ok((mut body, status)) => {
+            crate::app_colors::decorate_response(&tx, context, path, &q, &mut body);
             tx.commit()?;
-            Ok(Some(v))
+            Ok(Some((body, status)))
         }
         Err(Error::Invalid(m)) => Ok(refused(m)),
         Err(e) => Err(e),
@@ -776,7 +811,11 @@ fn read_library(
         }
         "/api/works" => {
             register_names(c)?;
-            works(c, value("q"))?
+            let mut result = works(c, value("q"))?;
+            if crate::app_colors::wants_work_covers(path, q) {
+                work_covers(c, &mut result, value("nsfw"))?;
+            }
+            result
         }
         "/api/artist" => {
             Json::object([("id", value("id").into()), ("name", crate::http_artists::name_of(c, library, value("id"))?)])

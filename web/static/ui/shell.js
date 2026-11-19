@@ -20,7 +20,7 @@ import {closeInspector, closeViewer} from './detail.js';
 import {markSelectButton, placeFor, rememberPlace, reload, resetForRoute, selectAll, setNsfw, short, sweep, toggleFit, toggleSelecting} from './grid.js';
 import {guideTick} from './guide.js';
 import {filterBar, wireFilterBar} from './filters.js';
-import {saveButton, wireGalleries, wireSaveButton} from './galleries.js';
+import {saveButton, wireGalleries, wireSaveButton} from './gallery_save.js';
 import {createLayer} from './overlay.js';
 import {editProfile, mergeCharacter, toggleMascot, toggleOc} from './palette.js';
 import {enter} from './motion.js';

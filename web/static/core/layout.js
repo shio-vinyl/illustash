@@ -247,7 +247,7 @@ export function collage(ratios, {width, seed = 1, pad = 8, caption = 22, columns
 // 再下面一排带编号的图（一行等高行，放得下几张放几张）。窄的时候（< 720）封面占满宽，导语在下，两张并排，再一排。
 // 返回 {boxes, lead, height}：框带 role（'cover'、'side'、'row'）和 no（编号，封面没有，从 1 起）；lead 是导语的框。
 // 杂志的图在框里裁切（铺满），所以宽高比只影响下面那一排的分法。
-export function magazine(ratios, {width, gap = 16, lead = 96, maxCover = 720, rowTarget = 220}) {
+export function magazine(ratios, {width, gap = 16, lead = 96, maxCover = 600, rowTarget = 200}) {
   const n = ratios.length, boxes = [];
   if (!n) return {boxes, lead: null, height: 0};
   const wide = width >= 720;
@@ -280,7 +280,7 @@ export function magazine(ratios, {width, gap = 16, lead = 96, maxCover = 720, ro
 // 展厅：一面墙上挂一排画框，墙横向延伸（宽度不限，界面横向滚动）。画框里的图高按 HALL_STEPS 轮换（墙高 height 的比例），
 // 宽按宽高比；框外再加 frame 宽的画框；画框中心对齐视线高度（墙高的 42%）。左右各留 pad，画框之间留 gap。
 // 返回 {boxes, width}：框是画框的外沿。
-export const HALL_STEPS = [.56, .44, .6, .48, .54, .42, .52];
+export const HALL_STEPS = [.46, .36, .5, .4, .44, .34, .42];
 export function hall(ratios, {height, gap = 72, frame = 12, pad = 64}) {
   const boxes = [], eye = height * .42;
   let x = pad;

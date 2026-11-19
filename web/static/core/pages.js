@@ -39,7 +39,9 @@ import {state} from './state.js';
 //   card       卡片上额外的角标
 //   directory  需要完整的角色目录（不是摘要行）
 //   guideTick  进入本页算上手清单的哪一步
-//   gallery    画廊页（#445）：地址总带着条件，不带查询时按保存的条件打开
+//   gallery    画廊的网格页（#445）：地址总带着条件，不带查询时按保存的条件打开；gridLayout(r) 是这个画廊的展示方式要的分行
+//              （core/gallery_shows.js，ui/grid.js 按它分行）
+//   stage      画廊的展示页（拼贴、杂志、展厅，#710）：只放前几张，不能选
 const NEWEST = ['newest', 'oldest'];
 // 地址上的条件（has 里的），画廊页的空状态用。
 const conditions = r => conditionLists(r).has;
@@ -92,7 +94,7 @@ const list = [
     empty: (r, ctx = {}) => ctx.nsfw || conditionCount(r) > 1 || r.q ? libraryBase.empty(r, ctx)
       : r.id === 'fav' ? t('还没有收藏。在详情面板或大图里点心形，或者按 F 收藏。')
         : conditions(r).includes(`gallery:${r.id}`) ? t('这个画廊还没有图。把图拖到活页条上的画廊封面，或者在选择栏里点「放进画廊…」。') : libraryBase.empty(r, ctx)},
-  {name: 'showcase', prefix: 'showcase', area: 'groupsPage', panel: true, keys: 'shown', click: 'own', entry: 'galleries', toolbar: 'none', emptyIcon: 'gallery'},
+  {name: 'showcase', prefix: 'showcase', area: 'groupsPage', panel: true, keys: 'shown', click: 'own', entry: 'galleries', toolbar: 'none', emptyIcon: 'gallery', stage: true},
   {name: 'characters', sections: true, area: 'charIndex', panel: true, click: 'own', entry: 'catalog', toolbar: 'index', directory: true, guideTick: 'look', emptyIcon: 'person'},
   {name: 'settings', sections: true, area: 'settingsPage', panel: true, click: 'own', entry: 'settings', toolbar: 'none'},
   // 整理（#706）：未识别、重复、已排除三个页签（tabs 是页签组），随机抽查、身份整理有题时出现在二级层。各页签原来的子页保留。

@@ -1,4 +1,143 @@
-/* 画廊与收藏。归 0.4 第 E 步（画廊，#710）；A2（#705）只建了文件和层，规则由那一步写。
-   只用 css/tokens.css 的令牌和 css/base.css 的公共部件；重写一块，就删掉 app.css 里对应的旧规则。 */
+/* 画廊与收藏。归 0.4 第 E 步（画廊，#710）。只用 css/tokens.css 的令牌和 css/base.css 的公共部件。
+   - 全部画廊（ui/gallery_cards.js）：卡片的预览按那个画廊的展示方式摆（.gcard-prev.show-<id>）；底色是第一张图的主色（.tint）。
+   - 展示页（ui/gallery_stage.js）：每张图是一个 .piece，位置和大小由 core/layout.js 算好写在行内，这里只管样子（.stage.show-<id>）。
+   - 页头的展示方式切换（ui/galleries.js）、拖图进画廊时跟手的缩略图和 +N（ui/drag.js）。
+   瀑布、色彩是图库网格（css/library.css），这里不写。颜色只用、不展示：图的主色只变成底色和投影，不出色块。 */
 @layer pages{
+
+/* ---- 页头：展示方式的分段切换（窄的时候只留图标） ---- */
+.gallery-shows>button>span{white-space:nowrap}
+@media (max-width:980px){.gallery-shows>button>span{display:none}.gallery-shows>button{padding:0 var(--space-10)}}
+
+/* ---- 全部画廊 ---- */
+.gallery-index{padding:var(--space-8) 0 40px}
+.gcards{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:28px var(--space-20)}
+.gcard{position:relative;display:grid;gap:var(--space-10);min-width:0;color:var(--ink);text-decoration:none}
+.gcard-prev{position:relative;display:block;overflow:hidden;aspect-ratio:16/10;border-radius:var(--radius-12);background:var(--tint-wash);
+  transition:transform var(--dur-2) var(--ease),box-shadow var(--dur-2) var(--ease)}
+a.gcard:hover .gcard-prev{transform:translateY(-3px);box-shadow:var(--shadow-hover)}
+a.gcard:focus-visible{outline:none}
+a.gcard:focus-visible .gcard-prev{box-shadow:0 0 0 2px var(--sheet),0 0 0 4px var(--accent)}
+.gcard-prev>img{position:absolute;display:block;object-fit:cover;background:var(--tint-soft)}
+.gcard-prev>img[hidden]{display:none}
+.gcard-meta{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;column-gap:var(--space-6);padding:0 var(--space-2)}
+.gcard-meta>b{overflow:hidden;font-size:var(--fs-13);font-weight:var(--fw-600);white-space:nowrap;text-overflow:ellipsis}
+.gcard-meta>small{grid-column:1/-1;overflow:hidden;color:var(--muted);font-size:var(--fs-11);white-space:nowrap;text-overflow:ellipsis}
+.gcard-kind{display:grid;place-items:center;width:18px;height:18px;color:var(--muted)}
+.gcard-kind>svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.gcard[data-kind=fav] .gcard-kind{color:var(--fav)}
+.gcard[data-kind=fav] .gcard-kind>svg{fill:currentColor;stroke:none}
+/* 拖图进画廊时指针下面的那张（ui/drag.js） */
+.gcard.is-drop .gcard-prev{transform:scale(1.03);box-shadow:0 0 0 2px var(--sheet),0 0 0 4px var(--accent)}
+
+/* 预览：拼贴（拍立得错落叠着） */
+.gcard-prev.show-collage>img{top:16%;width:34%;height:62%;border:5px solid var(--sheet);border-bottom-width:12px;border-radius:var(--radius-4);box-shadow:var(--shadow-pop)}
+.gcard-prev.show-collage>img:nth-child(1){left:4%;transform:rotate(-8deg)}
+.gcard-prev.show-collage>img:nth-child(2){left:20%;top:10%;transform:rotate(4deg)}
+.gcard-prev.show-collage>img:nth-child(3){left:36%;top:20%;transform:rotate(-3deg)}
+.gcard-prev.show-collage>img:nth-child(4){left:50%;top:8%;transform:rotate(7deg)}
+.gcard-prev.show-collage>img:nth-child(5){left:63%;top:18%;transform:rotate(-5deg)}
+/* 杂志：封面一张大的，右边两张 */
+.gcard-prev.show-magazine>img:nth-child(1){inset:0 38% 0 0;width:62%;height:100%}
+.gcard-prev.show-magazine>img:nth-child(2){top:0;right:0;width:calc(38% - 4px);height:calc(50% - 2px)}
+.gcard-prev.show-magazine>img:nth-child(3){right:0;bottom:0;width:calc(38% - 4px);height:calc(50% - 2px)}
+.gcard-prev.show-magazine>img:nth-child(n+4){display:none}
+/* 瀑布：三列，高矮错开 */
+.gcard-prev.show-masonry>img{width:calc((100% - 8px) / 3)}
+.gcard-prev.show-masonry>img:nth-child(1){top:0;left:0;height:62%}
+.gcard-prev.show-masonry>img:nth-child(2){top:0;left:calc((100% + 4px) / 3);height:42%}
+.gcard-prev.show-masonry>img:nth-child(3){top:0;right:0;height:72%}
+.gcard-prev.show-masonry>img:nth-child(4){bottom:0;left:calc((100% + 4px) / 3);height:calc(58% - 4px)}
+.gcard-prev.show-masonry>img:nth-child(5){bottom:0;left:0;height:calc(38% - 4px)}
+/* 展厅：深色的墙上一排画框，上面有光 */
+.gcard-prev.show-hall{background:radial-gradient(60% 50% at 50% 0,color-mix(in srgb,var(--on-image) 16%,transparent),transparent),
+  linear-gradient(180deg,color-mix(in srgb,var(--tint) 12%,var(--toast-bg)) 74%,color-mix(in srgb,var(--toast-bg) 80%,var(--ink)) 74%)}
+.gcard-prev.show-hall>img{top:22%;width:19%;height:46%;border:3px solid var(--sheet);box-shadow:var(--shadow-pop)}
+.gcard-prev.show-hall>img:nth-child(1){left:6%}
+.gcard-prev.show-hall>img:nth-child(2){left:29%;top:26%;height:38%}
+.gcard-prev.show-hall>img:nth-child(3){left:52%;top:18%;height:52%}
+.gcard-prev.show-hall>img:nth-child(4){left:75%;top:25%;height:40%}
+.gcard-prev.show-hall>img:nth-child(5){display:none}
+/* 色彩：几张等高的小图 */
+.gcard-prev.show-color>img{top:0;height:calc(50% - 2px);width:calc((100% - 8px) / 3)}
+.gcard-prev.show-color>img:nth-child(1){left:0}
+.gcard-prev.show-color>img:nth-child(2){left:calc((100% + 4px) / 3)}
+.gcard-prev.show-color>img:nth-child(3){right:0}
+.gcard-prev.show-color>img:nth-child(4){top:auto;bottom:0;left:0;width:calc(50% - 2px)}
+.gcard-prev.show-color>img:nth-child(5){top:auto;right:0;bottom:0;width:calc(50% - 2px)}
+/* 还没有图的画廊 */
+.gcard.is-empty .gcard-prev{background:var(--soft)}
+
+/* 新建 */
+.gcard-new .gcard-prev{display:grid;place-content:center;justify-items:center;gap:var(--space-4);padding:var(--space-16);background:var(--soft);color:var(--muted);text-align:center}
+.gcard-new .gcard-prev>b{color:var(--ink);font-size:var(--fs-13);font-weight:var(--fw-600)}
+.gcard-new .gcard-prev>small{font-size:var(--fs-11)}
+.gcard-plus{display:grid;place-items:center;width:40px;height:40px;margin-bottom:var(--space-4);border-radius:var(--radius-round);background:var(--sheet)}
+.gcard-plus>svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round}
+.gcard-acts{display:flex;gap:var(--space-8)}
+
+/* ---- 展示页 ---- */
+.stage-page{padding:var(--space-8) 0 40px}
+.stage-page[data-show=hall]{overflow-x:auto;margin:0 -24px;padding:0}
+.stage{position:relative;margin:0 auto}
+.piece{position:absolute;top:0;left:0;margin:0;cursor:pointer;transform-origin:50% 50%}
+.piece-frame{position:relative;display:block;overflow:hidden;width:100%;height:100%;border-radius:var(--radius-8);background:var(--tint-soft)}
+.piece-frame>img{display:block;width:100%;height:100%;object-fit:cover}
+.piece>figcaption{overflow:hidden;color:var(--ink2);font-size:var(--fs-12);white-space:nowrap;text-overflow:ellipsis}
+.piece-no{margin-right:var(--space-6);color:var(--accent);font-weight:var(--fw-750)}
+.piece-tape{position:absolute;top:-4px;z-index:var(--z-page-1);width:64px;height:20px;background:color-mix(in srgb,var(--tint) 24%,var(--glass-chip));opacity:.9}
+.piece-tape[hidden]{display:none}
+
+/* 拼贴：拍立得。白边，下面写名字；底板是第一张图主色的淡底 */
+.stage.show-collage{margin-top:var(--space-8)}
+.show-collage .piece{padding:var(--space-8) var(--space-8) 0;border-radius:var(--radius-4);background:var(--sheet);box-shadow:var(--shadow-pop);transition:box-shadow var(--dur-2) var(--ease)}
+.show-collage .piece:hover{z-index:var(--z-page-6)!important;box-shadow:var(--shadow-dialog)}
+.show-collage .piece-frame{height:calc(100% - 22px);border-radius:var(--radius-4)}
+.show-collage .piece-frame{overflow:visible}
+.show-collage .piece-frame>img{border-radius:var(--radius-4)}
+.show-collage .piece>figcaption{height:22px;line-height:22px;text-align:center}
+
+/* 杂志：封面大图，导语的大标题，下面一排带编号的图；名字压在图下沿 */
+.stage-lead{position:absolute;top:0;left:0;display:grid;align-content:start;gap:var(--space-6)}
+.stage-lead[hidden]{display:none}
+.stage-lead>small{color:var(--muted);font-size:var(--fs-11);font-weight:var(--fw-600);letter-spacing:.04em}
+.stage-lead>b{overflow:hidden;font-size:var(--fs-display-40);font-weight:var(--fw-750);letter-spacing:-.03em;line-height:1.05;white-space:nowrap;text-overflow:ellipsis}
+.stage-lead>span{color:var(--ink2);font-size:var(--fs-13)}
+.show-magazine .piece-frame{transition:box-shadow var(--dur-2) var(--ease)}
+.show-magazine .piece:hover .piece-frame{box-shadow:var(--shadow-hover)}
+.show-magazine .piece.is-cover .piece-frame{border-radius:var(--radius-18)}
+.show-magazine .piece>figcaption{position:absolute;right:var(--space-10);bottom:var(--space-8);left:var(--space-10);color:var(--on-image);text-shadow:var(--image-text-shadow)}
+.show-magazine .piece-no{color:var(--on-image);font-size:var(--fs-20)}
+
+/* 展厅：一面深色的墙，每幅画上面一盏射灯，下面是地面；画框是白色卡纸，名字写在画框下面 */
+.stage.show-hall{margin:0;background:radial-gradient(120% 60% at 50% 0,color-mix(in srgb,var(--tint) 18%,var(--toast-bg)),var(--toast-bg) 70%)}
+.stage.show-hall::after{content:"";position:absolute;right:0;bottom:0;left:0;height:24%;background:linear-gradient(180deg,color-mix(in srgb,var(--toast-bg) 70%,var(--ink)),
+  color-mix(in srgb,var(--toast-bg) 85%,var(--ink)));pointer-events:none}
+.show-hall .piece{z-index:var(--z-page-1)}
+.show-hall .piece::before{content:"";position:absolute;bottom:60%;left:-30%;width:160%;height:120%;background:radial-gradient(50% 50% at 50% 100%,
+  color-mix(in srgb,var(--on-image) 20%,transparent),transparent);pointer-events:none}
+.show-hall .piece-frame{border:12px solid var(--sheet);border-radius:var(--radius-4);box-shadow:var(--shadow-dialog)}
+.show-hall .piece>figcaption{position:absolute;top:calc(100% + 12px);right:0;left:0;color:var(--on-image);text-align:center;opacity:.8}
+.show-hall .piece:hover .piece-frame{box-shadow:var(--shadow-dialog),0 0 0 2px var(--accent)}
+
+.stage-foot{display:flex;justify-content:center;padding:var(--space-24) 0 0}
+.stage-foot[hidden]{display:none}
+
+/* ---- 拖图进画廊（ui/drag.js） ---- */
+/* 跟手的缩略图：最多叠三张，多张时右上角写张数 */
+.lift{position:fixed;top:0;left:0;z-index:var(--z-toast);width:64px;height:64px;pointer-events:none}
+.lift>img{position:absolute;inset:0;width:64px;height:64px;border:2px solid var(--sheet);border-radius:var(--radius-8);object-fit:cover;box-shadow:var(--shadow-pop)}
+.lift>img:nth-child(2){transform:rotate(6deg) translate(4px,2px)}
+.lift>img:nth-child(3){transform:rotate(-7deg) translate(-4px,3px)}
+.lift>img:first-child{z-index:var(--z-page-3)}
+.lift-count{position:absolute;top:-8px;right:-10px;z-index:var(--z-page-4);padding:var(--space-1) var(--space-6);border-radius:var(--radius-pill);background:var(--accent-fill);
+  color:var(--on-accent);font-size:var(--fs-11);font-weight:var(--fw-750)}
+body.lifting{cursor:grabbing;-webkit-user-select:none;user-select:none}
+/* 活页条上不接收的项（按条件的画廊）、指针下面接得住的那一项 */
+.rail-item.is-off{opacity:.32;pointer-events:none}
+.rail-item.is-drop{transform:translateX(8px) scale(1.12)}
+.rail-item.is-drop .rail-cover{box-shadow:0 0 0 2px var(--canvas),0 0 0 4px var(--accent)}
+/* 放进去以后冒出来的 +N */
+.drop-plus{position:absolute;top:-10px;right:-12px;z-index:var(--z-page-4);padding:var(--space-1) var(--space-6);border-radius:var(--radius-pill);background:var(--accent-fill);
+  color:var(--on-accent);font-size:var(--fs-11);font-weight:var(--fw-750);pointer-events:none}
 }

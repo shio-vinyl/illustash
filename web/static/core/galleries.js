@@ -14,7 +14,7 @@ import {libraryPrefs} from './prefs.js';
 import {api, post} from './session.js';
 import {currentLibraryId} from './settings.js';
 import {pageFor, setShows, showFor, chooseShow as choose, forgetShow as forget} from './gallery_shows.js';
-import {pathFor} from './pages.js';
+import {pageOf, pathFor} from './pages.js';
 import {state} from './state.js';
 
 export const FAV = 'fav';
@@ -24,6 +24,8 @@ export const isManual = g => g?.kind === 'manual';
 export const isFav = id => String(id) === FAV;
 // 地址上定义这个画廊的那一个条件（手选画廊的 gallery:<id>、收藏的 fav）：筛选条上不画它，改了别的条件也不算「改过」。
 export const ownCondition = g => isFav(g?.id) ? FAV : isManual(g) ? `gallery:${g.id}` : '';
+// 地址 r 上定义它那个画廊的条件；不在画廊页上是 ''。
+export const ownConditionOf = r => pageOf(r).gallery ? ownCondition(galleryOf(r.id)) : '';
 
 let listRead = null;
 // 读一次画廊列表，放进 state.galleries（不含收藏）。

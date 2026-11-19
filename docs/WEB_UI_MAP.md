@@ -46,8 +46,9 @@
 | 图库 · 日历 | `#/calendar` + 图库的筛选 | `#calendarPage` | 同按天 | 无 | 无 | — | 图库 |
 | 角色页 | `#/library?char=…` + `variant/check/maybe/doubt` | `#grid` | 同图库，另有角色胶囊、造型、「可能也是 TA」「可能认错」；排序多「可疑优先」 | 有 | 有 | 整理：选中 | 资料库 |
 | 更多像这张的 | `#/library?like=[…]` + `by`，可叠加图库的筛选 | `#grid` | 同图库；排序多「最相似」（默认）；标题右侧是例图缩略图和「按画面｜按角色」 | 有（需先进选择） | 有 | 浏览：打开详情 | 图库 |
-| 画廊 | `#/galleries` | `#groupsPage` | 空 | 无 | 无 | 卡片是链接，进 `#/gallery/<id>` | 画廊 |
-| 画廊 · 一个画廊 | `#/gallery/<id>` + `has/not/from/to/q/day` | `#grid` | 同图库；没有「保存为画廊」，改了条件后页头有「更新画廊」「另存为新画廊」 | 有（需先进选择） | 有 | 浏览：打开详情 | 画廊 |
+| 画廊 | `#/galleries` | `#groupsPage` | 空 | 无 | 无 | 卡片是链接，按那个画廊的展示方式进 `#/gallery/<id>` 或 `#/showcase/<id>`；收藏在最前，最后是「新建」 | 画廊 |
+| 画廊 · 一个画廊 | `#/gallery/<id>` + `has/not/from/to/q/day`（瀑布、色彩）；收藏是 `#/gallery/fav`，`#/library?has=["fav"]` 改写到这里 | `#grid` | 同图库；没有「保存为画廊」，按条件的画廊改了条件后页头有「更新画廊」「另存为新画廊」；色彩的排序只有「按颜色」 | 有（需先进选择） | 有 | 浏览：打开详情 | 画廊 |
+| 画廊 · 展示页 | `#/showcase/<id>`（拼贴、杂志、展厅） | `#groupsPage` | 空 | 无 | 有（点图） | 打开详情；双击大图；按住拖进画廊 | 画廊 |
 | 资料库 · 角色 | `#/characters` | `#charIndex` | 角色｜作品｜画师切换、搜索、只当标签、书架｜列表 | 无 | 无 | 海报或行：跳到该角色的图库页 | 资料库 |
 | 资料库 · 作品 | `#/characters/works` | `#charIndex` | 角色｜作品｜画师切换、搜索、新建作品 | 无 | 无 | 作品行内按钮 | 资料库 |
 | 资料库 · 画师 | `#/characters/artists` | `#charIndex` | 角色｜作品｜画师切换、搜索、排序（张数最多、最近收图、名字） | 无 | 无 | 头像卡片：跳到按画师筛选的图库（`#/library?artist=…`） | 资料库 |
@@ -69,7 +70,7 @@
 
 ### 2.2 活页条亮哪一项
 
-注册表每个页面的 `entry`（一级入口）和 `item`（二级层的哪一项），`core/rail.js` 的 `railAt(route)` 按它们算：图库三种视图亮「图库」；`unmatched`、`skipped`、`groups`、`group` 亮「整理 › 未识别」，`duplicates`、`similar`、`sgroup` 亮「整理 › 重复」，`excluded`、`pending` 亮「整理 › 已排除」，`audit`、`identity` 亮各自那一项；`settings` 点亮底部的设置；资料库亮「资料库」，角色页也亮「资料库」，这个角色钉住了时选中它；画廊、一个画廊亮「画廊」和那一个；图库只按收藏筛选（`has` 只有 `fav`、没有别的条件）时亮「画廊 › 收藏」（`core/favorites.js` 的 `favoritesOnly`，#447）；`artist-audit` 的 `entry` 为空，哪个都不亮。按天视图滚到哪一天由按天视图调 `ui/rail.js` 的 `selectDay`（#707）。
+注册表每个页面的 `entry`（一级入口）和 `item`（二级层的哪一项），`core/rail.js` 的 `railAt(route)` 按它们算：图库三种视图亮「图库」；`unmatched`、`skipped`、`groups`、`group` 亮「整理 › 未识别」，`duplicates`、`similar`、`sgroup` 亮「整理 › 重复」，`excluded`、`pending` 亮「整理 › 已排除」，`audit`、`identity` 亮各自那一项；`settings` 点亮底部的设置；资料库亮「资料库」，角色页也亮「资料库」，这个角色钉住了时选中它；画廊、一个画廊亮「画廊」和那一个；收藏（`#/gallery/fav`；只按收藏筛选的图库地址改写到它，#710）亮「画廊 › 收藏」；`artist-audit` 的 `entry` 为空，哪个都不亮。按天视图滚到哪一天由按天视图调 `ui/rail.js` 的 `selectDay`（#707）。
 
 ### 2.3 点击语义
 

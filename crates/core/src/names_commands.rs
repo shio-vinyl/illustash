@@ -2,6 +2,7 @@
 //! `{"op": …}`（或 `{"op": "batch", "ops": [...]}`），一个核心事务。NameUpdater（联网补名字）和相册标题的写入走这里，
 //! 逐行照 tests/reference/web/names.py（#9 已删除） 的 `put`、`tag_entities`、`NameUpdater.replace` / `aliases` / `seed` 与 tests/reference/web/store.py（#9 已删除） 的
 //! `Store.alias`。名字切到核心之后，旧表是兼容表（写保护），提交时由 `legacy_names::after_write` 补齐主数据、重建投影。
+use crate::character_entities::ENTITIES;
 use crate::character_links::{core_system, LINKS};
 use crate::character_names::{alias, put_name, TERM_OF};
 use crate::error::invalid;
@@ -19,13 +20,20 @@ fn given(v: &Value) -> Option<&str> {
     v.as_str().filter(|s| !s.trim_matches(|c: char| c.is_whitespace() || ('\u{1c}'..='\u{1f}').contains(&c)).is_empty())
 }
 
-/// `names.tag_entities`：名字存在这个 tag 下的身份，系统按具体程度排。
+/// `names.tag_entities`：名字存在这个 tag 下的活跃顶层角色身份，系统按具体程度排。
+/// 已合并、皮肤（有父角色）、原创或作品实体不作为角色名写入目标。
 pub fn tag_entities(c: &Connection, tag: &str) -> Result<Vec<String>> {
+    let active = format!(
+        "SELECT l.entity_id FROM {LINKS} l
+         JOIN {ENTITIES} e ON e.id = l.entity_id
+         WHERE l.core_system = ? AND l.key = ? AND l.current = 1
+           AND e.merged_into IS NULL AND e.parent_id IS NULL
+           AND e.kind NOT IN ('oc','work') AND coalesce(e.original,0) = 0
+         ORDER BY e.seq"
+    );
     for system in ["danbooru", "wd", "photos_album", "ccip"] {
         let ids: Vec<String> = c
-            .prepare_cached(&format!(
-                "SELECT l.entity_id FROM {LINKS} l WHERE l.core_system = ? AND l.key = ? AND l.current = 1"
-            ))?
+            .prepare_cached(&active)?
             .query_map([core_system(system), tag], |r| r.get(0))?
             .collect::<rusqlite::Result<_>>()?;
         if !ids.is_empty() {
@@ -33,7 +41,12 @@ pub fn tag_entities(c: &Connection, tag: &str) -> Result<Vec<String>> {
         }
     }
     Ok(c.prepare_cached(&format!(
-        "SELECT l.entity_id FROM {LINKS} l WHERE l.core_system = 'ccip_base' AND json_extract(l.key, '$[0]') = ?"
+        "SELECT l.entity_id FROM {LINKS} l
+         JOIN {ENTITIES} e ON e.id = l.entity_id
+         WHERE l.core_system = 'ccip_base' AND l.current = 1 AND json_extract(l.key, '$[0]') = ?
+           AND e.merged_into IS NULL AND e.parent_id IS NULL
+           AND e.kind NOT IN ('oc','work') AND coalesce(e.original,0) = 0
+         ORDER BY e.seq"
     ))?
     .query_map([tag], |r| r.get(0))?
     .collect::<rusqlite::Result<_>>()?)

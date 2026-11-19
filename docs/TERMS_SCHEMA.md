@@ -220,7 +220,7 @@ cargo clippy --manifest-path crates/core/Cargo.toml --all-targets -- -D warnings
   - 名字版本 `names_version` 的触发器从 `display_names` 换到 `term_key_names`（`legacy_names::VERSIONED`、`version_triggers`），增量维护显示投影时按它记下改过的键。
   - 升级时（`legacy_names::retire_display_names`）照旧表整表同步一次，核对一致后删表并改装触发器，不一致就拒绝升级。
   - 新建图库不再建 `display_names`；22 条内置作品中文名在核心迁移之后写进 `term_key_names`（`app_create_names.sql`）。
-  - 研究指纹照旧计入 `term_key_names`：之前镜像表也在指纹里，所以写显示名对研究结果的影响不变。
+  - 研究指纹不计入 `term_key_names`、`term_key_aliases` 与显示投影表（`term_name_display`、`term_name_choice`）及其同步版本 `meta.names_projected` / `names_display_projected`（`app_research.rs` 的 `UNREAD` / `UNREAD_META`，#752）：没有任何研究计算器或学习戳读取名称与显示投影。
 - **名字**（第三个领域）：`term_names` 是角色、皮肤、作品名字的唯一权威（画师的名字本来就在这里）。
   - 写：`character_names::put_name` / `alias`（资料、合并、结构、导入、名字命令都经它），以及资料撤销、合并撤销、名字命令的删除，都直接写 `term_names`，按 `terms.key` = 身份 id 找词条。
   - 新建的身份一建出来就是词条（实体一节的 `character_entities::create`），写名字时就有词条 id。
@@ -230,7 +230,7 @@ cargo clippy --manifest-path crates/core/Cargo.toml --all-targets -- -D warnings
   - 升级时（`legacy_names::retire_names`）照旧表整表同步一次、逐行核对，一致就填 `seq` 并删表，不一致就拒绝升级。三张名字旧表都退役之后才装新的版本触发器，退役时的同步不计入 `names_version`。
   - `cutover-names`、`sync-names`、`verify-names` 随第 4 步删除（见下）。
   - 新建图库不再建 `names`。
-  - 研究指纹照旧计入 `term_names`（之前镜像表也在指纹里），写名字对研究结果的影响不变。
+  - 研究指纹不计入 `term_names`（`app_research.rs` 的 `UNREAD`，#752），写名字不会让并发中的研究任务判定输入变化。
 - **链接**（第四个领域）：`term_links` 是角色、皮肤、作品链接的唯一权威（画师等别的词条的链接本来就在这里，`(system, key)` 全局唯一）。
   - 读：共用片段 `character_links::LINKS` 给出与原来 `links` 同形的行（系统名照旧写 `wd`，`entity_id` 是 `terms.key`，只含 `term_tree` 里的词条），另带存储里的系统名 `core_system`；按系统查找时过滤 `core_system`，仍走 `(system, key)` 主键。读者包括选名、名字搜索、名字命令、资料、结构、导入、合并、身份图、HTTP 读取层、应用层的索引 / 名字 / 引导 / 本地统计 / 资料，以及研究计算的锚点。
   - 写：资料、结构、导入、资料撤销直接写 `term_links`（`term_id` 由身份 id 找；新身份在建出来时已镜像成词条，见名字一节）。写入前检查这个 (system, key) 是否已属于别的类型的词条（`character_links::check_free`），报错与原来命令末尾镜像时相同，所以 `INSERT OR REPLACE` / `ON CONFLICT` 不会顶掉画师的链接。

@@ -115,8 +115,9 @@ pub(crate) fn forget_content(tx: &Connection, src: &Connection, changed: &[Strin
     crate::app_migrate_data::early_groups(tx, src)?;
     crate::character_projection::fold(tx)
 }
-/// 没有任何研究计算器、学习戳或结果检查会读的应用表（#29）：偏好设置、名称来源设置（模型密钥、流量计数）、
-/// 名称缓存、同步历史、人工结论备份的状态与图片摘要、研究队列，以及画廊和相似组的「看过了」。写这些表从不会让结果失效。其他所有表，包括以后新增的表，都仍是学习的输入。
+/// 没有任何研究计算器、学习戳或结果检查会读的应用表（#29、#752）：偏好设置、名称来源设置（模型密钥、流量计数）、
+/// 名称缓存、核心名称表与显示投影表、同步历史、人工结论备份的状态与图片摘要、研究队列，以及画廊和相似组的「看过了」。
+/// 写这些表从不会让结果失效。其他所有表，包括以后新增的表，都仍是学习的输入。
 const UNREAD: &[&str] = &[
     "backend_effects",
     "galleries",
@@ -130,9 +131,14 @@ const UNREAD: &[&str] = &[
     "similar_seen",
     "sync_added",
     "sync_runs",
+    "term_key_aliases",
+    "term_key_names",
+    "term_name_choice",
+    "term_name_display",
+    "term_names",
 ];
-/// 名称写入计数和人工结论备份修订号。学习分别核验其实际读取的名称、裁决等行。
-const UNREAD_META: &str = "'names_version','human_revision'";
+/// 名称写入计数、显示投影同步版本和人工结论备份修订号。研究计算与学习戳均不读取名称及显示投影。
+const UNREAD_META: &str = "'names_version','names_projected','names_display_projected','human_revision'";
 /// 某一种研究的结果由什么算出（#29，docs/ARCHITECTURE_DIRECTION.md）。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Scope {
@@ -707,6 +713,9 @@ impl SnapshotDb {
         if name == "term_projection" {
             return regroup;
         }
+        if UNREAD.contains(&name) {
+            return false;
+        }
         // 学习戳、核心发布与分组共享术语和身份数据。用户扩展、导入报告、备份及任务历史无需交给 worker。
         name.starts_with("term_")
             || name.starts_with("identity_")
@@ -1032,6 +1041,12 @@ impl Research {
                     let message = if yielded(&e) { YIELDED } else { BUSY };
                     *state.lock().expect("research state mutex poisoned") =
                         Json::object([("status", "waiting".into()), ("message", message.into())]).into();
+                    if let Some(tx) = reply {
+                        let _ = tx.send(Err(Error::Invalid(e.to_string())));
+                    }
+                    Err(e)
+                }
+                Err(e) if ctx.cancellation().load(Ordering::SeqCst) && !ctx.timed_out() => {
                     if let Some(tx) = reply {
                         let _ = tx.send(Err(Error::Invalid(e.to_string())));
                     }
@@ -1621,13 +1636,16 @@ mod tests {
             app.execute_batch(
                 "PRAGMA journal_mode=WAL;
                  CREATE TABLE meta(key TEXT PRIMARY KEY,value TEXT);
-                 INSERT INTO meta VALUES ('names_version','0'),('identity_policy','hybrid');
+                 INSERT INTO meta VALUES ('names_version','0'),('names_projected','0'),('names_display_projected','0'),('identity_policy','hybrid');
                  CREATE TABLE assets(uuid TEXT PRIMARY KEY,src_path TEXT);
                  CREATE TABLE prefs(key TEXT PRIMARY KEY,value TEXT NOT NULL);
                  CREATE TABLE name_cache(key TEXT PRIMARY KEY,value TEXT NOT NULL);
                  CREATE TABLE name_settings(key TEXT PRIMARY KEY,value TEXT NOT NULL);
                  CREATE TABLE term_names(term_id INTEGER,value TEXT);
                  CREATE TABLE term_key_names(kind TEXT,key TEXT,value TEXT);
+                 CREATE TABLE term_key_aliases(kind TEXT,key TEXT,value TEXT,position INTEGER);
+                 CREATE TABLE term_name_display(entity TEXT,skin_only INTEGER,name TEXT);
+                 CREATE TABLE term_name_choice(kind TEXT,key TEXT,name TEXT);
                  CREATE TABLE sync_runs(id INTEGER PRIMARY KEY,status TEXT);
                  CREATE TABLE backend_effects(id INTEGER PRIMARY KEY,kind TEXT,status TEXT DEFAULT 'pending');
                  CREATE TABLE terms(id INTEGER PRIMARY KEY,key TEXT UNIQUE);
@@ -1774,6 +1792,8 @@ mod tests {
         f.app()
             .execute_batch(
                 "INSERT INTO name_settings VALUES ('model_key','synthetic-key');
+             INSERT INTO term_names VALUES (1,'合成');
+             INSERT INTO term_name_display VALUES ('e1',0,'合成');
              INSERT INTO memberships VALUES ('a','e1');
              CREATE TABLE local_archive(v,display AS (v+1)); INSERT INTO local_archive(v) VALUES (5);
              CREATE TABLE term_projection(id INTEGER PRIMARY KEY); INSERT INTO term_projection VALUES (1);
@@ -1814,7 +1834,7 @@ mod tests {
             };
             assert_eq!(tables(&source, "labels"), 0);
             if scope == Scope::Learning {
-                for table in ["local_archive", "term_projection"] {
+                for table in ["local_archive", "term_projection", "term_names", "term_name_display"] {
                     assert_eq!(
                         app.query_row(&format!("SELECT count(*) FROM {table}"), [], |r| r.get::<_, i64>(0)).unwrap(),
                         0
@@ -1926,13 +1946,18 @@ mod tests {
             ("name cache", Box::new(|| app("INSERT INTO name_cache VALUES ('synthetic','{}')")), &[]),
             ("name settings", Box::new(|| app("INSERT INTO name_settings VALUES ('synthetic_setting','42')")), &[]),
             ("model key", Box::new(|| app("INSERT INTO name_settings VALUES ('model_key','synthetic')")), &[]),
-            // 自核心 v8 起名称放在核心表里（#201）；核心名称表是学习的输入，和以前镜像时一样。
-            // names version 本身不是输入（`UNREAD_META`）。
-            ("names + names_version", Box::new(|| app("INSERT INTO term_names VALUES (1,'合成')")), &[Learning]),
+            // 核心名称表、显示投影表与名称版本元数据都不被任何研究计算器或学习戳读取（#752）。
+            ("names + names_version", Box::new(|| app("INSERT INTO term_names VALUES (1,'合成')")), &[]),
+            ("display names", Box::new(|| app("INSERT INTO term_key_names VALUES ('character','e1','合成')")), &[]),
+            ("key aliases", Box::new(|| app("INSERT INTO term_key_aliases VALUES ('work','w1','合成',0)")), &[]),
             (
-                "display names",
-                Box::new(|| app("INSERT INTO term_key_names VALUES ('character','e1','合成')")),
-                &[Learning],
+                "name projection and meta",
+                Box::new(|| {
+                    app("INSERT INTO term_name_display VALUES ('e1',0,'合成');
+                    INSERT INTO term_name_choice VALUES ('character','e1','合成');
+                    UPDATE meta SET value='1' WHERE key IN ('names_projected','names_display_projected');")
+                }),
+                &[],
             ),
             ("sync history", Box::new(|| app("INSERT INTO sync_runs(status) VALUES ('done')")), &[]),
             ("pending event", Box::new(|| app("INSERT INTO backend_effects(kind) VALUES ('verdict')")), &[]),

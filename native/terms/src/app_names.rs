@@ -20,6 +20,14 @@ use std::{
 
 /// 图库对名称文本查询的长期同意在 `prefs` 里的键。与启动偏好分开存放，启动偏好从不授权联网。
 const CONSENT: &str = "names_network";
+/// 单项查询开始与发布之间来源发生冲突时的错误文案。
+const SOURCE_CHANGED: &str = "名称来源已改变，请重试";
+/// 全库后台名称同步在联网期间遇到并发识别导入时，单个任务最多在本轮内刷新的重试次数。
+const IMPORT_RETRIES: u32 = 3;
+
+fn source_changed(e: &Error) -> bool {
+    matches!(e, Error::Invalid(message) if message == SOURCE_CHANGED)
+}
 /// 图库对名称文本查询给出同意的时间，如果给过的话。
 fn consent(library: &Library) -> Result<Option<String>> {
     let c = crate::app_library::read_connection(&library.instance_path().join("library.sqlite"))?;
@@ -231,20 +239,22 @@ fn fingerprint_with(c: &Connection, rows: &[Entity], indexed: &Value, full: bool
             ])))?
             .collect::<rusqlite::Result<Vec<_>>>()?));
     }
-    let works = dump(&json!(rows.iter().map(|r| r.work.as_str()).collect::<BTreeSet<_>>()));
-    values.push(json!(crate::app_migrate_data::rows_with(
-        c,
-        &format!(
-            "SELECT l.system, l.key, l.entity_id, l.current
-         FROM {LINKS} l
-         WHERE l.entity_id IN (
-           SELECT q.entity_id FROM {LINKS} q
-           WHERE q.core_system = 'qualifier' AND q.key IN (SELECT value FROM json_each(?)))
-         ORDER BY l.system, l.key, l.entity_id",
-            LINKS = crate::character_links::LINKS
-        ),
-        [works]
-    )?));
+    if full {
+        let works = dump(&json!(rows.iter().map(|r| r.work.as_str()).collect::<BTreeSet<_>>()));
+        values.push(json!(crate::app_migrate_data::rows_with(
+            c,
+            &format!(
+                "SELECT l.system, l.key, l.entity_id, l.current
+             FROM {LINKS} l
+             WHERE l.entity_id IN (
+               SELECT q.entity_id FROM {LINKS} q
+               WHERE q.core_system = 'qualifier' AND q.key IN (SELECT value FROM json_each(?)))
+             ORDER BY l.system, l.key, l.entity_id",
+                LINKS = crate::character_links::LINKS
+            ),
+            [works]
+        )?));
+    }
     if !indexed.is_null() {
         values.push(indexed.clone());
     }
@@ -606,12 +616,20 @@ fn jobs(rows: &[Entity], known: &mut BTreeSet<Job>, attempted: &BTreeSet<Job>) -
 fn character_job(c: &Connection, planned: &[Entity], key: &str, work: &str) -> Result<Vec<Entity>> {
     let targets: BTreeSet<_> = crate::names_commands::tag_entities(c, key)?.into_iter().collect();
     let current = entities(c, &dump(&json!(targets)))?;
-    if current.len() != targets.len()
-        || !planned.iter().all(|r| {
-            current.iter().any(|row| row.id == r.id && row.tag == key && row.work == work && row.parent.is_none())
-        })
+    if targets.is_empty()
+        || current.len() != targets.len()
+        || !current.iter().all(|row| row.tag == key && row.parent.is_none())
     {
-        return invalid("名称来源已改变，请重试");
+        return invalid(SOURCE_CHANGED);
+    }
+    if !planned.is_empty() {
+        let planned_ids: BTreeSet<_> = planned.iter().map(|r| r.id.as_str()).collect();
+        let active = entities(c, &dump(&json!(planned_ids)))?;
+        if !planned.iter().all(|r| {
+            active.iter().any(|row| row.id == r.id && row.tag == key && row.work == work && row.parent.is_none())
+        }) {
+            return invalid(SOURCE_CHANGED);
+        }
     }
     Ok(current)
 }
@@ -692,6 +710,7 @@ fn run(source: &mut Source, entity: Option<&str>, state: &Mutex<Value>, publishe
     };
     let mut attempted = BTreeSet::new();
     let mut known = BTreeSet::new();
+    let mut retries: BTreeMap<Job, u32> = BTreeMap::new();
     let mut pending = jobs(&rows, &mut known, &attempted);
     let mut first_error = None;
     loop {
@@ -714,6 +733,18 @@ fn run(source: &mut Source, entity: Option<&str>, state: &Mutex<Value>, publishe
         if let Err(e) = result {
             if source.cancel.load(Ordering::SeqCst) {
                 return Err(e);
+            }
+            if entity.is_none() && source_changed(&e) {
+                let latest = latest_import(&c)?;
+                let count = retries.entry(job.clone()).or_insert(0);
+                if latest > imported && *count < IMPORT_RETRIES {
+                    *count += 1;
+                    imported = latest;
+                    rows = scope(&c, None)?;
+                    pending = jobs(&rows, &mut known, &attempted);
+                    legacy_current = false;
+                    continue;
+                }
             }
             keep(&mut first_error, e);
         }
@@ -775,12 +806,12 @@ fn lookup(
     // 事务内只核对这次读源库所用的键，因此持有应用写锁时不用等 source.sqlite（#275）。
     let checked = current(c)?;
     if job.character() && indexed(c, &checked)? != index {
-        return invalid("名称来源已改变，请重试");
+        return invalid(SOURCE_CHANGED);
     }
     let tx = c.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
     let publishing = current(&tx)?;
     if index_keys(&publishing) != index_keys(&checked) || job_fingerprint(&tx, job, &publishing, &index)? != job_fp {
-        return invalid("名称来源已改变，请重试");
+        return invalid(SOURCE_CHANGED);
     }
     crate::schema::begin_writing(&tx)?;
     let has_ops = !ops.is_empty();
@@ -1089,6 +1120,12 @@ impl Updater {
                                     "UPDATE backend_effects SET error=? WHERE id=? AND status='pending'",
                                     rusqlite::params![&message, id],
                                 );
+                            }
+                            if cancel.load(Ordering::SeqCst)
+                                || ctx.cancellation().load(Ordering::SeqCst)
+                                || crate::platform_process::stopping()
+                            {
+                                break;
                             }
                             final_error = Some((e, message));
                         }
@@ -2656,6 +2693,104 @@ mod sources_tests {
             });
             lib.run(&p, None, false).unwrap();
             assert!(changed.load(Ordering::SeqCst));
+            assert_eq!(named(lib.char("alice")), pair("爱丽丝", "bangumi"));
+        }
+
+        #[test]
+        fn merged_and_cross_system_shared_tags_do_not_fail_lookup() {
+            let lib = Library::load();
+            {
+                let mut c = lib.db();
+                let tx = c.transaction().unwrap();
+                crate::schema::begin_writing(&tx).unwrap();
+                for (id, original, sys, key, asset) in [
+                    ("merged_old", 0, "danbooru", "shared_merged", None),
+                    ("live_merged", 0, "wd_character", "shared_merged", Some("img-merged")),
+                    ("live_danbooru", 0, "danbooru", "shared_live", None),
+                    ("live_wd", 0, "wd_character", "shared_live", Some("img-live")),
+                    ("oc_holder", 1, "danbooru", "shared_oc", None),
+                    ("live_oc_peer", 0, "wd_character", "shared_oc", Some("img-oc")),
+                ] {
+                    crate::character_entities::create(
+                        &tx,
+                        &crate::character_entities::New { id, kind: "character", original, ..Default::default() },
+                        "import",
+                    )
+                    .unwrap();
+                    tx.execute(
+                        "INSERT INTO term_links(system,key,term_id,current,source,added_at)
+                         SELECT ?1,?2,id,1,'import','2026-11-19' FROM terms WHERE key=?3",
+                        [sys, key, id],
+                    )
+                    .unwrap();
+                    if let Some(asset) = asset {
+                        tx.execute(
+                            "INSERT INTO memberships(uuid,entity,status,origin,sources,source_count,ccip_only,skey)
+                             VALUES (?1,?2,'auto','wd','WD',1,0,'')",
+                            [asset, id],
+                        )
+                        .unwrap();
+                    }
+                }
+                crate::character_commands::command(
+                    &tx,
+                    &json!({"op":"merge","source":"merged_old","target":"live_merged"}),
+                )
+                .unwrap();
+                crate::schema::commit_writing(tx).unwrap();
+            }
+            let p = Providers::start();
+            p.set(|a| {
+                a.wikis.insert("shared_merged".into(), vec!["合并活跃名".into()]);
+                a.wikis.insert("shared_live".into(), vec!["跨系统活跃名".into()]);
+                a.wikis.insert("shared_oc".into(), vec!["同键非原创名".into()]);
+            });
+            lib.run(&p, None, false).unwrap();
+            let c = lib.db();
+            let shown = |id: &str| crate::names_view::View::load(&c).unwrap().entity(id, false).unwrap().unwrap().0;
+            assert_eq!(shown("live_merged").name, "合并活跃名");
+            assert_eq!(shown("live_wd").name, "跨系统活跃名");
+            assert_eq!(shown("live_oc_peer").name, "同键非原创名");
+            assert_eq!(
+                c.query_row(
+                    "SELECT count(*) FROM term_names n JOIN terms t ON t.id=n.term_id WHERE t.key='oc_holder'",
+                    [],
+                    |r| r.get::<_, i64>(0),
+                )
+                .unwrap(),
+                0
+            );
+        }
+
+        #[test]
+        fn concurrent_import_during_lookup_retries_and_completes() {
+            let lib = Library::load();
+            let path = lib.root.join("library.sqlite");
+            let imported = Arc::new(AtomicBool::new(false));
+            let seen = imported.clone();
+            let p = Providers::start_with(move |url, query| {
+                if url != "/wiki_pages.json"
+                    || test_provider::param(query, "search[title]") != "Example"
+                    || seen.swap(true, Ordering::SeqCst)
+                {
+                    return;
+                }
+                // 模拟同步识别在名称查询作品期间为该作品写入新链接并登记 imported 事件，触发该单项在本轮内刷新重试。
+                let mut c = net::db(&path).unwrap();
+                let tx = c.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate).unwrap();
+                crate::schema::begin_writing(&tx).unwrap();
+                tx.execute(
+                    "INSERT INTO term_links(system,key,term_id,current,source,added_at)
+                     SELECT 'danbooru','Example_concurrent',term_id,1,'import','2026-11-19'
+                     FROM term_links WHERE system='qualifier' AND key='Example'",
+                    [],
+                )
+                .unwrap();
+                tx.execute("INSERT INTO backend_effects(kind) VALUES ('imported')", []).unwrap();
+                crate::schema::commit_writing(tx).unwrap();
+            });
+            lib.run(&p, None, false).unwrap();
+            assert!(imported.load(Ordering::SeqCst));
             assert_eq!(named(lib.char("alice")), pair("爱丽丝", "bangumi"));
         }
     }

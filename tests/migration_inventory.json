@@ -101,7 +101,7 @@
 
  "crates/core/src/lib.rs":"571c3078561ae4e76176bfebd3dcd8c898fd70adb26685825d148655a6a132bd",
 
- "crates/core/src/names_commands.rs":"d16f20efeadc31f83449bc9ab21d595923b8e78ac55afe23dc404c43148dd121",
+ "crates/core/src/names_commands.rs":"c0d4f33eb74352f477deb5814bb6ab23eba39e199520084a76fa7cead9f96f9d",
 
  "crates/core/src/names_search.rs":"ca951df0cd2afb41a9a5f29c73e1e8c377914f45c12fe2bf3891818ca7aa71ac",
 
@@ -309,7 +309,7 @@
 
  "native/terms/src/app_name_sources.rs":"a9d895621405e92c2bdacd7f547f28feec7f294f307d628ea25d5e2bf27f9515",
 
- "native/terms/src/app_names.rs":"704a124a5a7bbb3c2b7c9c4d4c0cc0a044ec3393bb388e0d8fddc228f590ebbf",
+ "native/terms/src/app_names.rs":"d0c21c2bd1694eb6c1d8859a3ba5d61fe23cf30d31577caf763625160f4889c3",
 
  "native/terms/src/app_onboarding.rs":"5e0d950d43ad03ffeb44e19a9090795c479a9e4a6199fcbafe93e107fe9a62a9",
 
@@ -337,7 +337,7 @@
 
  "native/terms/src/app_rescue.rs":"64c0f0053e36a32da153031a2203d5fe3a66a3cc1ac7c811b0331102b24449c3",
 
- "native/terms/src/app_research.rs":"66369ec140b26bbc3dfd8d96cd3b378ab3e75b01493a8d164db76297d7f7e4b1",
+ "native/terms/src/app_research.rs":"7085681062f8f284f5a859be198970dfe3f35c229773e9094dd491917e10ca87",
 
  "native/terms/src/app_resources.rs":"d691ec21499b906972a02d49a21790f2a301c34eb4dea0bd9c301675dd9e2c0a",
 

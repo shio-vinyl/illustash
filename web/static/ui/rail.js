@@ -11,7 +11,6 @@
 //                          直接滚到 item.first 那一天），否则按项的链接走
 //   count(key, n)          H：改一个队列的数字（数字滚动）
 //   mode(name, items, hint) E：临时换成另一组项（拖放时换成画廊封面，hint 是上面的一句提示）；mode(null) 换回。项带 off 时变淡、不接收
-//   itemEl(key)            E：显示着的那一组里某项的节点（图飞向它、它弹一下）
 //   railKey(e)             键盘（ui/grid.js 的键盘处理里调）：⌘1–4（Windows 上 Ctrl）切一级，⌥↑↓ 在二级里移动，
 //                          ⌥⇧↑↓ 挪动钉住的项；处理了返回 true
 //   railRoute(route)       换页时（ui/shell.js applyRoute）：点亮入口和项，收起窄窗口的抽屉，需要时重读时间轴
@@ -145,8 +144,6 @@ function measure() {
   s.write(() => { css($('railInd'), 'transform', y === null ? null : `translateY(${y}px)`); cls($('railInd'), 'is-on', y !== null); }, 'rail:ind');
 }
 const visibleBox = () => temp?.list.box || lists.get(current)?.box;
-// 现在显示着的那一组里键为 key 的项的节点（拖图进画廊时，图飞向它、它弹一下，#710）。
-export const itemEl = key => itemAt(visibleBox(), key);
 export function select(key) {
   selected = key || '';
   for (const list of [...lists.values(), ...(temp ? [temp.list] : [])]) {

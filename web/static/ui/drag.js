@@ -21,7 +21,7 @@ import {startDrag} from './files.js';
 import {read, write} from './frame.js';
 import {newManual, putInto} from './gallery_actions.js';
 import {animate, reduced} from './motion.js';
-import {itemEl, mode, railCovers} from './rail.js';
+import {mode, railCovers} from './rail.js';
 
 const SLOP = 6, GHOST = 64, OFFSET = 14;
 let live = null;   // 正在拖：{ids, ghost, x, y, from, target}

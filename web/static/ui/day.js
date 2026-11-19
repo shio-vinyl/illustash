@@ -124,7 +124,6 @@ export function dayWidget(box, ctx, parent = null) {
   }
 
   function update(next) {
-    const before = current;
     current = next;
     const g = next.g, sizes = ctx.sizes(), people = g.people || (g.characters || []).length;
     // 页头
@@ -141,8 +140,8 @@ export function dayWidget(box, ctx, parent = null) {
       for (const el of refs.chips.children) cls(el, 'is-cut', false);
       show(refs.more, true); text(refs.more, t('收起'));
     }
-    if (next.open || before !== next || !widths.size) s.read(measure, 'day:measure');
-    if (!next.open && before.w !== next.w) s.write(fit, 'day:fit');
+    // 每次更新后量一次（只量新出现的芯片，已量过的记着），再定放几个；展开时量整行的高度。
+    s.read(measure, 'day:measure');
     // 马赛克：大图本页期间固定（ctx.hero），其余按后端的次序
     const items = heroFirst(g, ctx.hero(day));
     if (items[0]) ctx.hold(day, items[0].uuid);

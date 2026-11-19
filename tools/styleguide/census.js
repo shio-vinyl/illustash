@@ -6,7 +6,7 @@ window.CENSUS = {
   "css/base.css": "06c7250d242d47f7de2a4cf5e72f2577a7a473dba4ff58daf9899370f7b15308",
   "css/catalog.css": "6af407c23feb8360ce625efb0c23a632e6d405ac0ca90ec378a5665f40a7df88",
   "css/character.css": "52eaf299dfeb41d32014564d83057a714061e8970e67356a9631efc1dc087a71",
-  "css/detail.css": "9af8426f353cf4b7b8e325f3ad9b3e491daf2dc4bcf0466058a9ade982d2c982",
+  "css/detail.css": "d6e64d0b8e270734dec5a23c69f5792cc9068005e06771bc9e156cf1bcbf949d",
   "css/galleries.css": "f446c432133be7ce4e2c04c29933f3a849f227b4b15ff09a8a187b1c52b52959",
   "css/library.css": "bd927b63d0d0e7c358debc37e1d8df580695c70ba717a2f95e6cc00e07eb53f0",
   "css/overlays.css": "3e18fddd6cbc8c59478a35b978d51868e4c93aeb4a075a98139d54696dd2601a",
@@ -15,9 +15,9 @@ window.CENSUS = {
   "css/tidy.css": "0dae765ffbd6e5e96298c7b5ad97a2d9a64c085d13ae8bd0ad0d82c49e536bec",
   "css/tokens.css": "debccd019e1f850d3aaccc13ae456b24e58b704772df86b167b6b16858a42e2c"
  },
- "sha256": "de957a29a5acfcc0df9d74c93fafeea2aaa3fbc07fc035ff7450a5dbfb13c95c",
- "lines": 1731,
- "rules": 1370,
+ "sha256": "d16edb00ea25eeccfaec8260308e0abbe21bb12a6aa4e622adfd47b3d1bec1cd",
+ "lines": 1733,
+ "rules": 1371,
  "themeVars": {
   "light": {
    "--canvas": "#f4f4f6",
@@ -220,7 +220,7 @@ window.CENSUS = {
    "--chip-hover": 5,
    "--space-20": 11,
    "--z-bar": 1,
-   "--ease": 66,
+   "--ease": 67,
    "--z-toast": 1,
    "--space-16": 25,
    "--space-12": 84,
@@ -317,7 +317,7 @@ window.CENSUS = {
    "--z-overlay": 2,
    "--depth": 1,
    "--fw-750": 12,
-   "--dur-1": 18,
+   "--dur-1": 20,
    "--fw-600": 9,
    "--accent-fill": 4,
    "--on-accent": 4,
@@ -833,7 +833,7 @@ window.CENSUS = {
    {
     "name": "--dur-1",
     "value": "140ms",
-    "uses": 18
+    "uses": 20
    },
    {
     "name": "--dur-2",
@@ -850,7 +850,7 @@ window.CENSUS = {
    {
     "name": "--ease",
     "value": "cubic-bezier(.2,.8,.2,1)",
-    "uses": 66
+    "uses": 67
    },
    {
     "name": "--ease-spring",

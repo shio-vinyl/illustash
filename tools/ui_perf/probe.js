@@ -45,7 +45,13 @@
   };
 
   const sleep = ms => new Promise(r => setTimeout(r, ms));
-  const frame = () => new Promise(r => requestAnimationFrame(r));
+  // 下一帧。窗口被挡住或在后台时 requestAnimationFrame 不来：1 秒后照样往下走，记一次 stall（结果里的 rafStalls）。
+  let stalls = 0;
+  const frame = () => new Promise(r => {
+    let done = false;
+    const timer = setTimeout(() => { if (!done) { done = true; stalls++; r(performance.now()); } }, 1000);
+    requestAnimationFrame(t => { if (!done) { done = true; clearTimeout(timer); r(t); } });
+  });
   async function until(test, limit, what) {
     const end = performance.now() + limit;
     while (performance.now() < end) {
@@ -133,21 +139,24 @@
       return snapshot(page);
     },
     // 以 speed 像素/秒匀速往下滚 screens 屏（每帧按经过的时间推进 scrollTop），记录这一段。滚到底时等更多内容（首页的
-    // 更早几天）最多 wait 毫秒，还没有就提前结束。
+    // 更早几天）最多 wait 毫秒，还没有就提前结束（reachedEnd）。页面重画把滚动位置往回拉时记一次 jumpsBack；整段最多用
+    // 预计时间的三倍加 wait，到了就停（timedOut），免得被一直往回拉时停不下来。
     async scroll({page, screens = 8, speed = 2400, wait = 5000}) {
-      const s = PAGES[page].scroller(), target = s.scrollTop + screens * s.clientHeight, rec = begin();
-      let last = performance.now(), stuckSince = null, reachedEnd = false;
-      while (s.scrollTop < target - 1) {
+      const s = PAGES[page].scroller(), distance = screens * s.clientHeight, rec = begin(), stalled = stalls;
+      const limit = performance.now() + distance / speed * 3000 + wait;
+      let last = performance.now(), stuckSince = null, reachedEnd = false, timedOut = false, moved = 0, jumpsBack = 0, expected = s.scrollTop;
+      while (moved < distance - 1) {
         const t = await frame(), before = s.scrollTop;
-        s.scrollTop = Math.min(target, before + speed * Math.min(100, t - last) / 1000);
-        last = t;
-        if (s.scrollTop <= before) {
-          stuckSince ??= t;
-          if (t - stuckSince > wait) { reachedEnd = true; break; }
-        } else stuckSince = null;
+        if (before < expected - 2) jumpsBack++;
+        const step = Math.min(distance - moved, speed * Math.min(100, t - last) / 1000);
+        s.scrollTop = before + step;
+        last = t; expected = s.scrollTop;
+        if (s.scrollTop > before) { moved += s.scrollTop - before; stuckSince = null; }
+        else { stuckSince ??= t; if (t - stuckSince > wait) { reachedEnd = true; break; } }
+        if (t > limit) { timedOut = true; break; }
       }
       const out = end(rec);
-      return {...out, reachedEnd, after: snapshot(page)};
+      return {...out, reachedEnd, timedOut, jumpsBack, rafStalls: stalls - stalled, after: snapshot(page)};
     },
     // 不动，记录 ms 毫秒（空闲时或同步导入时盯着页面看）。
     async idle({page, ms = 5000}) { const rec = begin(); await sleep(ms); return {...end(rec), after: snapshot(page)}; },

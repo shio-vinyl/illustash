@@ -181,11 +181,16 @@ def run_once(engine: str, name: str, fx: fixture.Fixture, core: Path, root: Path
                 target.unlink(missing_ok=True)
                 (scratch / 'args.json').write_text(json.dumps({**params, 'probe': str(HERE / 'probe.js'), 'out': str(target),
                                                                'root': str(ROOT)}), encoding='utf-8')
-                out = subprocess.run([str(webkit_binary()), str(scratch / 'args.json')], cwd=ROOT, capture_output=True, text=True,
-                                     timeout=RUN_LIMIT)
-                if out.returncode or not target.is_file():
-                    raise RuntimeError('WebKit 小程序失败：' + out.stderr[-2000:])
+                try:
+                    out = subprocess.run([str(webkit_binary()), str(scratch / 'args.json')], cwd=ROOT, capture_output=True,
+                                         text=True, timeout=RUN_LIMIT)
+                except subprocess.TimeoutExpired:
+                    out = None
+                if not target.is_file():
+                    raise RuntimeError('WebKit 小程序失败：' + (out.stderr[-2000:] if out else f'{RUN_LIMIT} 秒没结束'))
                 result = json.loads(target.read_text(encoding='utf-8'))
+                if out is None:
+                    result['error'] = f'{RUN_LIMIT} 秒没结束；' + result.get('error', '')
         finally:
             if batches:
                 batches.__exit__()
@@ -240,7 +245,7 @@ def git_head(root: Path) -> str:
 # 报告里每个场景展示的指标：（标题，指标路径，适用的步骤类型）。
 SHOWN = [('帧/秒', 'frames.fps'), ('帧间隔 p95', 'frames.p95'), ('最长帧', 'frames.max'), ('>50ms 帧', 'frames.over50'),
          ('长任务数', 'longtasks.count'), ('最长任务', 'longtasks.max'), ('删掉的已显示图', 'dom.removedImages'),
-         ('其中在视野里', 'dom.removedVisible'), ('翻页到显示 p50', 'flip.p50'), ('翻页到显示 p95', 'flip.p95')]
+         ('其中在视野里', 'dom.removedVisible'), ('滚动被拉回', 'jumpsBack'), ('rAF 停摆', 'rafStalls'), ('翻页到显示 p50', 'flip.p50'), ('翻页到显示 p95', 'flip.p95')]
 TRACE = [('主线程忙', 'mainBusy'), ('长任务数', 'longtasks.count'), ('长任务合计', 'longtasks.total'), ('最长任务', 'longtasks.max'),
          ('样式重算', 'style.ms'), ('布局', 'layout.ms'), ('绘制', 'paint.ms'), ('脚本', 'script.ms'), ('GC', 'gc.ms'),
          ('图片解码', 'decode.ms'), ('解码次数', 'decode.count'), ('光栅化', 'raster.ms')]

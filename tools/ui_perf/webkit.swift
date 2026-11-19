@@ -141,12 +141,23 @@ final class Driver: NSObject, WKNavigationDelegate {
                 }
                 steps.append(["op": step.op, "label": step.label ?? "", "seconds": (Date().timeIntervalSince(t0) * 10).rounded() / 10,
                               "value": value])
+                // 每步写一次，卡住被杀掉时也留下已经做完的步骤。
+                result["steps"] = steps
+                result["error"] = "未完成：停在第 \(steps.count + 1) 步之前"
+                write(result)
+                result["error"] = nil
             }
         } catch {
             result["error"] = "\(error)"
         }
         result["steps"] = steps
         return result
+    }
+
+    func write(_ result: [String: Any]) {
+        if let data = try? JSONSerialization.data(withJSONObject: result, options: [.sortedKeys]) {
+            try? data.write(to: URL(fileURLWithPath: args.out))
+        }
     }
 }
 

@@ -582,16 +582,16 @@ class FrontendArchitectureTest(unittest.TestCase):
     def test_css_files_live_in_their_layer(self):
         with Tree() as tree:
             tree.append('css/library.css', '.loose{color:var(--ink)}\n')
-            self.assertViolation(tree, 'css-layer', 'css/library.css: .loose', '@layer pages')
+            self.assertIn('@layer pages', self.assertViolation(tree, 'css-layer', 'css/library.css: .loose'))
         with Tree() as tree:
             tree.replace('css/detail.css', '@layer pages{', '@layer base{')
-            self.assertViolation(tree, 'css-layer', 'css/detail.css: @layer base', '@layer pages')
+            self.assertIn('@layer pages', self.assertViolation(tree, 'css-layer', 'css/detail.css: @layer base'))
         with Tree() as tree:
             tree.replace('css/overlays.css', '@layer overlays{', '@layer pages{')
-            self.assertViolation(tree, 'css-layer', 'css/overlays.css', '@layer overlays')
+            self.assertIn('@layer overlays', self.assertViolation(tree, 'css-layer', 'css/overlays.css'))
         with Tree() as tree:
             tree.replace('css/rail.css', '@layer pages{', '@layer legacy, pages;\n@layer pages{')
-            self.assertViolation(tree, 'css-layer', 'css/rail.css: @layer legacy, pages', '第一行')
+            self.assertIn('第一行', self.assertViolation(tree, 'css-layer', 'css/rail.css: @layer legacy, pages'))
         with Tree() as tree:
             tree.replace('css/tokens.css', '@layer legacy, tokens, base, pages, overlays;', '')
             self.assertViolation(tree, 'css-layer', 'css/tokens.css: 没有层的声明')

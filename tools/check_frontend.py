@@ -826,10 +826,13 @@ def scale_issues(declarations):
                     found.append((f'box-shadow: {" ".join(lengths)}', d, SCALE_FIX['shadow']))
         if d.prop in ('transition', 'animation', 'transition-duration', 'animation-duration'):
             shorthand = d.prop in ('transition', 'animation')
-            for layer in split_top(value):
+            for raw_layer in split_top(raw):
+                layer = _clean_value(raw_layer)
                 if d.prop.startswith('animation') and re.search(r'(?<![\w-])infinite(?![\w-])', layer):
                     continue  # 循环动画（转圈、呼吸）不是进出场，不查
                 times = TIME_RE.findall(layer)
+                if shorthand and '--dur-' in raw_layer:
+                    times = []  # 时长已经是令牌，写死的时间是延迟，不查
                 for t in times[:1] if shorthand else times:
                     if float(re.match(r'-?([\d.]+)', t).group(1)) != 0:
                         found.append((f'{d.prop.split("-")[0]}-duration: {t}', d, SCALE_FIX['duration']))

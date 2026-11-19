@@ -103,11 +103,7 @@ fn static_file(root: &Path, path: &str) -> Result<Prepared, Failure> {
     }
     if let Some((folder, file, kind)) = module(path) {
         let script = root.join("web/static").join(folder).join(file);
-        return if script.is_file() {
-            Ok(Prepared::Static(script, kind))
-        } else {
-            Err(Failure::Status(404))
-        };
+        return if script.is_file() { Ok(Prepared::Static(script, kind)) } else { Err(Failure::Status(404)) };
     }
     let (name, kind) = match path {
         "/" => ("index.html", "text/html"),
@@ -518,8 +514,15 @@ mod tests {
     }
     #[test]
     fn modules_are_plain_names_in_their_folders() {
-        for path in ["/core/session.js", "/ui/dom.js", "/core/a_b-2.js", "/css/tokens.css", "/css/a_b-2.css", "/app.js", "/image"]
-        {
+        for path in [
+            "/core/session.js",
+            "/ui/dom.js",
+            "/core/a_b-2.js",
+            "/css/tokens.css",
+            "/css/a_b-2.css",
+            "/app.js",
+            "/image",
+        ] {
             assert!(serves(path), "{path}");
         }
         for path in [

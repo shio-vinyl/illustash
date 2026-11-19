@@ -34,6 +34,16 @@ class Tree(tempfile.TemporaryDirectory):
         path = self.root / STATIC / relative
         path.write_text(path.read_text(encoding='utf-8') + text, encoding='utf-8')
 
+    def append_same_length(self, relative, text):
+        """往文件末尾加代码，同时去掉同样多的空行：行数不变，已经超过 600 行的 ui/ 文件不会因此碰到规则 21。"""
+        path = self.root / STATIC / relative
+        old = path.read_text(encoding='utf-8')
+        added, new = text.count('\n'), old
+        for _ in range(added):
+            new = new.replace('\n\n', '\n', 1)
+        assert new.count('\n') == old.count('\n') - added, f'{relative} 里没有足够的空行'
+        path.write_text(new + text, encoding='utf-8')
+
     def errors(self):
         return check(self.root)[0]
 
@@ -435,7 +445,7 @@ class FrontendArchitectureTest(unittest.TestCase):
             tree.append('ui/home.js', '\nif (state.cursor === 3 || state.cursor >= 2 || state.cursor <= 1 || state.cursor !== 0) go(state.cursor == 1);\n'
                                       'const f = state.items.filter(x => x).length; state.pending.add(1); const s = "state.cursor = 3";\n'
                                       '// state.cursor = 3;\n')
-            tree.append('ui/grid.js', '\nstate.cursor = 3; state.items[0] = null; state.sel.ids = new Set();\n')
+            tree.append_same_length('ui/grid.js', '\nstate.cursor = 3; state.items[0] = null; state.sel.ids = new Set();\n')
             tree.append('core/route.js', '\nObject.assign(state.route, {q: ""});\n')
             self.assertEqual(tree.errors(), [])
 
@@ -872,7 +882,7 @@ class FrontendArchitectureTest(unittest.TestCase):
             self.assertIn('requestIdleCallback', errors[0])
             self.assertNotIn('startViewTransition（', errors[0])
         with Tree() as tree:
-            tree.append('ui/grid.js', "\nexport const idle = 'requestIdleCallback' in window;\n"
+            tree.append_same_length('ui/grid.js', "\nexport const idle = 'requestIdleCallback' in window;\n"
                         "export const pairs = obj => Object.entries(obj).map(([k, v]) => k + v);\n"
                         "export const list = map => [...map.values()].map(x => x);\n")
             self.assertEqual(tree.errors(), [])

@@ -40,7 +40,7 @@ impl Search {
             "ccip" => Space::Ccip,
             _ => return Err(Error::invalid("未知相似检索方式")),
         };
-        if filter.get("order").is_some_and(|v| !matches!(v.as_str(), "similar" | "newest" | "oldest")) {
+        if filter.get("order").is_some_and(|v| !matches!(v.as_str(), "similar" | "newest" | "oldest" | "color")) {
             return Err(Error::invalid("未知排序"));
         }
         Ok(Some(Self { ids, space }))

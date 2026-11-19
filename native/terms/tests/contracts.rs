@@ -28,10 +28,15 @@ mod entry;
 #[path = "common/wait.rs"]
 mod wait;
 
+#[path = "contracts/calendar.rs"]
+mod calendar;
 #[path = "contracts/library_50k.rs"]
 mod library_50k;
 #[path = "contracts/library_scale.rs"]
 mod library_scale;
+
+#[path = "contracts/colors.rs"]
+mod colors;
 
 const DATABASES: [&str; 3] = ["source.sqlite", "library.sqlite", "provenance.sqlite"];
 
@@ -707,6 +712,126 @@ fn combined_gallery_http_contract() {
         request_json(&origin, "/api/galleries", Some(&json!({"action":"create","params":{"nsfw":"hide"}})), &token).0,
         400
     );
+}
+
+#[test]
+fn manual_gallery_http_contract() {
+    let (_scratch, root, _) = materialize(&json!({"input": {}}), "manual-gallery");
+    let package = root.join("manual.pilib");
+    illustash_terms::app_create::create_folder(&package, &root.join("folder"), Some("手选夹具"), None, None).unwrap();
+    let db = Connection::open(package.join("library.sqlite")).unwrap();
+    db.execute_batch(
+        "INSERT INTO assets(uuid,added_at) VALUES ('a','2026-09-22'),('copy','2026-09-22'),('b','2026-09-21'),
+                                                ('other','2026-09-20');
+         INSERT INTO duplicates VALUES ('a','g',2,0,'2026-09-22',1,0),('copy','g',2,1,'2026-09-22',0,1);",
+    )
+    .unwrap();
+    let (_host, origin, token) =
+        launch(&root, &package, "manual-gallery", false, Path::new(env!("CARGO_BIN_EXE_illustash-terms")));
+    let call = |url: &str, data: Option<&Value>| {
+        let (status, result, _) = request_json(&origin, url, data, &token);
+        assert_eq!(status, 200, "{url}: {result}");
+        result
+    };
+    let post = |data: Value| call("/api/galleries", Some(&data));
+    let undo = |result: &Value| call("/api/undo", Some(&json!({"id":result["undo"]["id"]})));
+    let create = post(json!({"action":"create","kind":"manual","name":"合成手选","ids":["a","a"]}));
+    let id = &create["gallery"]["id"];
+    let has = format!(r#"["gallery:{id}"]"#);
+    let path = |route: &str, op: &str, expr: &str| {
+        format!("{route}?{}", url::form_urlencoded::Serializer::new(String::new()).append_pair(op, expr).finish())
+    };
+    let ids = || call(&path("/api/ids", "has", &has), None);
+    let cover = || call(&path("/api/galleries/covers", "ids", &json!([id]).to_string()), None)[0]["cover"].clone();
+    let members = || {
+        db.prepare("SELECT uuid FROM gallery_members WHERE gallery_id=? ORDER BY uuid")
+            .unwrap()
+            .query_map([id.as_i64().unwrap()], |r| r.get::<_, String>(0))
+            .unwrap()
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .unwrap()
+    };
+    assert_eq!(create["gallery"]["kind"], "manual");
+    assert_eq!(create["gallery"]["params"], json!({"has":has}));
+    assert_eq!(call("/api/galleries", None)[0]["kind"], "manual");
+    assert_eq!(ids(), json!(["a"]));
+    assert_eq!(cover(), "a");
+    let empty = post(json!({"action":"create","kind":"manual","name":"合成空画廊"}));
+    assert_eq!(empty["gallery"]["cover"], Value::Null);
+    undo(&empty);
+
+    let add = post(json!({"action":"add","id":id,"filter":{"not":has},"exclude":["other"]}));
+    assert_eq!(ids(), json!(["a", "b"]));
+    assert_eq!(call(&path("/api/assets", "has", &has), None)["total"], 2);
+    assert_eq!(call(&path("/api/assets/count", "has", &has), None)["total"], 2);
+    assert_eq!(call(&path("/api/ids", "not", &has), None), json!(["other"]));
+    let duplicate = post(json!({"action":"add","id":id,"ids":["a","a","b"]}));
+    assert!(duplicate["undo"]["id"].as_i64().unwrap() > add["undo"]["id"].as_i64().unwrap());
+    assert_eq!(members(), ["a", "b", "copy"]);
+    undo(&duplicate);
+    assert_eq!(ids(), json!(["a", "b"]));
+    undo(&add);
+    assert_eq!(ids(), json!(["a"]));
+    post(json!({"action":"add","id":id,"ids":["b"]}));
+
+    // 新代表本身从未放入画廊，原成员仍赋予重复组画廊归属。
+    db.execute_batch(
+        "INSERT INTO assets(uuid,added_at) VALUES ('new-rep','2026-09-23');
+         UPDATE duplicates SET rep=0,hidden=1,size=3 WHERE grp='g';
+         INSERT INTO duplicates VALUES ('new-rep','g',3,2,'2026-09-23',1,0);",
+    )
+    .unwrap();
+    assert_eq!(ids(), json!(["new-rep", "b"]));
+    let updated = post(json!({"action":"update","id":id,"position":7,"name":"新名字","cover":"b"}));
+    assert_eq!(updated["gallery"]["position"], 7);
+    assert_eq!(updated["gallery"]["name"], "新名字");
+    assert_eq!(cover(), "b");
+    let remove = post(json!({"action":"remove","id":id,"filter":{"has":has},"exclude":["b"]}));
+    assert_eq!(ids(), json!(["b"]));
+    assert_eq!(members(), ["b"]);
+    undo(&remove);
+    assert_eq!(ids(), json!(["new-rep", "b"]));
+    let cleared = post(json!({"action":"update","id":id,"cover":null}));
+    assert_eq!(cover(), "new-rep");
+    undo(&cleared);
+    assert_eq!(cover(), "b");
+
+    db.execute("INSERT INTO excluded(uuid,reason,origin) VALUES ('b','manual','user')", []).unwrap();
+    assert_eq!(ids(), json!(["new-rep"]));
+    assert_eq!(cover(), "new-rep");
+    db.execute("DELETE FROM excluded WHERE uuid='b'", []).unwrap();
+    assert_eq!(cover(), "b");
+    db.execute("DELETE FROM assets WHERE uuid='b'", []).unwrap();
+    assert_eq!(ids(), json!(["new-rep"]));
+    assert_eq!(cover(), "new-rep");
+    assert_eq!(members(), ["a", "b", "copy"]);
+    let deleted = post(json!({"action":"delete","id":id}));
+    assert_eq!(call("/api/galleries", None), json!([]));
+    assert!(members().is_empty());
+    assert_eq!(request(&origin, &path("/api/ids", "has", &has), None, &token).0, 400);
+    undo(&deleted);
+    assert_eq!(ids(), json!(["new-rep"]));
+    assert_eq!(members(), ["a", "b", "copy"]);
+
+    let conditional = post(json!({"action":"create","params":{"has":has}}));
+    let cid = &conditional["gallery"]["id"];
+    assert!(conditional["gallery"].get("kind").is_none());
+    for data in [
+        json!({"action":"add","id":cid,"ids":["a"]}),
+        json!({"action":"add","id":id,"ids":["a"],"filter":{}}),
+        json!({"action":"update","id":id,"params":{}}),
+        json!({"action":"create","kind":"invalid","name":"合成"}),
+    ] {
+        assert_eq!(request_json(&origin, "/api/galleries", Some(&data), &token).0, 400);
+    }
+    undo(&conditional);
+    let deleted = post(json!({"action":"delete","id":id}));
+    let new = post(json!({"action":"create","kind":"manual","name":"另一个手选画廊"}));
+    assert_ne!(new["gallery"]["id"], *id);
+    assert_eq!(request(&origin, &path("/api/ids", "has", &has), None, &token).0, 400);
+    undo(&new);
+    undo(&deleted);
+    assert_eq!(ids(), json!(["new-rep"]));
 }
 
 #[test]

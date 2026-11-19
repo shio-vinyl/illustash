@@ -651,6 +651,7 @@ mod tests {
                 "/api/character/profile" => format!("{route}?entity={id}"),
                 "/api/character/stats" => format!("{route}?id={id}"),
                 "/api/galleries/covers" => format!("{route}?ids=%5B%5D"),
+                "/api/calendar" => format!("{route}?month=2026-01"),
                 _ => (*route).to_owned(),
             };
             let out = crate::http_read::read(&context, &target).unwrap_or_else(|e| panic!("{route}: {e}"));

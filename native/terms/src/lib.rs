@@ -14,6 +14,7 @@ mod app_archives;
 mod app_asset_export;
 mod app_asset_files;
 mod app_characters;
+mod app_colors;
 mod app_commands;
 pub mod app_create;
 mod app_curation;

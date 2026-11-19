@@ -120,6 +120,7 @@ pub(crate) fn forget_content(tx: &Connection, src: &Connection, changed: &[Strin
 const UNREAD: &[&str] = &[
     "backend_effects",
     "galleries",
+    "gallery_members",
     "human_asset_hashes",
     "human_backup_state",
     "name_cache",
@@ -1719,6 +1720,7 @@ mod tests {
         let c = Connection::open_in_memory().unwrap();
         c.execute_batch(
             "CREATE TABLE galleries(id INTEGER,name TEXT);
+             CREATE TABLE gallery_members(gallery_id INTEGER,uuid TEXT);
              CREATE TABLE actions(id INTEGER,undone INTEGER,before_json TEXT);",
         )
         .unwrap();
@@ -1730,11 +1732,13 @@ mod tests {
         let before = digest();
         c.execute_batch(
             "INSERT INTO galleries VALUES (1,'合成画廊');
+             INSERT INTO gallery_members VALUES (1,'synthetic-a');
              INSERT INTO actions VALUES (1,0,'[{\"gallery\":{\"id\":1,\"row\":null}}]');",
         )
         .unwrap();
         assert_eq!(digest(), before);
-        c.execute_batch("DELETE FROM galleries; UPDATE actions SET undone=1 WHERE id=1;").unwrap();
+        c.execute_batch("DELETE FROM gallery_members; DELETE FROM galleries; UPDATE actions SET undone=1 WHERE id=1;")
+            .unwrap();
         assert_eq!(digest(), before);
         c.execute_batch("INSERT INTO actions VALUES (2,0,'[]');").unwrap();
         assert_ne!(digest(), before);

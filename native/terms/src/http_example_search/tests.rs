@@ -158,6 +158,27 @@ fn example_search_ranks_filtered_candidates_and_reuses_the_selection_for_writes(
     assert_eq!(f.ids(&examples, &format!("{filter}&order=oldest&limit=1")), ["ELIGIBLE000"]);
     assert_eq!(f.ids(&examples, &format!("{filter}&offset=500")), [] as [String; 0]);
 
+    let package = f.context.library.as_ref().unwrap();
+    let db = f.db();
+    for (id, rgb) in [("ELIGIBLE004", [180, 0, 0]), ("ELIGIBLE006", [0, 200, 0]), ("ELIGIBLE515", [90, 0, 0])] {
+        let path = f.root.join(format!("{id}.png"));
+        fs::write(&path, []).unwrap();
+        db.execute("UPDATE assets SET src_path=? WHERE uuid=?", params![path.to_str(), id]).unwrap();
+        let sql = format!("SELECT {} FROM assets a WHERE a.uuid=?", crate::app_colors::ASSET_FIELDS);
+        let asset = db.query_row(&sql, [id], crate::app_colors::Asset::from_row).unwrap();
+        let stamp = crate::app_files::cache_key(id, &path.metadata().unwrap(), "thumb").unwrap();
+        let image = image::RgbImage::from_pixel(1, 1, image::Rgb(rgb));
+        crate::app_colors::generated(package, asset, stamp, &image);
+    }
+    let (color_page, status) = f.read("/api/assets", &examples, &format!("{filter}&order=color&limit=3&marks=color"));
+    assert_eq!(status, 200);
+    let color_page: serde_json::Value = serde_json::from_str(&color_page.dump()).unwrap();
+    assert_eq!(color_page["total"], 500);
+    assert_eq!(color_page["items"][0]["uuid"], "ELIGIBLE004");
+    assert_eq!(color_page["items"][0]["color"], "#b40000");
+    assert_eq!(color_page["items"][1]["uuid"], "ELIGIBLE006");
+    assert_eq!(color_page["items"][2]["uuid"], "ELIGIBLE007");
+
     let write = parse_request(
         r#"{"tag":"example-test","filter":{"like":"[\"MISSING\",\"EX\"]","q":"eligible","nsfw":"hide"}}"#,
     )

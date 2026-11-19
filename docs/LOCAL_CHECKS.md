@@ -332,6 +332,31 @@ python3 -m tools.ui_walk list                      # 流程和它们拦的 #386 
 
 **旧版复现**（2026-11-15，本机 macOS arm64，chrome-headless-shell 148）：用 #386 那批修复之前的 `d5bf1212` 跑，走查拦下了已修的 1-1、1-3、1-4、1-5、1-6、1-8、1-9。1-2（整组设为后的撤销竞态）未复现：合成图库的学习在撤销回应前已完成；现有 group-undo 只检查最终状态，不代表已覆盖该竞态窗口。逐条验收结果见 #453 的 PR。
 
+## 界面性能测量（#683）
+
+2026-11-19 起。`tools/ui_perf/` 在隔离宿主 + 合成大图库上，用 Chromium 和 WebKit 跑同一组场景，记录帧、长任务、渲染各阶段和滚动几屏以后的图形内存。0.4 界面整体升级（#703）改前、改后各量一次，用同一套脚本、同一台机器、同一个宿主程序，只换前端；新视图要守的预算写在 #683。
+
+**跑一次**（在仓库根）：
+
+```sh
+python3 collab_run.py bg -- python3 -m tools.ui_perf prepare            # 建夹具、编译 WebKit 小程序（第一次约十分钟）
+python3 collab_run.py timing -- python3 -m tools.ui_perf run --root 某个检出   # 计时；默认两个内核、全部场景，预热 1 次、记 3 次
+python3 -m tools.ui_perf run --scenario home --engine chromium --runs 1 --warmup 0   # 改脚本时试跑，数字不作数
+python3 -m tools.ui_perf report .perf.noindex/runs/<时间>                 # 按保存的结果重写报告
+```
+
+（`collab_run.py` 指 agent-collab skill 的 `scripts/collab_run.py`。）宿主程序取 `ILLUSTASH_TERMS_BIN`，没设时取当前检出构建的那个；测量要用 release 构建（`cargo build --release --bin illustash-terms`，经 `collab_run.py run`），debug 版生成缩略图、回读接口都慢得多。`--root` 是宿主的 `--root`，从它的 `web/static` 读前端：改前的数字用 `git worktree add --detach` 取 main 的那个提交，把它当 `--root`。结果在 `.perf.noindex/runs/<时间>/`（已被 git 忽略）：`report.md` 是中位数和口径（机器、宿主、前端的提交、夹具规模、次数），`runs/` 是每次运行的全部步骤。一次性的数字写进 PR 和 Issue，不进仓库。
+
+**合成大图库**（`tools/ui_perf/fixture.py`）：默认 3 万张、45 个加入日期（长尾，最多的一天两千多张）、300 个角色（人工确认的归属，约一半的图有角色）、30 部作品，另备 3000 张同步时才放进来的新图；`--images`、`--days` 等参数可调。图是 800 张画面池里的一张加上各自编号的文字块，每个文件字节不同，所以都是单独的图；长边 1000–1600，缩略图和中图都要真的缩小。内容只经 `library-create`、`library-scan` 和 HTTP 接口写入，和走查夹具一样；没有识别结果（没有评级、标签和向量）。加入日期取文件的创建时间，生成时按天设好，时区固定为东八区。缓存在仓库根的 `.perf.noindex/`（目录名以 `.noindex` 结尾，Spotlight 不扫）：图只取决于生成参数，换宿主程序要重建的只有图库（几分钟）；每次运行从 `pristine/` 恢复，缩略图缓存保留。宿主的 HOME、应用数据、共享资源都在夹具目录里，关掉自动同步、来源查询和索引检查，不碰真实图库和钥匙串。
+
+**场景**（`__main__.py` 的 `SCENARIOS`）：首页滚动（空闲）、首页同步导入中（先停在最上面 24 秒看新图一批批进来，再往下滚）、图库网格滚动、大图翻页、资料库长列表。滚动是页面里每帧按时间推进 `scrollTop`（2400 像素/秒），两个内核一样。同步导入：测量脚本每 4 秒往来源文件夹放 150 张新图（复制出来的文件创建时间是当时，落在「今天」），页面每 4 秒经自己的同步入口（`startSync` + `pollSync`，和上手指引里的按钮一样）扫描导入；没有在产品里加测试钩子。每个场景每次新起宿主和浏览器。
+
+**指标**：页内探针（`probe.js`，两个内核注入同一份）记帧间隔（`requestAnimationFrame`，长帧指超过 50ms）、长任务（只有 Chromium 有这个 API）、测量窗口里删掉的已显示图片及其中删的时候在视野里的数（同步导入时「可见的那一天整块重建」就是后者不为零）、元素和 `<img>` 数。Chromium 另录性能记录（`chromium.mjs`）：主线程的任务、样式重算、布局、绘制、脚本、GC，所有线程上的图片解码和光栅化。内存检查点读 `footprint`：Chromium 的 GPU 进程和渲染进程、WebKit 的 WebContent 和 GPU 进程，graphics 是名字带「(graphics)」的各类之和（`footprint.py`）。
+
+**两个内核**：Chromium 是 chrome-headless-shell（查找同界面走查），默认 `--chromium-mode gpu`（`--enable-gpu --use-angle=metal`，本机实测 GPU 合成和光栅化都开着，图形内存才有意义）；`software` 是 `--disable-gpu`，图形内存不作数。WebKit 是 `webkit.swift` 编译成的小程序，系统 WKWebView 打开同一个地址，网页数据不落盘（用户 2026-11-19 定，#703 第 4 问；虚拟机里的性能数字不作数）。它会在屏幕左上角开一个不抢焦点的窗口，测量期间别挡住它，被挡住时 WebKit 会停掉绘制。两边视口 1440×900、dpr 2。
+
+**改版后**：依赖页面结构的部分（入口地址、就绪标志、滚动容器、怎么开大图和翻页、怎么触发同步）只在 `probe.js` 开头的 `PAGES` 里，界面改了只改那几行；场景和指标不动，改前改后才能比。离线部分的检查是 `tests/test_ui_perf.py`。
+
 ## macOS 实机测试（虚拟机）
 
 2026-10-15 起，在 Mac 上启动 App 的实机测试都在 [Tart](https://tart.run) 虚拟机里做（用户决定见 [AGENTS.md](../AGENTS.md#约定)「Mac 实机测试」一条）。虚拟机有自己的用户目录、应用数据和钥匙串，碰不到本机正式版的数据；本机只被占用磁盘，以及运行时的 CPU 和内存。

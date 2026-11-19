@@ -22,8 +22,8 @@ ROOTS = ('web', 'tools', 'desktop', 'native', 'crates')
 EXTENSIONS = {'.py', '.rs', '.sql', '.swift', '.sh', '.command', '.ps1', '.bat'}
 EXCLUDE_DIRS = {'target', '__pycache__', '.venv', 'node_modules', '.git', 'tests'}
 PRODUCTION_TOOLS = {'char_patch.py', 'build_characters.py', 'char_scan.py', 'ccip.py', 'index_worker.py'}
-# 只在开发时用、不进发布包的工具目录（样式清单页 #318、界面走查 #453），里面的脚本不算生产代码。
-DEV_TOOL_DIRS = {('tools', 'styleguide'), ('tools', 'ui_walk')}
+# 只在开发时用、不进发布包的工具目录（样式清单页 #318、界面走查 #453、界面性能测量 #683），里面的脚本不算生产代码。
+DEV_TOOL_DIRS = {('tools', 'styleguide'), ('tools', 'ui_walk'), ('tools', 'ui_perf')}
 GENERATED = {'casefold.rs', 'http_unicode.rs', 'name_codecs.rs'}
 WRITE_SQL = re.compile(r'\b(INSERT(?:\s+OR\s+\w+)?\s+INTO|REPLACE\s+INTO|UPDATE|DELETE\s+FROM|CREATE\s+(?:TABLE|INDEX|TRIGGER|VIEW)(?:\s+IF\s+NOT\s+EXISTS)?|ALTER\s+TABLE|DROP\s+(?:TABLE|INDEX|TRIGGER|VIEW)(?:\s+IF\s+EXISTS)?)\s+([\w.]+)', re.I)
 TRANSACTIONS = re.compile(r'\b(BEGIN|COMMIT|ROLLBACK|VACUUM|ATTACH|DETACH|REINDEX)\b', re.I)

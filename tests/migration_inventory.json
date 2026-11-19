@@ -207,7 +207,7 @@
 
  "desktop/tauri.conf.json":"46e6a6f88200e70bc8b112de2788e026b9a4d61097b1e003bee35daf84b90ba1",
 
- "native/terms/build.rs":"87f5e7e03eef2b25ee5ffcc8e6b306e93e01210f5af113c88adc2f42408fa6b9",
+ "native/terms/build.rs":"14877d3dd89d7919c879d2a3b24fc97a5f2bb3bf7661e4e2b3a8cc05772c3799",
 
  "native/terms/examples/recognition_compute/bench.rs":"9055ce8465cabfb5717f4411914eff944a63cae1f021c1377e069a7a33049931",
 

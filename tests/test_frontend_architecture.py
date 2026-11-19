@@ -315,16 +315,22 @@ class FrontendArchitectureTest(unittest.TestCase):
             self.assertEqual(tree.errors(), [])
 
     def test_ui_must_not_send_requests(self):
-        # 规则 22：ui/ 里新写 api()、post()、shared()、fetch() 报错；core/ 里照写；名字里带 api 的别的函数不算
+        # 规则 22：ui/ 从 core/session.js 导入 api、post、shared（改名、import * as 也算），或者直接调 fetch（带 window.、globalThis.、?.() 也算），
+        # 都报；core/ 里照写；同名的方法定义、别的对象上的 fetch 方法不算
+        cases = ["\nimport {api} from '../core/session.js';\n",
+                 "\nimport {readError, post as send} from '../core/session.js';\n",
+                 "\nimport * as session from '../core/session.js';\n",
+                 "\nexport const raw = () => fetch('/api/home');\n",
+                 "\nexport const raw = () => window.fetch('/b');\n",
+                 "\nexport const raw = () => globalThis.fetch?.('/c');\n"]
+        for text in cases:
+            with self.subTest(text=text), Tree() as tree:
+                tree.append('ui/rail.js', text)
+                self.assertViolation(tree, 'ui-request', 'ui/rail.js')
         with Tree() as tree:
-            tree.append('ui/rail.js', "\nexport const more = () => api('/api/home');\n")
-            self.assertViolation(tree, 'ui-request', 'ui/rail.js')
-        with Tree() as tree:
-            tree.append('ui/rail.js', "\nexport const raw = () => fetch('/api/home');\n")
-            self.assertViolation(tree, 'ui-request', 'ui/rail.js')
-        with Tree() as tree:
-            tree.append('core/rail.js', "\nexport const more = () => api('/api/home');\n")
-            tree.append('ui/rail.js', "\nexport const y = () => myapi('a') + x.post('b') + '\\napi(';\n// api('/api/home')\n")
+            tree.append('core/rail.js', "\nimport {post} from './session.js';\nexport const more = () => fetch('/api/home');\n")
+            tree.append('ui/rail.js', "\nimport {readError} from '../core/session.js';\nconst x = {post() {}, api() {}};\n"
+                                      "export const y = () => x.post('b') + cache.fetch('c') + '\\napi(';\n// fetch('/api/home')\n")
             self.assertEqual(tree.errors(), [])
 
     def test_long_comment_line_counts(self):

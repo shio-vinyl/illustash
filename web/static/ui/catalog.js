@@ -14,6 +14,7 @@ import {catalog, forgetActivity, recentOf, loadActivity as readActivity, searchC
   WORK_NAMES, workKey, workName, loadIndex, searchWorks, shelfRows, saveWatch, watchTarget, saveWork} from '../core/catalog.js';
 import {$, toast, toastMore, error, readFailure, wireFolds, namesAllowButton, reconcileSections, searchIcon, showArea} from './dom.js';
 import {chooseWork, openDialog} from './dialog.js';
+import {make} from './el.js';
 import {createLayer, openModal} from './overlay.js';
 import {openLocalLinks, openPicker, toggleMascot} from './palette.js';
 import {combo} from './combo.js';
@@ -552,18 +553,21 @@ export function wireCatalog() {
   });
 }
 
-// 资料库的标题：三个页签各写自己的数量；角色页签另有「N 个自建角色能对上 Danbooru」。
-function indexHeading(r) {
+// 资料库的页头：三个页签各写自己的数量；角色页签另有「N 个自建角色能对上 Danbooru」的按钮。
+function indexHead(r) {
   const sub = r.section === 'artists' ? dirHeading() : r.section === 'works'
     ? t('{n} 部作品', {n: number(state.index?.works?.length || 0)}) + (state.index?.watch?.works.length ? ' · ' + t('关注 {n} 部', {n: number(state.index.watch.works.length)}) : '')
     : t('{n} 位角色 · {works} 部作品', {n: number(state.chars.length), works: number(new Set(state.chars.map(workKey).filter(k => k !== 'oc' && k !== 'other')).size)});
-  const fix = t('补上中文名、别名和作品，和已有角色重复的可以合并'), n = number(state.localLinks?.length || 0);
-  const links = !r.section && state.localLinks?.length
-    ? `<span class="heading-links"><button class="quiet" id="localLinksButton" title="${fix}">${t('{n} 个自建角色能对上 Danbooru', {n})}</button></span>` : '';
-  return [t('资料库'), sub, links];
+  const actions = [];
+  if (!r.section && state.localLinks?.length) {
+    const b = make('button', 'quiet', t('{n} 个自建角色能对上 Danbooru', {n: number(state.localLinks.length)}));
+    b.title = t('补上中文名、别名和作品，和已有角色重复的可以合并'); b.onclick = openLocalLinks;
+    actions.push(b);
+  }
+  return {title: t('资料库'), sub, actions};
 }
 // 元数据刷新角色目录，撤销后还要重读作品计数或「只当标签」清单；画师子页由 ui/artist_dir.js 自己重读。
-implement({characters: {heading: indexHeading, wireHeading: () => $('localLinksButton')?.addEventListener('click', openLocalLinks),
+implement({characters: {head: indexHead,
   // 计数到达后只重画目录。
   onMeta: ({directory}) => { if (directory && (state.route.section || !$('charSearch')?.value)) renderIndexBody(state.chars); },
   render: opts => renderIndex(opts), refresh: async why => {

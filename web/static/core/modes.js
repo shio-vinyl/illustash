@@ -106,8 +106,8 @@ export const SHORTCUTS = [
   {keys: () => isMac ? '⌘[ / ⌘]' : 'Alt+← / Alt+→', codes: ['[', ']'], does: () => t('后退、前进（只在这个图库的页面之间；鼠标侧键、标题左边的 ‹ 也可以）')},
   {keys: '/', codes: ['/'], does: () => t('搜索（图库、资料库）')},
   // 活页条（#706）：处理在 ui/rail.js 的 railKey（ui/grid.js 的键盘处理先交给它），所以这里不列 codes。
-  {keys: '⌘1–4', codes: [], does: () => t('切到活页条的图库、资料库、画廊、整理')},
-  {keys: () => isMac ? '⌥↑ / ⌥↓' : 'Alt+↑ / Alt+↓', codes: [], does: () => t('在活页条的二级层里移到上一项、下一项；资料库里按住 Shift 挪动钉住的项')},
+  {keys: '⌘1–4', codes: [], does: () => t('切到左边导航里的图库、资料库、画廊、整理')},
+  {keys: () => isMac ? '⌥↑ / ⌥↓' : 'Alt+↑ / Alt+↓', codes: [], does: () => t('在左边导航当前这一栏里移到上一项、下一项（图库的各天、整理的各队列）；在资料库里按住 Shift 挪动钉住的作品或角色')},
   {keys: () => t('拖动 · Shift 点击'), codes: [], does: () => t('连续选择；在空白处拖动可框选')},
   {keys: '⌘A', codes: ['a'], does: () => t('选中全部符合条件的图片')},
   {keys: () => t('方向键'), codes: ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'],

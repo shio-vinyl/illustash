@@ -259,23 +259,23 @@
    "app.css: backdrop-filter": 23
   },
   "ui-file-length": {
-   "ui/grid.js": 477,
+   "ui/grid.js": 475,
    "ui/settings.js": 395
   },
   "ui-request": {
    "ui/artist_dir.js": 1,
-   "ui/artists.js": 2,
+   "ui/artists.js": 1,
    "ui/catalog.js": 1,
-   "ui/detail.js": 4,
+   "ui/detail.js": 1,
    "ui/favorites.js": 1,
-   "ui/filters.js": 6,
-   "ui/grid.js": 9,
-   "ui/guide.js": 6,
-   "ui/home.js": 5,
+   "ui/filters.js": 1,
+   "ui/grid.js": 2,
+   "ui/guide.js": 2,
+   "ui/home.js": 2,
    "ui/like.js": 1,
-   "ui/palette.js": 17,
-   "ui/review.js": 13,
-   "ui/settings.js": 3,
+   "ui/palette.js": 2,
+   "ui/review.js": 2,
+   "ui/settings.js": 1,
    "ui/tasks.js": 3
   }
  }

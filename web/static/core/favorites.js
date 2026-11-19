@@ -1,7 +1,6 @@
 // 收藏（#447）：不碰 DOM 的部分。收藏是一个人工标记，后端写在 /api/favorite，筛选条件是 has / not 里的 `fav`，列表、
 // 详情、首页带 marks=fav 时每张图多一个 `fav` 字段（口径：这张或同组任何一份收藏过）。画在哪、怎么写入在 ui/favorites.js
 // 和 ui/grid.js。可以在 Node 里单独测试（tests/favorites.test.cjs）。
-import {onPage} from './pages.js';
 import {state} from './state.js';
 
 // 读列表、详情、首页时带上的参数：回复里每张图多一个 fav。
@@ -16,13 +15,8 @@ export function conditions(value) {
 }
 // 写入以后这张图是不是离开本页：「只看收藏」里取消，「不含收藏」里收藏。
 export const favLeaves = (add, route = state.route) => add ? conditions(route.not).includes(FAV) : conditions(route.has).includes(FAV);
-// 只按收藏筛选的图库（没有别的条件）：活页条上亮「画廊 › 收藏」（core/rail.js 的 railAt，#706），标题写「收藏」。
-const OTHER = ['q', 'tag', 'utag', 'work', 'day', 'artist', 'char', 'from', 'to', 'like'];
-export function favoritesOnly(route = state.route) {
-  if (!onPage(route, 'library') || OTHER.some(k => Array.isArray(route[k]) ? route[k].length : route[k])) return false;
-  const has = conditions(route.has);
-  return has.length === 1 && has[0] === FAV && !conditions(route.not).length;
-}
+// 只按收藏筛选的图库（没有别的条件）：判断写在 core/pages.js（注册表要用它，放在这里会和注册表互相导入）。
+export {favoritesOnly} from './pages.js';
 // 在一组查询参数的 key（has 或 not）里加一个条件，返回新的一组；参数里条件写成 JSON 字符串数组，同 /api/assets。
 export function withCondition(params, key, condition) {
   const list = conditions(params[key]);

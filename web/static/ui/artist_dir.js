@@ -61,7 +61,7 @@ export async function renderArtistDir({restore = false} = {}) {
   draw();
   await more();
 }
-// 数据变了（同步、撤销、改动、R18 切换）之后从头重读。
+// 数据变了（同步、撤销、改动、NSFW 切换）之后从头重读。
 export function refreshArtistDir(why) {
   if (!['sync', 'undo', 'edit', 'nsfw'].includes(why) || !onDir(state.route)) return;
   reset(); draw(); more();
@@ -94,7 +94,7 @@ const tip = a => [a.name, t('{n} 张', {n: number(a.count)}), a.last ? t('最近
 export const card = a => `<a class="cast-rs" href="${hashFor({page: 'library', artist: a.id})}" data-artist-dir="${esc(a.id)}" title="${esc(tip(a))}">` +
   `<i class="cast-av" style="width:72px;height:72px">${a.cover ? `<img src="/image?id=${encodeURIComponent(a.cover)}&size=thumb" alt="" loading="lazy" decoding="async">` : ''}</i>` +
   `<b>${esc(a.name)}</b><small>${dir.order === 'recent' && a.last ? esc(dayLabel(a.last.slice(0, 10))) : t('{n} 张', {n: number(a.count)})}</small></a>`;
-// 没有画师时说什么：搜索没结果、「只看 R18」开着，或者还没有找回过画师（给去处：设置里的「画师」）。
+// 没有画师时说什么：搜索没结果、「只看 NSFW」开着，或者还没有找回过画师（给去处：设置里的「画师」）。
 export function emptyText() {
   if (dir.q) return `<p class="empty">${t('没有符合的画师。')}</p>`;
   if (state.nsfw === 'only') return `<p class="empty">${t('「只看 NSFW」开着，没有画过 NSFW 图的画师。')}</p>`;

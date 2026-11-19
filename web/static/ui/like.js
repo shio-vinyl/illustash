@@ -61,7 +61,7 @@ function drawHeading(h, r) {
   }).join('');
   // 缩略图那一段的宽度（--w）给排版用：位置不够时先裁它，再截短标题，「按画面｜按角色」不缩（app.css 的 .like-examples）。
   const width = shown.length * (THUMB_W + 4) + (more ? 28 : 0);
-  h.innerHTML = `<div class="heading-main like-head"><h1>${many ? t('更多像这些的') : t('更多像这张的')}${helpButton}</h1><p>${sub}</p>${helpPop}</div>`
+  h.innerHTML = `<div class="heading-main like-head"><h1 class="title-page">${many ? t('更多像这些的') : t('更多像这张的')}${helpButton}</h1><p class="page-sub">${sub}</p>${helpPop}</div>`
     + `<div class="like-examples" style="--w:${width}px">${examples}</div>${likeActions(r)}<div class="segmented like-by" role="group" aria-label="${t('比较方式')}">${modes}</div>`;
   wireHelpTip();
   for (const b of h.querySelectorAll('[data-like-show]')) b.onclick = () => inspect(b.dataset.likeShow);

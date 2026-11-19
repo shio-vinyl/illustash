@@ -8,14 +8,14 @@ import {onTyped} from '../core/keys.js';
 import {fetchChar, onMeta, setChar} from '../core/meta.js';
 import {prefs} from '../core/prefs.js';
 import {implement, pageOf, viewOf} from '../core/pages.js';
-import {queues, viewRoute} from '../core/rail.js';
+import {queues, railAt, viewRoute} from '../core/rail.js';
 import {canGoBack, cleanup, defaultSort, go, hashFor, historyEntry, noteHistory, parseHash, replaceRoute, setRoute, sortKey, stepHistory} from '../core/route.js';
 import {readError} from '../core/session.js';
 import {state} from '../core/state.js';
 import {cast, createWork, drawCast, drawShelf, openTagged, searchIndex, shelf} from './catalog.js';
 import {dirDrawn, dirToolbar, onDir, wireDirToolbar} from './artist_dir.js';
 import {$, error, helpTip, searchIcon, showArea, wireHelpTip, workSmall} from './dom.js';
-import {attr, make} from './el.js';
+import {attr, make, show, text, tpl} from './el.js';
 import {closeInspector, closeViewer} from './detail.js';
 import {markSelectButton, placeFor, rememberPlace, reload, resetForRoute, selectAll, setNsfw, short, sweep, toggleFit, toggleSelecting} from './grid.js';
 import {guideTick} from './guide.js';
@@ -27,10 +27,11 @@ import {enter} from './motion.js';
 import {railRoute, refresh as refreshRail} from './rail.js';
 import {page as pageScope, currentPage} from './scope.js';
 
-// 一次元数据读取在屏幕上改动什么：活页条整理的数字和点，以及显示它们的标题或页面。
+// 一次元数据读取在屏幕上改动什么：活页条（整理的数字和点；资料库钉住的角色和作品要用读到的角色目录，启动时它比钉住的列表晚到，
+// 改名、张数变了也要跟着变），以及显示它们的标题或页面。
 function metaShown({error: e, directory}) {
   if (e) { error(readError(e)); return; }
-  refreshRail('tidy');
+  refreshRail();
   // 角色还没读到时（state.char 为空）算图库页：这一刻不重画。
   const view = viewOf(state.route, state.char);
   if (view.onMeta) view.onMeta({directory}); else renderChrome();
@@ -81,10 +82,30 @@ export async function applyRoute() {
 // 自己渲染的页面在各条历史记录里停在哪里：{序号: scrollTop}。
 const panelScroll = new Map();
 
-// ---------- 页头：标题、副标题、本页的链接，切换（图库的三种视图、整理的三个页签），右侧的控件组 ----------
-// 图库三种视图之间、整理三个页签之间的分段切换。是链接（换地址），选中的那个 aria-current。
+// ---------- 页头：标题、副标题、本页的按钮，切换（图库的三种视图、整理的三个页签），右侧的控件组 ----------
+// 各页用 head(r, ctx) 登记页头：返回 {title, sub?, alert?, actions?}，只收文字和节点（core/pages.js 的 implement 说明）：
+// title、sub、alert 是纯文字，经 ui/el.js 的 text() 写进 .title-page、.page-sub；actions 是这一页自己的按钮节点。
+// 旧的写法 headingHTML（返回 HTML 字符串）是存量，各页步骤改到哪页就迁到 head；drawHeading（整个页头自己画）也是。
+const HEAD = tpl`<hgroup class="heading-main"><h1 class="title-page"><span data-ref="title"></span><button class="icon small" id="pageHelp" data-ref="help"
+  title="这一页的说明" aria-label="这一页的说明" data-t-attr="title aria-label" aria-expanded="false" aria-controls="pageHelpPop" hidden>?</button></h1><p
+  class="page-sub" data-ref="line"><span data-ref="sub"></span><strong data-ref="alert"></strong></p><div id="pageHelpPop" class="menu menu-drop" role="dialog"
+  aria-label="这一页的说明" data-t-attr="aria-label" tabindex="-1" data-ref="pop" hidden></div></hgroup>`;
+let head = null, actions = null;   // 建一次，之后只改变了的地方（模块载入时不建节点）
+function drawHead(h, {title = '', sub = '', alert = '', actions: buttons = []} = {}, help) {
+  head ||= HEAD(); actions ||= make('div', 'heading-actions');
+  const {refs} = head;
+  text(refs.title, title);
+  text(refs.sub, sub); text(refs.alert, alert && sub ? ' · ' + alert : alert);
+  show(refs.line, !!(sub || alert));
+  show(refs.help, help.length > 0);
+  refs.pop.replaceChildren(...help.map(line => make('p', '', line)));
+  actions.replaceChildren(...buttons);
+  h.replaceChildren(head.el, ...(buttons.length ? [actions] : []));
+}
+// 图库三种视图之间、整理三个页签之间的分段切换。是链接（换地址），选中的那个 aria-current。图库的切换只在活页条落在「图库」时画
+// （收藏、作品页虽然也是网格，活页条在画廊、资料库下，没有这个切换）。
 function switches(r, view) {
-  if (view.view) {
+  if (view.view && railAt(r).entry === 'library') {
     const label = {days: t('按天'), grid: t('网格'), calendar: t('日历')};
     return {label: t('视图'), list: ['days', 'grid', 'calendar'].map(v => ({label: label[v], href: hashFor(viewRoute(r, v)), on: view.view === v}))};
   }
@@ -93,11 +114,11 @@ function switches(r, view) {
   }
   return null;
 }
-let seg = null;   // 建一次，每次画页头时挪进去（模块载入时不建节点）
+let seg = null;   // 建一次，每次画页头时挪进去
 function drawSwitches(r, view) {
   const sw = switches(r, view);
   if (!sw) { seg?.remove(); return null; }
-  seg ||= make('nav', 'seg page-seg');
+  seg ||= make('nav', 'seg');
   attr(seg, 'aria-label', sw.label);
   seg.replaceChildren(...sw.list.map(x => {
     const a = make('a', '', x.label); a.href = x.href;
@@ -111,14 +132,20 @@ export function renderHeading() {
   const r = state.route, h = $('heading'), c = state.char, view = viewOf(r, c);
   if (view.drawHeading) { view.drawHeading(h, r, c); h.append(...[drawSwitches(r, view)].filter(Boolean)); return; }
   const n = state.totalReady ? number(state.total) : '…';
-  const [title, heading, links = ''] = view.heading?.(r, {n}) || ['', ''];
   // 撤销以后在等后台学习落定（#404）：计数还是撤销前的，落定后一次重读成最终值。
-  const sub = state.learning ? [heading, t('正在更新')].filter(Boolean).join(' · ') : heading;
+  const updating = text => state.learning ? [text, t('正在更新')].filter(Boolean).join(' · ') : text;
   // 标题下面只放数量、状态和必须一眼看到的警告；这一页是什么、怎么操作收进标题旁的「?」（#527）。网格页的操作提示
   // 就是注册表里的底栏提示（底栏默认隐藏），一个「·」分出一行，英文行首大写。
-  const hints = view.helpHint ? (view.hint?.(r) || '').split(' · ').filter(Boolean).map(x => esc(x.charAt(0).toLocaleUpperCase() + x.slice(1))) : [];
-  const [helpButton, helpPop] = helpTip([...(view.help?.(r) || []), ...hints]);
-  h.innerHTML = `<hgroup class="heading-main"><h1>${title}${helpButton}</h1><p>${sub}</p>${helpPop}</hgroup>${links}`;
+  const hints = view.helpHint ? (view.hint?.(r) || '').split(' · ').filter(Boolean).map(x => x.charAt(0).toLocaleUpperCase() + x.slice(1)) : [];
+  const help = [...(view.help?.(r) || []), ...hints];
+  if (view.head) {
+    const x = view.head(r, {n});
+    drawHead(h, {...x, sub: updating(x.sub || '')}, help);
+  } else {
+    const [title, sub, links = ''] = view.headingHTML?.(r, {n}) || ['', ''];
+    const [helpButton, helpPop] = helpTip(help.map(esc));
+    h.innerHTML = `<hgroup class="heading-main"><h1 class="title-page">${title}${helpButton}</h1><p class="page-sub">${updating(sub)}</p>${helpPop}</hgroup>${links}`;
+  }
   const sw = drawSwitches(r, view); if (sw) h.append(sw);
   wireHelpTip(); view.wireHeading?.(h, r);
 }
@@ -137,7 +164,7 @@ function drawCharHeading(h, r, c) {
   const tagOnly = !!c.mascot;   // 只当标签：没有要复核的，所以没有检查、清扫、OC 这些控件
   const checked = !tagOnly && c.reviewed_at ? ' · ' + t('上次检查 {date}', {date: localDate(c.reviewed_at)}) : '';   // 后端存的是 UTC（#386 的 2-15）
   const unchecked = !tagOnly && (c.unchecked || r.check) ? ` · <a class="unchecked-link${r.check ? ' on' : ''}" href="${hashFor({...r, check: r.check ? '' : '1', maybe: ''})}" title="${r.check ? t('显示全部') : t('只看机器识别、还没检查过的图')}">${t('未检查 {n}', {n: number(c.unchecked)})}${r.check ? ' ×' : ''}</a>` : '';
-  h.innerHTML = `<hgroup class="heading-main"><h1 class="tag-title" title="${esc(nameTip(c))}">${esc(c.name)}${c.mascot ? '' : workSmall(c)}</h1><p>${c.mascot ? `<span class="oc-badge" title="${c.mascot_origin === 'default' ? t('老师、博士、训练员这类没有固定形象的玩家化身和吉祥物默认只当标签。') : ''}${t('不算角色：不出现在角色列表里，也不算多人图；图上仍挂着这个标签')}">${t('只当标签')}</span> ` : ''}${t('{n} 张', {n: number(c.count)})}${unchecked}${checked}${!c.tag && c.kind !== 'oc' && !c.label_only ? ` · <button class="link-button" id="profileNudge" title="${t('补上中文名、别名和所属作品')}">${t('关联 Danbooru…')}</button>` : ''}</p></hgroup>
+  h.innerHTML = `<hgroup class="heading-main"><h1 class="tag-title title-page" title="${esc(nameTip(c))}">${esc(c.name)}${c.mascot ? '' : workSmall(c)}</h1><p class="page-sub">${c.mascot ? `<span class="oc-badge" title="${c.mascot_origin === 'default' ? t('老师、博士、训练员这类没有固定形象的玩家化身和吉祥物默认只当标签。') : ''}${t('不算角色：不出现在角色列表里，也不算多人图；图上仍挂着这个标签')}">${t('只当标签')}</span> ` : ''}${t('{n} 张', {n: number(c.count)})}${unchecked}${checked}${!c.tag && c.kind !== 'oc' && !c.label_only ? ` · <button class="link-button" id="profileNudge" title="${t('补上中文名、别名和所属作品')}">${t('关联 Danbooru…')}</button>` : ''}</p></hgroup>
       <div class="heading-actions">${tagOnly ? '' : `<button class="quiet" id="sweepButton" ${c.unchecked ? '' : 'disabled'} title="${t('把剩下的机器识别都记为已检查；以后新识别的图会重新计入未检查')}">${t('标为已检查')}</button>`}<div class="tag-control more-control"><button class="quiet" id="moreButton" title="${t('更多操作')}" aria-label="${t('更多操作')}">⋯</button><div id="morePopover" class="menu menu-drop more-menu" hidden>${c.label_only || tagOnly ? '' : `<button class="menu-item" id="ocButton" title="${t('画师自己的原创角色，不属于任何作品')}">${c.kind === 'oc' ? t('取消原创角色') : t('标为原创角色')}</button>`}${c.label_only ? '' : `<button class="menu-item" id="mascotButton" title="${c.mascot ? t('恢复成角色：出现在角色列表里，同框就算多人图') : t('像佩洛洛这样的吉祥物、玩家化身：不算角色，不算多人图；图上仍挂着这个标签，可以按它筛选')}">${c.mascot ? t('算作角色') : t('不算角色，只当标签')}</button>`}<button class="menu-item" id="profileButton" title="${t('名称、别名、所属作品、Danbooru 关联')}">${t('编辑资料…')}</button><button class="menu-item" id="mergeButton" title="${t('把这个角色的图和人工结论并到另一个角色')}">${t('合并到另一个角色…')}</button></div></div></div>`;
   $('sweepButton')?.addEventListener('click', sweep);
   $('moreButton').onclick = () => setMenu($('morePopover').hidden);
@@ -192,13 +219,13 @@ export function renderChrome() {
 // 图库一类页面的搜索框（网格、角色页、画廊、按天、日历）。
 const searchBox = r => `<div class="search-wrap">${searchIcon()}<input type="search" id="search" spellcheck="false" autocorrect="off" autocapitalize="off"`
   + ` placeholder="${t('搜索角色、别名或文件名')}" aria-label="${t('搜索图库')}" value="${esc(r.q)}"><kbd>/</kbd></div>`;
-// 搜索词就地改进地址（不新增历史记录），然后按新的筛选重画：网格页重读，自己渲染的页面（按天、日历）调 refresh('filter')。
-// 筛选条上的条件改了是换地址（go），走 applyRoute，自己渲染的页面收到 render({samePage: true})。活页条的时间轴跟着筛选重读。
+// 搜索词就地改进地址（不新增历史记录），然后按新的筛选重画：网格页重读；自己渲染的页面（按天、日历）和筛选条上改了条件一样，
+// 收到 render({samePage: true})（筛选变了只有这一个入口，docs/WEB_V2.md「页面样板」）。活页条的时间轴跟着筛选重读。
 function wireSearch(r) {
   onTyped($('search'), e => {
     replaceRoute({q: e.target.value.trim()});
     const page = pageOf(state.route);
-    if (page.panel) page.refresh?.('filter'); else reload(true);
+    if (page.render) page.render({samePage: true, restore: false, scope: currentPage()}); else reload(true);
     railRoute(state.route);
   }, 250);
 }

@@ -1,0 +1,97 @@
+// 活页条的部件（ui/rail.js，#706）：在 tests/dom.cjs 的假 DOM 上搭一份活页条的骨架，测切换入口（连着切几次也只显示一组）、
+// 选中、键盘（⌘1–4 认 e.code，⌥↑↓ 走到下一项）、临时模式，以及钉住的项要等角色目录读到以后才画得出来。
+// 没有排版：offsetTop 之类是 undefined，指示条的位置不测；动画在假 DOM 上立刻结束（元素没有 animate）。
+const {test, before} = require('node:test');
+const assert = require('node:assert/strict');
+const dom = require('./dom.cjs');
+const web = require('./web.cjs');
+let rail, state, document;
+const SKELETON = `<aside id="rail"><nav id="railEntries"><span id="railTab"></span><a data-entry="library" href="#/days"><b class="rail-dot" hidden></b></a>
+  <a data-entry="catalog" href="#/characters"><b class="rail-dot" hidden></b></a><a data-entry="galleries" href="#/galleries"><b class="rail-dot" hidden></b></a>
+  <a data-entry="tidy" href="#/groups"><b class="rail-dot" hidden></b></a></nav><div id="railLayer"><div id="railHint"></div><div id="railItems"></div><span id="railInd"></span></div>
+  <a id="settingsLink" href="#/settings"></a></aside><button id="sidebarToggle"></button><div id="railPeek" hidden></div>`;
+const tick = () => new Promise(r => setTimeout(r, 0));
+const visible = () => [...$('railItems').children].filter(x => !x.hidden).map(x => x.dataset.entry);
+const $ = id => document.getElementById(id);
+const keysOf = entry => [...$('railItems').children].find(x => x.dataset.entry === entry)?.children.filter(x => !x.inert).map(x => x.dataset.key) || [];
+
+before(async () => {
+  await web.ready();
+  document = dom.install();
+  document.body.innerHTML = SKELETON;
+  document.getElementById = id => { const walk = n => { for (const c of n.children || []) { if (c.id === id) return c; const f = walk(c); if (f) return f; } return null; }; return walk(document.body); };
+  const store = new Map();
+  globalThis.localStorage = {getItem: k => store.has(k) ? store.get(k) : null, setItem: (k, v) => store.set(k, String(v)), removeItem: k => store.delete(k)};
+  store.set('pi.railPins@lib-a', JSON.stringify(['c:1', 'w:7']));
+  globalThis.location = {hash: ''};
+  globalThis.fetch = async path => ({status: 200, ok: true, headers: {get: () => null},
+    json: async () => String(path).startsWith('/api/libraries') ? {info: {id: 'lib-a'}} : {days: [], total: 0, prev: null, next: null}});
+  rail = await web.load('ui/rail.js');
+  ({state} = web.core());
+  Object.assign(state, {pools: {unmatched: 5, audit: 0}, dupInfo: {groups: 1, mixed: 0}, pendingCount: 0, identityCount: 0, charMap: new Map(), chars: [], galleries: []});
+  rail.wireRail();
+  await tick();
+});
+
+test('连着切几次入口（退场动画还没放完又换了）也只显示最后那一组', async () => {
+  rail.railRoute({page: 'groups'});
+  await tick(); await tick();
+  assert.deepEqual(visible(), ['tidy']);
+  rail.railRoute({page: 'characters'});   // 整理那组开始退场……
+  rail.railRoute({page: 'galleries'});    // ……还没放完就换到画廊
+  for (let i = 0; i < 5; i++) await tick();
+  assert.deepEqual(visible(), ['galleries']);
+  rail.railRoute({page: 'groups'});
+  for (let i = 0; i < 5; i++) await tick();
+  assert.deepEqual(visible(), ['tidy']);
+  const tab = [...$('railEntries').querySelectorAll('[data-entry]')].map(a => [a.dataset.entry, a.getAttribute('aria-current')]);
+  assert.deepEqual(tab, [['library', null], ['catalog', null], ['galleries', null], ['tidy', 'page']]);
+});
+
+test('选中：只有那一项带 aria-current；整理有待处理时一级入口亮点', async () => {
+  rail.railRoute({page: 'duplicates'});
+  await tick();
+  const current = [...$('railItems').children].flatMap(g => g.children).filter(x => x.getAttribute('aria-current')).map(x => x.dataset.key);
+  assert.deepEqual(current, ['duplicates']);
+  rail.refresh('tidy');
+  const dot = [...$('railEntries').querySelectorAll('[data-entry]')].find(a => a.dataset.entry === 'tidy').children[0];
+  assert.equal(dot.hidden, false);
+});
+
+test('键盘：⌘1–4 认 e.code；⌥↓ 走到下一项（按它的链接去）；输入框里的 ⌥↓ 不管', async () => {
+  const key = extra => ({key: '', code: '', metaKey: false, ctrlKey: false, altKey: false, shiftKey: false, target: {closest: () => null}, preventDefault() { this.prevented = true; }, ...extra});
+  // 法语布局：数字键的 e.key 是 é，e.code 是 Digit2
+  let e = key({key: 'é', code: 'Digit2', metaKey: true});
+  assert.equal(rail.railKey(e), true);
+  assert.equal(location.hash, '#/characters');
+  rail.railRoute({page: 'groups'});
+  await tick();
+  e = key({key: 'ArrowDown', altKey: true});
+  assert.equal(rail.railKey(e), true);
+  assert.equal(location.hash, '#/duplicates');
+  e = key({key: 'ArrowDown', altKey: true, target: {closest: () => ({})}});
+  assert.equal(rail.railKey(e), false);
+  assert.equal(rail.railKey(key({key: 'x'})), false);
+});
+
+test('临时模式（拖放时换一组）：只显示那一组；换回来只显示原来的入口', async () => {
+  rail.railRoute({page: 'groups'});
+  for (let i = 0; i < 3; i++) await tick();
+  rail.mode('drop', [{key: 'fav', kind: 'gallery', label: '收藏', heart: true, href: '#/x'}], '松手放进画廊');
+  for (let i = 0; i < 3; i++) await tick();
+  assert.deepEqual(visible(), ['mode:drop']);
+  rail.mode(null);
+  for (let i = 0; i < 5; i++) await tick();
+  assert.deepEqual(visible(), ['tidy']);
+});
+
+test('钉住的项：钉住的列表先读到、角色目录后到，目录到了重画以后才出现（#684 重启后保持）', async () => {
+  assert.deepEqual(keysOf('catalog'), []);   // 启动时角色目录还没到，一项也画不出
+  state.charMap = new Map([['1', {id: '1', name: 'Karen', count: 3, cover: 'u1'}]]);
+  state.chars = [{id: '2', name: 'Rio', work_id: '7', work_name: 'Blue', count: 4, cover: 'u2'}];
+  rail.refresh();   // 元数据到了（ui/shell.js 的 metaShown 调它）
+  assert.deepEqual(keysOf('catalog'), ['c:1', 'w:7']);
+  // 作品页（只按这部作品筛选的图库）在资料库下，选中钉住的那一项
+  const {railAt} = await web.load('core/rail.js');
+  assert.deepEqual(railAt({page: 'library', work: '7', has: [], not: []}), {entry: 'catalog', item: 'w:7'});
+});

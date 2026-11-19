@@ -992,4 +992,4 @@ export function wireSettings() {
 
 // 设置页登记：渲染入口（换了页面或子页时才整页重取）。
 // 设置的副标题是这一节的内容清单，留在原处；计数到达后重画整页。
-implement({settings: {render: ({samePage}) => renderSettings(true, !samePage), heading: () => [t('设置'), settingsSection()[2]], onMeta: () => renderSettings()}});
+implement({settings: {render: ({samePage}) => renderSettings(true, !samePage), head: () => ({title: t('设置'), sub: settingsSection()[2]}), onMeta: () => renderSettings()}});

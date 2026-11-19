@@ -25,7 +25,7 @@
 | 人工整理（记录） | your organizing | 用户手工做的判断，备份和撤销都围绕它 |
 | 任务面板 | task panel | |
 | 大图 | Large view | |
-| 收藏 | favorite | 人工标记的收藏（#447）：侧栏「收藏」Favorites，按钮「收藏」Favorite、「取消收藏」Unfavorite。存进图库的图不叫收藏，叫「加入」 |
+| 收藏 | favorite | 人工标记的收藏（#447）：画廊里的「收藏」Favorites，按钮「收藏」Favorite、「取消收藏」Unfavorite。存进图库的图不叫收藏，叫「加入」 |
 | 加入 | saved / added | 图进图库：共 {n} 张 {n} saved；每月加入张数 Collection chart；最后加入 Last saved |
 
 ## 页面与分组
@@ -70,7 +70,7 @@
 - 标题、按钮、菜单用句首大写（View options，不写 View Options）；句子照常加句号。
 - 引用界面上的名字用弯引号：the “Duplicates” page。省略号用一个字符 `…`。
 - 计数放在名词前，按复数规则写（`{n} pictures`）；不方便写复数的句子改写成不依赖单复数的说法。
-- `NSFW`、`Danbooru`、`Pixiv`、`X`、`iCloud`、`Photos` 等专名不译。内容筛选（含 Pixiv 上不公开的作品）在中英文界面上都叫 NSFW，不写 R18（用户 2026-11-19 定，#706）。
+- `NSFW`、`Danbooru`、`Pixiv`、`X`、`iCloud`、`Photos` 等专名不译。内容筛选在中英文界面上都叫 NSFW，不写 R18；说的是 Pixiv 上登录才能看的作品时也这样叫（用户 2026-11-19 定，#706）。
 
 ## 语气
 

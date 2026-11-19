@@ -131,12 +131,12 @@ test('标题：例图缩略图、按画面／按角色；多张里没有特征�
   Object.assign(state, {route: r, total: 7, totalReady: true});
   const h = page.el('heading');
   pages.LIKE.drawHeading(h, r);
-  assert.match(h.innerHTML, /<h1>更多像这些的/);
-  assert.match(h.innerHTML, /<p>7 张<\/p>/);
+  assert.match(h.innerHTML, /<h1 class="title-page">更多像这些的/);
+  assert.match(h.innerHTML, /<p class="page-sub">7 张<\/p>/);
   await settle(); await settle();
   assert.deepEqual(asked.sort(), ['/api/assets/count?like=["a"]&like_by=ccip', '/api/assets/count?like=["b"]&like_by=ccip']);
   // 问完自己重画一次
-  assert.match(h.innerHTML, /<p>7 张 · 1 张例图没有特征<\/p>/);
+  assert.match(h.innerHTML, /<p class="page-sub">7 张 · 1 张例图没有特征<\/p>/);
   assert.match(h.innerHTML, /<span class="like-example off"><button data-like-show="b" title="还没有特征，没有算进去">/);
   assert.match(h.innerHTML, /<span class="like-example"><button data-like-show="a" title="查看这张">/);
   assert.match(h.innerHTML, /data-like-drop="a"/);
@@ -152,7 +152,7 @@ test('标题：例图缩略图、按画面／按角色；多张里没有特征�
   asked.length = 0;
   const one = {...like.likeRoute(['a']), sort: 'similar'}; state.route = one;
   pages.LIKE.drawHeading(h, one);
-  assert.match(h.innerHTML, /<h1>更多像这张的/);
+  assert.match(h.innerHTML, /<h1 class="title-page">更多像这张的/);
   assert.doesNotMatch(h.innerHTML, /data-like-drop/);
   assert.deepEqual(asked, []);
   state.route = {page: 'library'};

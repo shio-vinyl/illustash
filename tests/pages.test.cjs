@@ -258,14 +258,15 @@ test('each kind of page remembers its own sort', () => {
 });
 
 // 按天、日历的工具栏（#706，#703 第 2 问）：只有搜索框和筛选条，没有排序、选择、显示方式；搜索词改了就地写进地址，
-// 由页面自己的 refresh('filter') 重画（不是网格的 reload）。
-test('按天、日历的工具栏只有搜索框和筛选条；搜索后调页面的 refresh("filter")', async () => {
+// 和筛选条上改条件一样，页面收到 render({samePage: true})（筛选变了只有这一个入口），作用域还是这一页的。
+test('按天、日历的工具栏只有搜索框和筛选条；搜索后页面收到 render({samePage: true})', async () => {
   globalThis.history = {state: null, replaceState() {}};
   globalThis.window = {addEventListener() {}};
   const {renderChrome} = await web.load('ui/shell.js');
+  const S = await web.load('ui/scope.js');
   for (const name of ['days', 'calendar']) {
-    const page = web.fakePage(), calls = [];   // 每次一个新的假页面：搜索框上的监听不跨页累积
-    pages.implement({[name]: {refresh: why => calls.push(why)}});
+    const page = web.fakePage(), calls = [], scope = S.page(name);   // 每次一个新的假页面：搜索框上的监听不跨页累积
+    pages.implement({[name]: {render: opts => calls.push(opts)}});
     state.route = {page: name, q: '', has: [], not: []};
     renderChrome();
     const bar = page.el('toolbar');
@@ -276,7 +277,33 @@ test('按天、日历的工具栏只有搜索框和筛选条；搜索后调页�
     input.value = 'miku';
     for (const fn of input.listeners.input) fn({target: input, isComposing: false, keyCode: 0});
     await new Promise(r => setTimeout(r, 300));
-    assert.deepEqual(calls, ['filter'], name);
+    assert.deepEqual(calls.map(x => [x.samePage, x.scope === scope]), [[true, true]], name);
     assert.equal(state.route.q, 'miku', name);
   }
+});
+
+// 页面样板（docs/WEB_V2.md「页面样板」）：照例子写的页面，同一页又画几次（筛选变了、换子视图：render({samePage: true})）以后，
+// 活着的作用域数不涨；作用域还是进页面时那一个。
+test('照页面样板写：同一页重画几次，活着的作用域数不涨', async () => {
+  const page = web.fakePage();
+  globalThis.history = {state: null, replaceState() {}};
+  globalThis.window = {addEventListener() {}};
+  globalThis.requestAnimationFrame = () => 0;
+  const S = await web.load('ui/scope.js'), {keyed} = await web.load('ui/keyed.js'), {applyRoute} = await web.load('ui/shell.js');
+  S.setDev(true);
+  let view = null, builds = 0;
+  const notesView = scope => {
+    builds++;
+    const list = keyed(page.el('calendarPage'), {key: n => n, create: n => ({el: Object.assign(page.document.createElement('li'), {textContent: n})}), scope});
+    return {scope, load: route => list.set(route.q ? [route.q] : [])};
+  };
+  pages.implement({calendar: {render: ({samePage, scope}) => { if (!samePage || !view?.scope.alive) view = notesView(scope); return view.load(state.route); }}});
+  globalThis.location.hash = '#/calendar';
+  await applyRoute();
+  const first = S.currentPage(), count = S.live().count;
+  for (const q of ['a', 'b', 'c']) { globalThis.location.hash = '#/calendar?q=' + q; await applyRoute(); }
+  assert.equal(S.currentPage(), first, '同一页沿用作用域');
+  assert.equal(S.live().count, count, '活着的作用域数不涨');
+  assert.equal(builds, 1, '部件只建一次');
+  S.setDev(false);
 });

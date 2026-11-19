@@ -98,3 +98,50 @@ test('钉住的项（#684）：按图库存在浏览器本地，钉到末尾、�
   state.chars = [];
   assert.deepEqual(rail.pinItems(['c:1', 'c:404']).map(x => [x.key, x.kind, x.label, x.cover, x.href]), [['c:1', 'char', 'Karen', 'u9', '#/library?char=1']]);
 });
+
+// 时间轴的读法（#706）：从给的月份起按 prev 一个月一个月往前读；参数没变、没有写入时不重读；同步到新图只重读最新的月；
+// 写入之后整条重读；读失败留着上一次的结果；换了参数时上一轮的回复不覆盖。
+test('时间轴的读法：按 prev 逐月读、不重复读、写入后整条重读、失败留着上一次的', async () => {
+  const months = {
+    '2026-11': {days: [{day: '2026-11-18', count: 2, samples: [{uuid: 'a'}, {uuid: 'b'}]}], prev: '2026-10'},
+    '2026-10': {days: [{day: '2026-10-02', count: 5, samples: [{uuid: 'c'}]}], prev: null},
+  };
+  let asked = [], fail = false;
+  globalThis.fetch = async path => {
+    const q = new URL('http://x' + path).searchParams; asked.push(q.get('month') + (q.get('q') ? '?' + q.get('q') : ''));
+    if (fail) return {status: 500, ok: false, headers: {get: () => null}, json: async () => ({error: '读取失败'})};
+    return {status: 200, ok: true, headers: {get: () => null}, json: async () => months[q.get('month')] || {days: [], prev: null}};
+  };
+  state.nsfw = '';
+  const route = {page: 'days', q: '', has: [], not: []};
+  await rail.loadTimeline(route, {month: '2026-11'});
+  assert.deepEqual(asked, ['2026-11', '2026-10']);
+  assert.deepEqual(rail.timeline.items.map(x => x.key), ['d:2026-11-18', 'd:2026-10-02']);
+  asked = [];
+  await rail.loadTimeline(route, {month: '2026-11'});   // 参数没变、没有写入：不读
+  assert.deepEqual(asked, []);
+  await rail.loadTimeline(route, {month: '2026-11', newest: true});   // 同步到了新图：只重读最新的月
+  assert.deepEqual(asked, ['2026-11']);
+  asked = [];
+  rail.forgetTimeline();   // 写入、撤销之后
+  await rail.loadTimeline(route, {month: '2026-11'});
+  assert.deepEqual(asked, ['2026-11', '2026-10']);
+  // 读失败：时间轴留着上一次的，下次再读
+  fail = true; rail.forgetTimeline(); asked = [];
+  await rail.loadTimeline(route, {month: '2026-11'});
+  assert.deepEqual(rail.timeline.items.map(x => x.key), ['d:2026-11-18', 'd:2026-10-02']);
+  assert.equal(rail.timeline.dirty, true);
+  fail = false;
+  // 换了参数（搜索词）：新的一轮开始时取消上一轮，只认新的
+  const slow = rail.loadTimeline({...route, q: 'old'}, {month: '2026-11'});
+  const fresh = rail.loadTimeline({...route, q: 'new'}, {month: '2026-11'});
+  await Promise.all([slow, fresh]);
+  assert.equal(JSON.parse(rail.timeline.params).q, 'new');
+});
+
+test('时间轴的一项点了去哪：日历里去那个月，按天、网格里去按天视图的那一天，都带着筛选；at 不是筛选', () => {
+  const r = {page: 'library', q: 'miku', has: ['fav'], not: [], day: '2026-11-01', sort: 'oldest', at: ''};
+  assert.equal(rail.timelineHref(r, '2026-10-02'), '#/days?day=2026-11-01&q=miku&has=%5B%22fav%22%5D&at=2026-10-02');
+  assert.equal(rail.timelineHref({...r, page: 'calendar'}, '2026-10-02'), '#/calendar?day=2026-11-01&q=miku&has=%5B%22fav%22%5D&at=2026-10-02');
+  assert.deepEqual(rail.viewRoute({...r, at: '2026-10-02'}, 'grid'), {page: 'library', q: 'miku', day: '2026-11-01', has: ['fav']});
+});

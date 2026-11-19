@@ -108,7 +108,7 @@ test('#/characters/artists shows the three tabs, the artist count and the cards'
   assert.match(bar, /href="#\/characters\/artists" class="on" aria-selected="true">画师</);
   assert.match(bar, /id="artistSearch"/);
   assert.match(bar, /<option value="count" selected>张数最多<\/option>/);
-  assert.match(document.getElementById('heading').innerHTML, /3 位画师/);
+  assert.match(web.headingText(document.getElementById('heading')), /3 位画师/);
   assert.equal((document.getElementById('charIndex').innerHTML.match(/class="cast-rs"/g) || []).length, 3);
 });
 

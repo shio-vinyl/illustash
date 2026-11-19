@@ -13,13 +13,16 @@ export function parseHash() {
   const route = {page: 'library', q: q.get('q') || '', tag: q.get('tag') || '', utag: q.get('utag') || '', dup: q.get('dup') || '', reason: q.get('reason') || '', kind: q.get('kind') || '', seen: q.get('seen') || '', maybe: q.get('maybe') || '', sort: q.get('sort') || '',
     work: q.get('work') || '', day: q.get('day') || '', artist: q.get('artist') || '', char: q.get('char') || '', variant: q.get('variant') || '', check: q.get('check') || '', doubt: q.get('doubt') || '',
     // 组合条件（#445）：has、not 是条件的 JSON 数组，from、to 是加入日期。
-    has: parseList(q.get('has')), not: parseList(q.get('not')), from: q.get('from') || '', to: q.get('to') || ''};
+    has: parseList(q.get('has')), not: parseList(q.get('not')), from: q.get('from') || '', to: q.get('to') || '',
+    // 按天、日历看哪一天（#706）：按天滚到那一天，日历显示它所在的月。不是筛选，切视图时不带过去。
+    at: q.get('at') || ''};
   // 打开 App 落在首页；只有查询的地址（#/?artist=… 和其他旧链接）仍表示图库；#/c/id/skin 是旧的角色页，现在是按这个角色
   // 筛选的图库；资料库和设置有各自地址的子视图。哪个路径对应哪个页面由 core/pages.js 登记。
   Object.assign(route, matchPath(parts, !!query));
   // 角色和检查筛选只属于有图库工具栏的页面（网格、画廊）；画师和组合条件另外属于按天、日历（注册表的 filters，#706）。
   if (pageOf(route).toolbar !== 'library') Object.assign(route, {char: '', variant: '', check: '', doubt: ''});
   if (!pageOf(route).filters) Object.assign(route, {artist: '', has: [], not: [], from: '', to: ''});
+  if (!['days', 'calendar'].includes(pageOf(route).view)) route.at = '';
   // 「更多像这张的」（#449）只属于图库本身，不和角色页叠在一起。
   Object.assign(route, readLike(q, pageOf(route).toolbar === 'library' && !route.char));
   if (!route.like && route.sort === 'similar') route.sort = '';   // 「最相似」离开例图就没有意义
@@ -34,7 +37,7 @@ export function hashFor(r) {
   if (r.q) q.set('q', r.q); if (r.dup) q.set('dup', r.dup); if (r.reason) q.set('reason', r.reason); if (r.kind) q.set('kind', r.kind); if (r.seen) q.set('seen', r.seen); if (r.maybe) q.set('maybe', r.maybe); if (r.tag) q.set('tag', r.tag); if (r.utag) q.set('utag', r.utag); if (r.sort && r.sort !== defaultSort(r)) q.set('sort', r.sort);
   // 画廊页总是写上 has（可以是 []）：不带查询的 #/gallery/<id> 表示按保存的条件打开（ui/galleries.js）。
   if (r.has?.length || pageOf(r).gallery) q.set('has', JSON.stringify(r.has || []));
-  if (r.not?.length) q.set('not', JSON.stringify(r.not)); if (r.from) q.set('from', r.from); if (r.to) q.set('to', r.to);
+  if (r.not?.length) q.set('not', JSON.stringify(r.not)); if (r.from) q.set('from', r.from); if (r.to) q.set('to', r.to); if (r.at) q.set('at', r.at);
   return path + (q.toString() ? '?' + q : '');
 }
 // 排序记在哪个偏好里（#386 的 2-26）：每一类页面一个键，下拉改了就写进去，离开再回来还是它。图库和角色页的键就是

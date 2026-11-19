@@ -225,8 +225,8 @@ export function wireHome() {
   new ResizeObserver(() => { if (!onPage(state.route, 'days') || !home.days.length || Math.abs($('homePage').clientWidth - home.width) < 8) return; clearTimeout(home.resize); home.resize = setTimeout(drawHome, 120); }).observe($('homePage'));
 }
 
-// 首页登记：渲染入口，以及数据变了之后怎么重画（撤销、同步到新图、改动之后保持滚动；切换 R18 重新读；视图选项只重排）。
+// 首页登记：渲染入口，以及数据变了之后怎么重画（撤销、同步到新图、改动之后保持滚动；切换 NSFW 重新读；视图选项只重排）。
 // 后退回到首页（restore）时按上次读到的天数重读、不换「认一认」，好让 applyRoute 滚回原来的位置（#526）。
 implement({days: {render: ({restore} = {}) => renderHome(!!restore && home.days.length > 0), reveal: revealHome,
-  heading: () => [t('图库'), state.recentCount ? t('最近一次同步新加入 {n} 张', {n: number(state.recentCount)}) : ''], help: () => [t('按加入日期分组。')],
+  head: () => ({title: t('图库'), sub: state.recentCount ? t('最近一次同步新加入 {n} 张', {n: number(state.recentCount)}) : ''}), help: () => [t('按加入日期分组。')],
   refresh: why => { if (why === 'view') drawHome(); else renderHome(why !== 'nsfw' && why !== 'ask'); }}});

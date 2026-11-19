@@ -1,4 +1,4 @@
-/* 活页条（#706）：一级入口和选中的标签、二级层、指示条、悬停预览、底部的同步圆环和设置、标志上的图库切换，以及页头。
+/* 活页条（#706）：一级入口和选中的标签、二级层、指示条、悬停预览、底部的同步圆环和设置、标志上的图库切换。
    只用 css/tokens.css 的令牌和 css/base.css 的公共部件。结构在 index.html，行为在 ui/rail.js。
    - 选中的入口长出一张和内容页同色的标签（.rail-tab），右边和内容页连成一张纸，上下两个内凹圆角（::before / ::after）。
    - 二级项一律 46px 见方、间隔 10px：ui/rail.js 按这个间距算让位动画，改尺寸时两边一起改。
@@ -122,22 +122,7 @@
 .library-row:hover,.library-row:focus-visible{background:var(--wash-hover);outline:none}
 .library-acts{display:flex;flex-wrap:wrap;gap:var(--space-8)}
 
-/* ---- 页头：大标题 + 副标题 + 本页的切换 + 右侧控件组（css/base.css 的 .page-head） ---- */
-.content>.page-head{flex:none;align-items:center;gap:var(--space-12);padding:var(--space-20) 0 var(--space-12)}
-.page-head>.page-heading{display:flex;flex:1;align-items:center;flex-wrap:wrap;gap:var(--space-12);min-width:0}
-.page-head .heading-main>h1{font-size:var(--fs-display-28);font-weight:var(--fw-750);letter-spacing:-.025em;line-height:1.15}
-.page-head .heading-main>p{margin:var(--space-4) 0 0;color:var(--muted);font-size:var(--fs-12)}
-.page-head .heading-main>p:empty{display:none}
-.page-head>.page-actions{flex:none;margin-left:0}
-.content>.page-tools:empty,.content>.page-tools[hidden]{display:none}
-/* 图库三种视图、整理三个页签：分段切换，是链接 */
-.page-seg{flex:none}
-.page-seg>a{display:inline-flex;align-items:center;gap:var(--space-4);height:var(--h-28);padding:0 var(--space-12);border-radius:var(--radius-pill);color:var(--ink2);font-size:var(--fs-12);
-  text-decoration:none;transition:background-color var(--dur-1) var(--ease),color var(--dur-1) var(--ease)}
-.page-seg>a:hover{color:var(--ink)}
-.page-seg>a[aria-current=page]{background:var(--seg-on);color:var(--ink);font-weight:var(--fw-600);box-shadow:var(--shadow-hover)}
-.page-seg>a:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
-.seg-count{color:var(--muted);font-size:var(--fs-11);font-weight:var(--fw-400)}
+/* 页头左边打开二级层抽屉的按钮：只在窄窗口里有（页头本身的样式在 css/base.css） */
 #sidebarToggle{display:none}
 
 /* ---- 窄窗口（≤760px）：活页条只留一级入口和底部，二级层收进抽屉（页头左边的按钮打开） ---- */

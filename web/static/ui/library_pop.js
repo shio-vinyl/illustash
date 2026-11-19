@@ -40,7 +40,9 @@ function draw() {
 }
 function setOpen(open, reason) {
   $('libraryPop').hidden = !open; attr($('brand'), 'aria-expanded', String(open));
-  if (open) { draw(); layer.open(); loadLibraries().then(() => { if (!$('libraryPop').hidden) draw(); }); } else layer.close(reason);
+  if (!open) { layer.close(reason); return; }
+  draw(); layer.open();
+  loadLibraries().then(() => { if (!$('libraryPop').hidden) draw(); }, () => {});   // 读不到就照已有的列表画
 }
 async function choose() {
   setOpen(false);

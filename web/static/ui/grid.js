@@ -1,4 +1,4 @@
-// 图片网格（桌面布局，#199）：分页加载图片、虚拟网格和它的缩放、选择、选择栏的操作、键盘快捷键、视图选项和 R18
+// 图片网格（桌面布局，#199）：分页加载图片、虚拟网格和它的缩放、选择、选择栏的操作、键盘快捷键、视图选项和 NSFW
 // 筛选。
 import {edits, exclusive, undoLatest, undoneText} from '../core/edits.js';
 import {esc, isMac, number, platformText, screenScale, shortcut, thumbSize} from '../core/format.js';
@@ -59,7 +59,7 @@ function visibleOffsets() { const v = $('viewport'); return pagesBetween(rowStar
 // 离开网格页时按地址记下位置：第一张可见的图的序号、在它那一行里滚过的比例、这一屏到哪一张，以及详情栏里的图和键盘光标。
 // 回到同一地址（侧栏、后退、从角色页返回）时，reload 先读这几张所在的页，再一步定位到那里，不先读顶部再跳。
 // 记的是序号而不是像素：窗口宽度、缩放或方格／原比例变了，回来时第一行仍是同一张。只存在这个页面里，重新载入就没了；
-// R18 筛选不同算不同的列表。
+// NSFW 筛选不同算不同的列表。
 const places = new Map(), PLACES_MAX = 30;
 const placeKey = route => `${hashFor(route)}|${state.nsfw}`;
 // 换页之前调用（ui/shell.js applyRoute），此时 state.route 和滚动位置还是要离开的那一页的。
@@ -120,10 +120,8 @@ function reuseSame(items) {
   for (const x of items) if (x) shown.set(x.uuid, x);
   return item => { const was = shown.get(item.uuid); return was && JSON.stringify(was) === JSON.stringify(item) ? was : item; };
 }
-// 空状态的图标：「只看 R18」时是搜索（多半是这个筛选造成的），否则是这一页登记的。
+// 空状态的图标：「只看 NSFW」时是搜索（多半是这个筛选造成的），否则是这一页登记的。
 const emptyIcon = view => state.nsfw === 'only' ? 'search' : (typeof view.emptyIcon === 'function' ? view.emptyIcon(state.route) : view.emptyIcon) || 'image';
-// 本页符合条件的前 limit 张图的 id（相似组页「判断关系」用）。
-export const listIds = limit => api('/api/ids?' + new URLSearchParams({...filters(), limit}));
 function showNone(text, next = []) {
   state.total = 0; state.totalReady = true; state.countDirty = false; state.items = []; state.pages = new Set(); state.dataVersion++; state.gridKey = '';
   renderGrid(); updateCount(); renderSelection();
@@ -432,7 +430,7 @@ function setSelected(id, on) {
 function clearSelection() { state.sel = {all: false, ids: new Set(), exclude: new Set()}; state.anchor = -1; state.armed = null; renderSelection(); }
 export function selectAll() { if (!state.total) return; state.sel = {all: true, ids: new Set(), exclude: new Set()}; state.selecting = true; renderSelection(); }
 export function toggleSelecting() { state.selecting = !state.selecting; if (!state.selecting) clearSelection(); renderSelection(); }
-// 取消选择并退出选择模式（Esc、选择栏的 ×、写入之后、切换 R18）。
+// 取消选择并退出选择模式（Esc、选择栏的 ×、写入之后、切换 NSFW）。
 function quitSelecting() { state.selecting = false; clearSelection(); }
 // 换页时复位网格这一侧的状态：退出选择模式、清空选择、光标归位、张数等新读取（ui/shell.js applyRoute 调用）。
 export function resetForRoute() { quitSelecting(); state.cursor = -1; state.totalReady = false; }
@@ -877,7 +875,7 @@ function toggleViewPop(open = $('viewPopover').hidden, reason) {
 }
 // ---------- NSFW 筛选 ----------
 // 一次点击在 显示 → 隐藏 → 仅 NSFW 之间循环；H 切换隐藏。NSFW = WD 评级 questionable/explicit。
-// R18 标牌：空心 = 全部显示，划线 = 隐藏，实心 = 只看 R18。
+// NSFW 标牌：空心 = 全部显示，划线 = 隐藏，实心 = 只看 NSFW。
 const NSFW_TIP = {'': t('NSFW：显示中 · 点击隐藏（H）'), hide: t('NSFW：已隐藏 · 点击只看 NSFW'), only: t('NSFW：只看 NSFW · 点击恢复全部')};
 const R18_ICON = '<svg class="r18" viewBox="0 0 44 20" aria-hidden="true"><rect class="plate" x="1.2" y="1.2" width="41.6" height="17.6" rx="5.5"/><text x="22" y="14.1" text-anchor="middle">NSFW</text><path class="cut" d="M6 17.5 38 2.5"/><path class="slash" d="M6 17.5 38 2.5"/></svg>';
 function renderNsfw() {

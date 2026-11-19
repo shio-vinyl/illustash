@@ -30,7 +30,8 @@ tools/check_architecture.py 对 crate 依赖方向的检查。规则（说明见
  20 tint-writer          --tint 只经 ui/tint.js 的 setTint() 写（它同时加 .tint）；别的模块不出现 --tint，样式里也不声明 --tint
                          （tokens.css 里 :root 的中性默认值除外）（硬规则）
  21 ui-file-length       ui/ 下的文件不超过 600 行；现有的大文件按超出的行数冻结为基线，只能缩小（#703「可维护性」，#706）
- 22 ui-request           ui/ 不直接发请求：api()、post()、shared()、fetch() 只在 core/ 的取数层里调（docs/WEB_V2.md「页面样板」，#706）
+ 22 ui-request           ui/ 不直接发请求：不从 core/session.js 导入 api、post、shared，也不调 fetch()；请求写在 core/ 的取数层里
+                         （docs/WEB_V2.md「页面样板」，#706）
 
 基线（tools/frontend_baseline.json）按「文件 + 内容特征」登记（导入边、字段名、每个文件的数量），不按行号，
 所以文件里别处的改动不会让它失效。基线只能缩小：`--shrink` 只调低、不新增；`--base-ref REF` 在基线比 REF
@@ -57,8 +58,8 @@ setHTMLUnsafe、parseHTMLUnsafe、createContextualFragment、parseFromString、�
 模块里只由规则 11 管，规则 12 只在经典脚本里管它，不重复报。
 规则 12 只按名字认（`Promise.withResolvers`、`Object.groupBy` 这类），认不出经变量间接调用的；字符串里的名字（`'requestIdleCallback' in window`）不算。
 迭代器方法只认紧跟在 `.values()`、`.keys()`、`.entries()` 后面的调用和 `Iterator.from`，存进变量再调的认不出。
-规则 22 按名字认 api(、post(、shared(、fetch(（前面不是 `.` 或标识符，所以 x.post( 不算）：同名的方法定义（{post() {…}}）会被误认成调用，
-导入时改了名（import {api as get}）的认不出。
+规则 22 按从 core/session.js 的导入认 api、post、shared（改名导入、import * as 都认），fetch 按调用认（window.fetch、globalThis.fetch?.( 也认）；
+认不出经别的模块转手的请求函数（那个模块在 ui/ 里时，它自己的导入会被报）。
 
 已知盲区（文本级检查做不到）：规则 2 认不出 `state[key]`、`Object.assign(state, …)` 和解构写法，名为 state
 的函数参数会被误报；规则 10 认不出 `Object.assign(el, {innerHTML: html})`、`el[name] = html` 这类经变量或对象写的属性，
@@ -92,8 +93,11 @@ DIALOG_ALLOWED = frozenset({'ui/dialog.js'})
 MAX_LINE = 200
 # 规则 21：ui/ 下一个文件的行数上限。
 MAX_UI_LINES = 600
-# 规则 22：发请求的调用（core/session.js 的 api、post、shared，以及 fetch）。
-REQUEST_RE = re.compile(r'(?<![\w.$])(api|post|shared|fetch)\s*\(')
+# 规则 22：ui/ 从 core/session.js 导入的发请求的函数（按导入认：改了名、传来传去、包一层都认得出，也不会把同名的方法定义当成调用），
+# 以及直接调 fetch（含 window.、globalThis.、self. 前缀和 ?.()）。
+REQUEST_NAMES = frozenset({'api', 'post', 'shared'})
+SESSION_IMPORT_RE = re.compile(r'''\bimport\s*(?:\{([^}]*)\}|\*\s*as\s+(\w+))\s*from\s*['"]([^'"]*core/session\.js)['"]''')
+FETCH_RE = re.compile(r'(?<![\w$.])(?:(?:window|globalThis|self)\s*\.\s*)?fetch\s*(?:\?\.\s*)?\(')
 # 规则 10 的放行项：ui/el.js 把 tpl`…` 的静态模板交给 <template> 解析，是唯一把字符串变成节点的地方（#704）。
 HTML_SINK_ALLOWED = frozenset({'ui/el.js'})
 # 规则 11 的放行项（#704）：每帧调度和动效各有唯一入口。ui/motion.js 由 #705 新建，先写进名单。
@@ -440,10 +444,12 @@ def new_rules():
              '按页面样板拆：取数和不碰 DOM 的计算挪进 core/ 的对应模块，一页里自成一块的部件（卡片、浮层、工具栏）拆成自己的 ui/ 文件，'
              '模块开头写清它负责什么。缩短了存量的大文件后运行 `python tools/check_frontend.py --shrink`。'),
         Rule('ui-request', '22', 'ui/ 里直接发了请求',
-             '页面样板（docs/WEB_V2.md「页面样板」，#706）：ui/ 只画，不发请求。api()、post()、shared() 和 fetch() 只在 core/ 的取数层里调'
-             '（每页一个 core/<页>.js，返回数据或抛错），所以请求的参数、并发合并和过期判断只写在一处，Node 里能直接测。现有的按文件计数冻结为基线，不得新增。',
-             '把请求挪进 core/ 的取数函数（已有的就复用，例如 core/galleries.js、core/catalog.js），ui/ 里 await 它的结果再画；'
-             '异步回来先用 core/pages.js 的 onPage 判断还在不在这一页。改掉存量的一处后运行 `python tools/check_frontend.py --shrink`。'),
+             '页面样板（docs/WEB_V2.md「页面样板」，#706）：ui/ 只画，不发请求。ui/ 不从 core/session.js 导入 api、post、shared，也不直接调 fetch()；'
+             '请求写在 core/ 的取数层里（每页一个 core/<页>.js，返回数据或抛错），所以请求的参数、并发合并和过期判断只写在一处，Node 里能直接测。'
+             '现有的按文件计数（导入的名字和 fetch 调用各算一处）冻结为基线，不得新增。',
+             '把请求挪进 core/ 的取数函数（已有的就复用，例如 core/galleries.js、core/catalog.js、core/assets.js），参数里带上作用域的 signal，'
+             'ui/ 里 await 它的结果再画；异步回来先判断还在不在这一页：`if (!scope.alive || state.route !== route) return`（页面样板第 5 条）。'
+             '改掉存量的一处后运行 `python tools/check_frontend.py --shrink`。'),
     ]}
 
 
@@ -1427,7 +1433,13 @@ def run_rules(sources, css=None, classic=None, pages=None):
             # 每超出一行记一次：基线是超出的行数，所以加了行就超出基线，缩短了才能收紧
             for _ in range(MAX_UI_LINES, lines):
                 rules['ui-file-length'].add(p, f'{STATIC}/{p}: 共 {lines} 行，超出 {lines - MAX_UI_LINES} 行')
-            for m in REQUEST_RE.finditer(s.bare):
+            for m in SESSION_IMPORT_RE.finditer(s.code):
+                names = ['*'] if m.group(2) else [n.split(' as ')[0].strip() for n in m.group(1).split(',')]
+                line = s.line_of(m.start())
+                for name in names:
+                    if name == '*' or name in REQUEST_NAMES:
+                        rules['ui-request'].add(p, f'{STATIC}/{p}:{line}: 从 core/session.js 导入 {name}')
+            for m in FETCH_RE.finditer(s.bare):
                 line = s.line_of(m.start())
                 rules['ui-request'].add(p, f'{STATIC}/{p}:{line}: {s.raw_line(line)[:110]}')
     return rules

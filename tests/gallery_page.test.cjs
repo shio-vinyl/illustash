@@ -44,7 +44,7 @@ test('条件失效：原因只写在空状态里，下面给「删除画廊」�
   shell.renderHeading();
   const h = page.el('heading').innerHTML;
   assert.doesNotMatch(h, /条件失效/, '页头不再写一遍原因');
-  assert.match(h, /<p>0 张<\/p>/);
+  assert.match(h, /<p class="page-sub">0 张<\/p>/);
 });
 
 test('别的失败照旧走错误条', async () => {

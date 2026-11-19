@@ -125,22 +125,25 @@
 
 ### 页面框架与活页条（#706）
 
-- **注册表**（`core/pages.js`）：每个页面声明属于活页条的哪个一级入口（`entry`：`library`、`catalog`、`galleries`、`tidy`、`settings`，画师抽查是 `''`）和在二级层里选中哪一项（`item`，整理的五个队列）；随地址变的那一项（某个画廊、收藏、钉住的角色）由 `core/rail.js` 的 `railAt(route)` 算。图库有三种视图：`days`（按天，`#/days`，原来的首页；`#/`、`#/home`、`#/recent` 改写到这里）、`library`（网格，`#/library`，地址和查询照旧）、`calendar`（日历，`#/calendar`）；`view` 写是哪一种，`filters` 标出读图库筛选的页面（三种视图和画廊），切换视图时筛选跟着走。整理的入口 `#/tidy` 改写到按组整理。角色页在活页条上属于资料库。
-- **图库三种视图共用筛选**（#703 第 2 问）：网格的工具栏是 `library`（搜索、筛选条、排序、选择、显示方式）；按天、日历是 `filters`，只有搜索框和筛选条（条件胶囊、「＋ 条件」、保存为画廊）。筛选条上加、去、翻转条件是换地址（`go`），面板页收到 `render({samePage: true})`；搜索词是就地改进地址（`replaceRoute`），面板页收到 `refresh('filter')`。切换视图时地址里的筛选参数跟着走（`core/rail.js` 的 `viewRoute`）。按天、日历取数时把 `core/pages.js` 的 `libraryFilters(route)` 带进 `/api/home`、`/api/calendar`（和 `/api/assets` 同一组参数，#718）。活页条的时间轴同样按它读。
-- **活页条**（`ui/rail.js`，数据在 `core/rail.js`，样式 `css/rail.css`）：全应用一个，挂在 `app` 作用域上。各页要换二级层的内容用 `provide(entry, fn)`（`fn()` 返回项的列表，`refresh(entry)` 时重新调），选中某项用 `select(key)`，按天视图滚到某一天用 `selectDay(day)`，点了二级项要自己处理（滚到那一天）用 `onPick(entry, fn)`，改队列的数字用 `count(key, n)`，拖放时临时换一组项用 `mode(name, items, hint)`。每一项的字段写在 `core/rail.js` 开头。图库的时间轴：最近 5 天各一项，更早的同一年按月、再早的按年（用户 2026-11-19 定）；数据按 `/api/calendar` 的 `prev` 一个月一个月往前读。资料库钉住的项按图库存在浏览器本地（`libraryPrefs`，键 `railPins`）。⌘1–4（Windows 上 Ctrl）切一级，⌥↑↓ 在二级里移动，⌥⇧↑↓ 挪动钉住的项，走 `ui/grid.js` 现有的键盘处理。窄窗口（≤760px）二级层收进抽屉，页头左边的按钮打开。
-- **页头**：标题、副标题和本页的链接由各页的 `heading` 返回（`ui/shell.js` 画）；图库三种视图之间、整理三个页签之间的分段切换由框架按注册表画；右侧是全局的控件组（跳到角色、NSFW、视图选项、撤销、快捷键）。下面的工具栏是 `#toolbar`，空的页面藏起来。
+- **注册表**（`core/pages.js`）：每个页面声明属于活页条的哪个一级入口（`entry`：`library`、`catalog`、`galleries`、`tidy`、`settings`，画师抽查是 `''`）和在二级层里选中哪一项（`item`，整理的五个队列）；随地址变的那一项由 `core/rail.js` 的 `railAt(route)` 算：某个画廊、收藏（只按收藏筛选的图库，在画廊下）、角色页和作品页（只按一部作品筛选的图库，F #711 另做作品页之前就是它，都在资料库下，钉住了就选中）、按天和日历的 `at`。图库有三种视图：`days`（按天，`#/days`，原来的首页；`#/`、`#/home`、`#/recent` 改写到这里）、`library`（网格，`#/library`，地址和查询照旧）、`calendar`（日历，`#/calendar`）；`view` 写是哪一种，`filters` 标出读图库筛选的页面（三种视图和画廊）。整理的入口 `#/tidy` 改写到按组整理。
+- **图库三种视图共用筛选**（#703 第 2 问）：网格的工具栏是 `library`（搜索、筛选条、排序、选择、显示方式）；按天、日历是 `filters`，只有搜索框和筛选条（条件胶囊、「＋ 条件」、保存为画廊）。筛选变了只有一个入口：筛选条上加、去、翻转条件是换地址，搜索词是就地改进地址，两种都让面板页收到 `render({samePage: true})`（网格页照旧 `reload`）。按天、日历取数时把 `core/pages.js` 的 `libraryFilters(route)` 带进 `/api/home`、`/api/calendar`（和 `/api/assets` 同一组参数，#718）；它不含 NSFW 设置，另带 `nsfw: state.nsfw`。切换视图（`core/rail.js` 的 `viewRoute`）时筛选和搜索都跟着走，包括旧的单值参数 `day`（三种视图里都是「只看这一天加入的」）；排序、角色、例图不带。
+- **看哪一天：`at`**：按天、日历的地址可以带 `at=YYYY-MM-DD`：按天视图滚到那一天，日历显示它所在的月（C1 #707、C2 #708 实现）。它不是筛选，切视图时不带过去；活页条按它选中时间轴的那一项。
+- **活页条**（`ui/rail.js`，数据在 `core/rail.js`，样式 `css/rail.css`）：全应用一个，挂在 `app` 作用域上。各页要换二级层的内容用 `provide(entry, fn)`（`fn()` 返回项的列表，`refresh(entry)` 时重新调），选中某项用 `select(key)`，按天视图滚到某一天用 `selectDay(day)`，点了二级项要自己处理用 `onPick(entry, fn)`，改队列的数字用 `count(key, n)`，拖放时临时换一组项用 `mode(name, items, hint)`。每一项的字段写在 `core/rail.js` 开头。资料库钉住的项按图库存在浏览器本地（`libraryPrefs`，键 `railPins`）；读不到图库 id 时不读也不写。⌘1–4（Windows 上 Ctrl，按 `e.code`）切一级，⌥↑↓ 在二级里移动，⌥⇧↑↓ 挪动钉住的项，走 `ui/grid.js` 现有的键盘处理。窄窗口（≤760px）二级层收进抽屉，页头左边的按钮打开；拉宽窗口时自己收起。
+- **图库的时间轴**：最近 5 天各一项，更早的同一年按月、再早的按年（用户 2026-11-19 定）。从这个月起按 `/api/calendar` 的 `prev` 一个月一个月往前读，带着 `libraryFilters` 和 NSFW 设置；参数没变、也没有写入时不重读，同步到了新图只重读最新的月，写入和撤销之后整条重读，读失败留着上一次的结果。**点一项**：在日历里去那一天所在的月（`#/calendar?at=…`）；在按天、网格里去按天视图的那一天（`#/days?at=…`），都带着现在的筛选。已经在按天视图里时，C1 用 `onPick` 直接滚过去、不换地址。**⌥↑↓**：按天、日历里走到哪一项就去哪一项；网格里只移动选中（不把人从网格带走），回车或点击才去。
+- **页头**：各页用 `head(r, {n})` 返回 `{title, sub, alert, actions}`：标题、副标题、警告是纯文字，由 `ui/shell.js` 用 `ui/el.js` 写进 `.title-page`、`.page-sub`；`actions` 是这一页自己的按钮节点。旧写法 `headingHTML`（返回 HTML 字符串，拼进 `innerHTML`）和自己画整个页头的 `drawHeading` 是存量，记在规则 10 的基线里，各页步骤改到哪页就迁到 `head`（图库网格的标题等 C2 把 `ui/filters.js` 的 `conditionTitle` 改成节点）。图库三种视图之间（活页条落在「图库」时）、整理三个页签之间的分段切换由框架画，是链接写法的 `.seg`；右侧是全局的控件组（跳到角色、NSFW、视图选项、撤销、快捷键）。下面的工具栏是 `#toolbar`，空的页面藏起来。页头的样式在 `css/base.css`。
 - **空状态**：`ui/empty.js` 的 `drawEmpty(box, {icon, fact, next})`；网格页按注册表的 `emptyIcon`、`empty`、`emptyNext` 画，`emptyNext` 返回 `[{label, href}]` 或 `[{label, act}]`。
 
 ### 页面样板（#706）
 
 一页一个模块，后面各步照这个写（#703「可维护性」）：
 
-1. **登记**：在 `core/pages.js` 的 `list` 里加一项（地址、主区 `area`、活页条的 `entry`、工具栏、空状态……），在 [WEB_UI_MAP.md](WEB_UI_MAP.md) §2.1 总表和 `tests/pages.test.cjs` 的 `ROWS` 各加一行。
-2. **取数**在 `core/<页>.js`：导出返回数据的函数，参数里带 `signal`；请求的参数、并发合并、缓存都写在这里，Node 里能直接测。`ui/` 不直接调 `api()`、`post()`、`shared()`、`fetch()`（规则 22）。
-3. **画**在 `ui/<页>.js`：开头的注释写它负责什么；静态结构写成模块顶层的 ``tpl`…` ``，部件是 `{el, update, dispose}`；文件末尾 `implement({页: {render, heading, help, refresh, …}})`。一个文件不超过 600 行（规则 21），一页里自成一块的部件（卡片、浮层、工具栏）拆成自己的文件。
-4. **作用域**：`render({samePage, restore, scope})` 收到这一页的作用域（换页时框架调 `ui/scope.js` 的 `page()`）。监听、计时器、观察器、帧任务、子部件、`keyed` 列表都登记在它上面，换页时一起释放；不挂 `document`、`window` 级的监听（规则 3）。
-5. **异步回来**先判断还在不在：`if (!scope.alive || state.route !== route) return`（换了页，作用域已经释放；同一页换了子视图，路由对象换了）。别处的回调照旧用 `onPage(state.route, '页')`。
-6. **数据变了**：`refresh(why)` 只重画受影响的部分，部件的 `update` 值没变不动 DOM；`why` 的取值写在 `core/pages.js` 的 `implement` 说明里（带搜索框的面板页另有 `'filter'`）。
+1. **登记**：在 `core/pages.js` 的 `list` 里加一项（地址、主区 `area`、活页条的 `entry`、工具栏、空状态……），在 [WEB_UI_MAP.md](WEB_UI_MAP.md) §2.1 总表和 `tests/pages.test.cjs` 的 `ROWS` 各加一行。数据字段写在注册表里，`ui/` 只用 `implement` 登记函数（`render`、`head`、`refresh`……）。
+2. **取数**在 `core/<页>.js`：导出返回数据的函数，参数里带 `signal`；请求的参数、并发合并、缓存都写在这里，Node 里能直接测。`ui/` 不从 `core/session.js` 导入 `api`、`post`、`shared`，也不调 `fetch()`（规则 22）。
+3. **画**在 `ui/<页>.js`：开头的注释写它负责什么；静态结构写成模块顶层的 ``tpl`…` ``，部件是 `{el, update, dispose}`；文件末尾 `implement({页: {render, head, help, refresh, …}})`。一个文件不超过 600 行（规则 21），一页里自成一块的部件（卡片、浮层、工具栏）拆成自己的文件。
+4. **部件建一次**：`render({samePage, scope})` 收到这一页的作用域（换页时框架调 `ui/scope.js` 的 `page()`，释放上一页的）。`samePage` 为假是刚进这一页：在 `scope` 上建这一页的部件（列表、监听、计时器都登记在它上面）。`samePage` 为真是同一页又画一次（换了子视图、筛选变了），作用域沿用：**不再建一份**，只按新地址更新已有的部件（`list.set()`、`update()`），不然上一份要等离开这一页才释放。主区已经由框架切好，不用调 `showArea`。不挂 `document`、`window` 级的监听（规则 3）。
+5. **异步回来**先判断还在不在：`if (!scope.alive || state.route !== route) return`（换了页，作用域已经释放；同一页换了子视图或筛选，路由对象换了）。别处的回调照旧用 `onPage(state.route, '页')`。
+6. **数据变了**：`refresh(why)` 和 `samePage` 一样只更新已有的部件，值没变不动 DOM；`why` 的取值写在 `core/pages.js` 的 `implement` 说明里。筛选变了不走 `refresh`，走 `render({samePage: true})`。
+7. **页头**：`head(r, {n})` 返回纯文字和节点（上一节「页头」），不拼 HTML。
 
 最小的例子（「笔记」页只是示意，不存在）：
 
@@ -155,12 +158,12 @@ import {loadNotes} from '../core/notes.js';
 import {implement} from '../core/pages.js';
 import {readError} from '../core/session.js';
 import {state} from '../core/state.js';
-import {$, error, showArea} from './dom.js';
-import {text, tpl} from './el.js';
+import {$, error} from './dom.js';
+import {show, text, tpl} from './el.js';
 import {drawEmpty} from './empty.js';
 import {keyed} from './keyed.js';
 
-const LIST = tpl`<ul class="notes"></ul>`;
+const PAGE = tpl`<div><ul class="notes" data-ref="list"></ul><div data-ref="empty" hidden></div></div>`;
 const ROW = tpl`<li class="note"><b data-ref="title"></b></li>`;
 function noteRow(note) {
   const {el, refs} = ROW();
@@ -168,19 +171,30 @@ function noteRow(note) {
   update(note);
   return {el, update};
 }
-async function render({scope}) {
-  showArea();
-  const route = state.route, box = $('notesPage');
-  let notes;
-  try { notes = await loadNotes(route, scope.signal); } catch (e) { if (scope.alive) error(readError(e)); return; }
-  if (!scope.alive || state.route !== route) return;
-  if (!notes.length) { drawEmpty(box, {icon: 'check', fact: t('还没有笔记。')}); return; }
-  const {el} = LIST();
-  box.replaceChildren(el);
-  keyed(el, {key: n => n.id, create: noteRow, scope}).set(notes);
+// 这一页的部件：进页面时在页面作用域上建一次，之后只 load。
+function notesView(scope) {
+  const {el, refs} = PAGE();
+  $('notesPage').replaceChildren(el);
+  const list = keyed(refs.list, {key: n => n.id, create: noteRow, scope});
+  return {scope, async load(route) {
+    let notes;
+    try { notes = await loadNotes(route, scope.signal); } catch (e) { if (scope.alive) error(readError(e)); return; }
+    if (!scope.alive || state.route !== route) return;
+    list.set(notes);
+    show(refs.empty, !notes.length);
+    if (!notes.length) drawEmpty(refs.empty, {icon: 'check', fact: t('还没有笔记。')});
+  }};
 }
-implement({notes: {render, heading: () => [t('笔记'), '']}});
+let view = null;
+implement({notes: {
+  // 刚进这一页（或作用域已经释放）才建；同一页又画一次（samePage：子视图、筛选变了）只按新地址重读、更新列表。
+  render: ({samePage, scope}) => { if (!samePage || !view?.scope.alive) view = notesView(scope); return view.load(state.route); },
+  refresh: () => view?.load(state.route),
+  head: () => ({title: t('笔记'), sub: ''}),
+}});
 ```
+
+`tests/pages.test.cjs` 有一项照这个例子在日历页上走：同一页画几次以后，活着的作用域数不涨；换了页，上一页的都释放。
 
 ### 兼容底线
 
@@ -202,7 +216,7 @@ implement({notes: {render, heading: () => [t('笔记'), '']}});
 #703「可维护性」的两条由 #706 做成规则 21、22（见上面的[页面样板](#页面样板706)）：
 
 - 规则 21（`ui-file-length`）：`ui/` 下的文件不超过 600 行；现有的 `ui/grid.js`、`ui/settings.js` 按超出的行数进基线，只能缩小。
-- 规则 22（`ui-request`）：`ui/` 不直接发请求，`api(`、`post(`、`shared(`、`fetch(` 只在 `core/` 里；存量按文件计数进基线。按名字认，同名的方法定义也会被认成调用。
+- 规则 22（`ui-request`）：`ui/` 不直接发请求：不从 `core/session.js` 导入 `api`、`post`、`shared`（改名导入、`import * as` 也认），不调 `fetch()`（`window.fetch`、`globalThis.fetch?.()` 也认）；存量按文件计数（导入的名字和 `fetch` 调用各算一处）进基线。
 
 ### 样式清单要加的
 

@@ -7,13 +7,14 @@ import {isMac} from './format.js';
 import {t} from './i18n.js';
 import {count as conditionCount, queryParams} from './filters.js';
 import {likeParams} from './like.js';
+import {state} from './state.js';
 
 // 字段：
 //   prefix     地址里的前缀，#/g/<id>、#/s/<id>；没有前缀的页面用页面名作路径（#/unmatched）
 //   sections   地址可以带子页（#/characters/works、#/settings/library）
 //   root       不带路径也不带参数的地址（#/）落在这页
 //   area       主区：'grid' 或 index.html 里的某个面板 id
-//   panel      不用 #grid 的页面：reload()、R、同步到达新图、R18 切换后的重绘都按它判断
+//   panel      不用 #grid 的页面：reload()、R、同步到达新图、NSFW 切换后的重绘都按它判断
 //   keys       单图快捷键在这页的范围：'grid' 网格页全部生效（主区是 #grid 的页面不写也是它）；'shown' 只对详情栏或大图里
 //              那张图生效，没有网格光标（首页）；主区不是网格、也没写的页面不响应（keyScope）
 //   click      点卡片做什么：'browse' 打开详情（选择要主动进入）、'cleanup' 切换选中、'own' 页面自己处理
@@ -23,7 +24,7 @@ import {likeParams} from './like.js';
 //              railAt 按地址算，不写在这里
 //   view       图库的三种视图：'days' 按天、'grid' 网格、'calendar' 日历（页头的分段切换按它画）
 //   filters    读图库的筛选参数（has、not、from、to 和旧的单值参数）：图库三种视图和画廊；切换视图时这些参数跟着走
-//   emptyIcon  空状态的大图标（ui/empty.js 的 ICONS 的键）；不写是「图片」
+//   emptyIcon  空状态的大图标（ui/empty.js 的 ICONS 的键，或按地址返回键的函数）；不写是「图片」
 //   lead       未识别一类的「待认」页（全部未识别、已跳过、组页）：排序偏好共用、默认可按「有线索优先」排；在这些页上设角色之后
 //              那张图会离开本页（详情栏、大图、卡片「+ 角色」建议都先飞走再消失）
 //   skip       能跳过当前这张的页面（全部未识别、组页）：详情栏对还没有角色的图显示「跳过 S」，不选图时 S 跳过当前这张
@@ -42,8 +43,18 @@ const NEWEST = ['newest', 'oldest'];
 const narrowed = r => !!(r.q || r.tag || r.utag || r.check || r.doubt || conditionCount(r) || r.from || r.to);
 
 // 图库和角色页共用的一组字段：角色页是图库加 char 参数，不是独立页面。
+// 只按收藏筛选、没有别的条件的图库（#447、#679）：活页条上亮「画廊 › 收藏」（core/rail.js 的 railAt），标题写「收藏」，空着时说怎么收藏。
+// 写在注册表这里（core/favorites.js 转出它）：注册表的空状态要用，放在 favorites.js 会互相导入。
+const NOT_FAV_ONLY = ['q', 'tag', 'utag', 'work', 'day', 'artist', 'char', 'from', 'to', 'like'];
+const asList = v => { if (Array.isArray(v)) return v; try { const x = JSON.parse(v || '[]'); return Array.isArray(x) ? x : []; } catch { return []; } };
+export function favoritesOnly(route = state.route) {
+  if (route.page !== 'library' || NOT_FAV_ONLY.some(k => Array.isArray(route[k]) ? route[k].length : route[k])) return false;
+  const has = asList(route.has);
+  return has.length === 1 && has[0] === 'fav' && !asList(route.not).length;
+}
 // 图库的筛选（搜索词、组合条件、旧的单值参数）读成后端的查询参数：/api/assets、/api/home、/api/calendar 都接受同一组（#718）。
-// 按天、日历的取数把它带上（#707、#708）；网格另外带「更多像这张的」的例图（libraryBase.params）。
+// 按天、日历的取数把它带上（#707、#708）；网格另外带「更多像这张的」的例图（libraryBase.params）。不含 NSFW 设置：取数时另带
+// state.nsfw（nsfw 参数）。at（按天、日历看哪一天）不是筛选，也不在里面。
 export function libraryFilters(r) {
   const f = {};
   if (r.day) f.day = r.day; if (r.work) f.work = r.work; if (r.artist) f.artist = r.artist; if (r.q) f.q = r.q; if (r.tag) f.tag = r.tag; if (r.utag) f.utag = r.utag;
@@ -52,7 +63,7 @@ export function libraryFilters(r) {
 const libraryBase = {
   area: 'grid', panel: false, entry: 'library', view: 'grid', filters: true, toolbar: 'library', sorts: NEWEST,
   params: r => ({...libraryFilters(r), ...likeParams(r)}),
-  // 「只看 R18」时没有图，多半是这个筛选造成的：写明，旁边给「显示全部」（#386 的 2-16）。
+  // 「只看 NSFW」时没有图，多半是这个筛选造成的：写明，旁边给「显示全部」（#386 的 2-16）。
   empty: (r, {nsfw} = {}) => nsfw === 'only' ? t('「只看 NSFW」开着，没有符合条件的 NSFW 图片。') : t('没有符合条件的图片。'),
   hint: () => t('点击查看 · 拖动或 {key} 点击多选 · Space 看大图', {key: isMac ? '⌘' : 'Ctrl'}),
   bar: 'default',
@@ -61,7 +72,9 @@ const libraryBase = {
 const list = [
   // 图库的三种视图（#706）：按天（原来的首页，#677）、网格（原来的图库）、日历。打开 App 落在按天。
   {name: 'days', root: true, area: 'homePage', panel: true, keys: 'shown', click: 'own', entry: 'library', view: 'days', filters: true, toolbar: 'filters', emptyIcon: 'image'},
-  {name: 'library', ...libraryBase, click: 'browse', sortPref: 'sortLibrary'},
+  // 只按收藏筛选时（#679）空着说怎么收藏；隐藏或只看 NSFW 时空着不等于没有收藏，照图库的说法。
+  {name: 'library', ...libraryBase, click: 'browse', sortPref: 'sortLibrary', emptyIcon: r => favoritesOnly(r) ? 'heart' : 'image',
+    empty: (r, ctx = {}) => favoritesOnly(r) && !ctx.nsfw ? t('还没有收藏。在详情面板或大图里点心形，或者按 F 收藏。') : libraryBase.empty(r, ctx)},
   {name: 'calendar', area: 'calendarPage', panel: true, click: 'own', entry: 'library', view: 'calendar', filters: true, toolbar: 'filters', emptyIcon: 'calendar'},
   // 画廊（#445）：全部画廊的封面卡片，和一个画廊里的图（就是带着它的条件的图库）。
   {name: 'galleries', area: 'groupsPage', panel: true, click: 'own', entry: 'galleries', toolbar: 'none', emptyIcon: 'gallery'},
@@ -133,13 +146,19 @@ export const keyScope = view => view.keys || (view.area === 'grid' ? 'grid' : ''
 export const onPage = (route, ...names) => names.includes(route.page);
 export const poolIs = (route, ...pools) => pools.includes(pageOf(route).pool);
 
-// ui/ 登记页面的处理函数：{页面名: {render, refresh, heading, ...}}；character、like 是上面两个视图。
-//   render({samePage, restore, scope})  进入本页时画主区；没有的页面是网格页，由 shell 调 reload(true)。scope 是这一页的
-//                        作用域（ui/scope.js 的 page()）：监听、计时器、部件都登记在它上面，换页时一起释放（docs/WEB_V2.md「页面样板」）
+// ui/ 登记页面的处理函数：{页面名: {render, refresh, head, ...}}；character、like 是上面两个视图。数据字段（空状态的文字和图标、
+// 工具栏……）写在上面的 list 里，不在 ui/ 里用 implement 盖。
+//   render({samePage, restore, scope})  画主区；没有的页面是网格页，由 shell 调 reload(true)。scope 是这一页的作用域
+//                        （ui/scope.js 的 page()）：监听、计时器、部件都登记在它上面，换页时一起释放。samePage 为真是同一页又画一次：
+//                        换了子视图、筛选条或搜索词变了（筛选变了只走这一个入口）、作用域沿用，部件不要再建一份，只按新地址更新
+//                        （docs/WEB_V2.md「页面样板」）。主区已经由 applyRoute 切好，不用自己调 showArea
 //   subTabs(r)           页签行（整理三个页签下面的子页签）的 HTML；工具栏是 'tabs' 或 'grid' 的页面放在工具栏开头
 //   prepare(route)       进入本页前要先读的数据；返回 false 表示已经导航走了
-//   heading(r, ctx)      [标题, 副标题, 右侧链接 HTML]；角色页另用 drawHeading。副标题只放数量、状态和必须一眼看到的警告
-//   wireHeading(h, r)    heading 画好之后给右侧的按钮挂上处理函数（相似组页的「看过了」）
+//   head(r, {n})         页头：{title, sub?, alert?, actions?}。title、sub、alert 是纯文字（shell 用 ui/el.js 写），actions 是这一页的按钮节点
+//                        （处理函数直接挂在节点上）。sub 只放数量和状态，alert 是必须一眼看到的警告（加粗，接在 sub 后面）
+//   headingHTML(r, ctx)  旧写法（存量）：[标题, 副标题, 右侧链接 HTML]，拼进 innerHTML。各页步骤改到哪页就迁到 head；角色页、画廊页、
+//                        「更多像这张的」另用 drawHeading 自己画整个页头（也是存量）
+//   wireHeading(h, r)    headingHTML 画好之后给右侧的按钮挂上处理函数（相似组页的「看过了」）
 //   help(r), helpHint    标题旁「?」里的说明（一行一句）；helpHint 为真时再接上本页的 hint，一个「·」一行（#527）
 //   onMeta(info)         计数等元数据到达后重画什么；没有的页面重画工具栏
 //   emptyNext(r)         网格空了时空状态下面的去处（#386 的 2-12）：[{label, href}]（链接）或 [{label, act}]（按钮），
@@ -151,8 +170,7 @@ export const poolIs = (route, ...pools) => pools.includes(pageOf(route).pool);
 //   reveal(uuid)         主区不是网格的页面把这张图滚进视野：详情栏、大图翻页时，和面板页借列表看的大图关掉时（#424）
 //   refresh(why)         数据变了之后重画面板页：'edit' 改动之后、'undo' 撤销之后、'learned' 确认角色或同步结束后后台学习
 //                        收尾之后（#400、#404）、'sync' 同步到新图之后、'nsfw' 切换 NSFW 之后、'view' 视图选项之后、
-//                        'filter' 搜索框里的词改了之后（只有工具栏带搜索框的面板页：按天、日历；route.q 已经就地改好），
-//                        'ask' 「偶尔问一句」开关之后
+//                        'ask' 「偶尔问一句」开关之后。筛选变了不走这里，走 render({samePage: true})
 export function implement(hooks) {
   for (const [name, h] of Object.entries(hooks)) {
     const page = VIRTUAL[name] || PAGES[name];

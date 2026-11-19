@@ -111,4 +111,9 @@ function emptyState(box) {
   const next = kids(find(root, 'empty-next') || {}).map(b => b.href ? {label: b.textContent, href: b.href} : {label: b.textContent, act: b.dataset.empty});
   return {fact: find(root, 'empty-fact')?.textContent, next};
 }
-module.exports = {load, language, ready, core, fakePage, FakeElement, emptyState};
+// 页头（ui/shell.js renderHeading）画出来的文字：新写法（head）是节点，旧写法（headingHTML）是 innerHTML 文本。
+function headingText(el) {
+  const kids = el.children || [];
+  return kids.length ? kids.map(c => c.textContent ?? '').join(' ') : String(el.innerHTML || '').replace(/<[^>]+>/g, '');
+}
+module.exports = {load, language, ready, core, fakePage, FakeElement, emptyState, headingText};

@@ -145,3 +145,48 @@ test('时间轴的一项点了去哪：日历里去那个月，按天、网格�
   assert.equal(rail.timelineHref({...r, page: 'calendar'}, '2026-10-02'), '#/calendar?day=2026-11-01&q=miku&has=%5B%22fav%22%5D&at=2026-10-02');
   assert.deepEqual(rail.viewRoute({...r, at: '2026-10-02'}, 'grid'), {page: 'library', q: 'miku', day: '2026-11-01', has: ['fav']});
 });
+
+// 悬停预览（#706 补）：一样高的一行，按原图宽高比排、放得下几张放几张；只有一张时高一些；圆头像是正圆；不知道宽高的先按方的。
+test('预览的一行：按宽高比排，放到一行放不下为止', () => {
+  const {PEEK, peekRow} = rail;
+  const tall = id => ({id, w: 700, h: 1000}), wide = id => ({id, w: 1200, h: 900});
+  const portraits = peekRow(['a', 'b', 'c', 'd'].map(tall));
+  assert.equal(portraits.h, PEEK.h);
+  assert.deepEqual(portraits.pics.map(p => p.w), [59, 59, 59, 59]);
+  assert.equal(portraits.width, 59 * 4 + PEEK.gap * 3);
+  const landscapes = peekRow(['a', 'b', 'c', 'd'].map(wide));
+  assert.deepEqual(landscapes.pics.map(p => p.id), ['a', 'b']);   // 第三张放不下就不放
+  assert.ok(landscapes.width <= PEEK.max);
+  assert.deepEqual(peekRow([{id: 'x', w: 100, h: 1000}, {id: 'y', w: 5000, h: 100}]).pics.map(p => p.w), [50, 168]);   // 太窄、太宽的限在 0.6–2
+  const solo = peekRow([{id: 'c'}]);
+  assert.deepEqual([solo.h, solo.pics[0].w, solo.pics[0].known], [PEEK.solo, PEEK.solo, false]);   // 不知道宽高：先按方的
+  const faces = peekRow(['a', 'b'].map(id => ({id})), {round: true});
+  assert.deepEqual([faces.h, ...faces.pics.map(p => p.w)], [PEEK.face, PEEK.face, PEEK.face]);
+  assert.deepEqual(peekRow([]).pics, []);
+  assert.deepEqual(peekRow([{id: ''}, null]).pics, []);
+});
+
+test('时间轴的预览：日期是这一天的样图，月、年是每天的头一张；都带主色', () => {
+  const pic = (id, w = 600, h = 900) => ({id, w, h});
+  const days = ['2026-11-18', '2026-11-17', '2026-11-15', '2026-11-12', '2026-11-03', '2026-11-01', '2026-10-30'].map((d, i) =>
+    ({day: d, count: 4, cover: 'p' + i, color: i === 5 ? null : '#a0b0c' + i, samples: [pic('p' + i), pic('q' + i)]}));
+  const items = rail.groupTimeline(days);
+  assert.deepEqual(items[0].peek.map(p => p.id), ['p0', 'q0']);
+  assert.equal(items[0].color, '#a0b0c0');
+  const nov = items.find(x => x.key === 'm:2026-11');
+  assert.deepEqual(nov.peek.map(p => p.id), ['p5']);
+  assert.equal(nov.color, null);   // 那天没有主色
+  const oct = items.find(x => x.key === 'm:2026-10');
+  assert.deepEqual([oct.peek[0], oct.color], [pic('p6'), '#a0b0c6']);
+  // 没有样图的老数据：用封面
+  assert.deepEqual(rail.groupTimeline([{day: '2026-11-18', count: 1, cover: 'z'}])[0].peek, [{id: 'z'}]);
+});
+
+test('读时间轴时样图带上原图宽高，日期带上主色', async () => {
+  globalThis.fetch = async () => ({status: 200, ok: true, headers: {get: () => null}, json: async () => ({
+    days: [{day: '2026-11-18', count: 2, color: '#123456', samples: [{uuid: 'a', width: 800, height: 1200}, {uuid: 'b'}]}], prev: null})});
+  state.nsfw = '';
+  await rail.loadTimeline({page: 'days', q: 'peek', has: [], not: []}, {month: '2026-11'});
+  const [first] = rail.timeline.items;
+  assert.deepEqual([first.cover, first.color, first.peek], ['a', '#123456', [{id: 'a', w: 800, h: 1200}, {id: 'b', w: 0, h: 0}]]);
+});

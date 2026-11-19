@@ -115,3 +115,39 @@ test('时间轴读完重画时，原来选中的那项还在就留着；连着�
   globalThis.fetch = fetch;
   assert.equal(reads, 1);
 });
+
+// 悬停预览（#706 补）：卡片建一次，悬停时换内容（图的节点按位置复用，多出来的藏起来），离开稍等一会儿再收起；滚动时立刻收。
+test('悬停预览：换内容不重建，放得下几张放几张；离开稍等再收、滚动立刻收', async () => {
+  const core = await web.load('core/rail.js');
+  rail.railRoute({page: 'days', q: '', has: [], not: []});
+  for (let i = 0; i < 3; i++) await tick();
+  const pics = (n, w, h) => Array.from({length: n}, (_, i) => ({uuid: 'u' + i, width: w, height: h}));
+  core.timeline.items = core.groupTimeline([
+    {day: '2026-11-18', count: 9, cover: 'u0', color: '#336699', samples: pics(4, 700, 1000).map(p => ({id: p.uuid, w: p.width, h: p.height}))},
+    {day: '2026-11-17', count: 2, cover: 'u0', samples: pics(4, 1200, 900).map(p => ({id: p.uuid, w: p.width, h: p.height}))},
+  ]);
+  await core.timeline.changed.emit();
+  const item = key => [...$('railItems').children].flatMap(g => g.children).find(x => x.dataset.key === key);
+  const over = el => $('railItems').dispatchEvent({type: 'pointerover', target: {closest: () => el}});   // 假 DOM 没有 closest
+  const peek = $('railPeek'), shown = () => peek.querySelectorAll('img').filter(x => !x.hidden);
+  const card = peek.children[0];
+  over(item('d:2026-11-18'));
+  assert.equal(peek.hidden, false);
+  assert.equal(peek.children[0], card);   // 同一张卡
+  assert.equal(shown().length, 4);   // 四张竖图放得下
+  assert.equal(peek.classList.contains('tint'), true);
+  assert.equal(item('d:2026-11-18').classList.contains('is-hover'), true);
+  assert.equal(item('d:2026-11-17').classList.contains('is-near'), true);
+  over(item('d:2026-11-17'));
+  assert.equal(peek.children[0], card);
+  assert.equal(shown().length, 2);   // 横图只放得下两张
+  assert.equal(peek.querySelectorAll('img').length, 4);   // 节点复用，多的藏起来
+  assert.equal(peek.classList.contains('tint'), false);   // 这天没有主色
+  $('railItems').dispatchEvent({type: 'pointerleave'});
+  assert.equal(peek.hidden, false);   // 稍等再收
+  await new Promise(r => setTimeout(r, 200));
+  assert.equal(peek.hidden, true);
+  over(item('d:2026-11-18'));
+  $('railLayer').dispatchEvent({type: 'scroll'});
+  assert.equal(peek.hidden, true);
+});

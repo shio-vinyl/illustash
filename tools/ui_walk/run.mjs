@@ -61,19 +61,19 @@ process.exit(0);
 
 // 打开宿主的一次性码地址（换会话 cookie），等启动画面消失、页面挂好；不刷新掩盖首次启动失败。
 async function boot(page, url) {
-  const bootStart = performance.now(), booted = `document.getElementById('sidebar') && !document.getElementById('splash')`;
+  const bootStart = performance.now(), booted = `document.getElementById('rail') && !document.getElementById('splash')`;
   await page.navigate(url);
   const ready = await page.waitFor(booted, 15000);
   bootMs = Math.round(performance.now() - bootStart);
   if (!ready) {
     const why = await page.eval(`JSON.stringify({href: location.href.replace(/k=[^&#]+/, 'k=…'), title: document.title,
-      sidebar: !!document.getElementById('sidebar'), splash: !!document.getElementById('splash'),
+      rail: !!document.getElementById('rail'), splash: !!document.getElementById('splash'),
       visibility: document.visibilityState, text: (document.body?.innerText || '').slice(0, 200)})`).catch(e => String(e));
     const probe = await page.eval(`Promise.all(['/core/session.js?probe=1', '/api/bootstrap', '/favicon.svg'].map(async u => {
       const c = new AbortController(); setTimeout(() => c.abort(), 3000); const t = performance.now();
       try { const r = await fetch(u, {signal: c.signal}); await r.text(); return u + ' ' + r.status + ' ' + Math.round(performance.now() - t) + 'ms'; }
       catch (e) { return u + ' ' + e.name; } }))`).catch(e => String(e));
-    throw new Error('页面没有启动（侧栏没出现或启动画面没消失）：' + why + ' 再请求一次：' + JSON.stringify(probe) + ' 未完成的请求：' + JSON.stringify(page.stuck()));
+    throw new Error('页面没有启动（活页条没出现或启动画面没消失）：' + why + ' 再请求一次：' + JSON.stringify(probe) + ' 未完成的请求：' + JSON.stringify(page.stuck()));
   }
   await page.settle({quiet: 400, max: 8000});
 }

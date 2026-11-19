@@ -18,7 +18,7 @@ export function setGallery(id, gallery) {
   state.galleries = list;
 }
 
-// 封面：{id: uuid 或 null}。按当前的 R18 筛选取；同一组 id、同一筛选只取一次。
+// 封面：{id: uuid 或 null}。按当前的 NSFW 筛选取；同一组 id、同一筛选只取一次。
 // #590 合入之前 main 上没有封面接口，列表自己带 cover：那时退回去读列表。
 const covers = new Map();
 export async function coversFor(ids, nsfw = state.nsfw) {

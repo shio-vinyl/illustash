@@ -44,7 +44,7 @@ const firstShown = () => grid.rowStart(grid.rowAt(page.el('viewport').scrollTop)
 test('回到图库时先读离开时那一屏的几页，并定位到同一张', async () => {
   await wired();
   globalThis.location = {hash: ''};
-  Object.assign(state, {route: {page: 'home'}, fit: false, size: 185, nsfw: '', guide: undefined});
+  Object.assign(state, {route: {page: 'days'}, fit: false, size: 185, nsfw: '', guide: undefined});
   await visit('#/library');
   assert.deepEqual(offsetsOf(requests), [0]);
   // 滚到大约第 2,400 张，停在一行的中间

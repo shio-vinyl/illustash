@@ -30,7 +30,7 @@ export function setDetail(d) { state.detail = d; }
 /** 正显示的提问（{q, ident}），没有时是 null。 */
 export function setQuestion(q) { state.question = q; }
 
-// 这张图的角色每月加入多少张：按角色、R18 设置和读取纪元缓存，到下一次写入或切换 R18 为止。
+// 这张图的角色每月加入多少张：按角色、NSFW 设置和读取纪元缓存，到下一次写入或切换 NSFW 为止。
 const statsCache = new Map();
 /** 角色卡的数字：{count, first, months: [{month, count}], recent: [uuid]}；读不到时是 null。exclude 是这张图自己。 */
 export async function readCharStats(id, exclude) {

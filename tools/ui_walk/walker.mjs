@@ -23,7 +23,7 @@ const SNAPSHOT = `(async () => {
     else if (el.classList.length) s += '.' + [...el.classList].slice(0, 2).join('.');
     const label = el.getAttribute('aria-label') || el.getAttribute('data-act') || el.getAttribute('name');
     if (label) s += '[' + label.slice(0, 40) + ']';
-    const where = el.closest('dialog[open], #viewer, #inspector, #tour, #taskPanel, #sidebar, #toolbar, #selectionBar, #grid, .topbar, [role=dialog], .popover');
+    const where = el.closest('dialog[open], #viewer, #inspector, #tour, #taskPanel, #rail, #toolbar, #selectionBar, #grid, #pageHead, [role=dialog], .popover');
     if (where && where !== el) s += ' in ' + (where.id ? '#' + where.id : where.tagName.toLowerCase() + (where.className ? '.' + String(where.className).split(' ')[0] : ''));
     const card = el.closest('.card[data-id]');
     if (card) s += ' card ' + nameOf(card.dataset.id);

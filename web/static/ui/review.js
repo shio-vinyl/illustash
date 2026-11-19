@@ -11,10 +11,12 @@ import {charHash, go, hashFor} from '../core/route.js';
 import {api, post, readError} from '../core/session.js';
 import {state} from '../core/state.js';
 import {closeInspector, peekAt, wirePeek} from './detail.js';
-import {$, emptyLink, error, readFailure, reconcileSections, redraw, showArea, toast, written} from './dom.js';
-import {mutate} from './grid.js';
-import {markOc, openPicker, targets} from './palette.js';
-import {navCount, renderHeading} from './shell.js';
+import {$, error, readFailure, reconcileSections, redraw, showArea, toast, written} from './dom.js';
+import {filters, mutate} from './grid.js';
+import {listIds} from '../core/assets.js';
+import {markOc, openPicker, openRelate, targets} from './palette.js';
+import {renderHeading} from './shell.js';
+import {refresh as refreshRail} from './rail.js';
 
 // ---------- 未匹配图片的相似分组 ----------
 // 'look'：中心接近；'trait'：离得更远，但有相同的独特 WD 特征（较弱的线索）。
@@ -65,7 +67,7 @@ function groupSection(g) {
 // 标过「看过了」的组（#427）不在列表里，「看过的 N 组」（#/similar?seen=1）只列它们；组里进了新图，后端就不再算它看过。
 // 检查进行中每 3 秒重读一次。重读、撤销、学习落定之后（keep）只就地改状态行、工具条和进度条，组卡片按组号比对，
 // 内容没变的留在原处，封面不重新加载（#601）。组列表先显示 40 组，「再显示」接着往下，和按组整理一样；换页签、
-// 切换看过的组、切换 R18 时回到前 40 组。
+// 切换看过的组、切换 NSFW 时回到前 40 组。
 const SIMILAR_PAGE = 40;
 export const similar = {groups: [], others: 0, state: {}, kind: '', seen: false, shown: SIMILAR_PAGE, revision: 0, timer: 0};
 export async function renderSimilar(keep = false) {
@@ -195,7 +197,7 @@ async function renderIdentity(how = '') {
   catch (e) { $('groupsPage').innerHTML = `<p class="empty">${esc(readError(e))}</p>`; return; }
   if (!onPage(state.route, 'identity')) return;
   if (how !== 'more') identity.items = [];
-  identity.items.push(...page.items); identity.total = page.total; setIdentityCount(page.total); navCount('countIdentity', page.total);
+  identity.items.push(...page.items); identity.total = page.total; setIdentityCount(page.total); refreshRail('tidy');
   $('resultCount').textContent = t('{n} 对待判断', {n: number(page.total)});
   renderHeading();
   const box = $('groupsPage');
@@ -334,7 +336,7 @@ export function wireReview() {
   });
 }
 
-// 复核面板页登记：渲染入口，以及撤销、切换 R18 之后怎么重画。
+// 复核面板页登记：渲染入口，以及撤销、切换 NSFW 之后怎么重画。
 implement({
   // 在这页开的大图里改了图（'edit' 时大图还开着）：重读分组，免得组里还留着已经设了角色、跳过或排除的图。组头按钮的写入
   // 不走这里，它们自己把答过的组从页面上拿掉。
@@ -342,11 +344,14 @@ implement({
     refresh: why => { if (why === 'undo' || why === 'learned' || why === 'edit' && state.viewer >= 0) return renderGroups(true); else if (why === 'nsfw') renderGroups(); }},
   // 撤销之后重画（#386 的 2-41）：撤销的可能就是「看过了」。撤销、学习落定后按组比对、留在已显示的组数（#601）。
   similar: {render: () => renderSimilar(), refresh: why => { if (why === 'undo' || why === 'learned') return renderSimilar(true); if (why === 'nsfw') return renderSimilar(); }},
-  sgroup: {prepare: readSeen, heading: sgroupHeading, wireHeading: () => $('sgroupSeen')?.addEventListener('click', toggleSeen),
+  sgroup: {prepare: readSeen, headingHTML: sgroupHeading, wireHeading: () => {
+    $('sgroupSeen')?.addEventListener('click', toggleSeen);
+    $('sgroupRelate')?.addEventListener('click', async () => openRelate(await listIds(filters(), 12)));
+  },
     // 改动、撤销、同步之后组里看得到的张数可能变了，重读一次，免得点「看过了」时张数对不上。
     refresh: async why => { if (why !== 'view' && why !== 'ask') { const route = state.route; if (await readSeen(route) !== false) renderHeading(); } }},
   identity: {render: () => renderIdentity(), refresh: why => { if (why === 'undo') renderIdentity('keep'); else if (why === 'nsfw') renderIdentity(); }},
-  // 画师抽查不按 R18 筛选（固定的一批随机图）：切换 R18 只重画标题里的提醒（#386 的 2-35）。
+  // 画师抽查不按 NSFW 筛选（固定的一批随机图）：切换 NSFW 只重画标题里的提醒（#386 的 2-35）。
   'artist-audit': {render: () => renderArtistAudit(), refresh: why => { if (why === 'undo') renderArtistAudit(); else if (why === 'nsfw') renderHeading(); }},
   // 一组图的页面（#/g/<id>，网格页）要先读分组：标题里相近的一组和这组的特征，以及空了时「下一组」的先后。
   group: {prepare: async route => {
@@ -357,7 +362,7 @@ implement({
     state.groupOrder = groupOrder(result.clusters).map(x => String(x.cid));
   },
   // 一组整理完了（#386 的 2-12）：去下一组，或回到按组整理。
-  emptyNext: r => (state.groupOrder.some(id => id !== r.id) ? `<button class="quiet" data-empty="next-group">${t('下一组')} →</button>` : '') + emptyLink('#/groups', t('回到按组整理')),
+  emptyNext: r => [...(state.groupOrder.some(id => id !== r.id) ? [{label: t('下一组') + ' →', act: 'next-group'}] : []), {label: t('回到按组整理'), href: '#/groups'}],
   emptyAct: act => { if (act === 'next-group') nextGroup(); }},
 });
 // 「下一组」：重读分组，取原来排在这组后面、还在的第一组；后面都没了就取最前面那组；一组都没了回到按组整理。

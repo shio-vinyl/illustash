@@ -62,6 +62,6 @@ export const state = {
   // ---- 「第 N 组」页标题用的近似组信息和各组的先后（空了时「下一组」用）：ui/review.js（进入该页前读取） ----
   groupNear: null, groupNearId: null, groupTraits: null, groupOrder: [],
   // ---- 「相似组 N」页标题的「看过了」（#427）：ui/review.js（进入该页前读取） ----
-  // {seen, size, nsfw}：这组算不算看过、读的时候看得到几张、按什么 R18 设置读的；读不到或组不在了是 null。
+  // {seen, size, nsfw}：这组算不算看过、读的时候看得到几张、按什么 NSFW 设置读的；读不到或组不在了是 null。
   sgroupSeen: null,
 };

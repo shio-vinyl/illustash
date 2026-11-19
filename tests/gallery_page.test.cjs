@@ -39,12 +39,12 @@ test('条件失效：原因只写在空状态里，下面给「删除画廊」�
   await grid.reload(true);
   assert.equal(page.el('errorBanner').hidden, true);
   assert.equal(page.el('empty').hidden, false);
-  assert.equal(page.el('empty').innerHTML, '<div>条件失效：角色不存在<div><button class="quiet" data-empty="delete-gallery">删除画廊</button></div></div>');
+  assert.deepEqual(web.emptyState(page.el('empty')), {fact: '条件失效：角色不存在', next: [{label: '删除画廊', act: 'delete-gallery'}]});
   assert.ok(!asked.some(p => p.startsWith('/api/assets/count')), '不为页头另数一次');
   shell.renderHeading();
   const h = page.el('heading').innerHTML;
   assert.doesNotMatch(h, /条件失效/, '页头不再写一遍原因');
-  assert.match(h, /<p>0 张<\/p>/);
+  assert.match(h, /<p class="page-sub">0 张<\/p>/);
 });
 
 test('别的失败照旧走错误条', async () => {

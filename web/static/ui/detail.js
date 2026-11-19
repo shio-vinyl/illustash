@@ -54,7 +54,7 @@ export const INSP_ICONS = {
   expand: '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M12 3.5h4.5V8M8 16.5H3.5V12M16.5 3.5 11 9M3.5 16.5 9 11"/></svg>',
   close: '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="m5 5 10 10M15 5 5 15"/></svg>',
 };
-// 这张图的角色每月加入多少张：按角色缓存，直到下一次写入或 R18 切换。
+// 这张图的角色每月加入多少张：按角色缓存，直到下一次写入或 NSFW 切换。
 const statsCache = new Map();
 // 详情栏里小图的显示高度（CSS 像素，app.css 的 .cc-same 四列和 .dup-copy img），按它选缩略图档位（#452）。
 const SAME_H = 85, DUP_H = 55;

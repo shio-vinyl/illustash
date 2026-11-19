@@ -19,7 +19,7 @@
 .group{padding:var(--space-16);border-radius:var(--radius-12);background:var(--soft)}
 
 /* ---- 胶囊控件：按钮（主要 / 普通 / 安静）、芯片、分段、搜索框 ---- */
-.btn,.chip,.seg>button{display:inline-flex;align-items:center;justify-content:center;gap:var(--space-6);margin:0;border:0;border-radius:var(--radius-pill);
+.btn,.chip,.seg>button,.seg>a{display:inline-flex;align-items:center;justify-content:center;gap:var(--space-6);margin:0;border:0;border-radius:var(--radius-pill);
   font:inherit;font-size:var(--fs-12);line-height:1;white-space:nowrap;text-decoration:none;box-shadow:none;
   transition:background-color var(--dur-1) var(--ease),color var(--dur-1) var(--ease),box-shadow var(--dur-1) var(--ease)}
 .btn{height:var(--h-32);padding:0 var(--space-14);background:var(--soft);color:var(--ink2);font-weight:var(--fw-600);cursor:pointer}
@@ -30,7 +30,7 @@
 .btn.is-quiet:hover{background:var(--wash-hover)}
 .btn.is-small{height:var(--h-28);padding:0 var(--space-12)}
 .btn:disabled,.btn[aria-disabled=true]{opacity:.5;cursor:default;filter:none}
-.btn svg,.chip svg,.seg>button svg{width:15px;height:15px;flex:none;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.btn svg,.chip svg,.seg>button svg,.seg>a svg{width:15px;height:15px;flex:none;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
 .chip{height:var(--h-28);padding:0 var(--space-12);background:var(--soft);color:var(--ink2);font-weight:var(--fw-400)}
 button.chip,a.chip{cursor:pointer}
 button.chip:hover,a.chip:hover{background:var(--chip-hover);color:var(--ink)}
@@ -41,19 +41,21 @@ button.chip:hover,a.chip:hover{background:var(--chip-hover);color:var(--ink)}
 /* 选中的芯片底色换成强调色浅底，计数跟着文字色走（--muted 在 --accent-soft 上暗色只有 4.0:1） */
 .chip[aria-pressed=true]>.chip-count,.chip[aria-selected=true]>.chip-count,.chip[aria-current]>.chip-count{color:inherit}
 .seg{display:inline-flex;align-items:center;gap:var(--space-2);padding:var(--space-4);border-radius:var(--radius-pill);background:var(--soft)}
-.seg>button{height:var(--h-28);padding:0 var(--space-12);background:transparent;color:var(--ink2);font-weight:var(--fw-400);cursor:pointer}
-.seg>button:hover{color:var(--ink)}
+/* 分段控件的项可以是按钮（同一页里切换）或链接（换地址，选中的那个 aria-current，#706 的图库视图、整理页签） */
+.seg>button,.seg>a{height:var(--h-28);padding:0 var(--space-12);background:transparent;color:var(--ink2);font-weight:var(--fw-400);cursor:pointer}
+.seg>button:hover,.seg>a:hover{color:var(--ink)}
+.seg>a>.seg-count{color:var(--muted);font-size:var(--fs-11);font-weight:var(--fw-400)}
 /* 选中：强调色浅底；分段控件里白底浮起。选中的文字同时变深、变粗，不只靠底色区分 */
 .chip[aria-pressed=true],.chip[aria-selected=true],.chip[aria-current=page],.chip[aria-current=true],
 .btn[aria-pressed=true]:not(.is-primary){background:var(--accent-soft);color:var(--accent-ink);font-weight:var(--fw-600)}
-.seg>button[aria-pressed=true],.seg>button[aria-checked=true],.seg>button[aria-selected=true]{background:var(--seg-on);color:var(--ink);font-weight:var(--fw-600);box-shadow:var(--shadow-hover)}
+.seg>button[aria-pressed=true],.seg>button[aria-checked=true],.seg>button[aria-selected=true],.seg>a[aria-current=page]{background:var(--seg-on);color:var(--ink);font-weight:var(--fw-600);box-shadow:var(--shadow-hover)}
 .search{display:flex;align-items:center;gap:var(--space-8);height:var(--h-32);padding:0 var(--space-14);border-radius:var(--radius-pill);background:var(--soft);color:var(--muted);font-size:var(--fs-12)}
 .search>svg{width:15px;height:15px;flex:none;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round}
 .search>input{flex:1;min-width:0;height:100%;margin:0;padding:0;border:0;border-radius:0;background:transparent;color:var(--ink);font:inherit;box-shadow:none;outline:none}
 .search>input::placeholder{color:var(--muted)}
 .search>kbd{padding:var(--space-1) var(--space-6);border:0;border-radius:var(--radius-4);background:var(--sheet);color:var(--muted);font:inherit;font-size:var(--fs-11)}
 .search:focus-within{box-shadow:0 0 0 2px var(--accent)}
-.btn:focus-visible,.chip:focus-visible,.seg>button:focus-visible,.glass-bar>button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.btn:focus-visible,.chip:focus-visible,.seg>button:focus-visible,.seg>a:focus-visible,.glass-bar>button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 
 /* ---- 页头：大标题 + 副标题 + 右侧控件组，下面最多一行工具。大标题就是 .title-page，不另起一套 ---- */
 .page-head{display:flex;align-items:flex-end;gap:var(--space-16);padding:var(--space-24) 0 var(--space-14)}
@@ -61,6 +63,13 @@ button.chip:hover,a.chip:hover{background:var(--chip-hover);color:var(--ink)}
 .page-head .page-sub{margin:var(--space-4) 0 0;color:var(--muted);font-size:var(--fs-12)}
 .page-actions{display:flex;align-items:center;gap:var(--space-8);margin-left:auto}
 .page-tools{display:flex;align-items:center;gap:var(--space-8);padding:0 0 var(--space-16)}
+/* 应用里的页头（index.html 的 #pageHead，#706）：内容页顶上一行，左边是后退和窄窗口的导航按钮，中间是标题区（标题、本页按钮、分段切换），
+   右边是全局的控件组；下面是 #toolbar（.page-tools），空的时候藏起来 */
+.content>.page-head{flex:none;align-items:center;gap:var(--space-12);padding:var(--space-20) 0 var(--space-12)}
+.page-head>.page-heading{display:flex;flex:1;align-items:center;flex-wrap:wrap;gap:var(--space-12);min-width:0}
+.page-head .page-sub:empty{display:none}
+.page-head>.page-actions{flex:none;margin-left:0}
+.content>.page-tools[hidden]{display:none}
 
 /* ---- 空状态：大图标 + 一句事实 + 一个去处 ---- */
 .empty-state{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:var(--space-10);padding:48px var(--space-24);text-align:center}

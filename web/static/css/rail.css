@@ -91,7 +91,7 @@
 .rail-peek-pics>img{flex:1;min-width:0;height:56px;border-radius:var(--radius-8);object-fit:cover}
 
 /* ---- 底部：更新、同步圆环（任务按钮）、设置 ---- */
-.rail-foot{display:grid;flex:none;gap:var(--space-4);justify-items:center;padding-top:var(--space-8)}
+.rail-foot{display:grid;flex:none;gap:var(--space-4);justify-items:center;margin-top:auto;padding-top:var(--space-8)}
 .rail-foot-button{position:relative;display:grid;place-items:center;width:40px;height:40px;margin:0;padding:0;border:0;border-radius:var(--radius-pill);background:transparent;
   color:var(--muted);cursor:pointer;transition:background-color var(--dur-1) var(--ease),color var(--dur-1) var(--ease)}
 .rail-foot-button:hover,.rail-foot-button.on,.rail-foot-button[aria-current=page]{background:var(--wash-hover);color:var(--ink)}

@@ -23,6 +23,7 @@ import {filterBar, wireFilterBar} from './filters.js';
 import {saveButton, wireGalleries, wireSaveButton} from './galleries.js';
 import {createLayer} from './overlay.js';
 import {editProfile, mergeCharacter, toggleMascot, toggleOc} from './palette.js';
+import {enter} from './motion.js';
 import {railRoute, refresh as refreshRail} from './rail.js';
 import {page as pageScope, currentPage} from './scope.js';
 
@@ -62,6 +63,8 @@ export async function applyRoute() {
     setChar(character || {id: route.char, name: t('角色'), work: '', count: 0, unchecked: 0, variants: []});
   }
   showArea(page.area);
+  // 换了页面：内容页淡入（#706，和活页条的切换一起）；同一页换子视图不动。
+  if (!samePage) enter($('viewport'), {from: 'fade'});
   if (page.guideTick) guideTick(page.guideTick);
   renderChrome();
   // 自己渲染的页面（按天、资料库、设置、按组整理……）换到时从顶部开始，不沿用上一页的滚动位置；后退、前进回到记过

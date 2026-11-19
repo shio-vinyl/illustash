@@ -14,10 +14,10 @@ const uuidOf = (w, name) => Object.entries(w.config.names).find(([, n]) => n ===
 const cardSel = (w, name) => `#grid .card[data-id="${uuidOf(w, name)}"]`;
 const cardAt = i => `#grid .card[data-index="${i}"]`;
 
-// 换页：点侧栏的链接（和人一样）；侧栏里没有的地址改 location.hash（等同点页面里的链接）。
+// 换页：点活页条上的链接（一级入口、二级项、设置，和人一样）；活页条上没有的地址改 location.hash（等同点页面里的链接）。
 async function goto(page, hash) {
-  const link = await page.eval(`(() => { const a = [...document.querySelectorAll('#sidebar a[href]')].find(a => a.getAttribute('href') === ${JSON.stringify(hash)}); return a ? true : false; })()`);
-  if (link) await page.click(`#sidebar a[href="${hash}"]`);
+  const link = await page.eval(`(() => { const a = [...document.querySelectorAll('#rail a[href]')].find(a => a.getAttribute('href') === ${JSON.stringify(hash)}); return a ? true : false; })()`);
+  if (link) await page.click(`#rail a[href="${hash}"]`);
   else await page.eval(`location.hash = ${JSON.stringify(hash)}`);
   await page.waitFor(`decodeURIComponent(location.hash).startsWith(${JSON.stringify(hash)})`, 4000);
   await gridReady(page);
@@ -86,7 +86,7 @@ export const FLOWS = [
     async run(w, page) {
       const f = w.config.fixture;
       const pages = [
-        ['首页', '#/home', 'home'], ['图库', '#/library', 'grid'], ['资料库', '#/characters', 'panel'],
+        ['图库 · 按天', '#/days', 'home'], ['图库 · 网格', '#/library', 'grid'], ['资料库', '#/characters', 'panel'],
         ['角色页', `#/library?char=${encodeURIComponent(f.charIds[f.chars[0].name])}`, 'grid'],
         ['资料库 · 作品', '#/characters/works', 'panel'],
         ['未识别 · 按组整理', '#/groups', 'panel'], ['未识别 · 第 1 组', `#/g/${f.groups[0]?.id}`, 'grid'],
@@ -208,7 +208,7 @@ export const FLOWS = [
 
   {
     name: 'group-undo',
-    title: '未识别 › 按组整理里把一整组设为角色 → 撤销：那一组回来，侧栏、页签上的张数回到原样（等后台学习收尾）',
+    title: '未识别 › 按组整理里把一整组设为角色 → 撤销：那一组回来，活页条、页签上的张数回到原样（等后台学习收尾）',
     covers: ['#386 1-2'],
     async run(w, page) {
       const f = w.config.fixture, who = f.chars[2].name, group = f.groups[0];
@@ -232,9 +232,9 @@ export const FLOWS = [
       await w.step('（等撤销后的学习收尾）', null, {shot: true});
       w.check('撤销后那一组回到列表', now.sections === before.sections, {before, now});
       w.check('撤销后未识别张数回到原样', now.unmatched === before.unmatched, {before: before.unmatched, now: now.unmatched});
-      // 侧栏计数默认藏着（视图选项「侧栏显示数量」），文字照样写着。
-      const side = await page.eval(`(document.getElementById('countUnmatched')?.textContent || '').trim()`);
-      w.check('侧栏的未识别计数和页面一致', Number(side.replace(/\D/g, '') || 0) === now.unmatched, {side, unmatched: now.unmatched});
+      // 活页条整理的二级层里「未识别」那一项的数字（#706）。
+      const side = await page.eval(`(document.querySelector('#railItems .rail-item[data-key="unmatched"] .rail-count')?.textContent || '').trim()`);
+      w.check('活页条的未识别数字和页面一致', Number(side.replace(/\D/g, '') || 0) === now.unmatched, {side, unmatched: now.unmatched});
     },
   },
 
@@ -255,7 +255,7 @@ export const FLOWS = [
       snap = await w.step('Esc', p => p.key('Escape'));
       w.check('第 3 下关详情栏', !snap.overlays.includes('inspector'), snap.overlays);
 
-      snap = await w.step('点顶栏的视图选项', p => p.click('#viewButton'));
+      snap = await w.step('点页头的视图选项', p => p.click('#viewButton'));
       w.check('视图选项打开', snap.overlays.includes('viewPopover'), snap.overlays);
       snap = await w.step('⌘K 开跳到角色', p => p.key('k', {modifiers: ['Meta']}));
       w.check('命令面板叠在视图选项上', snap.dialogs.includes('picker'), snap.dialogs);
@@ -265,7 +265,7 @@ export const FLOWS = [
       w.check('再关视图选项', !snap.overlays.includes('viewPopover'), snap.overlays);
       w.check('焦点回到视图选项按钮', /#viewButton/.test(snap.active), snap.active);
 
-      snap = await w.step('点侧栏的任务', p => p.click('#taskButton'));
+      snap = await w.step('点活页条的同步圆环（任务）', p => p.click('#taskButton'));
       w.check('任务面板打开', snap.overlays.includes('taskPanel'), snap.overlays);
       snap = await w.step('⌘K 开跳到角色', p => p.key('k', {modifiers: ['Meta']}), {shot: true});
       w.check('命令面板叠在任务面板上', snap.dialogs.includes('picker') && snap.overlays.includes('taskPanel'), snap);
@@ -273,7 +273,7 @@ export const FLOWS = [
       w.check('只关命令面板，任务面板还在', !snap.dialogs.length && snap.overlays.includes('taskPanel'), snap);
       snap = await w.step('Esc', p => p.key('Escape'));
       w.check('再关任务面板', !snap.overlays.includes('taskPanel'), snap.overlays);
-      snap = await w.step('点视图选项，再点侧栏的任务', async p => { await p.click('#viewButton'); await p.click('#taskButton'); });
+      snap = await w.step('点视图选项，再点活页条的同步圆环（任务）', async p => { await p.click('#viewButton'); await p.click('#taskButton'); });
       w.check('点在视图选项外面：它关掉，任务面板打开', !snap.overlays.includes('viewPopover') && snap.overlays.includes('taskPanel'), snap.overlays);
       snap = await w.step('Esc', p => p.key('Escape'));
       w.check('Esc 关任务面板', !snap.overlays.includes('taskPanel'), snap.overlays);
@@ -305,7 +305,7 @@ export const FLOWS = [
     covers: ['#386 1-8'],
     async run(w, page) {
       let snap = await w.step('打开图库', () => goto(page, '#/library'));
-      await w.step('R18 只看全年龄（顶栏按钮，等提示消失）', async p => {
+      await w.step('R18 只看全年龄（页头按钮，等提示消失）', async p => {
         await p.key('h');
         if (!await p.waitFor(`document.getElementById('toast').hidden`, 6000)) throw new Error('筛选提示没有消失');
       });
@@ -315,16 +315,16 @@ export const FLOWS = [
       const visible = await page.eval(`(() => { const v = document.getElementById('viewport').getBoundingClientRect(); return [...document.querySelectorAll('#grid .card[data-id]')].map(c => [c, c.getBoundingClientRect()]).filter(([, r]) => r.top > v.top + 40 && r.bottom < v.bottom - 40).map(([c]) => c.dataset.index)[0]; })()`);
       snap = await w.step('点一张看得见的图', p => p.click(cardAt(visible)), {shot: true});
       const before = {focused: snap.focused, scroll: snap.scroll, total: snap.total, hash: snap.hash};
-      snap = await w.step('点侧栏的设置', p => p.click('#settingsLink'));
+      snap = await w.step('点活页条的设置', p => p.click('#settingsLink'));
       w.check('到了设置页', snap.hash.startsWith('#/settings'), snap.hash);
       snap = await w.step('浏览器后退', async p => { await p.eval('history.back()'); await gridReady(p); await sleep(400); }, {shot: true});
       w.check('后退回到图库，地址一样', snap.hash === before.hash, {before: before.hash, now: snap.hash});
       w.check('张数一样（R18 筛选还在）', snap.total === before.total, {before: before.total, now: snap.total});
       w.check('滚动位置回来了', Math.abs(snap.scroll - before.scroll) < 60, {before: before.scroll, now: snap.scroll});
       w.check('详情栏还是那张', snap.focused === before.focused, {before: before.focused, now: snap.focused});
-      await w.step('点侧栏的资料库', p => goto(p, '#/characters'));
-      snap = await w.step('再点侧栏的图库', p => goto(p, '#/library'));
-      w.check('从侧栏回来也回到原位置', Math.abs(snap.scroll - before.scroll) < 60, {before: before.scroll, now: snap.scroll});
+      await w.step('点活页条的资料库', p => goto(p, '#/characters'));
+      snap = await w.step('再点活页条的图库', p => goto(p, '#/library'));
+      w.check('从活页条回来也回到原位置', Math.abs(snap.scroll - before.scroll) < 60, {before: before.scroll, now: snap.scroll});
     },
   },
 
@@ -354,7 +354,7 @@ export const FLOWS = [
       await w.step('（准备）重开引导并重新载入', async p => {
         await post(p, '/api/onboarding', {action: 'reopen'});
         await p.send('Page.reload');
-        await p.waitFor(`document.getElementById('sidebar') && !document.getElementById('splash')`, 15000);
+        await p.waitFor(`document.getElementById('rail') && !document.getElementById('splash')`, 15000);
       });
       let snap = await w.step('等导览出现', p => p.waitFor(`!document.getElementById('tour').hidden`, 8000), {shot: true});
       w.check('导览出现', snap.overlays.includes('tour'), snap.overlays);

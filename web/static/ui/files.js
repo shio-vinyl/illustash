@@ -1,19 +1,10 @@
-// 用图动作的界面（#450）：详情栏的「打开」「在访达中显示」、把图拖到别的应用、选择栏的「导出…」对话框。
+// 用图动作的界面（#450）：把图拖到别的应用、选择栏的「导出…」对话框。详情卡片的「打开」「在访达中显示」在 ui/detail_card.js。
 // 请求和导出状态在 core/files.js；导出的进度在任务面板（ui/tasks.js）。
 import {t} from '../core/i18n.js';
 import {number} from '../core/format.js';
-import {DRAG_LIMIT, canDrag, canReveal, dragFiles, openFile, revealFile, revealLabel, startExport} from '../core/files.js';
+import {DRAG_LIMIT, canDrag, dragFiles, startExport} from '../core/files.js';
 import {openDialog} from './dialog.js';
 import {toast} from './dom.js';
-
-// 详情栏「文件」下面的两个按钮。
-export function fileActions() {
-  return `<section class="inspector-section"><div class="chips-row"><button class="quiet small" data-file="open" title="${t('用默认应用打开原图')}">${t('打开')}</button>`
-    + (canReveal() ? `<button class="quiet small" data-file="reveal">${revealLabel()}</button>` : '') + '</div></section>';
-}
-export function bindFileActions(root, id) {
-  for (const b of root.querySelectorAll('[data-file]')) b.onclick = () => (b.dataset.file === 'open' ? openFile(id) : revealFile(id)).catch(e => toast(e.message));
-}
 
 // 鼠标按下后移动超过这么多像素，就算开始拖。
 const SLOP = 6;

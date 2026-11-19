@@ -46,7 +46,7 @@ const CLICK = [[/^浏览/, 'browse'], [/^整理/, 'cleanup']];
 // 活页条一列：「入口」或「入口 › 二级项」，读成 core/rail.js 的 railAt 给的 {entry, item}（item 只比整理的队列）。
 const ENTRY = [[/^图库/, 'library'], [/^画廊/, 'galleries'], [/^资料库/, 'catalog'], [/^整理/, 'tidy'], [/^设置/, 'settings'], [/^无/, '']];
 const ITEM = [[/› 未识别/, 'unmatched'], [/› 重复/, 'duplicates'], [/› 已排除/, 'excluded'], [/› 随机抽查/, 'audit'], [/› 身份整理/, 'identity'], [/^/, '']];
-const TOOLBAR = [[/^空$/, 'none'], [/^仅子页签$/, 'tabs'], [/^角色｜作品/, 'index'], [/^搜索、/, 'library'], [/^同图库/, 'library'], [/^(子页签|三个子页签|排序)/, 'grid']];
+const TOOLBAR = [[/^空$/, 'none'], [/^(搜索和筛选条|同按天)/, 'filters'], [/^仅子页签$/, 'tabs'], [/^角色｜作品/, 'index'], [/^搜索、/, 'library'], [/^同图库/, 'library'], [/^(子页签|三个子页签|排序)/, 'grid']];
 const first = (table, text, what) => { const hit = table.find(([re]) => re.test(text)); assert.ok(hit, `文档里的${what}「${text}」认不出来，改了文档要同步改 tests/pages.test.cjs`); return hit[1]; };
 
 function docRows() {
@@ -198,7 +198,7 @@ test('implement() 只接受登记过的页面名；每个页面都有标题以�
     assert.ok(['grid', 'homePage', 'calendarPage', 'charIndex', 'settingsPage', 'groupsPage'].includes(p.area), `${name}.area`);
     assert.ok(['library', 'catalog', 'galleries', 'tidy', 'settings', ''].includes(p.entry), `${name}.entry`);
     assert.ok(['browse', 'cleanup', 'select', 'own'].includes(p.click), `${name}.click`);
-    assert.ok(['none', 'tabs', 'index', 'library', 'grid'].includes(p.toolbar), `${name}.toolbar`);
+    assert.ok(['none', 'tabs', 'index', 'library', 'filters', 'grid'].includes(p.toolbar), `${name}.toolbar`);
     if (p.toolbar === 'grid' || p.toolbar === 'library') assert.ok(p.sorts.every(s => ['suspicious', 'newest', 'oldest', 'hinted'].includes(s)), `${name}.sorts`);
     if (p.tabs) assert.ok(p.tab, `${name}.tab`);
     if (p.pool) assert.equal(p.area, 'grid', `${name}：有 pool 的页面用网格`);
@@ -255,4 +255,28 @@ test('each kind of page remembers its own sort', () => {
     prefs.set('sortCharacter', 'newest');
     assert.equal(defaultSort({page: 'library', char: 'c1'}), 'newest');
   } finally { globalThis.localStorage = saved; }
+});
+
+// 按天、日历的工具栏（#706，#703 第 2 问）：只有搜索框和筛选条，没有排序、选择、显示方式；搜索词改了就地写进地址，
+// 由页面自己的 refresh('filter') 重画（不是网格的 reload）。
+test('按天、日历的工具栏只有搜索框和筛选条；搜索后调页面的 refresh("filter")', async () => {
+  globalThis.history = {state: null, replaceState() {}};
+  globalThis.window = {addEventListener() {}};
+  const {renderChrome} = await web.load('ui/shell.js');
+  for (const name of ['days', 'calendar']) {
+    const page = web.fakePage(), calls = [];   // 每次一个新的假页面：搜索框上的监听不跨页累积
+    pages.implement({[name]: {refresh: why => calls.push(why)}});
+    state.route = {page: name, q: '', has: [], not: []};
+    renderChrome();
+    const bar = page.el('toolbar');
+    assert.equal(bar.hidden, false, name);
+    assert.match(bar.innerHTML, /id="search"/, name);
+    assert.doesNotMatch(bar.innerHTML, /id="sort"|id="selectButton"|id="fitToggle"/, name);
+    const input = page.el('search');
+    input.value = 'miku';
+    for (const fn of input.listeners.input) fn({target: input, isComposing: false, keyCode: 0});
+    await new Promise(r => setTimeout(r, 300));
+    assert.deepEqual(calls, ['filter'], name);
+    assert.equal(state.route.q, 'miku', name);
+  }
 });

@@ -28,7 +28,8 @@ import {likeParams} from './like.js';
 //              那张图会离开本页（详情栏、大图、卡片「+ 角色」建议都先飞走再消失）
 //   skip       能跳过当前这张的页面（全部未识别、组页）：详情栏对还没有角色的图显示「跳过 S」，不选图时 S 跳过当前这张
 //   tabs/tab   同一个侧栏入口下的子页签组，以及本页对应哪个页签
-//   toolbar    工具栏组成：'none' 空、'tabs' 只有子页签、'index' 资料库、'library' 图库（搜索和筛选）、'grid' 网格页
+//   toolbar    工具栏组成：'none' 空、'tabs' 只有子页签、'index' 资料库、'library' 图库网格（搜索、筛选、排序、选择、显示方式）、
+//              'filters' 只有搜索框和筛选条（按天、日历）、'grid' 网格页
 //   sorts      排序下拉的选项
 //   sortPref   改了排序记在哪个偏好里（core/route.js 的 sortKey）；不写就是这页自己的「sort.<页面名>」
 //   pool/params 后端 /api/assets 的 pool 参数，以及该页其余查询参数
@@ -41,13 +42,16 @@ const NEWEST = ['newest', 'oldest'];
 const narrowed = r => !!(r.q || r.tag || r.utag || r.check || r.doubt || conditionCount(r) || r.from || r.to);
 
 // 图库和角色页共用的一组字段：角色页是图库加 char 参数，不是独立页面。
+// 图库的筛选（搜索词、组合条件、旧的单值参数）读成后端的查询参数：/api/assets、/api/home、/api/calendar 都接受同一组（#718）。
+// 按天、日历的取数把它带上（#707、#708）；网格另外带「更多像这张的」的例图（libraryBase.params）。
+export function libraryFilters(r) {
+  const f = {};
+  if (r.day) f.day = r.day; if (r.work) f.work = r.work; if (r.artist) f.artist = r.artist; if (r.q) f.q = r.q; if (r.tag) f.tag = r.tag; if (r.utag) f.utag = r.utag;
+  return Object.assign(f, queryParams(r));
+}
 const libraryBase = {
   area: 'grid', panel: false, entry: 'library', view: 'grid', filters: true, toolbar: 'library', sorts: NEWEST,
-  params: r => {
-    const f = {};
-    if (r.day) f.day = r.day; if (r.work) f.work = r.work; if (r.artist) f.artist = r.artist; if (r.q) f.q = r.q; if (r.tag) f.tag = r.tag; if (r.utag) f.utag = r.utag;
-    return Object.assign(f, queryParams(r), likeParams(r));
-  },
+  params: r => ({...libraryFilters(r), ...likeParams(r)}),
   // 「只看 R18」时没有图，多半是这个筛选造成的：写明，旁边给「显示全部」（#386 的 2-16）。
   empty: (r, {nsfw} = {}) => nsfw === 'only' ? t('「只看 NSFW」开着，没有符合条件的 NSFW 图片。') : t('没有符合条件的图片。'),
   hint: () => t('点击查看 · 拖动或 {key} 点击多选 · Space 看大图', {key: isMac ? '⌘' : 'Ctrl'}),
@@ -56,9 +60,9 @@ const libraryBase = {
 
 const list = [
   // 图库的三种视图（#706）：按天（原来的首页，#677）、网格（原来的图库）、日历。打开 App 落在按天。
-  {name: 'days', root: true, area: 'homePage', panel: true, keys: 'shown', click: 'own', entry: 'library', view: 'days', filters: true, toolbar: 'none', emptyIcon: 'image'},
+  {name: 'days', root: true, area: 'homePage', panel: true, keys: 'shown', click: 'own', entry: 'library', view: 'days', filters: true, toolbar: 'filters', emptyIcon: 'image'},
   {name: 'library', ...libraryBase, click: 'browse', sortPref: 'sortLibrary'},
-  {name: 'calendar', area: 'calendarPage', panel: true, click: 'own', entry: 'library', view: 'calendar', filters: true, toolbar: 'none', emptyIcon: 'calendar'},
+  {name: 'calendar', area: 'calendarPage', panel: true, click: 'own', entry: 'library', view: 'calendar', filters: true, toolbar: 'filters', emptyIcon: 'calendar'},
   // 画廊（#445）：全部画廊的封面卡片，和一个画廊里的图（就是带着它的条件的图库）。
   {name: 'galleries', area: 'groupsPage', panel: true, click: 'own', entry: 'galleries', toolbar: 'none', emptyIcon: 'gallery'},
   {name: 'gallery', prefix: 'gallery', ...libraryBase, view: '', click: 'browse', entry: 'galleries', sortPref: 'sortLibrary', gallery: true},
@@ -146,7 +150,8 @@ export const poolIs = (route, ...pools) => pools.includes(pageOf(route).pool);
 //   failedNext(r)        readFailed 认下的失败在空状态下面给的去处，写法同 emptyNext（画廊的「删除画廊」）
 //   reveal(uuid)         主区不是网格的页面把这张图滚进视野：详情栏、大图翻页时，和面板页借列表看的大图关掉时（#424）
 //   refresh(why)         数据变了之后重画面板页：'edit' 改动之后、'undo' 撤销之后、'learned' 确认角色或同步结束后后台学习
-//                        收尾之后（#400、#404）、'sync' 同步到新图之后、'nsfw' 切换 R18 之后、'view' 视图选项之后、
+//                        收尾之后（#400、#404）、'sync' 同步到新图之后、'nsfw' 切换 NSFW 之后、'view' 视图选项之后、
+//                        'filter' 搜索框里的词改了之后（只有工具栏带搜索框的面板页：按天、日历；route.q 已经就地改好），
 //                        'ask' 「偶尔问一句」开关之后
 export function implement(hooks) {
   for (const [name, h] of Object.entries(hooks)) {

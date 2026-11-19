@@ -126,6 +126,7 @@
 ### 页面框架与活页条（#706）
 
 - **注册表**（`core/pages.js`）：每个页面声明属于活页条的哪个一级入口（`entry`：`library`、`catalog`、`galleries`、`tidy`、`settings`，画师抽查是 `''`）和在二级层里选中哪一项（`item`，整理的五个队列）；随地址变的那一项（某个画廊、收藏、钉住的角色）由 `core/rail.js` 的 `railAt(route)` 算。图库有三种视图：`days`（按天，`#/days`，原来的首页；`#/`、`#/home`、`#/recent` 改写到这里）、`library`（网格，`#/library`，地址和查询照旧）、`calendar`（日历，`#/calendar`）；`view` 写是哪一种，`filters` 标出读图库筛选的页面（三种视图和画廊），切换视图时筛选跟着走。整理的入口 `#/tidy` 改写到按组整理。角色页在活页条上属于资料库。
+- **图库三种视图共用筛选**（#703 第 2 问）：网格的工具栏是 `library`（搜索、筛选条、排序、选择、显示方式）；按天、日历是 `filters`，只有搜索框和筛选条（条件胶囊、「＋ 条件」、保存为画廊）。筛选条上加、去、翻转条件是换地址（`go`），面板页收到 `render({samePage: true})`；搜索词是就地改进地址（`replaceRoute`），面板页收到 `refresh('filter')`。切换视图时地址里的筛选参数跟着走（`core/rail.js` 的 `viewRoute`）。按天、日历取数时把 `core/pages.js` 的 `libraryFilters(route)` 带进 `/api/home`、`/api/calendar`（和 `/api/assets` 同一组参数，#718）。活页条的时间轴同样按它读。
 - **活页条**（`ui/rail.js`，数据在 `core/rail.js`，样式 `css/rail.css`）：全应用一个，挂在 `app` 作用域上。各页要换二级层的内容用 `provide(entry, fn)`（`fn()` 返回项的列表，`refresh(entry)` 时重新调），选中某项用 `select(key)`，按天视图滚到某一天用 `selectDay(day)`，点了二级项要自己处理（滚到那一天）用 `onPick(entry, fn)`，改队列的数字用 `count(key, n)`，拖放时临时换一组项用 `mode(name, items, hint)`。每一项的字段写在 `core/rail.js` 开头。图库的时间轴：最近 5 天各一项，更早的同一年按月、再早的按年（用户 2026-11-19 定）；数据按 `/api/calendar` 的 `prev` 一个月一个月往前读。资料库钉住的项按图库存在浏览器本地（`libraryPrefs`，键 `railPins`）。⌘1–4（Windows 上 Ctrl）切一级，⌥↑↓ 在二级里移动，⌥⇧↑↓ 挪动钉住的项，走 `ui/grid.js` 现有的键盘处理。窄窗口（≤760px）二级层收进抽屉，页头左边的按钮打开。
 - **页头**：标题、副标题和本页的链接由各页的 `heading` 返回（`ui/shell.js` 画）；图库三种视图之间、整理三个页签之间的分段切换由框架按注册表画；右侧是全局的控件组（跳到角色、NSFW、视图选项、撤销、快捷键）。下面的工具栏是 `#toolbar`，空的页面藏起来。
 - **空状态**：`ui/empty.js` 的 `drawEmpty(box, {icon, fact, next})`；网格页按注册表的 `emptyIcon`、`empty`、`emptyNext` 画，`emptyNext` 返回 `[{label, href}]` 或 `[{label, act}]`。
@@ -139,7 +140,7 @@
 3. **画**在 `ui/<页>.js`：开头的注释写它负责什么；静态结构写成模块顶层的 ``tpl`…` ``，部件是 `{el, update, dispose}`；文件末尾 `implement({页: {render, heading, help, refresh, …}})`。一个文件不超过 600 行（规则 21），一页里自成一块的部件（卡片、浮层、工具栏）拆成自己的文件。
 4. **作用域**：`render({samePage, restore, scope})` 收到这一页的作用域（换页时框架调 `ui/scope.js` 的 `page()`）。监听、计时器、观察器、帧任务、子部件、`keyed` 列表都登记在它上面，换页时一起释放；不挂 `document`、`window` 级的监听（规则 3）。
 5. **异步回来**先判断还在不在：`if (!scope.alive || state.route !== route) return`（换了页，作用域已经释放；同一页换了子视图，路由对象换了）。别处的回调照旧用 `onPage(state.route, '页')`。
-6. **数据变了**：`refresh(why)` 只重画受影响的部分，部件的 `update` 值没变不动 DOM。
+6. **数据变了**：`refresh(why)` 只重画受影响的部分，部件的 `update` 值没变不动 DOM；`why` 的取值写在 `core/pages.js` 的 `implement` 说明里（带搜索框的面板页另有 `'filter'`）。
 
 最小的例子（「笔记」页只是示意，不存在）：
 

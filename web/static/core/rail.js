@@ -12,7 +12,7 @@ import {favoritesOnly} from './favorites.js';
 import {t} from './i18n.js';
 import {number} from './format.js';
 import {libraryPrefs} from './prefs.js';
-import {CHARACTER, PAGES, pageOf, viewOf} from './pages.js';
+import {CHARACTER, libraryFilters, pageOf, viewOf} from './pages.js';
 import {api} from './session.js';
 import {state} from './state.js';
 import {currentLibraryId} from './settings.js';
@@ -122,9 +122,7 @@ export const timeline = {items: [], params: '', loading: false, months: new Map(
 let timelineRun = 0;
 const samples = list => (list || []).map(x => x?.uuid).filter(Boolean).slice(0, 4);
 export async function loadTimeline(route = state.route) {
-  const filters = {...(PAGES.library.params(route) || {})};
-  delete filters.like; delete filters.by;
-  const base = {...filters, ...(state.nsfw ? {nsfw: state.nsfw} : {})}, key = JSON.stringify(base);
+  const base = {...libraryFilters(route), ...(state.nsfw ? {nsfw: state.nsfw} : {})}, key = JSON.stringify(base);
   const run = ++timelineRun, same = key === timeline.params;
   if (!same) { timeline.months = new Map(); timeline.params = key; }
   timeline.loading = true;

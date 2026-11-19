@@ -16,10 +16,11 @@
 //   railRoute(route)       换页时（ui/shell.js applyRoute）：点亮入口和项，收起窄窗口的抽屉，需要时重读时间轴
 //
 // 动效（都经 ui/motion.js，「减少动态效果」时直接到终态）：切一级时标签带回弹滑过去（CSS 过渡，--dur-3、--ease-spring），
-// 旧的二级项依次退场、新的依次进场；悬停二级项时它探出来，相邻的项微微探出，旁边浮出预览（画在二级层外面，不被滚动区裁掉）；
+// 旧的二级项依次退场、新的依次进场；悬停二级项时它探出来，相邻的项微微探出，旁边滑出预览卡（画在二级层外面，不被滚动区裁掉，
+// 写法见下面「悬停」一节）；
 // 指示条跟着选中项滑；时间轴、钉住的项增减时其余平滑让位。
-import {ENTRIES, entryHref, forgetTimeline, galleryItems, itemForDay, loadPins, loadTimeline, movePin, noteLibraryView, pinItems, pins, queues, railAt,
-  tidyWaiting, timeline, timelineHref} from '../core/rail.js';
+import {ENTRIES, PEEK, entryHref, forgetTimeline, galleryItems, itemForDay, loadPins, loadTimeline, movePin, noteLibraryView, peekRow, pinItems, pins, queues,
+  railAt, tidyWaiting, timeline, timelineHref} from '../core/rail.js';
 import {coversFor} from '../core/galleries.js';
 import {number} from '../core/format.js';
 import {I18N, t} from '../core/i18n.js';
@@ -31,7 +32,8 @@ import {state} from '../core/state.js';
 import {attr, cls, css, make, show, text, tpl} from './el.js';
 import {keyed} from './keyed.js';
 import {app} from './scope.js';
-import {animate, countTo, enter, exit, reduced} from './motion.js';
+import {animate, cancelExit, countTo, enter, exit, reduced} from './motion.js';
+import {setTint} from './tint.js';
 import {createLayer} from './overlay.js';
 import {$} from './dom.js';
 
@@ -51,7 +53,8 @@ const ICONS = {
   gallery: tpl`<svg viewBox="0 0 20 20" aria-hidden="true"><rect x="3" y="4.5" width="14" height="11" rx="2"/><path d="m3.5 13.5 4-4 3 3 2-2 4 4"/></svg>`,
 };
 const iconOf = x => x.kind === 'queue' ? x.key : x.kind === 'gallery' && !x.cover ? (x.key === 'fav' ? 'fav' : 'gallery') : '';
-const PEEK = tpl`<div class="rail-peek-in"><b data-ref="title"></b><small data-ref="meta"></small><span class="rail-peek-pics" data-ref="pics"></span></div>`;
+const PEEK_CARD = tpl`<div class="rail-peek-in"><span class="rail-peek-pics" data-ref="pics"></span><span class="rail-peek-cap"><b data-ref="title"></b><small
+  data-ref="meta"></small></span></div>`;
 
 const s = app.child('rail');
 const providers = new Map(), pickers = new Map(), lists = new Map();
@@ -238,24 +241,82 @@ export function railRoute(route) {
 }
 
 // ---------- 悬停：抽卡和预览 ----------
-let hovered = null;
-function hover(el) {
+// 预览是一张从这一项旁边滑出来的玻璃卡：上面一行图，下面是标题和张数。图按真实宽高比排成一样高的一行（core/rail.js 的 peekRow），
+// 放得下几张放几张，卡片跟着内容变宽；作品的角色画成一排圆头像。这一项的主色经 setTint 变成卡片底下的彩色投影和靠活页条那边
+// 一层很淡的光（css/rail.css），不出色块。卡片建一次（wirePeek），之后只换内容，图的节点按位置复用。
+// 动效：第一次出现时卡片从活页条那边滑出、图一张接一张发出来；已经开着时换到相邻的项，卡片滑到新的位置（CSS 过渡 translate），
+// 不重新弹出；离开二级层稍等一会儿再收起，划过两项之间的空隙时不闪。滚动、拖动时立刻收起。键盘焦点到了项上同样给预览
+// （读屏不读它：aria-hidden，项的 aria-label 里已经有标题和张数）。
+const PEEK_IN = [{opacity: 0, transform: 'translateX(-10px) scale(.96)'}, {opacity: 1, transform: 'none'}];
+const PEEK_OUT = [{opacity: 1, transform: 'none'}, {opacity: 0, transform: 'translateX(-6px) scale(.98)'}];
+const DEAL = [{opacity: 0, transform: 'translateX(-10px) scale(.92)'}, {opacity: 1, transform: 'none'}];
+const PEEK_LINGER = 120;   // 指针离开以后过多久收起（毫秒）
+let hovered = null, card = null, peekOn = false, peekTimer = 0;
+function wirePeek() {
+  const {el, refs} = PEEK_CARD(), imgs = [];
+  $('railPeek').replaceChildren(el);
+  // 不知道宽高比的图（角色、画廊的封面）先按方的排，读到以后按它自己的比例改宽。
+  const fit = img => {
+    if (img.dataset.known || !img.naturalWidth || !img.naturalHeight) return;
+    const r = Math.min(PEEK.ratio[1], Math.max(PEEK.ratio[0], img.naturalWidth / img.naturalHeight));
+    css(img, 'width', `${Math.min(PEEK.max, Math.round(r * Number(img.dataset.h)))}px`);
+  };
+  const img = i => {
+    if (!imgs[i]) {
+      const x = make('img'); x.alt = ''; x.decoding = 'async'; x.draggable = false;
+      x.addEventListener('load', () => fit(x));
+      refs.pics.append(x); imgs[i] = x;
+    }
+    return imgs[i];
+  };
+  card = {refs, imgs, img};
+}
+function hover(el, {now = false} = {}) {
   if (hovered === el) return;
   if (hovered) for (const x of [hovered, hovered.previousElementSibling, hovered.nextElementSibling]) x?.classList.remove('is-hover', 'is-near');
   hovered = el;
-  const peek = $('railPeek');
-  if (!el || el.inert) { peek.hidden = true; return; }
+  if (!el || el.inert || !el.railItem) { hovered = null; hidePeek(now); return; }
   el.classList.add('is-hover');
   el.previousElementSibling?.classList.add('is-near'); el.nextElementSibling?.classList.add('is-near');
-  const x = el.railItem, {el: body, refs} = PEEK();
+  showPeek(el);
+}
+function showPeek(el) {
+  if (!card) return;
+  const x = el.railItem, peek = $('railPeek'), {refs, imgs} = card;
+  const row = peekRow(x.peek?.length ? x.peek : x.cover ? [{id: x.cover}] : [], {round: !!x.peekRound});
   text(refs.title, x.label); text(refs.meta, x.meta || ''); show(refs.meta, !!x.meta);
-  for (const id of (x.peek || []).slice(0, 3)) { const img = make('img'); img.alt = ''; img.src = thumb(id); refs.pics.append(img); }
-  show(refs.pics, !!x.peek?.length);
-  peek.replaceChildren(body);
+  show(refs.pics, row.pics.length > 0); cls(refs.pics, 'is-round', !!x.peekRound);
+  row.pics.forEach((p, i) => {
+    const im = card.img(i);
+    im.dataset.known = p.known ? '1' : ''; im.dataset.h = String(row.h);
+    css(im, 'width', `${p.w}px`); css(im, 'height', `${row.h}px`); attr(im, 'src', thumb(p.id)); show(im, true);
+  });
+  for (const im of imgs.slice(row.pics.length)) show(im, false);
+  setTint(peek, x.color);
+  const glide = peekOn;
+  peekOn = true;
+  if (!glide) cancelExit(peek);
+  peek.hidden = false;   // 要量它的高；位置和进场在下一帧画之前写好，不会先在旧位置闪一下
   s.read(() => {
-    const r = el.getBoundingClientRect();
-    s.write(() => { css(peek, 'transform', `translate(${Math.round(r.right + 14)}px,${Math.round(r.top + r.height / 2)}px) translateY(-50%)`); peek.hidden = false; }, 'rail:peek');
+    const r = el.getBoundingClientRect(), layer = $('railLayer').getBoundingClientRect(), h = peek.offsetHeight, edge = 8;
+    const y = Math.round(Math.max(edge, Math.min(innerHeight - h - edge, r.top + r.height / 2 - h / 2)));
+    const left = Math.round(layer.right - 6);
+    s.write(() => {
+      cls(peek, 'is-glide', glide);
+      css(peek, 'translate', `${left}px ${y}px`);
+      const shown = imgs.slice(0, row.pics.length);
+      if (glide) { shown.forEach(im => enter(im, {from: 'fade', dur: 1})); return; }
+      enter(peek, {from: PEEK_IN, dur: 2});
+      shown.forEach((im, i) => enter(im, {from: DEAL, dur: 2, delay: 40 + i * 35}));
+    }, 'rail:peek');
   }, 'rail:peek-read');
+}
+// 收起：now 时立刻（滚动、拖动），否则等 PEEK_LINGER，到时指针还没落到别的项上才收。只排一个计时器（挂在 app 作用域上，
+// 不随每次悬停越积越多）。
+function hidePeek(now) {
+  const close = () => { if (!peekOn) return; peekOn = false; exit($('railPeek'), {to: PEEK_OUT, remove: false}); };
+  if (now) { close(); return; }
+  if (!peekTimer) peekTimer = s.timeout(() => { peekTimer = 0; if (!hovered) close(); }, PEEK_LINGER);
 }
 
 // ---------- 钉住的项拖动排序（#684） ----------
@@ -268,7 +329,7 @@ function moveDrag(e) {
   if (!drag || e.pointerId !== drag.id) return;
   const dy = e.clientY - drag.y;
   if (!drag.moved && Math.abs(dy) < 5) return;
-  if (!drag.moved) { drag.moved = true; drag.el.setPointerCapture?.(e.pointerId); cls(drag.el, 'is-dragging', true); hover(null); }
+  if (!drag.moved) { drag.moved = true; drag.el.setPointerCapture?.(e.pointerId); cls(drag.el, 'is-dragging', true); hover(null, {now: true}); }
   css(drag.el, 'transform', `translateY(${dy}px)`);
 }
 function endDrag(e) {
@@ -331,6 +392,7 @@ function pick(el, e) {
 // ---------- 启动 ----------
 export function wireRail() {
   wired = true;
+  wirePeek();
   provide('tidy', () => queues());
   provide('galleries', () => galleryItems(galleryCovers));
   provide('catalog', () => pinItems());
@@ -360,7 +422,7 @@ export function wireRail() {
   s.on(items, 'pointermove', moveDrag);
   s.on(items, 'pointerup', endDrag);
   s.on(items, 'pointercancel', endDrag);
-  s.on($('railLayer'), 'scroll', () => hover(null), {passive: true});
+  s.on($('railLayer'), 'scroll', () => hover(null, {now: true}), {passive: true});
   s.on($('sidebarToggle'), 'click', () => setDrawer(!$('rail').classList.contains('is-drawer')));
   // 窗口拉宽到不再是抽屉时，开着的抽屉收起来（不然它一直留在浮层栈里，网格的方向键不响应）。
   const narrow = typeof matchMedia === 'function' ? matchMedia('(max-width: 760px)') : null;

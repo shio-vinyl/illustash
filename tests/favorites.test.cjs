@@ -1,4 +1,4 @@
-// 收藏的前端（#447）：core/favorites.js 的判断（筛选条件、侧栏高亮、选区该收藏还是取消、本地改值），F 键的动作，
+// 收藏的前端（#447）：core/favorites.js 的判断（筛选条件、选区该收藏还是取消、本地改值），F 键的动作，
 // ui/grid.js 的写入路径（不在收藏筛选里时只在本地改心形，图会离开本页时照其他写入重读），选择栏的按钮和
 // ui/favorites.js 画出的心形。
 const {test, before, beforeEach} = require('node:test');
@@ -57,33 +57,35 @@ test('哪些写入会让图离开本页：只看收藏里取消，不含收藏�
   assert.equal(fav.favLeaves(true, {page: 'unmatched'}), false);
 });
 
-test('侧栏的「收藏」只在图库只按收藏筛选时亮，别的时候照页面登记', () => {
-  const library = pages.PAGES.library;
-  assert.equal(fav.navFor({page: 'library', has: '["fav"]'}, library), 'favorites');
-  assert.equal(fav.navFor({page: 'library', has: ['fav']}, library), 'favorites');
-  assert.equal(fav.navFor({page: 'library'}, library), 'library');
-  assert.equal(fav.navFor({page: 'library', has: '["fav","tag:x"]'}, library), 'library');
-  assert.equal(fav.navFor({page: 'library', has: '["fav"]', q: 'miku'}, library), 'library');
-  assert.equal(fav.navFor({page: 'library', has: '["fav"]', not: '["tag:y"]'}, library), 'library');
-  assert.equal(fav.navFor({page: 'library', not: '["fav"]'}, library), 'library');
-  assert.equal(fav.navFor({page: 'duplicates', has: '["fav"]'}, pages.PAGES.duplicates), 'duplicates');
+test('收藏是画廊里的一项（#706）：只在图库只按收藏筛选时活页条亮「画廊 › 收藏」，别的时候照页面登记', async () => {
+  const {railAt} = await web.load('core/rail.js');
+  const at = route => { const x = railAt(route); return `${x.entry}/${x.item}`; };
+  assert.equal(at({page: 'library', has: '["fav"]'}), 'galleries/fav');
+  assert.equal(at({page: 'library', has: ['fav']}), 'galleries/fav');
+  assert.equal(at({page: 'library'}), 'library/');
+  assert.equal(at({page: 'library', has: '["fav","tag:x"]'}), 'library/');
+  assert.equal(at({page: 'library', has: '["fav"]', q: 'miku'}), 'library/');
+  assert.equal(at({page: 'library', has: '["fav"]', not: '["tag:y"]'}), 'library/');
+  assert.equal(at({page: 'library', not: '["fav"]'}), 'library/');
+  assert.equal(at({page: 'duplicates', has: '["fav"]'}), 'tidy/duplicates');
 });
 
-test('侧栏的「收藏」：标题是「收藏」，空着时说怎么收藏；加了别的条件照旧是「图库」（#679）', async () => {
+test('收藏：标题是「收藏」，空着时说怎么收藏；加了别的条件照旧是「图库」（#679）', async () => {
   const {renderHeading} = await web.load('ui/shell.js');
+  await web.load('ui/library.js');   // 图库的标题由图库这一页登记
   const heading = () => globalThis.document.getElementById('heading').innerHTML;
   Object.assign(state, {route: {page: 'library', has: ['fav']}, total: 0, totalReady: true});
   renderHeading();
-  assert.match(heading(), /<h1>收藏<button[^>]*id="pageHelp"/);
+  assert.match(heading(), /<h1 class="title-page">收藏<button[^>]*id="pageHelp"/);
   assert.match(heading(), /<p>在详情面板或大图里点心形，或者按 F 收藏。<\/p>/);
   const empty = pages.PAGES.library.empty;
   assert.equal(empty(state.route, {nsfw: ''}), '还没有收藏。在详情面板或大图里点心形，或者按 F 收藏。');
   // 隐藏或只看 R18 时空着不等于没有收藏
   assert.equal(empty(state.route, {nsfw: 'hide'}), '没有符合条件的图片。');
-  assert.match(empty(state.route, {nsfw: 'only'}), /只看 R18/);
+  assert.match(empty(state.route, {nsfw: 'only'}), /只看 NSFW/);
   for (const r of [{page: 'library', has: ['fav', 'tag:x']}, {page: 'library', has: ['fav'], q: 'miku'}, {page: 'library'}]) {
     state.route = r; renderHeading();
-    assert.match(heading(), /<h1>图库/);
+    assert.match(heading(), /<h1 class="title-page">图库/);
     assert.equal(empty(r, {nsfw: ''}), '没有符合条件的图片。');
   }
 });

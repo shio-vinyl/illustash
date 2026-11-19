@@ -105,6 +105,9 @@ export const SHORTCUTS = [
   {keys: '⌘K', codes: ['k'], does: () => t('跳转到角色')},
   {keys: () => isMac ? '⌘[ / ⌘]' : 'Alt+← / Alt+→', codes: ['[', ']'], does: () => t('后退、前进（只在这个图库的页面之间；鼠标侧键、标题左边的 ‹ 也可以）')},
   {keys: '/', codes: ['/'], does: () => t('搜索（图库、资料库）')},
+  // 活页条（#706）：处理在 ui/rail.js 的 railKey（ui/grid.js 的键盘处理先交给它），所以这里不列 codes。
+  {keys: '⌘1–4', codes: [], does: () => t('切到左边导航里的图库、资料库、画廊、整理')},
+  {keys: () => isMac ? '⌥↑ / ⌥↓' : 'Alt+↑ / Alt+↓', codes: [], does: () => t('在左边导航当前这一栏里移到上一项、下一项（图库的各天、整理的各队列）；在资料库里按住 Shift 挪动钉住的作品或角色')},
   {keys: () => t('拖动 · Shift 点击'), codes: [], does: () => t('连续选择；在空白处拖动可框选')},
   {keys: '⌘A', codes: ['a'], does: () => t('选中全部符合条件的图片')},
   {keys: () => t('方向键'), codes: ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'],
@@ -125,7 +128,7 @@ export const SHORTCUTS = [
   {keys: '⌘+ / ⌘−', codes: ['=', '+', '-'], does: () => t('缩放图片网格；大图打开时缩放大图')},
   {keys: () => t('捏合 · ⌘ 滚动'), codes: [], does: () => t('缩放图片网格；在大图上缩放大图')},
   {keys: 'R', codes: ['r'], does: () => t('切换原比例 / 方形裁切')},
-  {keys: 'H', codes: ['h'], does: () => t('隐藏 / 显示 R18 内容（顶栏 R18 按钮还可以切换为只看 R18）')},
+  {keys: 'H', codes: ['h'], does: () => t('隐藏 / 显示 NSFW 内容（页头的 NSFW 按钮还可以切换为只看 NSFW）')},
   {keys: '⌘Z', codes: ['z'], does: () => t('撤销')},
   {keys: 'Esc', codes: ['Escape'], does: () => t('关闭最上面的菜单、对话框或大图，然后是详情栏，最后取消选择；在输入框里先离开输入框')},
   {keys: () => t('命令面板里'), codes: [], does: () => t('↑ ↓ 移动，↵ 选中，Shift ↵ 暂存多个一起设，输入框为空时 1–9 直接选')},

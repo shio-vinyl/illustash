@@ -169,7 +169,7 @@ sample('pop-cast', async () => [fromHTML(castPop([
 // ---- 任务面板 ----
 sample('tasks', async () => {
   taskPanel.open = true; renderTasks(); taskPanel.open = false;
-  const side = document.createElement('div'); side.className = 'sidebar sg-sidebar'; side.append(snapshot($('taskButton')));
+  const side = document.createElement('div'); side.className = 'rail-foot sg-sidebar'; side.append(snapshot($('taskButton')));
   return [pair(side, '#taskButton（.busy）'), snapshot($('taskPanel'))];
 });
 

@@ -69,7 +69,7 @@ function homeHarness(api){
   // 读到更早的几天以后，首页按天比对（#452）：已有的块留着，新的几天接在后面，哨兵在最后。
   const sentinel = {textContent: ''};
   home.observer = {observes: 0, disconnects: 0, unobserve() {}, observe() { this.observes++; }, disconnect() { this.disconnects++; }};
-  Object.assign(state, {route: {page: 'home'}, nsfw: '', items: [{uuid: 'old'}], total: 1});
+  Object.assign(state, {route: {page: 'days'}, nsfw: '', items: [{uuid: 'old'}], total: 1});
   page.document.getElementById = id => id === 'homeSentinel' ? sentinel : el(id);
   globalThis.fetch = path => Promise.resolve().then(() => api(path)).then(body => ({status: 200, ok: true, json: async () => body}));
   return {c: {moreHome, state}, home, sentinel, observer: home.observer, blocks: () => el('homePage').children};
@@ -101,19 +101,19 @@ test('within-day requests after navigation cannot change the library or remove a
   let resolve;
   const {home, moreOfDay, dayLoading} = homeModule, {state} = web.core(), page = web.fakePage();
   const day={day:'2026-10-02',items:[{uuid:'old'}],count:10};
-  Object.assign(home, {days: [day], gen: 1}); Object.assign(state, {route: {page: 'home'}, nsfw: '', items: [{uuid: 'library'}], total: 1});
+  Object.assign(home, {days: [day], gen: 1}); Object.assign(state, {route: {page: 'days'}, nsfw: '', items: [{uuid: 'library'}], total: 1});
   globalThis.fetch = () => new Promise(r => resolve = body => r({status: 200, ok: true, json: async () => body}));
   page.document.getElementById = () => { throw Error('stale response must not query DOM'); };
   const pending=moreOfDay(day.day); await new Promise(r => setImmediate(r)); state.route.page='library';resolve({items:[{uuid:'new'}]});await pending;
   assert.equal(day.items.length,1);assert.equal(state.items[0].uuid,'library');
-  state.route.page='home';const old=moreOfDay(day.day); await new Promise(r => setImmediate(r)); home.gen++;
+  state.route.page='days';const old=moreOfDay(day.day); await new Promise(r => setImmediate(r)); home.gen++;
   dayLoading.clear(); dayLoading.add('2026-10-02');
   resolve({items:[]});await old;assert.equal(dayLoading.has('2026-10-02'),true);
 });
 test('opening the app lands on 首页; the library has its own hash and old query links still open it',()=>{
   // core/route.js 读取页面的 location。
   const {parseHash, hashFor} = web.core(), c = {parseHash, hashFor, location: globalThis.location = {hash: ''}};
-  for(const hash of ['','#','#/']){ c.location.hash=hash; assert.equal(c.parseHash().page,'home'); }
+  for(const hash of ['','#','#/']){ c.location.hash=hash; assert.equal(c.parseHash().page,'days'); }
   c.location.hash='#/?artist=a1'; assert.deepEqual([c.parseHash().page,c.parseHash().artist],['library','a1']);
   c.location.hash=c.hashFor({page:'library',day:'2026-10-02'}); assert.equal(c.location.hash,'#/library?day=2026-10-02');
   assert.deepEqual([c.parseHash().page,c.parseHash().day],['library','2026-10-02']);
@@ -123,7 +123,7 @@ test('undo and a finished sync redraw the home page, whose day groups come from 
   const homeReads = [], {edits, state} = web.core(), {afterJob} = await web.load('ui/effects.js');
   web.fakePage();
   edits.latest = {id: 7, label: '已将 1 张移出 A'};
-  Object.assign(state, {route: {page: 'home'}, sync: {status: 'scanning'}, focused: null, viewer: -1, guide: undefined});
+  Object.assign(state, {route: {page: 'days'}, sync: {status: 'scanning'}, focused: null, viewer: -1, guide: undefined});
   const answer = path => path.startsWith('/api/home') ? (homeReads.push(path), {days: [], next: ''}) : path === '/api/undo' ? {undo: null}
     : path === '/api/sync' ? {state: {status: 'done', imported: 1}, history: [], damaged: null} : path.startsWith('/api/bootstrap') ? {token: '', total: 0, undo: null} : [];
   globalThis.fetch = async path => ({status: 200, ok: true, json: async () => answer(path)});
@@ -156,7 +156,7 @@ test('认一认「都不是」常驻在底栏，一次把整批记成不是 TA�
   const {home, wireHome} = homeModule, {state, edits} = web.core(), page = web.fakePage(), posts = [];
   globalThis.ResizeObserver ||= class { observe() {} };
   gridModule.viewOpts.ask = true;
-  Object.assign(state, {route: {page: 'home'}, nsfw: '', focused: null, viewer: -1});
+  Object.assign(state, {route: {page: 'days'}, nsfw: '', focused: null, viewer: -1});
   const items = ['a', 'b', 'c'].map(uuid => ({uuid, width: 100, height: 100}));
   const batch = () => ({entity: 'e1', kind: 'hint', name: 'A', items});
   Object.assign(home, {days: [], ask: batch(), askSkip: [], askOff: new Set(['b'])});

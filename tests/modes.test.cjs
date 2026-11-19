@@ -177,7 +177,7 @@ async function wired() {
 test('⌘＋／⌘－ 只在有网格的页面改网格缩放（已知问题 12）', async () => {
   await wired();
   const before = state.size;
-  for (const r of [{page: 'settings', section: 'general'}, {page: 'home'}, {page: 'characters'}, {page: 'groups'}]) {
+  for (const r of [{page: 'settings', section: 'general'}, {page: 'days'}, {page: 'characters'}, {page: 'groups'}]) {
     reset({route: r});
     assert.equal(keydown('+', {metaKey: true}).prevented, true, r.page);   // 也不交给浏览器缩放整页
     assert.equal(keydown('-', {metaKey: true}).prevented, true, r.page);
@@ -263,12 +263,12 @@ test('首页：详情栏和大图里的单图快捷键生效，详情栏外方�
   globalThis.Image = class {};
   page.el('grid').hidden = true;
   // 什么都没开：方向键、Space、↵ 都不处理，也不阻止页面滚动
-  reset({route: {page: 'home'}});
+  reset({route: {page: 'days'}});
   for (const key of ['ArrowRight', 'ArrowDown', ' ', 'Enter']) assert.equal(keydown(key).prevented, false, key);
   assert.equal(state.cursor, -1);
   assert.equal(state.viewer, -1);
   // 详情栏打开：→ 换到下一张，不按网格的行去滚首页
-  reset({route: {page: 'home'}, focused: 'a'});
+  reset({route: {page: 'days'}, focused: 'a'});
   page.el('viewport').scrollTop = 1234;
   assert.equal(keydown('ArrowRight').prevented, true);
   assert.equal(state.focused, 'b');
@@ -282,7 +282,7 @@ test('首页：详情栏和大图里的单图快捷键生效，详情栏外方�
   calls.length = 0; keydown('Backspace'); await settle();
   assert.deepEqual(calls.find(([p]) => p === '/api/change')?.[1], {ids: ['b'], action: 'rejected', entity: 'c1'});
   // Space 打开的是详情栏里那张（不是别处留下的光标），大图里 ← → 换图，再按 Space 关掉
-  reset({route: {page: 'home'}, focused: 'c', cursor: 0});
+  reset({route: {page: 'days'}, focused: 'c', cursor: 0});
   assert.equal(keydown(' ').prevented, true);
   assert.equal(state.viewer, 2);
   keydown('ArrowLeft'); await settle();
@@ -316,7 +316,7 @@ test('⌘滚轮、捏合只在主区是网格的页面缩放网格，也不交�
   const viewport = page.el('viewport');
   const wheel = route => { reset({route}); frames = 0; const e = {ctrlKey: false, metaKey: true, deltaY: -50, clientX: 10, clientY: 10, prevented: false, preventDefault() { this.prevented = true; }}; for (const fn of viewport.listeners.wheel) fn(e); return e; };
   const pinch = route => { reset({route}); frames = 0; const e = {scale: 2, clientX: 10, clientY: 10, prevented: false, preventDefault() { this.prevented = true; }}; for (const fn of viewport.listeners.gesturestart) fn(e); for (const fn of viewport.listeners.gesturechange) fn(e); return e; };
-  for (const r of [{page: 'settings', section: 'general'}, {page: 'home'}, {page: 'characters'}, {page: 'identity'}]) {
+  for (const r of [{page: 'settings', section: 'general'}, {page: 'days'}, {page: 'characters'}, {page: 'identity'}]) {
     assert.equal(wheel(r).prevented, true, r.page); assert.equal(frames, 0, r.page);
     assert.equal(pinch(r).prevented, true, r.page); assert.equal(frames, 0, r.page);
   }

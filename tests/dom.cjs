@@ -44,6 +44,7 @@ class Node {
     if (current && this.contains(current.activeElement) && current.activeElement !== current.body) current.activeElement = current.body;
     p.childNodes.splice(p.childNodes.indexOf(this), 1); this.parentNode = null;
   }
+  replaceChildren(...nodes) { for (const c of [...this.childNodes]) c.remove(); this.append(...nodes); }
   replaceWith(node) { const p = this.parentNode; if (p) { p.insertBefore(node, this); this.remove(); } }
   contains(node) { for (let n = node; n; n = n.parentNode) if (n === this) return true; return false; }
   get textContent() { return this.nodeType === 3 ? this.data : this.childNodes.map(c => c.textContent).join(''); }

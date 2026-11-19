@@ -251,7 +251,7 @@ test('a library page finishing after navigation cannot overwrite home items', as
   try {
     const {state} = gridPage({total: 200}); state.items = [];
     globalThis.fetch = () => new Promise(r => resolve = body => r({status: 200, ok: true, json: async () => body}));
-    const before = state.dataVersion, pending = grid.loadPage(100); state.route = {page: 'home'}; state.items = [{uuid: 'home'}];
+    const before = state.dataVersion, pending = grid.loadPage(100); state.route = {page: 'days'}; state.items = [{uuid: 'home'}];
     resolve({items: [{uuid: 'old-library'}]}); await pending;
     assert.equal(state.items.length, 1); assert.equal(state.items[0].uuid, 'home'); assert.equal(state.dataVersion, before);
   } finally { restore(); }

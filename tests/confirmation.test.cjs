@@ -84,7 +84,7 @@ test('rapid repeated removal has one preview, dialog and commit', async () => {
 for (const change of ['token','route']) test(`confirmation after ${change} change cannot submit`, async () => {
   const h = harness(), pending = h.remove(); await tick();
   if (change === 'token') h.c.session.token = 'replacement-session';
-  else h.c.state.route = {page:'home'};
+  else h.c.state.route = {page:'days'};
   h.dialogs[0].close('ok'); await pending;
   assert.equal(h.calls.length,1);
 });

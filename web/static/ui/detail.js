@@ -15,7 +15,6 @@ import {$, readFailure, workSmall} from './dom.js';
 import {PAGE, currentItem, endPreview, favoriteOne, kept, loadPage, markDetailKeys, mutate, openTagPicker, previewList, previewing, renderGrid, rowHeight, rowOf, rowTop, setCursor, syncCards, toggleInfo, viewOpts} from './grid.js';
 import {newIds, openPicker, targets} from './palette.js';
 import {artistSection, findArtistWorks, findArtists} from './artists.js';
-import {markHomeFocus} from './home.js';
 import {bindFileActions, fileActions, wireDragOut} from './files.js';
 import {createLayer} from './overlay.js';
 import {MARKS} from '../core/favorites.js';
@@ -24,7 +23,7 @@ import {detailHeart, viewerHeart} from './favorites.js';
 // 哪一次检查面板读取是当前的：更慢、更早的那次绝不会画到它上面。
 let detailGen = 0;
 // ---------- 检查面板 ----------
-export function closeInspector() { detailGen++; if (state.viewer < 0) kept.hold = null; state.focused = null; state.detail = null; if (state.viewer < 0) state.question = null; $('inspector').hidden = true; markHomeFocus(); syncCards(); requestAnimationFrame(() => renderGrid()); }
+export function closeInspector() { detailGen++; if (state.viewer < 0) kept.hold = null; state.focused = null; state.detail = null; if (state.viewer < 0) state.question = null; $('inspector').hidden = true; pageOf(state.route).focus?.(state.focused); syncCards(); requestAnimationFrame(() => renderGrid()); }
 function identityChips(d, compact = false) {
   // C 换掉的是主角色（primaryOf），所以只有它的 ⇄ 写着 C；A 是追加（#399）。
   const primary = primaryOf(d);
@@ -72,7 +71,7 @@ async function loadCharStats(id, ident, gen) {
   for (const b of $('charStats').querySelectorAll('[data-copy]')) b.onclick = () => inspect(b.dataset.copy);
 }
 export async function inspect(ident, quiet = false) {
-  const gen = ++detailGen; state.focused = ident; $('inspector').hidden = false; markHomeFocus();
+  const gen = ++detailGen; state.focused = ident; $('inspector').hidden = false; pageOf(state.route).focus?.(state.focused);
   if (!quiet) $('inspector').innerHTML = `<div class="loading-line">${t('读取图片详情…')}</div>`;
   syncCards(); requestAnimationFrame(() => renderGrid());
   try {

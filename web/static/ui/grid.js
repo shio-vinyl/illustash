@@ -830,7 +830,7 @@ function favButton(n, arm) {
 
 // ---------- 视图选项 ----------
 // 这里的一切都是可选的细节：默认保持安静，每个开关按浏览器保存。
-const VIEW_DEFAULTS = {captions: true, marks: true, hints: true, footer: false, chart: true, same: true, meta: true, homeSize: 1, hero: true, people: false, ask: true};
+const VIEW_DEFAULTS = {captions: true, marks: true, hints: true, footer: false, chart: true, same: true, meta: true, homeSize: 1, people: false, ask: true};
 export const viewOpts = {...VIEW_DEFAULTS, ...prefs.get('view', {})};
 function applyViewClasses() {
   const b = document.body.classList;
@@ -840,9 +840,8 @@ const viewSwitch = (key, label, hint = '') => `<button class="view-opt" data-vie
 // 导出给样式清单页调用（tools/styleguide/live.js，#352）：改名或改参数时，tools/check_styleguide.py 会报出来。
 export function renderViewPop() {
   const grid = !pageOf(state.route).panel;
-  $('viewPopover').innerHTML = (pageOf(state.route).area === 'homePage' ? `<h6>${t('首页')}</h6><div class="view-group">
+  $('viewPopover').innerHTML = (pageOf(state.route).area === 'homePage' ? `<h6>${t('按天')}</h6><div class="view-group">
       <div class="view-row"><span>${t('缩略图')}</span><div class="segmented" id="homeSizeSeg">${[[0, t('小')], [1, t('中')], [2, t('大')]].map(([v, label]) => `<button data-hsize="${v}" class="${viewOpts.homeSize === v ? 'on' : ''}">${label}</button>`).join('')}</div></div>
-      ${viewSwitch('hero', t('放大每组主图'))}
       ${viewSwitch('people', t('分组显示角色数'))}
       ${viewSwitch('marks', t('图上显示副本数'))}
     </div>` : '') + (grid ? `<h6>${t('图片网格')}</h6><div class="view-group">
@@ -856,7 +855,7 @@ export function renderViewPop() {
       ${viewSwitch('chart', t('每月加入张数'), t('这个角色每月收了多少张'))}
       ${viewSwitch('same', t('同一角色的其它图'))}
       ${viewSwitch('meta', t('文件信息与画面标签'))}
-      ${viewSwitch('ask', t('偶尔问一句「是 TA 吗？」'), t('在详情和首页'))}
+      ${viewSwitch('ask', t('偶尔问一句「是 TA 吗？」'), t('在详情和按天视图'))}
     </div><div class="view-foot"><span>${t('设置会自动保存')}</span><button class="link-button strong" id="viewReset">${t('恢复默认')}</button></div>`;
   $('zoom')?.addEventListener('input', e => requestZoom(() => setSize(sliderToSize(Number(e.target.value)), undefined, undefined, true)));
   $('viewReset').onclick = () => { Object.assign(viewOpts, VIEW_DEFAULTS); prefs.set('view', viewOpts); afterViewChange(true); renderViewPop(); pageOf(state.route).refresh?.('view'); };
@@ -1065,7 +1064,7 @@ export function wireGrid() {
     b.setAttribute('aria-checked', viewOpts[key]); b.querySelector('.view-sw').classList.toggle('on', viewOpts[key]);
     afterViewChange(key === 'captions' || key === 'hints');
     if (['chart', 'same', 'meta'].includes(key) && state.focused && !$('inspector').hidden) inspect(state.focused, true);
-    if (['hero', 'people', 'marks'].includes(key)) pageOf(state.route).refresh?.('view');
+    if (['people', 'marks'].includes(key)) pageOf(state.route).refresh?.('view');
     if (key === 'ask') { if (state.focused && !$('inspector').hidden) inspect(state.focused, true); pageOf(state.route).refresh?.('ask'); }
   });
   applyViewClasses();

@@ -168,6 +168,7 @@ export const poolIs = (route, ...pools) => pools.includes(pageOf(route).pool);
 //                        画廊的条件失效）
 //   failedNext(r)        readFailed 认下的失败在空状态下面给的去处，写法同 emptyNext（画廊的「删除画廊」）
 //   reveal(uuid)         主区不是网格的页面把这张图滚进视野：详情栏、大图翻页时，和面板页借列表看的大图关掉时（#424）
+//   focus(uuid)          主区不是网格的页面标出详情栏开着的那张（ui/detail.js 打开、关掉详情栏时调；关掉时 uuid 为空）
 //   refresh(why)         数据变了之后重画面板页：'edit' 改动之后、'undo' 撤销之后、'learned' 确认角色或同步结束后后台学习
 //                        收尾之后（#400、#404）、'sync' 同步到新图之后、'nsfw' 切换 NSFW 之后、'view' 视图选项之后、
 //                        'ask' 「偶尔问一句」开关之后。筛选变了不走这里，走 render({samePage: true})

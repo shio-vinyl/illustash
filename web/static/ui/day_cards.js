@@ -43,6 +43,7 @@ const PEEK = 4;
 const TITLES = {done: () => t('同步完成'), needs_recognition: () => t('等待识别'), interrupted: () => t('同步已中断'), error: () => t('同步失败')};
 export function syncCard({open}) {
   const s = scope('day-sync'), {el, refs} = SYNC();
+  show(el, false);   // 读到同步状态之前不显示
   s.on(el, 'click', () => open());
   function update({sync, today}) {
     const status = sync?.status || 'off', active = SYNC_ACTIVE.includes(status);
@@ -74,6 +75,7 @@ function askTile(x, toggle) {
 }
 export function askCard({answer, other, later}) {
   const s = scope('day-ask'), {el, refs} = ASK();
+  show(el, false);   // 有一批要问的才显示
   let batch = null, off = new Set(), open = false, entity = '';
   const toggle = uuid => { if (off.has(uuid)) off.delete(uuid); else off.add(uuid); paint(); };
   const tiles = keyed(refs.tiles, {key: x => x.uuid, create: x => askTile(x, toggle), exit: el => exit(el, {to: 'scale'}), scope: s});

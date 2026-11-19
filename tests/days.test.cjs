@@ -9,9 +9,9 @@ test.before(async () => { await web.ready(); D = await web.load('core/days.js');
 const item = (uuid, extra = {}) => ({uuid, width: 300, height: 400, memberships: [], ...extra});
 const day = (d, uuids, extra = {}) => ({day: d, count: uuids.length, people: 0, characters: [], hero: uuids[0] || null, items: uuids.map(u => item(u)), ...extra});
 
-test('取数参数：带图库的筛选、搜索和 R18，不带 day、like', () => {
-  const q = D.dayQuery({page: 'days', q: 'miku', has: ['fav'], not: ['tag:x'], from: '2026-01-01', day: '2026-02-02', like: 'u1', by: 'face'}, 'hide');
-  assert.deepEqual(q, {q: 'miku', has: '["fav"]', not: '["tag:x"]', from: '2026-01-01', nsfw: 'hide'});
+test('取数参数：带图库的筛选、搜索、旧的单值 day 和 NSFW 设置，不带 like、at', () => {
+  const q = D.dayQuery({page: 'days', q: 'miku', has: ['fav'], not: ['tag:x'], from: '2026-01-01', day: '2026-02-02', like: 'u1', by: 'face', at: '2026-01-05'}, 'hide');
+  assert.deepEqual(q, {day: '2026-02-02', q: 'miku', has: '["fav"]', not: '["tag:x"]', from: '2026-01-01', nsfw: 'hide'});
 });
 
 test('读几天：带上收藏和主色，before 为空时不发', async () => {
@@ -41,6 +41,16 @@ test('同步后并进：重读范围里没了的一天去掉；收藏、主色�
   assert.deepEqual(days.map(g => g.day), ['2026-11-18', '2026-11-16']);
   assert.ok(changed.has('2026-11-18'));
   assert.deepEqual(D.mergeDays(old, []).days, old);
+});
+
+test('重读中间一段（改动之后重读视野附近）：只换这一段，前后的天原样留着；dayAfter 给游标', () => {
+  const old = [day('2026-11-19', ['n']), day('2026-11-18', ['a']), day('2026-11-17', ['c']), day('2026-11-10', ['z'])];
+  const fresh = [day('2026-11-18', ['a'], {count: 2, items: [item('a'), item('b')]}), day('2026-11-17', ['c'])];
+  const {days, changed} = D.mergeDays(old, fresh, D.dayAfter('2026-11-18'));
+  assert.deepEqual(days.map(g => g.day), ['2026-11-19', '2026-11-18', '2026-11-17', '2026-11-10']);
+  assert.equal(days[0], old[0]); assert.equal(days[2], old[2]); assert.equal(days[3], old[3]);
+  assert.deepEqual([...changed], ['2026-11-18']);
+  assert.equal(D.dayAfter('2026-12-31'), '2027-01-01'); assert.equal(D.dayAfter('2028-02-28'), '2028-02-29');
 });
 
 test('读到底的说明：最早的一天和总张数', () => {

@@ -5,35 +5,36 @@
 // 接口（#718、#717）：/api/home 和图库网格接受同样的筛选，按日期从新到旧给几天，每天 {day, count, people, characters（前八位）,
 // items（最多 18 张）, hero}；before 是排他的游标（上一批的 next），next 为空表示读到底了。marks=fav,color 让每张图带收藏和主色。
 import {I18N} from './i18n.js';
-import {PAGES} from './pages.js';
+import {libraryFilters} from './pages.js';
 import {api, post} from './session.js';
 
 // 每张图带上收藏和主色（缩略图读完之前的占位色，#717）。
 export const DAY_MARKS = 'fav,color';
 // 第一次读几天；接近底部时每次再读几天。
 export const FIRST_DAYS = 5, MORE_DAYS = 4;
+// 后端一次最多给 20 天（/api/home 的 days）、一页最多 200 张（/api/assets 的 limit）。
+export const MAX_DAYS = 20, MAX_PAGE = 200;
 
 // ---------- 读 ----------
-// 按天读取用的参数：图库网格的筛选和搜索（三种视图共用，#703 第 2 问）加 R18。按天视图自己按日期分组，所以路由里的
-// day 不带；「更多像这张的」（like、by）不是筛选，也不带。
+// 按天读取用的参数：图库的筛选和搜索（三种视图共用，#703 第 2 问；旧的单值参数 day 在三种视图里都是「只看这一天加入的」）
+// 加 NSFW 设置。看哪一天（at）不是筛选，不在里面。
 export function dayQuery(route, nsfw) {
-  const f = {...(PAGES.library.params(route) || {})};
-  delete f.day; delete f.like; delete f.by;
+  const f = libraryFilters(route);
   if (nsfw) f.nsfw = nsfw;
   return f;
 }
 // 读几天：before 为空从最新的一天读起。返回 {days, next}。
-export async function readDays(query, {before = '', days = FIRST_DAYS} = {}) {
-  const r = await api('/api/home?' + new URLSearchParams({...query, days, ...(before ? {before} : {}), marks: DAY_MARKS}));
+export async function readDays(query, {before = '', days = FIRST_DAYS, signal} = {}) {
+  const r = await api('/api/home?' + new URLSearchParams({...query, days, ...(before ? {before} : {}), marks: DAY_MARKS}), {signal});
   return {days: r.days || [], next: r.next || ''};
 }
 
 // 一天的全部角色（展开「另外 N 位」时）：/api/home 只给前八位，其余按同样的筛选和这一天分页读 /api/assets，汇总 memberships。
-// 按当天张数从多到少排，一样多时按名字。图很多的一天最多读 limit × pages 张，读不完的不算进去（芯片行仍以 people 为总数）。
-export async function readDayPeople(query, day, {limit = 500, pages = 20} = {}) {
+// 按当天张数从多到少排，一样多时按名字。图很多的一天最多读 limit × pages 张（默认一万张），读不完的不算进去（芯片行仍以 people 为总数）。
+export async function readDayPeople(query, day, {limit = MAX_PAGE, pages = 50, signal} = {}) {
   const counts = new Map();
   for (let page = 0; page < pages; page++) {
-    const r = await api('/api/assets?' + new URLSearchParams({...query, day, order: 'newest', offset: page * limit, limit, count: 0}));
+    const r = await api('/api/assets?' + new URLSearchParams({...query, day, order: 'newest', offset: page * limit, limit, count: 0}), {signal});
     for (const item of r.items || []) for (const m of item.memberships || []) {
       const c = counts.get(m.id) || {id: m.id, name: m.name, tag: m.tag, count: 0};
       c.count++; counts.set(m.id, c);
@@ -52,17 +53,25 @@ export function sameDay(a, b) {
   const items = x => (x.items || []).map(i => `${i.uuid}:${i.fav ? 1 : 0}:${i.color || ''}`).join(' ');
   return chars(a) === chars(b) && items(a) === items(b);
 }
-// 已读到的天 list，加上重读的最新几天 fresh（从新到旧）：fresh 覆盖的日期范围里以 fresh 为准（没变的天沿用旧对象，
-// 没了的天去掉，新的一天插到前面），更早的天原样留着。返回 {days, changed}：changed 是换了对象的日期。
-export function mergeDays(list, fresh) {
+// 已读到的天 list，并进重读的一段 fresh（从新到旧）。重读的是从 newest（不含这一天，before 游标）往前的几天；newest 为空是从
+// 最新的一天读起（同步之后）。这一段的日期范围里以 fresh 为准：没变的天沿用旧对象，没了的天去掉，新的一天插进来；范围以外的
+// 天原样留着。fresh 为空时不知道范围，什么都不动。返回 {days, changed}：changed 是换了对象的日期。
+export function mergeDays(list, fresh, newest = '') {
   if (!fresh.length) return {days: list, changed: new Set()};
-  const oldest = fresh[fresh.length - 1].day, before = new Map(list.map(g => [g.day, g])), changed = new Set(), days = [];
-  for (const g of fresh) {
+  const oldest = fresh[fresh.length - 1].day, before = new Map(list.map(g => [g.day, g])), changed = new Set();
+  const merged = fresh.map(g => {
     const old = before.get(g.day);
-    if (old && sameDay(old, g)) days.push(old); else { days.push(g); changed.add(g.day); }
-  }
-  for (const g of list) if (g.day < oldest) days.push(g);
-  return {days, changed};
+    if (old && sameDay(old, g)) return old;
+    changed.add(g.day);
+    return g;
+  });
+  const newer = newest ? list.filter(g => g.day >= newest) : [];
+  return {days: [...newer, ...merged, ...list.filter(g => g.day < oldest)], changed};
+}
+// 某一天的下一天（'YYYY-MM-DD'）：要从这一天起往前读时当 before 游标（游标不含它自己）。
+export function dayAfter(day) {
+  const [y, m, d] = day.split('-').map(Number), next = new Date(Date.UTC(y, m - 1, d + 1));
+  return next.toISOString().slice(0, 10);
 }
 // 读到的天里最早的一天和总张数（读到底以后写「最早的一张在 X 月 X 日加入 · 共 N 张」）。
 export function summary(days) {

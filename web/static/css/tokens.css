@@ -30,6 +30,8 @@
   /* 0.4 新增（#705）：新部件的强调色底（亮色比 --accent-btn 略深，白字到 4.6:1）和底上的文字；海报上的文字阴影与压暗渐变；浮层的磨砂玻璃（没有 backdrop-filter 时用 solid） */
   --accent-fill:#676bcd;--on-accent:#fff;--image-text-shadow:0 1px 8px rgba(12,12,18,.3);--scrim:linear-gradient(180deg,rgba(12,12,18,0) 35%,rgba(12,12,18,.62));
   --glass-surface:rgba(255,255,255,.72);--glass-solid:rgba(255,255,255,.96);
+  /* 看图器（#709）：亮暗主题里都是深底，只在这里写一套 */
+  --viewer-bg:#121215;--viewer-ink:#e4e4e9;--viewer-muted:#a3a3ad;--viewer-chip:rgba(255,255,255,.08);--viewer-chip-hover:rgba(255,255,255,.16);--viewer-line:rgba(255,255,255,.2);
   /* 图的主色（#705）：由 ui/tint.js 的 setTint() 写进元素的 --tint 并加 .tint，派生的底色在文件末尾的 .tint 块里算；没写时是中性色 */
   --tint:#9a9aa6}
 /* 暗色主题：html[data-theme=dark]，由 theme.js 设置；颜色成对写在这里，规则里只引用变量。 */

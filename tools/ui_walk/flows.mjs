@@ -197,6 +197,61 @@ export const FLOWS = [
   },
 
   {
+    name: 'viewer-info',
+    title: '大图里翻几张后按 I 换成详情卡片 → 详情里翻页：详情是大图里最后看的那张，翻页时卡片不重建（#709）',
+    covers: ['#424 2-7', '#709'],
+    async run(w, page) {
+      await w.step('打开图库', () => goto(page, '#/library'));
+      await w.step('点第 3 张（开详情卡片）', p => p.click(cardAt(2)));
+      await w.step('Space 进大图', p => p.key('Space'));
+      let snap;
+      for (let i = 1; i <= 2; i++) snap = await w.step(`大图里按 → 第 ${i} 次`, p => p.key('ArrowRight'));
+      const seen = snap.viewer;
+      snap = await w.step('按 I 换成详情', p => p.key('i'), {shot: true});
+      w.check('大图关了', !snap.overlays.includes('viewer'), snap.overlays);
+      w.check('详情卡片开着，是大图里最后看的那张', snap.overlays.includes('inspector') && snap.focused === seen, {focused: snap.focused, viewer: seen});
+      // 翻页只换变了的部分：卡片和图片节点还是原来那些（#709 完成标准）。
+      await page.eval(`window.__card = document.querySelector('#inspector .dc'); window.__img = document.getElementById('detailImg')`);
+      snap = await w.step('详情里按 ←', p => p.key('ArrowLeft'));
+      w.check('翻到上一张，光标跟着', snap.focused !== seen && snap.cursor === snap.focused, {focused: snap.focused, cursor: snap.cursor});
+      const kept = await page.eval(`document.querySelector('#inspector .dc') === window.__card && document.getElementById('detailImg') === window.__img`);
+      w.check('翻页没有重建卡片', kept, kept);
+      snap = await w.step('Esc 关详情', p => p.key('Escape'));
+      w.check('详情卡片关了', !snap.overlays.includes('inspector'), snap.overlays);
+    },
+  },
+
+  {
+    name: 'panel-peek',
+    title: '按组整理里长按一张看大图 → 翻一张 → Esc：大图里只翻这一组、没有「信息」，关掉后分组和详情都不动（#424 的 2-2）',
+    covers: ['#424 2-2', '#709'],
+    async run(w, page) {
+      await w.step('打开未识别 › 按组整理', () => goto(page, '#/groups'));
+      const before = await inPage(page, `return document.querySelectorAll('#groupsPage .gsec').length;`);
+      const at = await page.center('#groupsPage .gsec [data-peek]');
+      w.check('组里有能看大图的图', !!at, at);
+      if (!at) return;
+      let snap = await w.step('长按第一张', async p => {
+        await p.send('Input.dispatchMouseEvent', {type: 'mouseMoved', x: at.x, y: at.y});
+        await p.send('Input.dispatchMouseEvent', {type: 'mousePressed', x: at.x, y: at.y, button: 'left', clickCount: 1});
+        await sleep(600);
+        await p.send('Input.dispatchMouseEvent', {type: 'mouseReleased', x: at.x, y: at.y, button: 'left', clickCount: 1});
+      }, {shot: true});
+      w.check('大图开了', snap.overlays.includes('viewer'), snap.overlays);
+      const info = await page.eval(`!!document.querySelector('#viewerBar [data-act="info"]')`);
+      w.check('借来的列表开的大图没有「信息」', !info, info);
+      const first = snap.viewer;
+      snap = await w.step('大图里按 →', p => p.key('ArrowRight'));
+      w.check('翻到这一组的下一张', snap.viewer && snap.viewer !== first, {first, now: snap.viewer});
+      snap = await w.step('Esc 关大图', p => p.key('Escape'));
+      w.check('大图关了', !snap.overlays.includes('viewer'), snap.overlays);
+      w.check('没有开详情卡片', !snap.overlays.includes('inspector'), snap.overlays);
+      const after = await inPage(page, `return document.querySelectorAll('#groupsPage .gsec').length;`);
+      w.check('分组原样', after === before, {before, after});
+    },
+  },
+
+  {
     name: 'swap-key',
     title: '同一张已有角色的图，在详情栏、大图、角色页里按 C：都是「换成」，标的键和按钮做同一件事',
     covers: ['#386 1-3', 'SHORTCUTS 的 C'],
@@ -225,7 +280,8 @@ export const FLOWS = [
         w.check(`${where}：撤销后回到 ${a.name}`, same(await rolesOf(w, page, target), [a.name]), await rolesOf(w, page, target));
       }
       // 详情栏上标着 C 的按钮做的也是同一件事。
-      await w.step('点详情栏的「更正角色 C」', async p => { await goto(p, '#/library'); await openCard(w, p, target); await p.click('#fixChar'); });
+      // 详情卡片角色身份块里的「换一个… C」（#709；原来是底部的「更正角色 C」，#748）。等卡片读完这张再点，和人看到内容再点一样。
+      await w.step('点详情卡片的「换一个… C」', async p => { await goto(p, '#/library'); await openCard(w, p, target); await p.click('#inspector .dc[aria-busy="false"] [data-act="swap"]'); });
       await w.step(`搜「${b.name}」并回车`, async p => { await pickerFind(p, b.name); await p.key('Enter'); });
       await page.settle({quiet: 400});
       w.check('按钮也是换成', same(await rolesOf(w, page, target), [b.name]), await rolesOf(w, page, target));
@@ -438,7 +494,7 @@ export const FLOWS = [
 
       await w.step('打开图库', () => goto(page, '#/library'));
       snap = await w.step('点一张开详情栏', p => p.click(cardAt(0)), {shot: true});
-      const hit = await page.eval(`(() => { const b = [...document.querySelectorAll('#inspector .inspector-actions button')].pop(); if (!b) return 'no-button';
+      const hit = await page.eval(`(() => { const b = [...document.querySelectorAll('#inspector .dc-foot button')].pop(); if (!b) return 'no-button';
         const r = b.getBoundingClientRect(); const top = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
         return top && (top === b || b.contains(top)) ? 'button' : (top?.closest('#checklist') ? 'checklist' : (top?.id || top?.className || 'other')); })()`);
       w.check('详情栏底部的按钮点得到（不被上手清单盖住）', hit === 'button', hit);

@@ -1,4 +1,180 @@
-/* 详情卡片与看图器。归 0.4 第 D 步（详情卡片与看图器，#709）；A2（#705）只建了文件和层，规则由那一步写。
-   只用 css/tokens.css 的令牌和 css/base.css 的公共部件；重写一块，就删掉 app.css 里对应的旧规则。 */
+/* 详情卡片与看图器。归 0.4 第 D 步（详情卡片与看图器，#709）：卡片的部件在 ui/detail_card.js，看图器在 ui/viewer.js。
+   只用 css/tokens.css 的令牌和 css/base.css 的公共部件（.btn、.chip、.avatar、.glass-bar、.text-meta）。 */
 @layer pages{
+
+/* ---- 详情卡片：浮在内容页右边，图在顶，背后是图的环境光（--tint-glow，没有主色时中性） ---- */
+.inspector{display:flex;flex:none;width:340px;min-height:0;padding:var(--space-10) var(--space-10) var(--space-10) 0}
+.dc{position:relative;isolation:isolate;display:flex;flex-direction:column;width:100%;min-height:0;overflow:hidden;border-radius:var(--radius-18);background:var(--sheet);color:var(--ink);box-shadow:var(--shadow-pop)}
+.dc::before{content:"";position:absolute;inset:0 0 auto;height:440px;z-index:var(--z-page-1);background:radial-gradient(120% 75% at 50% 0%,var(--tint-glow),transparent 72%);pointer-events:none}
+.dc>*{position:relative;z-index:var(--z-page-2)}
+
+.dc-art{display:grid;place-items:center;min-height:200px;margin:var(--space-10) var(--space-10) 0}
+.dc-preview{display:grid;place-items:center;width:100%;margin:0;padding:0;border:0;background:transparent;cursor:zoom-in}
+.dc-img{display:block;max-width:100%;max-height:min(420px,50vh);border-radius:var(--radius-8);box-shadow:var(--shadow-hover)}
+.dc-missing{margin:0;color:var(--muted);font-size:var(--fs-12)}
+.dc-bar{position:absolute;top:var(--space-8)}
+.dc-bar.is-start{left:var(--space-8)}
+.dc-bar.is-end{right:var(--space-8)}
+.dc-bar>.fav-toggle[aria-pressed=true]{color:var(--fav)}
+.dc-bar>.fav-toggle[aria-pressed=true] svg{fill:currentColor}
+
+.dc-body{flex:1;min-height:0;overflow:auto;padding:var(--space-16) var(--space-20) var(--space-8);transition:opacity var(--dur-1) var(--ease)}
+/* 换成另一张、详情还在读：正文是上一张的，稍微变淡。读得快时不闪：脚本等一会儿才加 .is-dim（ui/detail_card.js 的 DIM_MS），
+   不靠 transition-delay，「减少动态效果」时也一样。第一次读回之前（.is-empty）只露出读取中的那行字，不露空架子。 */
+.dc.is-dim .dc-body{opacity:.55}
+.dc.is-empty .dc-body>:not(.dc-status),.dc.is-empty .dc-foot{display:none}
+.dc-status{margin:var(--space-8) 0;text-align:center}
+.dc-label{margin:0 0 var(--space-6);color:var(--muted);font-size:var(--fs-11);font-weight:var(--fw-600)}
+.dc-section{margin-top:var(--space-20)}
+.dc-chips{display:flex;flex-wrap:wrap;align-items:center;gap:var(--space-6)}
+.dc-chips>.dc-label{margin:0}
+
+/* 提问条 */
+.dc-ask{display:grid;gap:var(--space-8);margin-bottom:var(--space-16);padding:var(--space-12);border-radius:var(--radius-12);background:var(--accent-soft);color:var(--ink);font-size:var(--fs-13)}
+.dc-ask-q{display:flex;flex-direction:column;gap:var(--space-2)}
+.dc-ask .ask-btns{display:flex;flex-wrap:wrap;gap:var(--space-6)}
+
+/* 角色身份：圆头像 + 名字 + 认出方式，下面「没错 / 换一个…」 */
+.dc-who{display:grid;gap:var(--space-10)}
+.dc-lead{display:flex;align-items:center;gap:var(--space-12);min-width:0}
+.dc-avatar{flex:none;border-radius:var(--radius-round)}
+.dc-avatar-none{width:40px;height:40px}
+.dc-lead-text{flex:1;min-width:0}
+.dc-lead-text>.text-meta{margin:var(--space-2) 0 0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.dc-name{margin:0;overflow:hidden;font-size:var(--fs-20);font-weight:var(--fw-750);letter-spacing:-.02em;line-height:1.2;white-space:nowrap;text-overflow:ellipsis}
+.dc-name>a{color:inherit;text-decoration:none}
+.dc-name>a:hover{text-decoration:underline}
+.dc-name>.char-work{font-size:var(--fs-12)}
+.dc-ext{margin-left:var(--space-4);color:var(--muted);font-size:var(--fs-11);font-weight:var(--fw-400)}
+.dc-note{margin:0}
+.dc-acts{display:flex;flex-wrap:wrap;gap:var(--space-6)}
+.dc-acts kbd,.dc-foot kbd,.dc-also kbd,.dc-chips kbd{margin-left:var(--space-2)}
+.dc-icon{display:grid;place-items:center;flex:none;width:var(--h-28);height:var(--h-28);margin:0;padding:0;border:0;border-radius:var(--radius-round);background:transparent;color:var(--muted);font:inherit;font-size:var(--fs-13);cursor:pointer;transition:background-color var(--dur-1) var(--ease),color var(--dur-1) var(--ease)}
+.dc-icon:hover{background:var(--soft);color:var(--ink)}
+.dc-variants{display:flex;flex-wrap:wrap;gap:var(--space-4)}
+.dc-chip-x{margin:0;padding:0 var(--space-4);border:0;border-radius:var(--radius-pill);background:transparent;color:var(--muted);font:inherit;font-size:var(--fs-11);cursor:pointer}
+.dc-chip-x:hover{background:var(--chip-hover);color:var(--ink)}
+.dc-others{display:grid;gap:var(--space-6)}
+.dc-others:empty{display:none}
+.dc-other{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:var(--space-4) var(--space-8);min-width:0}
+.dc-other>.dc-variants{grid-column:2/-1}
+.dc-other>.dc-variants[hidden]{display:none}
+.dc-other-name{overflow:hidden;color:var(--ink);font-size:var(--fs-13);text-decoration:none;white-space:nowrap;text-overflow:ellipsis}
+.dc-other-name:hover{text-decoration:underline}
+.dc-other.is-machine .dc-other-name{color:var(--ink2)}
+.dc-other-acts{display:flex;opacity:.45;transition:opacity var(--dur-1) var(--ease)}
+.dc-other:hover .dc-other-acts,.dc-other:focus-within .dc-other-acts{opacity:1}
+.dc-also{justify-self:start;margin:0;padding:var(--space-4) 0;border:0;background:transparent;color:var(--muted);font:inherit;font-size:var(--fs-12);cursor:pointer}
+.dc-also:hover{color:var(--ink)}
+.dc-alt.is-weak{opacity:.62}
+
+/* 角色卡：每月加入张数、同一角色的几张 */
+.dc-stats{display:grid;gap:var(--space-8);margin-top:var(--space-16)}
+.dc-stat-line{display:flex;justify-content:space-between;gap:var(--space-8);margin:0;color:var(--muted);font-size:var(--fs-12)}
+.dc-stat-line b{color:var(--ink);font-weight:var(--fw-600)}
+.dc-stat-line em{color:var(--accent-ink);font-style:normal}
+.dc-bars{display:flex;align-items:flex-end;gap:var(--space-2);height:32px}
+.dc-bars>i{flex:1;min-width:0;border-radius:var(--radius-4);background:var(--tint-soft)}
+.dc-bars>i.is-now{background:var(--accent)}
+.dc-same>.dc-label{display:flex;justify-content:space-between}
+.dc-same>.dc-label>a{color:var(--muted);font-weight:var(--fw-400);text-decoration:none}
+.dc-same-row{display:grid;grid-template-columns:repeat(4,1fr);gap:var(--space-6)}
+.dc-same-pic{margin:0;padding:0;border:0;border-radius:var(--radius-8);overflow:hidden;background:var(--soft);cursor:pointer}
+.dc-same-pic>img{display:block;width:100%;aspect-ratio:3/4;object-fit:cover}
+
+/* 画师 */
+.dc-artists{display:grid;gap:var(--space-10)}
+.dc-artists:empty{display:none}
+.dc-artist{display:grid;gap:var(--space-4);font-size:var(--fs-13)}
+.dc-artist-top{display:flex;align-items:center;gap:var(--space-8);min-width:0}
+.dc-artist-name{flex:1;min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.dc-artist-name a{color:var(--ink);font-weight:var(--fw-600);text-decoration:none}
+.dc-judge{display:flex;align-items:center;gap:var(--space-4);flex:none}
+.dc-artist-ok{color:var(--muted);font-size:var(--fs-11)}
+.dc-artist-more,.dc-homes,.dc-posts{color:var(--muted);font-size:var(--fs-12)}
+.dc-artist>.btn{justify-self:start}
+.dc-artist-none{display:flex;align-items:center;justify-content:space-between;gap:var(--space-8)}
+.dc-posts{display:flex;gap:var(--space-6);margin-top:var(--space-6)}
+
+/* 属性：一行一项，不折行 */
+.dc-props{display:grid;grid-template-columns:auto minmax(0,1fr);gap:var(--space-8) var(--space-16);margin:var(--space-20) 0 0;font-size:var(--fs-12)}
+.dc-props>dt{color:var(--muted)}
+.dc-props>dd{display:flex;align-items:center;gap:var(--space-8);min-width:0;margin:0;color:var(--ink2);white-space:nowrap}
+.dc-props[hidden]{display:none}
+.dc-file{min-width:0;overflow:hidden;text-overflow:ellipsis}
+.dc-link{flex:none;margin:0;padding:0;border:0;background:transparent;color:var(--accent-ink);font:inherit;cursor:pointer}
+.dc-link:hover{text-decoration:underline}
+
+/* 重复副本 */
+.dc-dups{display:grid;gap:var(--space-6)}
+.dc-dup{display:flex;align-items:center;gap:var(--space-10);margin:0;padding:var(--space-6);border:0;border-radius:var(--radius-8);background:var(--soft);color:var(--ink);font:inherit;font-size:var(--fs-12);line-height:1.45;text-align:left;cursor:pointer}
+.dc-dup:hover{background:var(--chip-hover)}
+.dc-dup>img{flex:none;width:44px;height:55px;border-radius:var(--radius-4);object-fit:cover}
+.dc-dup small{color:var(--muted)}
+
+/* 画面标签：收着 */
+.dc-fold>summary{color:var(--muted);font-size:var(--fs-11);font-weight:var(--fw-600);cursor:pointer;list-style:none}
+.dc-fold>summary::-webkit-details-marker{display:none}
+.dc-fold>summary::before{content:"›";display:inline-block;margin-right:var(--space-6);transition:transform var(--dur-1) var(--ease)}
+.dc-fold[open]>summary::before{transform:rotate(90deg)}
+.dc-fold>.dc-chips{margin-top:var(--space-8)}
+
+/* 底部：打开，加上整张图的那一两个决定 */
+.dc-foot{display:flex;gap:var(--space-6);padding:var(--space-10) var(--space-12) var(--space-12)}
+.dc-foot>.btn{flex:1}
+
+@media(max-width:760px){
+  .inspector{position:absolute;top:0;right:0;bottom:0;z-index:var(--z-page-5);width:min(340px,100%)}
+}
+
+/* ---- 看图器：深底，三张轮换（ui/viewer.js），图的框按宽高比用容器单位定 ---- */
+.viewer{position:fixed;inset:0;z-index:var(--z-overlay);display:flex;flex-direction:column;color:var(--viewer-ink)}
+.viewer.is-closing{pointer-events:none}
+.viewer:focus-visible{outline:none}
+.vw-backdrop{position:absolute;inset:0;background:var(--viewer-bg)}
+.viewer-top,.viewer-stage,.viewer-bar{position:relative}
+.viewer-top{display:flex;align-items:center;gap:var(--space-10);padding:var(--space-10) var(--space-16);color:var(--viewer-muted);font-size:var(--fs-12);font-variant-numeric:tabular-nums}
+.viewer-top .icon{border-radius:var(--radius-round);color:var(--viewer-ink)}
+.viewer-top .icon:hover{background:var(--viewer-chip)}
+.viewer-size{font-size:var(--fs-11)}
+.viewer-stage{flex:1;min-height:0;overflow:hidden;container-type:size;cursor:zoom-in;touch-action:none}
+.viewer-stage.zoomed{cursor:grab}
+.viewer-stage.zoomed:active{cursor:grabbing}
+.vw-slot{position:absolute;inset:0;display:grid;place-items:center;visibility:hidden}
+.vw-slot.is-current{visibility:visible}
+.vw-frame{position:relative;max-width:100%;max-height:100%}
+.vw-frame[hidden]{display:none}
+.vw-zoom{position:absolute;inset:0;transform-origin:center}
+.vw-zoom>img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;-webkit-user-select:none;user-select:none}
+.vw-zoom>img[hidden]{display:none}
+.vw-missing{margin:0;color:var(--viewer-muted);font-size:var(--fs-13)}
+.viewer-bar{padding:var(--space-12) var(--space-20) var(--space-20)}
+.vw-bar-in{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:var(--space-12) var(--space-24)}
+.vw-status{margin:0;color:var(--viewer-muted);font-size:var(--fs-12)}
+/* 翻到另一张、底栏的详情还在读：按钮不响应（ui/viewer.js 的 viewerBar），读得慢时变淡；第一次读回之前不露空架子 */
+.vw-bar-in{transition:opacity var(--dur-1) var(--ease)}
+.vw-bar-in.is-dim{opacity:.55}
+.vw-bar-in.is-empty>:not(.vw-status){display:none}
+.vw-acts{display:flex;flex-wrap:wrap;gap:var(--space-6)}
+.viewer-bar .chip{background:var(--viewer-chip);color:var(--viewer-ink)}
+.viewer-bar .chip:hover{background:var(--viewer-chip-hover);color:var(--viewer-ink)}
+.viewer-bar .chip.fav-act.on{color:var(--fav)}
+.viewer-bar kbd{margin-right:var(--space-2);background:transparent;box-shadow:inset 0 0 0 1px var(--viewer-line);color:var(--viewer-muted)}
+.viewer-bar .text-meta{color:var(--viewer-muted)}
+.viewer-bar .dc-ask{grid-template-columns:auto auto;align-items:center;margin:0;background:var(--viewer-chip);color:var(--viewer-ink)}
+.viewer-bar .btn{background:var(--viewer-chip);color:var(--viewer-ink)}
+.viewer-bar .btn.is-primary{background:var(--accent-fill);color:var(--on-accent)}
+.dc-who.is-compact{display:flex;flex-wrap:wrap;align-items:center;gap:var(--space-6)}
+.dc-who.is-compact .dc-others{display:flex;flex-wrap:wrap;gap:var(--space-6)}
+.dc-who.is-compact .dc-avatar-none{display:none}
+.dc-who.is-compact .dc-other{display:flex;padding:var(--space-2) var(--space-4) var(--space-2) var(--space-2);border-radius:var(--radius-pill);background:var(--viewer-chip)}
+.dc-who.is-compact .dc-other.is-off{display:none}
+.dc-who.is-compact .dc-other-name{color:var(--viewer-ink)}
+.dc-who.is-compact .dc-other-acts{opacity:1}
+.dc-who.is-compact .dc-icon{width:24px;height:24px;color:var(--viewer-muted)}
+.dc-who.is-compact .dc-icon:hover{background:var(--viewer-chip-hover);color:var(--viewer-ink)}
+.dc-who.is-compact .dc-also{color:var(--viewer-muted)}
+.dc-who.is-compact .dc-alts{display:flex;align-items:center;gap:var(--space-6)}
+.dc-who.is-compact .dc-alts[hidden]{display:none}
+.dc-who.is-compact .dc-alts>.dc-label{margin:0;color:var(--viewer-muted)}
 }

@@ -10,7 +10,7 @@ import {bytes, esc, localStamp} from '../core/format.js';
 import {updatesPost} from '../core/settings.js';
 import {state} from '../core/state.js';
 import {confirmAction} from './dialog.js';
-import {$, toast} from './dom.js';
+import {$, buttonsHTML, toast} from './dom.js';
 
 // 外壳的状态，只在这个安装能自己更新时；否则 null。
 export const selfUpdate = (u = state.updates) => u?.install?.available ? u.install : null;
@@ -57,8 +57,7 @@ export function updateButtons(u = state.updates) {
   return i ? [open(false), {act: 'install', label: t('下载并重启'), primary: true}] : [open(true)];
 }
 // 同样的按钮拼成 HTML，提示里的用 `data-nudge`。
-export const updateActions = (u = state.updates, attr = 'data-updates') => updateButtons(u).map(b =>
-  `<button class="${b.primary ? 'primary' : 'quiet'} small" ${attr}="${b.act}"${b.disabled ? ` disabled title="${esc(b.title || '')}"` : ''}>${esc(b.label)}</button>`).join('');
+export const updateActions = (u = state.updates, attr = 'data-updates') => buttonsHTML(updateButtons(u), attr);
 // 「设置 › 关于」那一行的标题和说明。
 export function updatesTitle(u = state.updates) {
   if (!u) return t('检查更新');
@@ -93,6 +92,8 @@ export async function updateAct(act) {
     const note = t('Illustash 会关闭，装好 {version} 后自己重新打开。图库、设置和识别模型都不受影响。', {version});
     const ok = await confirmAction(note, t('重启并安装更新'), t('重启并安装'));
     if (!ok) return false;
+    // 确认框开着的时候可能有任务开始了：再查一次，有任务就不装，已下载的更新留着。
+    if (tasksBusy()) { toast(t('有任务在运行，等它结束再重启')); return false; }
   }
   const body = {install: {action: 'download'}, cancel: {action: 'cancel'}, restart: {action: 'install'}}[act];
   if (!body) return false;

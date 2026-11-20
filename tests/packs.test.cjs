@@ -43,7 +43,7 @@ test('没下载：主按钮写明两个文件合起来的大小，可以从文�
   const b = buttons(c.packActions(x));
   assert.deepEqual(b.map(x => [x.act, x.label]), [['download', '下载角色资料包（约 2.2 MB）'], ['import', '从文件导入…']]);
   assert.match(b[0].cls, /primary/);
-  assert.match(c.packHint(x), /手动下载说明/);
+  assert.deepEqual(c.packManual(x), {href: x.wd.package.manual, label: '手动下载说明'});
   assert.equal(c.packHasTask(x), false);
   assert.equal(c.packBar(x), '');
   assert.deepEqual(labels(c.packActions(x, true)), ['下载角色资料包（约 2.2 MB）'], '任务面板只放主按钮');
@@ -97,7 +97,7 @@ test('坏 ZIP 导入后，卡片和任务都写出文件名和原因', () => {
 test('已下载、本图库没启用：已有识别结果的图库提示一次，可以启用或不用；新图库第一次同步时启用', () => {
   const ask = pack({current: READY, library: {prompt: 'ask'}});
   assert.equal(c.packLine(ask), '角色资料包现在默认启用，本图库还没启用');
-  assert.match(c.packHint(ask), /启用会给还没有归属的图补上机器归属/);
+  assert.match(c.packHintText(ask), /启用会给还没有归属的图补上机器归属/);
   assert.deepEqual(buttons(c.packActions(ask)).map(b => [b.act, b.label]), [['enable-confirm', '启用…'], ['decline', '不用']]);
   assert.deepEqual(labels(c.packActions(ask, true)), ['启用…'], '任务面板不放「不用」');
   const auto = pack({current: READY, library: {prompt: 'auto', vectors: 0}});
@@ -107,14 +107,14 @@ test('已下载、本图库没启用：已有识别结果的图库提示一次�
   const pending = pack({current: READY, library: {prompt: 'pending', vectors: 3}});
   assert.equal(c.packLine(pending), '等后台任务结束后启用');
   assert.deepEqual(labels(c.packActions(pending)), ['启用…']);
-  assert.doesNotMatch(c.packHint(pending), /补上机器归属/);
+  assert.doesNotMatch(c.packHintText(pending), /补上机器归属/);
   const waiting = pack({library: {prompt: 'pending', vectors: 3}, download: {kind: 'download', status: 'failed', message: '连接失败'}});
   assert.equal(c.packLine(waiting), '角色资料包没能下载：连接失败');
-  assert.match(c.packHint(waiting), /下载完成后启用/);
+  assert.match(c.packHintText(waiting), /下载完成后启用/);
   assert.equal(labels(c.packActions(waiting))[0], '重试');
   const declined = pack({current: READY, library: {prompt: 'declined'}});
   assert.equal(c.packLine(declined), '本图库未启用');
-  assert.doesNotMatch(c.packHint(declined), /补上机器归属/);
+  assert.doesNotMatch(c.packHintText(declined), /补上机器归属/);
   // 不能启用时按钮禁用，提示写原因。没有识别结果不算不能启用。
   const syncing = buttons(c.packActions(pack({current: READY, library: {prompt: 'ask', blocked: 'syncing'}})))[0];
   assert.match(syncing.attrs, /disabled title="正在同步，等它结束"/);
@@ -140,17 +140,17 @@ test('已启用：数字、上次检查、重新检查和撤回…；索引更�
   const x = pack({current: READY, library: ENABLED});
   assert.equal(c.packLine(x), '已启用 · 7 张图有扩展候选，其中 3 张由它补上归属');
   assert.equal(c.packDot(x), '');
-  assert.match(c.packHint(x), /上次检查/);
+  assert.match(c.packHintText(x), /上次检查/);
   assert.deepEqual(buttons(c.packActions(x)).map(b => [b.act, b.label, b.cls]), [['enable', '重新检查', 'quiet small'], ['withdraw', '撤回…', 'quiet small']]);
   assert.equal(c.packLine(pack({current: READY, library: {...ENABLED, images: 0, assigned: 0}})), '已启用 · 没有扩展候选');
   assert.equal(c.packLine(pack({current: READY, library: {...ENABLED, assigned: 0}})), '已启用 · 7 张图有扩展候选');
   const stale = pack({current: READY, library: ENABLED, ccip: {needs_scan: true, error: '基础角色索引不在了'}});
-  assert.match(c.packHint(stale), /角色索引更新过，重新检查后才用上 · 上次自动检查没有完成：基础角色索引不在了/);
+  assert.match(c.packHintText(stale), /角色索引更新过，重新检查后才用上 · 上次自动检查没有完成：基础角色索引不在了/);
   assert.match(buttons(c.packActions(stale))[0].cls, /primary/);
   assert.equal(c.packDot(stale), 'warn');
   // 已启用、包不在这台电脑上：写明新识别的图不检查，可以下载或撤回。
   const absent = pack({library: ENABLED});
-  assert.match(c.packHint(absent), /角色资料包不在这台电脑上，新识别的图不检查/);
+  assert.match(c.packHintText(absent), /角色资料包不在这台电脑上，新识别的图不检查/);
   assert.deepEqual(buttons(c.packActions(absent)).map(b => b.act), ['download', 'import', 'withdraw']);
   assert.match(buttons(c.packActions(absent))[0].cls, /quiet/);
 });
@@ -341,7 +341,7 @@ test('取消晚了一步（写入阶段回 409）：提示事实，不带错误�
   c.wirePacks();
   c.state.pack = pack({current: READY, task: {id: 't1', kind: 'enable', status: 'running', phase: 'scan', done: 1, total: 9}});
   const calls = server([{status: 409, body: {error: '正在写入图库，无法取消'}}, {body: pack({current: READY, library: ENABLED})}]);
-  for (const fn of page.el('settingsPage').listeners.click) fn({target: {closest: () => ({dataset: {pack: 'cancel'}, disabled: false})}});
+  c.runPack('cancel');   // 设置页卡片上的「取消」直接调 runPack
   await new Promise(resolve => setTimeout(resolve, 10));
   assert.equal(page.el('toastText').textContent, '已经开始写入，没能取消');
   assert.deepEqual(calls.map(x => x[1]), ['/api/packs', '/api/packs']);
@@ -355,7 +355,9 @@ test('启用、撤回、删除、换成新版本都先确认；取消什么都�
   const answers = [], titles = [];
   page.document.body.append = d => { titles.push(d.attributes['aria-label']); d.showModal = () => { d.returnValue = answers.shift(); d.onclose(); }; };
   c.wirePacks();
+  // 设置页卡片的按钮直接调 runPack；任务面板的按钮经 data-pack 的监听。
   const click = async (root, act) => {
+    if (root === 'settingsPage') { await c.runPack(act); return; }
     const b = {dataset: {pack: act}, disabled: false};
     for (const fn of page.el(root).listeners.click) await fn({target: {closest: s => s === '[data-pack]' ? b : null}});
   };
@@ -396,7 +398,7 @@ test('这个页面导入以后逐个列出所选文件的结果，包括离线�
   c.wirePacks();
   server([{body: imported}, {body: {cancelled: true}}, {body: imported}]);
   const click = async act => {
-    for (const fn of page.el('settingsPage').listeners.click) fn({target: {closest: () => ({dataset: {pack: act}, disabled: false})}});
+    c.runPack(act);
     await new Promise(resolve => setTimeout(resolve, 10));
   };
   await click('enable');

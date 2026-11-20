@@ -113,10 +113,12 @@ export function packButtons(x = current(), compact = false) {
   }
   if (packDownloading(x)) return x.download.kind === 'catalog' ? [] : [button('package-cancel', t('取消'))];
   const withdraw = on(x) ? [button('withdraw', t('撤回…'))] : [];
-  // 重新检查失败时照样能撤回，不只能重试。
+  // 重新检查失败时照样能撤回，不只能重试。重试照失败的那次的目标版本再做一遍（换包失败就再换那个版本）；不知道失败的是
+  // 不是换包（页面重新载入过）而又有下好的新版本时不给「重试」，免得它其实去查旧版本，换包走下面「有新版本」那一行。
   if (task?.status === 'failed') {
-    return task.kind === 'withdraw' ? [button('withdraw-retry', t('重试'), true)]
-      : [button('enable-retry', t('重试'), true, blocked), ...(compact ? [] : withdraw)];
+    if (task.kind === 'withdraw') return [button('withdraw-retry', t('重试'), true)];
+    const unsure = enableTarget === undefined && on(x) && packOffer(x)?.status === 'ready';
+    return [...(unsure ? [] : [button('enable-retry', t('重试'), true, blocked)]), ...(compact ? [] : withdraw)];
   }
   if (!ready(x)) {
     const failed = x.download?.kind === 'download' && x.download.status === 'failed' && !packOffer(x)?.downloading;
@@ -150,16 +152,14 @@ export function packHintText(x = current()) {
   if (!on(x) && l.prompt === 'pending' && !ready(x)) parts.push(t('下载完成后启用'));
   return parts.join(' · ');
 }
-// 同上，转义好、带上手动下载说明的链接（HTML）。
-export function packHint(x = current()) {
-  const text = esc(packHintText(x)), m = packManual(x);
-  const link = m ? `<a class="link" href="${esc(m.href)}" target="_blank" rel="noreferrer noopener">${m.label}</a>` : '';
-  return [text, link].filter(Boolean).join(' · ');
-}
 // 导入对所选的每个文件做了什么（两个组成部分的结果已经在后端按文件名合并）。只在这个页面发起的导入结束后列出：包文件
 // 整个 App 一份，导入结果也是，换了图库（页面重新载入）或别的窗口导入的不列。只留在发起导入的那一页（state.route 每次换页
 // 都是新的），切走再回来就不列了（#643）。离线包里随附的许可和说明（extra）不是要导入的文件，不列。
 let importedHere = null;
+// 这个页面最近一次启用、重新检查或换包的目标版本：换包是那个版本号，启用和重新检查是 null（卡片上的版本），还没做过是
+// undefined。失败以后的「重试」照它再做。
+let enableTarget;
+const enable = version => { enableTarget = version || null; return enablePack(version); };
 const RESULT = {accepted: () => t('已接收'), mismatch: () => t('SHA-256 不符，已拒绝'), already: () => t('已经有了'),
   unknown: () => t('不是角色资料包'),
   // 离线包里的包目录和签名（#602）。
@@ -277,8 +277,13 @@ export async function runPack(what) {
     else if (what === 'offer-switch') {
       const offer = packOffer(); if (!offer) return;
       if (!await confirmAction(switchMessage(offer), t('换成新版本'), t('换成新版本'))) return;
-      await enablePack(offer.version);
-    } else if (what === 'import') { const route = state.route, r = await packAction('import'); if (!r?.cancelled) importedHere = route; }
+      await enable(offer.version);
+    } else if (what === 'import') {
+      // 先登记再发：导入很快就到终态时，结果到达的那次重画就要列出来。关掉选择框算没导入。
+      importedHere = state.route;
+      const r = await packAction('import');
+      if (r?.cancelled) importedHere = null;
+    }
     else if (what === 'package-cancel') await packAction('cancel');
     else if (what === 'discard') {
       if (!await confirmAction(t('删除已经下载但还没完成的部分？下次要从头下载。'), t('删除未完成的部分'), t('删除'))) return;
@@ -289,8 +294,9 @@ export async function runPack(what) {
       toast(t('角色资料包已删除'));
     } else if (what === 'enable-confirm') {
       if (!await confirmAction(enableMessage(), t('启用角色资料包'), t('启用'))) return;
-      await enablePack();
-    } else if (what === 'enable' || what === 'enable-retry') await enablePack();
+      await enable();
+    } else if (what === 'enable') await enable();
+    else if (what === 'enable-retry') await enablePack(enableTarget || undefined);
     else if (what === 'decline') await declinePack();
     else if (what === 'withdraw') {
       if (!await confirmAction(withdrawMessage(), t('撤回角色资料包'), t('撤回'))) return;
@@ -306,9 +312,10 @@ export async function runPack(what) {
     }
   } catch (e) { toast(e.message); }
 }
-// 处理函数。页面启动时调用一次。按钮在设置页的卡片和任务面板里，监听挂在这两处，不挂在 document 上。
+// 处理函数。页面启动时调用一次。拼成 HTML 的按钮（data-pack）只在任务面板里，监听挂在那里，不挂在 document 上；设置页的
+// 卡片用行，点了直接调 runPack。
 export function wirePacks() {
-  for (const root of [$('settingsPage'), $('taskPanel')]) root.addEventListener('click', e => {
+  $('taskPanel').addEventListener('click', e => {
     const b = e.target.closest('[data-pack]'); if (!b || b.disabled) return;
     busy(b, () => runPack(b.dataset.pack));
   });

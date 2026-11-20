@@ -167,13 +167,19 @@ export function waitPixivLogin() {
 // 用户允许之前关闭。允许之后，后端在每次启动时检查，App 一直开着时每天检查一次；页面只询问是否该检查了。
 // 「下载并重启」（#279）由桌面外壳做，状态在 state.updates.install（不在桌面 App 里时为 null）：这里转达 download、cancel、
 // install，下载期间每秒读一次进度，下完或失败就停。
-let updatesAt = 0, updatesPending = null, installTimer = 0;
+// 下载期间读一次失败时不停：保留上次的状态，退避以后接着读（最长 15 秒一次），读到就照宿主的实际状态（ready、failed…）。
+let updatesAt = 0, updatesPending = null, installTimer = 0, installWait = 1000;
+const watchInstall = () => {
+  clearTimeout(installTimer);
+  installTimer = setTimeout(() => api('/api/updates').then(value => { installWait = 1000; adoptUpdates(value); }, () => {
+    installWait = Math.min(installWait * 2, 15000);
+    if (state.updates?.install?.stage === 'downloading') watchInstall();
+  }).finally(() => changed.emit('updates')), installWait);
+};
 const adoptUpdates = value => {
   state.updates = value; updatesAt = Date.now();
   clearTimeout(installTimer);
-  if (value?.install?.stage === 'downloading') {
-    installTimer = setTimeout(() => api('/api/updates').then(adoptUpdates).catch(() => {}).finally(() => changed.emit('updates')), 1000);
-  }
+  if (value?.install?.stage === 'downloading') watchInstall();
   return value;
 };
 export async function updatesPost(body) {
@@ -185,7 +191,8 @@ export const checkUpdates = () => updatesPost({action: 'check'});
 export function updatesTick() {
   if (updatesPending) return updatesPending;
   updatesPending = (async () => {
-    if (!state.updates || Date.now() - updatesAt > 600000) adoptUpdates(await api('/api/updates'));
+    // 正在下载更新时每次都读（上一次轮询可能失败过），否则十分钟读一次。
+    if (!state.updates || state.updates.install?.stage === 'downloading' || Date.now() - updatesAt > 600000) adoptUpdates(await api('/api/updates'));
     if (state.updates.due) await updatesPost({action: 'check', auto: true});
   })().catch(() => {}).finally(() => { updatesPending = null; changed.emit('updates'); });
   return updatesPending;

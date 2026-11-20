@@ -8,7 +8,7 @@ const web = require('./web.cjs');
 let rail, state, document;
 const SKELETON = `<aside id="rail"><nav id="railEntries"><span id="railTab"></span><a data-entry="library" href="#/days"><b class="rail-dot" hidden></b></a>
   <a data-entry="catalog" href="#/characters"><b class="rail-dot" hidden></b></a><a data-entry="galleries" href="#/galleries"><b class="rail-dot" hidden></b></a>
-  <a data-entry="tidy" href="#/groups"><b class="rail-dot" hidden></b></a></nav><div id="railLayer"><div id="railHint"></div><div id="railItems"></div><span id="railInd"></span></div>
+  <a data-entry="tidy" href="#/groups"><b class="rail-dot" hidden></b></a></nav><div id="railLayer"><div id="railScroll"><div id="railHint"></div><div id="railItems"></div><span id="railInd"></span></div></div>
   <a id="settingsLink" href="#/settings"></a></aside><button id="sidebarToggle"></button><div id="railPeek" hidden></div>`;
 const tick = () => new Promise(r => setTimeout(r, 0));
 const dwell = () => new Promise(r => setTimeout(r, 360));   // 指针悬停要停够停留判定（PEEK_DWELL 300ms）才出卡片
@@ -150,7 +150,7 @@ test('悬停预览：换内容不重建，放得下几张放几张；离开稍�
   await new Promise(r => setTimeout(r, 200));
   assert.equal(peek.hidden, true);
   over(item('d:2026-11-18'));
-  $('railLayer').dispatchEvent({type: 'scroll'});
+  $('railScroll').dispatchEvent({type: 'scroll'});
   assert.equal(peek.hidden, true);
 });
 
@@ -162,13 +162,13 @@ test('悬停预览：延后的量和写到时悬停的已经不是这一项，�
   peek.animate = () => { let reject; const finished = new Promise((_, r) => { reject = r; }); finished.catch(() => {}); return {finished, cancel: () => reject(new Error('取消')), finish() {}}; };
   globalThis.innerHeight = 800;
   $('railItems').dispatchEvent({type: 'focusin', target: {closest: () => items[0]}});
-  $('railLayer').dispatchEvent({type: 'scroll'});   // 帧任务跑之前先滚动了
+  $('railScroll').dispatchEvent({type: 'scroll'});   // 帧任务跑之前先滚动了
   await new Promise(r => setTimeout(r, 500));   // 帧任务、出场的计时兜底都过去
   assert.equal(peek.hidden, true);
   // 键盘焦点就在这一项上时，滚动只是把预览挪到它的新位置（Tab 走到头时二级层跟着滚），不收起
   items[0].focus();
   $('railItems').dispatchEvent({type: 'focusin', target: {closest: () => items[0]}});
-  $('railLayer').dispatchEvent({type: 'scroll'});
+  $('railScroll').dispatchEvent({type: 'scroll'});
   await new Promise(r => setTimeout(r, 500));
   assert.equal(peek.hidden, false);
   $('railItems').dispatchEvent({type: 'focusout'});
@@ -207,7 +207,7 @@ test('焦点进项、同一帧又滚动：卡片照常放进场，不从旧位�
   const peek = $('railPeek'), calls = fakeAnimate(peek), el = dayItems()[1];
   el.focus();
   $('railItems').dispatchEvent({type: 'focusin', target: {closest: () => el}});
-  $('railLayer').dispatchEvent({type: 'scroll'});
+  $('railScroll').dispatchEvent({type: 'scroll'});
   await frames();
   assert.equal(calls.length, 1);   // 进场放了
   assert.equal(peek.classList.contains('is-glide'), false);

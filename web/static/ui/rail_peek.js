@@ -81,9 +81,9 @@ function fillPics(item) {
 }
 
 // 位置：左边压进二级层 PEEK.tuck（抽屉打开时贴着抽屉的右边，不压进去），上下以这一项的中线为准、夹在窗口里。
-// 这一项不在二级层看得见的范围里时返回 null。
+// 这一项不在二级层的滚动区（#railScroll）看得见的范围里时返回 null。
 function measure(el) {
-  const peek = $('railPeek'), layer = $('railLayer'), r = el.getBoundingClientRect(), box = layer.getBoundingClientRect(), h = peek.offsetHeight;
+  const peek = $('railPeek'), r = el.getBoundingClientRect(), box = $('railScroll').getBoundingClientRect(), h = peek.offsetHeight;
   if (r.bottom < box.top || r.top > box.bottom) return null;
   const drawer = $('rail').classList.contains('is-drawer');
   const y = Math.max(PEEK.edge, Math.min(innerHeight - h - PEEK.edge, r.top + r.height / 2 - h / 2));

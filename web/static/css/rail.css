@@ -41,9 +41,20 @@
 .rail-tab::after{bottom:-18px;border-top-right-radius:var(--radius-18);box-shadow:9px -9px 0 9px var(--sheet)}
 .rail-sep{flex:none;width:28px;height:2px;margin:var(--space-16) 0 var(--space-14);border-radius:var(--radius-4);background:var(--line)}
 
-/* ---- 二级层：比活页条长时自己滚动；滚动条不占位 ---- */
-.rail-l2{position:relative;flex:1 1 auto;width:100%;min-height:0;padding:var(--space-4) 0 var(--space-8);overflow-x:hidden;overflow-y:auto;scrollbar-width:none}
-.rail-l2::-webkit-scrollbar{display:none}
+/* ---- 二级层：外层 .rail-l2 不滚（窄窗口里是抽屉），里面的 .rail-scroll 比活页条长时自己滚动；滚动条不占位 ----
+   上下边缘渐隐：遮罩是一条两头透明、中间不透明的竖向渐变，比滚动区高出两段渐隐（各 28px，和 core/rail.js 的 FADE 一起改），
+   平时上下各藏一段在框外、整块都不透明；ui/rail.js 写 is-fade-top / is-fade-bottom 时，改遮罩的高和位置把那一头的渐隐挪进框里。
+   这样两头各自出现、消失，过渡的是 mask-size、mask-position（--dur-1；减少动态效果时 app.css 的总开关让它直接切换）。
+   遮罩只管透明度，渐隐的颜色就是后面的底色（画布、抽屉），浅色深色都跟着走。Safari 15.4 起认不带前缀的 mask-*。
+   scroll-padding 让键盘焦点滚进来的项停在渐隐以外（ui/rail.js 另外按渐隐核一次）。 */
+.rail-l2{position:relative;display:flex;flex:1 1 auto;flex-direction:column;width:100%;min-height:0}
+.rail-scroll{position:relative;flex:1 1 auto;min-height:0;padding:var(--space-4) 0 var(--space-8);overflow-x:hidden;overflow-y:auto;scrollbar-width:none;scroll-padding-block:28px;
+  mask-image:linear-gradient(transparent,black 28px,black calc(100% - 28px),transparent);mask-repeat:no-repeat;mask-size:100% calc(100% + 56px);mask-position:0 -28px;
+  transition:mask-size var(--dur-1) var(--ease),mask-position var(--dur-1) var(--ease)}
+.rail-scroll.is-fade-top{mask-size:100% calc(100% + 28px);mask-position:0 0}
+.rail-scroll.is-fade-bottom{mask-size:100% calc(100% + 28px)}
+.rail-scroll.is-fade-top.is-fade-bottom{mask-size:100% 100%}
+.rail-scroll::-webkit-scrollbar{display:none}
 .rail.is-empty .rail-l2{visibility:hidden}
 .rail-hint{height:0;overflow:hidden;color:var(--muted);font-size:var(--fs-11);text-align:center;opacity:0;transition:opacity var(--dur-1) var(--ease)}
 .rail-hint.is-on{height:auto;margin-bottom:var(--space-8);opacity:1}
@@ -144,11 +155,12 @@
   .rail-tab{left:var(--space-8)}
   .rail-name{left:52px}
   .rail-sep{display:none}
-  .rail-l2{position:fixed;top:var(--space-8);bottom:var(--space-8);left:64px;z-index:var(--z-drawer);width:84px;flex:none;padding:var(--space-12) 0;border-radius:var(--radius-18);
+  .rail-l2{position:fixed;top:var(--space-8);bottom:var(--space-8);left:64px;z-index:var(--z-drawer);width:84px;flex:none;border-radius:var(--radius-18);
     background:var(--canvas);box-shadow:var(--shadow-pop);visibility:hidden;opacity:0;transform:translateX(-12px);
     transition:opacity var(--dur-1) var(--ease),transform var(--dur-2) var(--ease),visibility 0s var(--ease) var(--dur-2)}
   .rail.is-drawer .rail-l2{visibility:visible;opacity:1;transform:none;transition:opacity var(--dur-2) var(--ease),transform var(--dur-2) var(--ease)}
   .rail.is-drawer.is-empty .rail-l2{visibility:hidden}
+  .rail-scroll{padding:var(--space-12) 0}
   #sidebarToggle{display:inline-flex}
   .library-pop{left:60px}
 }

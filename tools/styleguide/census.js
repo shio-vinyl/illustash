@@ -10,14 +10,14 @@ window.CENSUS = {
   "css/galleries.css": "f446c432133be7ce4e2c04c29933f3a849f227b4b15ff09a8a187b1c52b52959",
   "css/library.css": "bd927b63d0d0e7c358debc37e1d8df580695c70ba717a2f95e6cc00e07eb53f0",
   "css/overlays.css": "3e18fddd6cbc8c59478a35b978d51868e4c93aeb4a075a98139d54696dd2601a",
-  "css/rail.css": "a475eff836627de4e7bbab82ed1864e7cba7c7e5aec530043c15e53882577d7a",
+  "css/rail.css": "e42b74acf9f290263810bb3ac3b2d679af30cdb62e0c36eb6ad849cc1d26951d",
   "css/settings.css": "f4308d031d40a2d389ce6477ebdd14cbd1d5292358f311fe56406034ffd475f6",
   "css/tidy.css": "0dae765ffbd6e5e96298c7b5ad97a2d9a64c085d13ae8bd0ad0d82c49e536bec",
   "css/tokens.css": "ab5cbeb02f1a7698ba0942dbb02c7b11addb0b63812b8e85bbb49d0400646214"
  },
- "sha256": "a97c2226fb334347fee8acb2656076c095a89de2ad4422ada39c46270eff6494",
- "lines": 1720,
- "rules": 1378,
+ "sha256": "d5742b656546f7a4db055195413368344cbc65f68a6c1faa89ec98c6ff6506a8",
+ "lines": 1732,
+ "rules": 1383,
  "themeVars": {
   "light": {
    "--canvas": "#f4f4f6",
@@ -216,7 +216,7 @@ window.CENSUS = {
    "--chip-hover": 3,
    "--space-20": 9,
    "--z-bar": 1,
-   "--ease": 65,
+   "--ease": 67,
    "--z-toast": 1,
    "--space-16": 23,
    "--space-12": 80,
@@ -315,7 +315,7 @@ window.CENSUS = {
    "--bad": 3,
    "--depth": 1,
    "--fw-750": 11,
-   "--dur-1": 14,
+   "--dur-1": 16,
    "--fw-600": 5,
    "--accent-fill": 3,
    "--on-accent": 3,
@@ -812,7 +812,7 @@ window.CENSUS = {
    {
     "name": "--dur-1",
     "value": "140ms",
-    "uses": 14
+    "uses": 16
    },
    {
     "name": "--dur-2",
@@ -829,7 +829,7 @@ window.CENSUS = {
    {
     "name": "--ease",
     "value": "cubic-bezier(.2,.8,.2,1)",
-    "uses": 65
+    "uses": 67
    },
    {
     "name": "--ease-spring",

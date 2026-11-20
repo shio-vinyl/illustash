@@ -117,7 +117,7 @@
 
  "crates/core/src/store.rs":"359adce05ae8dd383981c4c8c23edee6615e2d395e7b8b97731021529a08798c",
 
- "crates/core/src/strict_json.rs":"dc1bf3fd4e0ceb6316af6a95ab00915c52ffdd8fd759544326f371df39e67da6",
+ "crates/core/src/strict_json.rs":"09fdfc674083f8c4f6cb32482e81cd2857abedaab0c60d9e61078d73aff841fd",
 
  "crates/core/src/undo_labels.rs":"95993da52d1fae92b21c7e01e541928455209d70b8fb8cfb6b58ac53e17dd7fc",
 
@@ -283,7 +283,7 @@
 
  "native/terms/src/app_migrate.rs":"17eac80259f33aaee591c06eb6d96ce217e9f2378216b1ffaa209a1e0c734de4",
 
- "native/terms/src/app_migrate_data.rs":"f7b52ce57261f5f71cd800fddbb3b4423e21fb10cfb9ebd7233df36b52a6a3a1",
+ "native/terms/src/app_migrate_data.rs":"7245fb8f288f419b9a74f788369987b742190a223e0e68f123df7605090e7626",
 
  "native/terms/src/app_migration_sql/ambiguous.sql":"04993300291b3a4d67b31b2d448781d1e35bf65a9b765929ca9b7e8a5047c174",
 
@@ -315,7 +315,7 @@
 
  "native/terms/src/app_packs.rs":"22f3ce809dc24524a1f6bbcbdb132332754a7557a493fd0e1c07b0cde15a54a9",
 
- "native/terms/src/app_photos.rs":"df3a434e0b64f63e395ca93703be19d90b83faefe6901537fdd628d51ddc0326",
+ "native/terms/src/app_photos.rs":"c1841fbfea512fa378b816228cc42e97074f5a18371196804cd70796c7748c27",
 
  "native/terms/src/app_platform.rs":"f62d65d27fccaefc862fc13ec3e0c4894807595cb99bc477b5593f00112d22ec",
 
@@ -353,7 +353,7 @@
 
  "native/terms/src/app_sources.rs":"185979b4e3d72ddcd243bcc670b5c981fe3291b56cbf6f87c47dc5080b97828e",
 
- "native/terms/src/app_sync.rs":"1bb10b74a0abd5c705135d8cb3a29539539e89c996ba9c98ca6aab46ad6debd2",
+ "native/terms/src/app_sync.rs":"3740873b43f551f990c1cea5f5e8db8f862cfd0c2a9a677d5defd63162f7cdf7",
 
  "native/terms/src/app_tasks.rs":"3a2653f069763b5c2d5f50580679a064e21b1f048a530a886829d483871ba400",
 

@@ -537,17 +537,15 @@ export const FLOWS = [
       await sleep(600);
       w.check('撤销以后拿出来了', await count('Summer') === before, {before, after: await count('Summer')});
 
-      // 按天视图：按住一张图拖到 Summer。
-      const dayBefore = await count('Summer');
-      await w.step('按天视图里按住一张图拖到活页条上的 Summer', async p => {
-        await goto(p, '#/days'); await p.waitFor(`!!document.querySelector('.day-tile[data-id]:not([data-more]) img')`, 15000);
-        const from = await p.center('.day-tile[data-id]:not([data-more]) img');
+      // 按天视图、详情卡片的预览图：按住拖到 Summer（真鼠标；活页条拿起之后才换成画廊封面，所以先拿起、再量目标）。
+      const dragOnto = async (p, selector, label) => {
+        const from = await p.center(selector);
         await p.send('Input.dispatchMouseEvent', {type: 'mouseMoved', x: from.x, y: from.y});
         await p.send('Input.dispatchMouseEvent', {type: 'mousePressed', x: from.x, y: from.y, button: 'left', clickCount: 1});
-        for (let k = 1; k <= 4; k++) { await p.send('Input.dispatchMouseEvent', {type: 'mouseMoved', x: from.x + k * 6, y: from.y, button: 'left', buttons: 1}); await sleep(16); }
+        for (let k = 1; k <= 4; k++) { await p.send('Input.dispatchMouseEvent', {type: 'mouseMoved', x: from.x - k * 6, y: from.y, button: 'left', buttons: 1}); await sleep(16); }
         await p.waitFor(`!!document.querySelector('.lift') && [...document.querySelectorAll('#railItems .rail-item')].some(x => x.offsetParent && x.dataset.key === 'new')`, 3000);
         await sleep(600);
-        const to = await p.eval(`(() => { const el = [...document.querySelectorAll('#railItems .rail-item')].find(x => x.offsetParent && x.railItem?.label === 'Summer');
+        const to = await p.eval(`(() => { const el = [...document.querySelectorAll('#railItems .rail-item')].find(x => x.offsetParent && x.railItem?.label === ${JSON.stringify(label)});
           const r = el.getBoundingClientRect(); return {x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2)}; })()`);
         for (let k = 1; k <= 8; k++) {
           await p.send('Input.dispatchMouseEvent', {type: 'mouseMoved', x: Math.round(from.x + (to.x - from.x) * k / 8), y: Math.round(from.y + (to.y - from.y) * k / 8), button: 'left', buttons: 1});
@@ -555,12 +553,31 @@ export const FLOWS = [
         }
         await p.send('Input.dispatchMouseEvent', {type: 'mouseReleased', x: to.x, y: to.y, button: 'left', clickCount: 1});
         await sleep(900);
+      };
+      const dayBefore = await count('Summer');
+      await w.step('按天视图里按住一张图拖到活页条上的 Summer', async p => {
+        await goto(p, '#/days'); await p.waitFor(`!!document.querySelector('.day-tile[data-id]:not([data-more]) img')`, 15000);
+        await dragOnto(p, '.day-tile[data-id]:not([data-more]) img', 'Summer');
       }, {shot: true});
       w.check('按天视图里拖的也放进去了', await count('Summer') === dayBefore + 1, {before: dayBefore, after: await count('Summer')});
       w.check('拖过以后没打开详情卡片', !await page.eval(`!!document.querySelector('#inspector:not([hidden])')`), '');
       await w.step('⌘Z 撤销', p => p.key('z', {modifiers: ['Meta']}));
       await sleep(600);
       w.check('撤销以后拿出来了（按天）', await count('Summer') === dayBefore, {before: dayBefore, after: await count('Summer')});
+
+      // 详情卡片：点开一张，按住预览图拖到 Summer；拖过以后不开大图。
+      await w.step('图库里点开一张的详情卡片', async p => {
+        await goto(p, '#/library'); await gridReady(p); await p.click('#grid .card[data-index="0"] img');
+        await p.waitFor(`!document.getElementById('inspector').hidden && !!document.querySelector('#inspector .dc-preview img')`, 5000); await sleep(400);
+      });
+      const cardBefore = await count('Summer');
+      await w.step('按住详情卡片的预览图拖到活页条上的 Summer', p => dragOnto(p, '#inspector .dc-preview', 'Summer'), {shot: true});
+      w.check('详情卡片拖的也放进去了', await count('Summer') === cardBefore + 1, {before: cardBefore, after: await count('Summer')});
+      w.check('拖过以后没开大图', await page.eval(`document.getElementById('viewer')?.hidden !== false`), '');
+      await w.step('⌘Z 撤销', p => p.key('z', {modifiers: ['Meta']}));
+      await sleep(600);
+      w.check('撤销以后拿出来了（详情卡片）', await count('Summer') === cardBefore, {before: cardBefore, after: await count('Summer')});
+      await w.step('Esc', p => p.key('Escape'));
 
       // #646：「更多像这张的」页上有条件也没有「保存为画廊」；普通图库上有。
       snap = await w.step('打开「更多像这张的」并加一个条件', async p => {

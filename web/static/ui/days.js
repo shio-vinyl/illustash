@@ -324,7 +324,7 @@ function daysView(scope) {
   });
   scope.on(el, 'dblclick', e => { const tile = e.target.closest('.day-tile'); if (tile && !tile.dataset.more) openViewer(indexOf(tile.dataset.id)); });
   // 按住一张图拖动：拿起它，放进活页条上的画廊（ui/drag.js，#710）；「+N 张」那格不拖。
-  wireLift(el, target => { const tile = target.closest?.('.day-tile'); return tile && !tile.dataset.more ? [tile.dataset.id] : null; }, scope);
+  scope.add(wireLift(el, down => { const tile = down.target.closest?.('.day-tile'); return tile && !tile.dataset.more ? [tile.dataset.id] : []; }));
   // 同步的进度和新图：卡片跟着变；进来了新图就把最新的两天并进来（同步结束时 ui/effects.js 还会调一次 refresh('sync')）。
   scope.add(onJob((job, change) => {
     if (job !== 'sync') return;

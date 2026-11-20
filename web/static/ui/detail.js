@@ -19,7 +19,7 @@ import {$, toast} from './dom.js';
 import {PAGE, currentItem, endPreview, favoriteOne, kept, loadPage, markDetailKeys, mutate, openTagPicker, previewList, previewing, renderGrid, rowHeight, rowOf, rowTop, setCursor, syncCards, toggleInfo, viewOpts} from './grid.js';
 import {newIds, openPicker, targets} from './palette.js';
 import {findArtistWorks, findArtists} from './artists.js';
-import {wireDragOut} from './files.js';
+import {wireLift} from './drag.js';
 import {write} from './frame.js';
 import {cancelExit, enter, exit} from './motion.js';
 import {detailCard} from './detail_card.js';
@@ -41,8 +41,8 @@ function mount() {
     findMore: (ident, artist, name) => findArtistWorks(artist, name, () => inspect(ident, true)),
   }});
   $('inspector').replaceChildren(card.el);
-  // 按住预览图拖动：把这张图拖到别的应用（#450）。
-  card.scope.add(wireDragOut(card.preview, () => [card.uuid].filter(Boolean)));
+  // 按住预览图拖动：拿起这张图，放进活页条上的画廊，拖出窗口边缘就是拖到别的应用（ui/drag.js，#710、#450）。
+  card.scope.add(wireLift(card.preview, () => [card.uuid].filter(Boolean)));
   return card;
 }
 const relayout = () => write(() => renderGrid(), 'detail:grid');

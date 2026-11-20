@@ -246,7 +246,10 @@ fn undo(db: &Path, action: store::ActionId) -> crate::Result<serde_json::Value> 
         Undo::Undone { action, label } => json!({"status": "undone", "action": action.raw(), "label": label}),
         // 调用方判断这一步属于词条核心，这里却不认：两边规则不一致，不能当成撤销成功。
         Undo::Foreign { action } => {
-            return Err(Error::Conflict(format!("历史第 {} 步不是词条核心写的，不能由它撤销", action.raw())))
+            return Err(Error::Conflict(format!(
+                "历史第 {action} 步不是词条核心写的，不能由它撤销",
+                action = action.raw()
+            )))
         }
         Undo::Nothing => return Err(Error::Conflict(store::HISTORY_CHANGED.into())),
     })

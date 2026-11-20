@@ -440,13 +440,13 @@ pub fn undo_in(conn: &Connection, expected: Option<ActionId>) -> Result<(Undo, b
             }
         } else if let Some(kind) = step.get("kind") {
             let (Some(key), Some(had)) = (kind["term"].as_str(), kind["had"].as_str().and_then(Kind::parse)) else {
-                return Err(Error::Conflict(format!("历史第 {} 步的记录不完整", action.raw())));
+                return Err(Error::Conflict(format!("历史第 {action} 步的记录不完整", action = action.raw())));
             };
             let (term, _) = term_by_key(conn, key)?.ok_or_else(|| Error::Conflict(format!("词条 {key} 已不存在")))?;
             conn.execute("UPDATE terms SET kind=?1 WHERE id=?2", params![had.as_str(), term])?;
             touched.extend(assets_of_term(conn, term)?);
         } else {
-            return Err(Error::Conflict(format!("历史第 {} 步有不认识的词条记录", action.raw())));
+            return Err(Error::Conflict(format!("历史第 {action} 步有不认识的词条记录", action = action.raw())));
         }
     }
     conn.execute("UPDATE actions SET undone=1 WHERE id=?1", [action.raw()])?;

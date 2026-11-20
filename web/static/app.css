@@ -914,7 +914,7 @@ body:has(#settingsPage:not([hidden])) .nudge,body:has(#selectionBar:not([hidden]
 .set-status .local-dot{flex:none;width:7px;height:7px;background:var(--ok)}
 .set-status .local-dot.busy{background:var(--warn)}
 .set-status .local-dot.warn{background:var(--bad)}
-.set-status .local-dot.off,.task-item .local-dot.off{background:var(--faint)}
+.set-status .local-dot.off{background:var(--faint)}
 a.set-link{color:inherit;text-decoration:none;cursor:pointer}
 a.set-link>span:last-child{color:var(--muted);white-space:nowrap}
 a.set-link:hover>span:last-child{color:var(--accent-ink)}
@@ -930,30 +930,9 @@ a.set-link:hover>span:last-child{color:var(--accent-ink)}
 /* 任务面板（#199）：侧边导航里带图标盒子和卡片的入口，以及它的弹出层 */
 .task-pop{position:fixed;left:92px;bottom:12px;z-index:var(--z-overlay);width:400px;max-height:min(720px,calc(100vh - 24px));overflow:auto;scrollbar-width:none;padding:var(--space-14) var(--space-12) var(--space-12);transform-origin:-8px calc(100% - 30px)}
 .task-pop[hidden]{display:none}
-.task-top{display:flex;align-items:center;justify-content:space-between;margin:0 4px 6px}
-.task-top h2{margin:0;font-size:var(--fs-15);font-weight:650}
-.task-pop h6{margin:12px 6px 6px;font-size:var(--fs-11);font-weight:600;color:var(--muted);letter-spacing:.2px}
 /* 一个可收缩的列：里面一行很长、不能断开的文字（损坏图片的路径）必须显示省略号，而不是把这一行撑得比面板还宽，把它的
    按钮挤出视野。 */
-.task-item{padding:var(--space-10) var(--space-12);display:grid;grid-template-columns:minmax(0,1fr);gap:var(--space-8)}
-.task-item.on{background:color-mix(in srgb,var(--accent-soft) 45%,transparent)}
-.task-main{display:flex;align-items:center;gap:var(--space-10);font-size:var(--fs-12)}
-.task-text{flex:1;min-width:0;display:grid;gap:var(--space-1)}
-.task-text b{font-weight:600}
-.task-text small{font-size:var(--fs-11);color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.task-item .local-dot{flex:none;background:var(--ok)}
-.task-item .local-dot.busy{background:var(--warn)}
-.task-item .local-dot.warn{background:var(--bad)}
-.task-body .progress{margin:0}
-.task-side{margin:6px 0 2px;font-size:var(--fs-11);color:var(--muted)}
-.task-item details.more{margin:0;font-size:var(--fs-12)}
-.task-item details.more .settings-table{margin-top:4px}
-.task-asks{display:grid;gap:var(--space-8)}
-.task-ask{display:flex;align-items:center;gap:var(--space-10);flex-wrap:wrap;font-size:var(--fs-12);border-radius:var(--radius-12);background:var(--accent-soft);color:var(--accent-ink);padding:var(--space-10) var(--space-12)}
-.task-ask>span{flex:1;min-width:0}
-.task-ask.prov-confirm{display:block;margin:0;border:0;background:color-mix(in srgb,var(--warn) 10%,var(--sheet));color:var(--ink)}
 .primary.small{padding:var(--space-6) var(--space-10);font-size:var(--fs-12);border-radius:var(--radius-10)}
-.task-foot{margin:12px 6px 0;font-size:var(--fs-11);color:var(--muted)}
 @media (max-width:760px){.task-pop{left:12px;right:12px;width:auto}}
 
 /* 资料库（#198）：角色 / 作品 切换、作品树和它的对话框 */

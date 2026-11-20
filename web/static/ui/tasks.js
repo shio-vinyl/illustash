@@ -4,11 +4,12 @@ import {diagnosticLine} from '../core/diagnostics.js';
 import {t, tb} from '../core/i18n.js';
 import {esc, home, megabytes, number, stamp, localTime} from '../core/format.js';
 import {state} from '../core/state.js';
-import {api, post, shared, readError} from '../core/session.js';
+import {readError} from '../core/session.js';
+import {refreshTaskSettings, startSimilar} from '../core/tasks.js';
 import {SYNC_ACTIVE, INDEX_ACTIVE, NAMES_ACTIVE, SIMILAR_ACTIVE, PROV_ACTIVE, RUN_STATUS, onJob, syncLine, syncBar, syncDoneText, indexLine, indexEndText, resumeIndex, discardIndex,
   namesLine, taskSimilar, pollSync, pollIndex, pollNames, loadProvenance, startSync, checkIndex, refreshNames, provenanceAction, PHOTOS_PRIVACY, photosHelp, photosRefused,
   importActive, importSummary, cancelImport, pollImports} from '../core/jobs.js';
-import {loadLibraries, setSettings, updatesTick} from '../core/settings.js';
+import {loadLibraries, updatesTick} from '../core/settings.js';
 import {$, toast, error, fold, wireFolds, redraw, setDrawn, busy} from './dom.js';
 import {confirmAction} from './dialog.js';
 import {createLayer} from './overlay.js';
@@ -46,7 +47,7 @@ function provenanceBars(s) {
 // ---------- 任务面板（#199）：所有后台任务的进度、确认和手动运行集中在一处 ----------
 // 每个任务保留自己的接口和轮询；这里只是把它们汇到一起。有任务在运行时，它的轮询每 2 s 自己重新排上；否则由一个慢的
 // 定时调用（面板打开时变快）发现在别处启动的任务。
-export const taskPanel = {open: false, timer: 0, settingsAt: 0};
+export const taskPanel = {open: false, timer: 0};
 export function taskList() {
   const s = state.sync, ix = state.index?.state || {}, nm = state.names?.state || {}, sim = state.settings?.tasks?.similar || {status: 'off'};
   const pv = state.provenance, ps = pv?.state || {}, ex = state.libraries?.export || {};
@@ -152,8 +153,8 @@ export async function taskTick() {
   if (taskPanel.open || !state.models) jobs.push(loadModels());
   // 角色资料包同样：运行中有自己的轮询，这里发现别处开始的下载或任务。
   if (taskPanel.open || !state.pack) jobs.push(loadPack());
-  // 相似任务的状态随 /api/settings 一起来，它还要测量缓存：只在有人看时才读。
-  if (taskPanel.open && Date.now() - taskPanel.settingsAt > (SIMILAR_ACTIVE.includes(state.settings?.tasks?.similar?.status) ? 2500 : 15000)) { taskPanel.settingsAt = Date.now(); jobs.push(shared('/api/settings').then(s => { setSettings(s); }).catch(e => error(readError(e)))); }
+  // 相似任务的状态随 /api/settings 一起来（core/tasks.js 按时隔补读）：只在有人看时才读。
+  if (taskPanel.open) { const read = refreshTaskSettings(); if (read) jobs.push(read.catch(e => error(readError(e)))); }
   // 面板开着时发现在别的窗口里启动的导入；运行中的导入有自己的轮询。
   if (taskPanel.open && !importActive()) jobs.push(pollImports());
   // 用图动作的状态（#450）：第一次读来知道能不能拖出；面板开着时发现在别的窗口里开始的导出，运行中的导出有自己的轮询。
@@ -212,7 +213,7 @@ export function wireTasks() {
         else if (act === 'export-cancel') await cancelExport();
         else if (act === 'export-reveal') await revealExport();
         else if (act === 'names') { await refreshNames(); toast(t('已开始重新获取角色名称')); }
-        else if (act === 'similar') { await post('/api/similar', {}); setSettings(await api('/api/settings')); }
+        else if (act === 'similar') await startSimilar();
       } catch (err) { toast(err.message); }
       return true;
     });

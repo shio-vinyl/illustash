@@ -13,6 +13,7 @@ import {$, toast, redraw, setDrawn, drawnHTML, busy} from './dom.js';
 import {drawUpdateButton, openRelease, selfUpdate, updateAct, updateActions, updateBar, updateStarted, updateStatus} from './settings.js';
 import {taskList} from './tasks.js';
 import {createLayer} from './overlay.js';
+import {read, write} from './frame.js';
 import {modelsNotice} from './models.js';
 import {modelsWaiting, modelsArrived, onModels} from '../core/models.js';
 
@@ -118,7 +119,7 @@ const tourLayer = createLayer({kind: 'overlay', id: 'tour', el: () => $('tour'),
   inert: () => [document.querySelector('.app'), $('selectionBar'), $('taskPanel'), $('viewer'), $('nudge'), $('checklist')]});
 function showTour(at) {
   tourAt = at; drawNudge(); drawChecklist();
-  const root = $('tour'); root.hidden = false; tourLayer.open(); requestAnimationFrame(() => root.classList.add('on'));
+  const root = $('tour'); root.hidden = false; tourLayer.open(); write(() => root.classList.add('on'), 'guide:tour-in');   // 下一帧加 .on，淡入的过渡才会播
   placeTour(true);
 }
 function closeTour() {
@@ -201,7 +202,7 @@ export function drawNudge() {
   el.dataset.key = n?.key || '';
   // 收起时不清空内容，留给淡出动画；记下空串，260 毫秒后还是空的才隐藏。
   if (!html) { setDrawn(el, ''); el.classList.remove('on'); setTimeout(() => { if (!drawnHTML(el)) el.hidden = true; }, 260); return; }
-  redraw(el, html); el.hidden = false; requestAnimationFrame(() => el.classList.add('on'));
+  redraw(el, html); el.hidden = false; write(() => el.classList.add('on'), 'guide:nudge-in');
 }
 // ----- 清单：事情做完就自己打勾 -----
 export function guideTick(item) {
@@ -304,7 +305,7 @@ export function wireGuide() {
     e.preventDefault(); buttons[next].focus();
   });
   $('tour').addEventListener('mousedown', e => { if (!e.target.closest('button')) e.preventDefault(); });
-  addEventListener('resize', () => { if (tourAt >= 0) requestAnimationFrame(() => placeTour(false)); });
+  addEventListener('resize', () => { if (tourAt >= 0) read(() => placeTour(false), 'guide:tour-place'); });
 
   $('nudge').addEventListener('click', async e => {
     const act = e.target.closest('[data-nudge]')?.dataset.nudge, key = $('nudge').dataset.key; if (!act || !key) return;

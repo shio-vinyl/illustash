@@ -60,4 +60,35 @@ dialog[open]{animation:ov-dialog var(--dur-2) var(--ease)}
 .cl-pill{border-radius:var(--radius-pill);box-shadow:var(--shadow-pop);font-weight:var(--fw-600)}
 .cl-panel{border-radius:var(--radius-12);box-shadow:var(--shadow-pop);animation:ov-pop var(--dur-2) var(--ease)}
 .cl-check{font-size:var(--fs-11);color:var(--on-accent)}
+
+/* ---- 任务面板：一个任务一行（状态点、名称、状态行、一个按钮；进度条和详情在下面），进行中的那行浅强调色底 ---- */
+.task-top{display:flex;align-items:center;justify-content:space-between;margin:0 var(--space-4) var(--space-8)}
+.task-top h2{margin:0;font-size:var(--fs-20);font-weight:var(--fw-750);letter-spacing:-.02em}
+.task-pop h6{margin:var(--space-12) var(--space-6) var(--space-6);color:var(--muted);letter-spacing:.2px}
+.task-group{display:grid;gap:var(--space-2);background:transparent;box-shadow:none;border-radius:0;overflow:visible}
+.task-group>*+*{box-shadow:none}
+/* 一个可收缩的列：里面一行很长、不能断开的文字（损坏图片的路径）显示省略号，不把这一行撑得比面板还宽、把按钮挤出视野 */
+.task-item{display:grid;grid-template-columns:minmax(0,1fr);gap:var(--space-8);padding:var(--space-10) var(--space-12);border-radius:var(--radius-12);
+  transition:background-color var(--dur-2) var(--ease)}
+.task-item.on{background:var(--accent-soft)}
+.task-main{display:flex;align-items:center;gap:var(--space-10);font-size:var(--fs-12)}
+.task-main>button{border-radius:var(--radius-pill);flex:none}
+.task-text{flex:1;min-width:0;display:grid;gap:var(--space-2)}
+.task-text b{font-weight:var(--fw-600)}
+.task-text small{font-size:var(--fs-11);color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.task-item .local-dot{flex:none;width:8px;height:8px;background:var(--ok)}
+.task-item .local-dot.busy{background:var(--warn)}
+.task-item .local-dot.warn{background:var(--bad)}
+.task-item .local-dot.off{background:var(--faint)}
+.task-body .progress{margin:0;border-radius:var(--radius-pill)}
+.task-side{margin:var(--space-6) 0 var(--space-2);font-size:var(--fs-11);color:var(--muted)}
+.task-item details.more{margin:0;font-size:var(--fs-12)}
+.task-item details.more .settings-table{margin-top:var(--space-4)}
+.task-asks{display:grid;gap:var(--space-8)}
+.task-ask{display:flex;align-items:center;gap:var(--space-10);flex-wrap:wrap;padding:var(--space-10) var(--space-12);border-radius:var(--radius-12);
+  background:var(--accent-soft);color:var(--accent-ink);font-size:var(--fs-12)}
+.task-ask>span{flex:1;min-width:0}
+.task-ask button{border-radius:var(--radius-pill)}
+.task-ask.prov-confirm{display:block;margin:0;border:0;background:var(--tone-warn-bg);color:var(--ink)}
+.task-foot{margin:var(--space-12) var(--space-6) 0;font-size:var(--fs-11);color:var(--muted)}
 }

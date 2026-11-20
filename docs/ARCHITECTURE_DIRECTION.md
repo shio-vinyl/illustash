@@ -141,6 +141,8 @@ Python 合成测试在导入 `tests` 时为 `urllib.request.OpenerDirector.open`
 Tauri 桌面外壳（`desktop/`）只负责启动核心 HTTP 命令、管理窗口、Pixiv 请求通道和用图动作的系统调用（见下文「用图动作」），不承载业务逻辑。
 桌面直接调用自身链接的 `http --native --no-open` 命令，透传图库、端口及网络授权参数，保留原生账号模块实际使用的 `ILLUSTASH_DESKTOP_BRIDGE/TOKEN` 登录桥。资源优先使用显式 `--root` / `ILLUSTASH_ROOT`，安装包使用 Tauri `resource_dir()/resources`，仅 debug 构建允许源码根回退；启动前检查 `web/static/index.html` 和 `tags/tags_v3.csv`。核心链接进外壳，无额外核心边车；资源或执行文件缺失、启动失败、端口冲突与服务异常退出显示本地错误页及重装、检查参数后重启的操作提示。
 
+macOS 外壳创建主窗口和 Pixiv 登录窗口时显式开启 WKWebView 的 `tabFocusesLinks`，使 Tab 能聚焦页面链接（#761）。
+
 ### 关窗、后台任务与窗口记忆（#451）
 
 宿主（`native/terms/src/app_activity.rs`）每秒读一次各任务在内存里的状态，「进行中」的判断与任务面板相同（`web/static/core/jobs.js` 的 `*_ACTIVE`，单元测试对照两边的列表）。有任务开始、结束或进度变化时，经登录桥 `POST /platform/activity` 告诉外壳：在跑的任务（种类、状态、进度），以及刚结束的任务（状态、数字、失败原因前 200 字），不含路径和图库内容。换图库时上一个图库的任务不算结束。外壳（`desktop/src/background.rs`）据此：

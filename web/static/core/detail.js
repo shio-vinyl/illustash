@@ -1,10 +1,10 @@
 // 单张图的数据（0.4 第 D 步，#709）：详情卡片（ui/detail.js）和看图器（ui/viewer.js）共用的读取、角色每月张数、
 // 「偶尔问一句是 TA 吗」的节流，以及把归属证据写成文字的纯函数。不碰 DOM，可以在 Node 里直接测（tests/detail_core.test.cjs）。
 //
-// - readDetail(uuid)：读 /api/detail（带收藏和主色）。同一张图、同一个读取纪元（state.readEpoch，写入后加一）里正在读的
-//   那次直接复用，所以详情卡片和大图底栏同时要同一张时只发一个请求。读完写进 state.detail（本文件是它的写入者）。
-// - 回复是旧的（读的过程中又要了别的图）由调用方判断：readDetail 返回 {d, uuid}，调用方比对自己记着的当前图。
-// - state.question（详情或大图里正显示的那条提问）也只在这里写：setQuestion。
+// - readDetail(uuid)：读 /api/detail（带收藏和主色），返回详情 d。同一张图、同一个读取纪元（state.readEpoch，写入后加一）
+//   里正在读的那次直接复用，所以详情卡片和大图底栏同时要同一张时只发一个请求。
+// - 回复是旧的（读的过程中又要了别的图）由调用方判断：比对自己记着的当前图，是当前的才调 adoptDetail。
+// - state.detail（画出来的那份详情）和 state.question（正显示的那条提问）只在这里写：adoptDetail，或 setDetail、setQuestion。
 import {t} from './i18n.js';
 import {cleanup} from './route.js';
 import {api} from './session.js';
@@ -15,7 +15,7 @@ export const DETAIL_MARKS = {marks: 'fav,color'};
 
 // ---- 读取 ----
 const reading = new Map();   // `${uuid}|${纪元}` -> 还没落定的 promise
-/** 读一张图的详情；同一张图、同一纪元里还在读的那次直接复用。读到后写进 state.detail。 */
+/** 读一张图的详情；同一张图、同一纪元里还在读的那次直接复用。 */
 export function readDetail(uuid) {
   const key = `${uuid}|${state.readEpoch}`;
   let p = reading.get(key);
@@ -29,6 +29,13 @@ export function readDetail(uuid) {
 export function setDetail(d) { state.detail = d; }
 /** 正显示的提问（{q, ident}），没有时是 null。 */
 export function setQuestion(q) { state.question = q; }
+/** 读回的详情要画出来时：记成当前详情，按节流决定这次问不问（enabled 是视图选项里的「偶尔提问」），返回问不问。 */
+export function adoptDetail(d, ident, enabled) {
+  setDetail(d);
+  const asking = shouldAsk(d, ident, enabled);
+  setQuestion(asking ? {q: d.question, ident} : null);
+  return asking;
+}
 
 // 这张图的角色每月加入多少张：按角色、NSFW 设置和读取纪元缓存，到下一次写入或切换 NSFW 为止。
 const statsCache = new Map();

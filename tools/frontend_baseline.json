@@ -87,7 +87,6 @@
    "border-color: #ffffff": 1,
    "border: #3d7be0": 1,
    "border: #7d7d95": 1,
-   "border: #86869a": 1,
    "border: #e0533d": 1,
    "border: #ffffff": 2,
    "box-shadow: #00000033": 2,
@@ -210,7 +209,7 @@
    "app.css: transition-timing-function: ease-out": 2
   },
   "css-selector": {
-   "app.css: 后代形式的 :has()": 7
+   "app.css: 后代形式的 :has()": 5
   },
   "backdrop-filter": {
    "app.css: backdrop-filter": 15

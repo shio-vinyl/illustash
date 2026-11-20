@@ -17,10 +17,14 @@
 // 4. 部件的约定是 {el, update(props), dispose()}：el 建一次；update 只经第 2 条的函数改变了的地方；dispose 释放监听、
 //    计时器和子部件（交给 ui/scope.js 的作用域登记，dispose 里调 scope.dispose()）。列表用 ui/keyed.js，长列表用
 //    ui/virtual.js，它们都按这个约定调用部件。
+// 5. 几个小节点组成的一小块（一行链接、几枚只读芯片、几根柱子）用 refill(node, 签名, build)：签名没变什么也不做，变了
+//    整块换成 build() 返回的节点。里面的节点没有自己的状态（焦点、输入、动画）、也不用一个个复用时用它；要按键复用、
+//    留住焦点或播进出场的，用 ui/keyed.js。
 import {t} from '../core/i18n.js';
 
 const parsed = new WeakMap();   // 模板字符串数组 -> {root, paths}
 const LAST = Symbol('el.last');   // 节点上记着的上一次写入：{键: 值}
+const SIGS = new WeakMap();       // refill 的节点 -> 上一次的签名
 
 // 声明一个模板（标签函数）；返回的函数每调用一次克隆一份，得到 {el, refs}。
 // 只接受标签模板传进来的字符串数组（冻结、带 raw）：tpl([html]) 这样当普通函数调，会把运行时拼的字符串交给 HTML 解析，
@@ -129,4 +133,11 @@ export function make(tag, className = '', content = '') {
   if (className) node.className = className;
   if (content !== '') node.textContent = content;
   return node;
+}
+
+// 按签名重画一小块（见文件头第 5 条）：签名（字符串）和上一次相同就不动，不同就整块换成 build() 返回的节点数组。
+export function refill(node, sig, build) {
+  if (SIGS.get(node) === sig) return;
+  SIGS.set(node, sig);
+  node.replaceChildren(...build());
 }

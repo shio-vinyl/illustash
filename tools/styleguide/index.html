@@ -164,9 +164,9 @@
   <div class="sg-item"><header><h3>按钮：主要、普通、安静</h3><span class="sg-tag hand">手写</span><span class="sg-cls"><code>.btn</code><code>.is-primary</code><code>.is-quiet</code><code>.is-small</code></span></header>
     <p class="sg-src">胶囊形，高 32（<code>.is-small</code> 28），字号 12、字重 600。主要按钮的底是 <code>--accent-fill</code>。一页最多一个主要按钮。按下的开关按钮写 <code>aria-pressed="true"</code>，画法同选中。</p>
     <div class="sg-stage"><button class="btn is-primary">新建画廊</button><button class="btn"><svg viewBox="0 0 24 24"><path d="M4 6h16M7 12h10M10 18h4"/></svg>筛选</button><button class="btn is-quiet">取消</button><button class="btn is-small">小按钮</button><button class="btn" aria-pressed="true">已关注</button><button class="btn is-primary" disabled>不可用</button></div></div>
-  <div class="sg-item"><header><h3>芯片</h3><span class="sg-tag hand">手写</span><span class="sg-cls"><code>.chip</code><code>.avatar</code><code>.chip-count</code></span></header>
-    <p class="sg-src">高 28 的胶囊。能点的用 <code>&lt;button class="chip"&gt;</code>；选中：<code>aria-pressed</code> / <code>aria-selected</code> / <code>aria-current</code>，强调色浅底，文字同时变深变粗。带头像的芯片头像贴左。</p>
-    <div class="sg-stage"><button class="chip">全部</button><button class="chip" aria-pressed="true">已识别<span class="chip-count">31</span></button><button class="chip">未识别</button><span class="chip"><img class="avatar" data-ph="2">合成角色 A<span class="chip-count">31</span></span><button class="chip"><img class="avatar" data-ph="3">合成角色 B<span class="chip-count">12</span></button></div></div>
+  <div class="sg-item"><header><h3>芯片</h3><span class="sg-tag hand">手写</span><span class="sg-cls"><code>.chip</code><code>.avatar</code><code>.chip-count</code><code>.chip.is-variant</code><code>.chip.is-add</code></span></header>
+    <p class="sg-src">高 28 的胶囊。能点的用 <code>&lt;button class="chip"&gt;</code>；选中：<code>aria-pressed</code> / <code>aria-selected</code> / <code>aria-current</code>，强调色浅底，文字同时变深变粗。带头像的芯片头像贴左。带一个小 × 的（造型、我的标签）加 <code>.is-variant</code>；「＋ 加一个」的芯片加 <code>.is-add</code>（描边、没有底色；调用见 <code>ui/detail_card.js</code>）。</p>
+    <div class="sg-stage"><button class="chip">全部</button><button class="chip" aria-pressed="true">已识别<span class="chip-count">31</span></button><button class="chip">未识别</button><span class="chip"><img class="avatar" data-ph="2">合成角色 A<span class="chip-count">31</span></span><button class="chip"><img class="avatar" data-ph="3">合成角色 B<span class="chip-count">12</span></button><span class="chip is-variant"><a href="#n-controls"># 夏日</a><button class="dc-chip-x" type="button">×</button></span><button class="chip is-add" type="button">＋ 标签</button></div></div>
   <div class="sg-item"><header><h3>分段控件</h3><span class="sg-tag hand">手写</span><span class="sg-cls"><code>.seg</code></span></header>
     <p class="sg-src">选中的一段白底浮起（<code>--seg-on</code>、<code>--shadow-hover</code>），文字变深变粗。单选组写 <code>role="radiogroup"</code> 和 <code>aria-checked</code>，切换按钮写 <code>aria-pressed</code>。</p>
     <div class="sg-stage"><div class="seg" role="group" aria-label="视图"><button aria-pressed="true"><svg viewBox="0 0 24 24"><path d="M4 5h16M4 12h16M4 19h16"/></svg>按天</button><button aria-pressed="false"><svg viewBox="0 0 24 24"><path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z"/></svg>网格</button><button aria-pressed="false">日历</button></div></div></div>
@@ -260,7 +260,7 @@
       <tr><td><code>cast-more quiet</code></td><td class="n">1</td><td class="ex">ui/catalog.js</td><td><a class="link" href="#b-quiet">安静按钮</a></td></tr>
       <tr><td><code>primary</code></td><td class="n">21</td><td class="ex">ui/grid.js 选择栏、dialog.js、catalog.js、palette.js</td><td><a class="link" href="#b-primary">主按钮</a></td></tr>
       <tr><td><code>primary small</code></td><td class="n">10</td><td class="ex">ui/guide.js、tasks.js、models.js、settings.js</td><td><a class="link" href="#b-primary">主按钮</a></td></tr>
-      <tr><td><code>secondary</code>、<code>secondary large</code></td><td class="n">2 + 6</td><td class="ex">review.js（详情卡片改用 .btn，#709）</td><td><a class="link" href="#b-secondary">次要按钮（灰底）</a></td></tr>
+      <tr><td><code>secondary</code></td><td class="n">2</td><td class="ex">review.js（详情卡片改用 .btn，#709）</td><td><a class="link" href="#b-secondary">次要按钮（灰底）</a></td></tr>
       <tr><td><code>icon</code></td><td class="n">23</td><td class="ex">index.html 顶栏 10 个、catalog.js、dialog.js、palette.js</td><td><a class="link" href="#b-icon">图标按钮</a></td></tr>
       <tr><td><code>icon small</code></td><td class="n">2</td><td class="ex">ui/shell.js、dom.js 标题旁的「?」</td><td><a class="link" href="#b-icon">图标按钮</a></td></tr>
       <tr><td><code>link-button</code>、<code>link-button strong</code></td><td class="n">6 + 2</td><td class="ex">ui/settings.js、palette.js、catalog.js、grid.js、guide.js、shell.js</td><td><a class="link" href="#b-link">链接按钮</a></td></tr>
@@ -269,7 +269,7 @@
       <tr><td><code>aa-b</code>、<code>aa-b yes</code></td><td class="n">3 + 1</td><td class="ex">ui/review.js 画师抽查</td><td><a class="link" href="#b-misc">其它按钮外观</a></td></tr>
       <tr><td><code>staged-chip</code></td><td class="n">2</td><td class="ex">ui/palette.js</td><td><a class="link" href="#b-misc">其它按钮外观</a></td></tr>
       <tr><td><code>toast-undo</code></td><td class="n">2</td><td class="ex">index.html toast</td><td><a class="link" href="#s-toast">toast</a></td></tr>
-      <tr><td>各只出现一次：<code>jump</code> <code>nsfw-toggle</code> <code>cl-pill</code> <code>shelf-new</code> <code>hint-add</code> <code>view-opt</code> <code>palette-item</code> <code>cast-tab</code> <code>cast-allw</code> <code>cast-wrow</code> <code>cast-wt</code> <code>shelf-name</code> <code>gsec-img</code> <code>ask-img</code> <code>home-j</code> <code>strip-nav</code> <code>alt</code> <code>tag</code> <code>dup-copy</code> <code>preview</code></td><td class="n">各 1</td><td class="ex">见各自的生成位置</td><td><a class="link" href="#b-misc">其它按钮外观</a>及各节</td></tr>
+      <tr><td>各只出现一次：<code>jump</code> <code>nsfw-toggle</code> <code>cl-pill</code> <code>shelf-new</code> <code>hint-add</code> <code>view-opt</code> <code>palette-item</code> <code>cast-tab</code> <code>cast-allw</code> <code>cast-wrow</code> <code>cast-wt</code> <code>shelf-name</code> <code>gsec-img</code></td><td class="n">各 1</td><td class="ex">见各自的生成位置</td><td><a class="link" href="#b-misc">其它按钮外观</a>及各节</td></tr>
       <tr><td>没写 class：<code>.variant-chip button</code>、<code>.segmented button</code>、<code>.settings-nav</code> 等</td><td class="n">10 + 9 空</td><td class="ex">ui/grid.js、review.js、settings.js、shell.js</td><td>各节</td></tr>
     </table></div>
   </div>
@@ -303,10 +303,10 @@
       <div class="sg-pair"><button class="primary" disabled>保存</button><i>:disabled</i></div>
       <div class="sg-pair"><button class="primary small">授权并开始</button><i>.primary.small</i></div>
     </div>
-    <p class="sg-note"><b>一种写法：</b>主要操作只有 <code>.primary</code>（原来并行的 <code>.btn.pri</code> 已并入，详情栏底部用 <code>.primary.large</code>）。它在 CSS 里仍分两处写：app.css 上半的基础层只剩改版层没设的属性，颜色、圆角、内边距都在“改版层”一节；原来的黑底方角版声明在 #430 删掉了。<code>.primary kbd</code>、<code>.primary.armed</code> 同样分两处，两处设置的属性不重叠。</p>
+    <p class="sg-note"><b>一种写法：</b>主要操作只有 <code>.primary</code>（原来并行的 <code>.btn.pri</code> 已并入）。它在 CSS 里仍分两处写：app.css 上半的基础层只剩改版层没设的属性，颜色、圆角、内边距都在“改版层”一节；原来的黑底方角版声明在 #430 删掉了。<code>.primary kbd</code>、<code>.primary.armed</code> 同样分两处，两处设置的属性不重叠。</p>
   </div>
 
-  <div class="sg-item" id="b-secondary"><header><h3>次要按钮（灰底）</h3><span class="sg-tag hand">手写</span><span class="sg-cls"><code>.secondary</code><code>.secondary.large</code><code>.primary.large</code></span></header>
+  <div class="sg-item" id="b-secondary"><header><h3>次要按钮（灰底）</h3><span class="sg-tag hand">手写</span><span class="sg-cls"><code>.secondary</code></span></header>
     <p class="sg-src">来源：<code>ui/review.js</code>（未识别按组整理的 <code>.gsec-head</code>）。</p>
     <div class="sg-stage top">
       <div class="sg-pair"><div class="gsec-head" style="margin:0"><button class="primary">都是 ✓</button><button class="secondary">都不是 ✗</button></div><i>.gsec-head .secondary / .primary：padding 3/10、行高 1.5，高仍是 36（旧 .btn 的遗留，同一行的 .quiet 是 24）</i></div>
@@ -319,7 +319,7 @@
   </div>
 
   <div class="sg-item" id="b-icon"><header><h3>图标按钮</h3><span class="sg-tag hand">手写</span><span class="sg-cls"><code>.icon</code><code>.icon.small</code></span></header>
-    <p class="sg-src">来源：<code>index.html</code> 顶栏（<code>.top-actions .icon</code>）· <code>ui/detail.js</code> inspect（<code>.inspector-head .icon</code>）、identityChips（<code>.icon.small</code>）· <code>ui/dialog.js</code> / catalog.js / palette.js（对话框右上角的 ×）· <code>ui/grid.js</code> renderSelection（清除选择）· <code>ui/tasks.js</code> renderTasks（任务面板的 ×）。</p>
+    <p class="sg-src">来源：<code>index.html</code> 顶栏（<code>.top-actions .icon</code>）· <code>ui/dialog.js</code> / catalog.js / palette.js（对话框右上角的 ×）· <code>ui/grid.js</code> renderSelection（清除选择）· <code>ui/tasks.js</code> renderTasks（任务面板的 ×）。</p>
     <div class="sg-stage">
       <div class="sg-pair"><button class="icon" aria-label="关闭">×</button><i>.icon（30，16px 字）</i></div>
       <div class="sg-pair"><button class="icon small">×</button><i>.icon.small（24）</i></div>
@@ -463,13 +463,12 @@
   </div>
 
   <div class="sg-item"><header><h3>徽标、圆点</h3><span class="sg-tag hand">手写</span></header>
-    <p class="sg-src">来源：<code>.rail-count</code> — <code>ui/rail.js</code>（活页条整理的队列，样例在「新部件 · 活页条」）· <code>.task-badge</code> — <code>index.html</code> / <code>ui/tasks.js</code> renderTasks · <code>.dup-badge</code> — <code>ui/grid.js</code> cardHTML · <code>.cast-poster .pill</code> — <code>ui/catalog.js</code> poster · <code>.dot</code> — <code>ui/detail.js</code> identityChips · <code>.local-dot</code> — <code>ui/tasks.js</code>、<code>ui/settings.js</code>。</p>
+    <p class="sg-src">来源：<code>.rail-count</code> — <code>ui/rail.js</code>（活页条整理的队列，样例在「新部件 · 活页条」）· <code>.task-badge</code> — <code>index.html</code> / <code>ui/tasks.js</code> renderTasks · <code>.dup-badge</code> — <code>ui/grid.js</code> cardHTML · <code>.cast-poster .pill</code> — <code>ui/catalog.js</code> poster · <code>.local-dot</code> — <code>ui/tasks.js</code>、<code>ui/settings.js</code>。</p>
     <div class="sg-stage">
       <div class="sg-pair"><span class="rail-foot-button"><span class="task-badge"></span></span><i>.task-badge</i></div>
       <div class="sg-pair"><span class="rail-foot-button"><span class="task-badge warn"></span></span><i>.task-badge.warn</i></div>
       <div class="sg-pair"><div style="position:relative;width:70px;height:34px;background:var(--soft);border-radius:8px"><span class="dup-badge" style="--dup-hue:120">2/3</span></div><i>.dup-badge（--dup-hue 内联）</i></div>
       <div class="sg-pair"><div style="position:relative;width:70px;height:34px;background:#555;border-radius:8px"><span class="dup-badge folded">×3</span></div><i>.dup-badge.folded</i></div>
-      <div class="sg-pair"><span style="display:inline-flex;gap:8px;align-items:center"><span class="dot machine"></span><span class="dot confirmed"></span></span><i>.dot.machine / .dot.confirmed</i></div>
       <div class="sg-pair"><span style="display:inline-flex;gap:10px;align-items:center"><span class="local-dot" style="position:static;background:#34c38f;width:8px;height:8px"></span><span class="local-dot busy" style="position:static;width:8px;height:8px"></span><span class="local-dot warn" style="position:static;width:8px;height:8px"></span><span class="local-dot off" style="position:static;width:8px;height:8px"></span></span><i>.local-dot（空闲 / .busy / .warn / .off）</i></div>
     </div>
     <p class="sg-note"><code>.local-dot</code> 的颜色分散在几处重复覆盖（<code>.set-status .local-dot</code>、<code>.task-item .local-dot</code>），绿色 <code>#34c38f</code> 和红色 <code>#d9534f</code> 写死，不是 <code>--accent</code>/<code>--warn</code>。本页样例里把 <code>position</code> 改回 static。</p>
@@ -667,7 +666,7 @@
     <tr><td>分段 / 标签切换</td><td class="ex"><code>.segmented</code>(button / a) · <code>.icon-seg</code> · <code>.chip-filter</code> · <code>.cast-tab</code> · <code>.cast-buckets button</code> · <code>.settings-nav a</code></td><td><a class="link" href="#c-forms">输入与开关</a></td></tr>
     <tr><td>文本输入</td><td class="ex"><code>.search-wrap input</code> · <code>.menu-drop input</code> · <code>.modal .field input</code> · <code>.lib-input</code> · <code>.watch-add input</code> · <code>.num-field input</code> · <code>.form-grid input</code> · <code>#pickerSearch</code> · <code>#watchAdd</code> · <code>#watchMin</code></td><td><a class="link" href="#c-forms">输入与开关</a></td></tr>
     <tr><td>小标签</td><td class="ex"><code>.tag</code> · <code>.oc-badge</code> · <code>.pair-label</code> · <code>.group-traits span</code> · <code>.cast-tags span</code> · <code>.tag-on</code> · <code>.set-scope</code> · <code>.variant-chip</code></td><td><a class="link" href="#c-chips">芯片</a></td></tr>
-    <tr><td>提示条</td><td class="ex"><code>#errorBanner</code> · <code>.guide-notice</code> · <code>.dialog-lead</code> · <code>.lib-created</code> · <code>.task-ask</code> · <code>.shelf-todo</code> · <code>.shelf-found</code> · <code>.ask-bar</code> · <code>.nudge</code> · <code>.prov-confirm</code></td><td><a class="link" href="#c-banners">提示条</a></td></tr>
+    <tr><td>提示条</td><td class="ex"><code>#errorBanner</code> · <code>.guide-notice</code> · <code>.dialog-lead</code> · <code>.lib-created</code> · <code>.task-ask</code> · <code>.shelf-todo</code> · <code>.shelf-found</code> · <code>.dc-ask</code> · <code>.nudge</code> · <code>.prov-confirm</code></td><td><a class="link" href="#c-banners">提示条</a></td></tr>
     <tr><td>对话框壳</td><td class="ex">无类 <code>dialog</code>（帮助）· <code>dialog.palette</code>（命令面板）· <code>dialog.relate</code>（两个）· <code>dialog.modal</code>（运行时 7 个，<code>openDialog()</code> 生成）</td><td><a class="link" href="#s-dialogs">对话框</a></td></tr>
     <tr><td>弹出面板</td><td class="ex"><code>.menu</code> + <code>.menu-drop</code> / <code>.view-pop</code> / <code>.cast-pop</code> / <code>.task-pop</code> · <code>.combo-menu</code>（未并入），各自关闭逻辑</td><td><a class="link" href="#s-pops">浮层菜单</a></td></tr>
     <tr><td>一列可点选项</td><td class="ex"><code>.menu-item</code> · <code>.watch-option</code> · <code>.palette-item</code> · <code>.cast-wrow</code> · <code>.view-opt</code> · <code>.link-row</code></td><td><a class="link" href="#s-pops">浮层菜单</a></td></tr>
@@ -675,7 +674,7 @@
     <tr><td>卡片轮廓</td><td class="ex"><code>.settings-card</code>、<code>.pair-card</code>、<code>.group-card</code> 的轮廓只剩 <code>box-shadow:0 0 0 1px var(--hair)</code>（改版层）；早期的 <code>border:1px solid var(--line)</code> 写法在 #430 删掉了</td><td>各节</td></tr>
     <tr><td>文字链接</td><td class="ex"><code>.link-button</code> · <code>a.link</code> · <code>.add-identity</code> · <code>.variant-add</code> · <code>.artist-more</code></td><td><a class="link" href="#b-link">链接按钮</a></td></tr>
     <tr><td>表格</td><td class="ex"><code>.settings-table</code>(+ <code>.index-table</code> <code>.net-table</code>) · <code>.cast-table</code> · <code>.prov-stats</code></td><td><a class="link" href="#s-tasks">任务面板</a></td></tr>
-    <tr><td>折叠</td><td class="ex"><code>details.more</code>（fold()）· <code>details.inspector-section</code> · <code>details.shelf-todo</code></td><td><a class="link" href="#s-tasks">任务面板</a></td></tr>
+    <tr><td>折叠</td><td class="ex"><code>details.more</code>（fold()）· <code>details.dc-fold</code> · <code>details.shelf-todo</code></td><td><a class="link" href="#s-tasks">任务面板</a></td></tr>
   </table></div></div>
 </section>
 

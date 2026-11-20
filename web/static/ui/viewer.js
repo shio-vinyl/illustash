@@ -12,23 +12,22 @@
 //   传进来：这里不导入 ui/grid.js、ui/detail.js（tools/check_frontend.py 规则 1 不许新增循环导入）。
 // - 写 state.viewer、state.viewerItem（core/state.js 的「大图」一组）。
 import {t} from '../core/i18n.js';
-import {number} from '../core/format.js';
+import {imageUrl as img, number} from '../core/format.js';
 import {aspect} from '../core/layout.js';
 import {unreadableText} from '../core/jobs.js';
 import {detailAfterViewer} from '../core/modes.js';
 import {keyScope, pageOf, viewOf} from '../core/pages.js';
 import {state} from '../core/state.js';
-import {readDetail, setDetail, setQuestion, shouldAsk} from '../core/detail.js';
+import {adoptDetail, readDetail} from '../core/detail.js';
 import {$} from './dom.js';
-import {askBar, identities} from './detail_card.js';
-import {attr, cls, css, make, show, text, tpl} from './el.js';
+import {DIM_MS, askBar, identities} from './detail_card.js';
+import {attr, cls, css, make, refill, show, text, tpl} from './el.js';
 import {wireDragOut} from './files.js';
 import {read} from './frame.js';
 import {animate, enter, share, shareBack, thumbs} from './motion.js';
 import {createLayer} from './overlay.js';
-import {scope} from './scope.js';
+import {app} from './scope.js';
 
-const img = (uuid, size) => `/image?id=${encodeURIComponent(uuid)}&size=${size}`;
 const SLOT = tpl`<div class="vw-slot"><div class="vw-frame" data-ref="frame"><div class="vw-zoom" data-ref="zoom">
   <img class="vw-low" data-ref="low" alt="" draggable="false"><img class="vw-high" data-ref="high" alt="" draggable="false" hidden></div></div>
   <p class="vw-missing" data-ref="missing" hidden></p></div>`;
@@ -40,14 +39,16 @@ const nextFrame = () => new Promise(r => { read(r); setTimeout(r, 100); });
 
 let hooks = null;
 /**
- * ui/detail.js 在 wireDetail 里调一次：{loadPage, PAGE, setCursor, previewList, endPreview, previewing, kept, ensureVisible, inspect,
- * step, markDetailKeys, askEnabled, act(name, data, event, d)}。act 处理底栏里的点击（和详情卡片同一套）。
+ * ui/detail.js 载入时调一次（WEB_V2.md「模块载入时不做事」的例外：tests/restore_place.test.cjs 不调 wireDetail 也要能
+ * showViewer；只是登记函数，不碰 DOM）：{loadPage, PAGE, setCursor, previewList, endPreview, previewing, kept, ensureVisible,
+ * inspect, step, markDetailKeys, askEnabled, act(name, data, event, d)}。act 处理底栏里的点击（和详情卡片同一套）。
  */
 export function bindViewer(h) { hooks = h; }
 
-const s = scope('viewer');
+const s = app.child('viewer');
 const view = {scale: 1, x: 0, y: 0};
 let slots = [], current = null, bar = null, closing = 0, backdrop = null;
+let shownReady = Promise.resolve();   // 最近一次换图时当前那张预览图解码的 promise（openViewer 等它再展开）
 
 // 大图是盖满页面的层：Esc 关它（焦点在层外的输入框里时让位给输入框失焦），关闭时焦点还给打开它的地方。
 // 开着时焦点在大图上，它盖住的页面、选择栏和任务面板设成 inert，Tab 只在大图的按钮间走（#422）；提示条（撤销）不盖。
@@ -61,9 +62,14 @@ function makeSlot(n) {
   refs.low.id = `viewerLow${n}`; refs.high.id = `viewerHigh${n}`;
   const slot = {el, ...refs, uuid: null, ready: Promise.resolve()};
   s.on(refs.low, 'error', () => { if (slot.uuid) { show(refs.frame, false); text(refs.missing, unreadableText()); show(refs.missing, true); } });
-  s.on(refs.high, 'load', () => { if (slot === current && refs.high.getAttribute('src')) refs.high.decode?.().catch(() => {}).then(() => { if (slot === current) show(refs.high, true); }); });
+  // 原图读好了：解码完再盖上去。解码期间这个槽换了图（src 变了）就不盖，等新原图自己的 load。
+  s.on(refs.high, 'load', () => {
+    const src = refs.high.getAttribute('src');
+    if (slot !== current || !src) return;
+    (refs.high.decode?.() || Promise.resolve()).catch(() => {}).then(() => { if (slot === current && refs.high.getAttribute('src') === src) show(refs.high, true); });
+  });
   // 没放大时按住大图拖动：把这张图拖到别的应用（#450）；放大后按住拖动是平移。
-  wireDragOut(refs.frame, () => [slot.uuid].filter(Boolean), () => view.scale <= 1.01);
+  s.add(wireDragOut(refs.frame, () => [slot.uuid].filter(Boolean), () => view.scale <= 1.01));
   return slot;
 }
 // 把一张图放进槽里：预览图、按宽高比定框；返回预览图解码的 promise（失败也落定）。
@@ -72,15 +78,16 @@ function fill(slot, item) {
   slot.uuid = item.uuid;
   show(slot.frame, true); show(slot.missing, false); show(slot.high, false); attr(slot.high, 'src', null);
   css(slot.zoom, 'transform', null);
-  ratio(slot, aspect(item));
+  ratio(slot, aspect(item), item.width);
   attr(slot.low, 'src', img(item.uuid, 'preview'));
   slot.ready = (slot.low.decode?.() || Promise.resolve()).then(() => { if (!aspect(item) && slot.low.naturalWidth) ratio(slot, slot.low.naturalWidth / slot.low.naturalHeight); }, () => {});
   return slot.ready;
 }
-function ratio(slot, r) {
+// 框按宽高比铺满舞台，但不超过原图的宽度（和旧看图器一样，小图按原尺寸显示、不放大）。原图宽度不知道时只按舞台。
+function ratio(slot, r, width = 0) {
   const k = r > 0 && Number.isFinite(r) ? r : 3 / 4;
   css(slot.frame, 'aspect-ratio', String(k));
-  css(slot.frame, 'width', `min(100cqw, ${(k * 100).toFixed(3)}cqh)`);
+  css(slot.frame, 'width', `min(100cqw, ${(k * 100).toFixed(3)}cqh${width > 0 ? `, ${Math.round(width)}px` : ''})`);
 }
 // 当前那张换成 item。翻页时这一步要快：只换当前那张（邻居多半已经预解码好了，直接显示）；左右邻居、再远一张的预读
 // 和当前那张的原图排到下一帧再做（prepare），点击的处理里不做这些。
@@ -90,8 +97,8 @@ function arrange(item, i) {
   const cur = slots.find(x => x.uuid === item.uuid) || slots.find(x => x !== current && !near.includes(x.uuid)) || slots.find(x => x !== current) || slots[0];
   const ready = fill(cur, item);
   if (current !== cur) {
-    // 只换类名：不当前的槽用 visibility 藏（css/detail.css）。不改 hidden 特性，WebKit 里 hidden 一变就要重查旧样式里
-    // body:has(#viewer:not([hidden])) 这类选择器，每次翻页多花几毫秒（#683 的大图翻页测量）。
+    // 只换类名：不当前的槽用 visibility 藏（css/detail.css）。不改 hidden 特性：WebKit 里 hidden 一变就要重查样式里
+    // 带 :has() 的选择器，每次翻页多花几毫秒（#683 的大图翻页测量）。
     for (const slot of slots) cls(slot.el, 'is-current', slot === cur);
     current = cur; resetView();
   }
@@ -114,6 +121,13 @@ function prepare() {
   // 原图只留当前那张：翻走的槽放掉原图，免得三张原图的解码结果一直占着图形内存（#683 量到 Chromium GPU 进程多出约 150 MiB）。
   for (const x of slots) if (x !== current && x.high.getAttribute('src')) { show(x.high, false); attr(x.high, 'src', null); }
   if (!current.high.getAttribute('src')) attr(current.high, 'src', img(item.uuid, 'full'));
+}
+
+// 关掉以后放掉原图（预览图留着，下次打开同一张时不用再解码），复位缩放；槽忘掉自己放的是哪张，下次 fill 会重写。
+function release() {
+  Object.assign(view, {scale: 1, x: 0, y: 0}); cls($('viewerStage'), 'zoomed', false);
+  for (const slot of slots) { css(slot.zoom, 'transform', null); show(slot.high, false); attr(slot.high, 'src', null); slot.uuid = null; }
+  current = null;
 }
 
 // ---------- 缩放与平移 ----------
@@ -139,35 +153,45 @@ export function zoomView(factor, cx, cy) {
 }
 
 // ---------- 底栏：提问、角色条和几个动作 ----------
-const BAR = tpl`<div class="vw-bar-in"><p class="vw-status" data-ref="status" hidden></p><div data-ref="askSlot"></div><div data-ref="whoSlot"></div>
+const BAR = tpl`<div class="vw-bar-in is-empty"><p class="vw-status" data-ref="status" hidden></p><div data-ref="askSlot"></div><div data-ref="whoSlot"></div>
   <div class="vw-acts" data-ref="acts"></div></div>`;
 function viewerBar() {
-  const {el, refs} = BAR(), ask = askBar(), who = identities({compact: true});
-  refs.askSlot.replaceWith(ask.el); refs.whoSlot.replaceWith(who.el); s.add(ask); s.add(who);
-  const out = {el, d: null, failed(message) { text(refs.status, message); show(refs.status, true); }, update(d, asking) {
-    out.d = d; show(refs.status, false);
+  const {el, refs} = BAR(), ask = askBar(), who = identities({compact: true, scope: s});
+  refs.askSlot.replaceWith(ask.el); refs.whoSlot.replaceWith(who.el); s.add(ask);
+  // 翻到另一张、详情还没读回时（loading 之后、update 之前）d 是 null：按钮不响应（wireViewer 里的点击要 bar.d），免得收藏、
+  // 角色行这些按着上一张的详情改，而跳过、排除改的是舞台上的新图。
+  const out = {el, d: null, loading(uuid) {
+    if (out.d?.uuid === uuid) return;
+    out.d = null;
+    s.timeout(() => { if (!out.d) cls(el, 'is-dim', true); }, DIM_MS);
+  }, failed(message) { cls(el, 'is-dim', false); text(refs.status, message); show(refs.status, true); }, update(d, asking) {
+    out.d = d; show(refs.status, false); cls(el, 'is-dim', false); cls(el, 'is-empty', false);
     ask.update(asking ? d.question : null); who.update(d);
+    // 收藏按钮只由底栏自己写（不带 data-fav，ui/favorites.js 的 paintHearts 不碰它），开没开着不进签名：重画一组按钮
+    // 之后由 fav() 写它的样子，收藏写入后 ui/detail.js 的 noteFavorite 经 viewerFav 再调一次。
     const acts = viewerActions(d);
     refill(refs.acts, JSON.stringify(acts), () => acts.map(a => {
       const b = make('button', a.fav ? 'chip fav-act' : 'chip'); b.type = 'button'; b.dataset.act = a.act;
       if (a.key) b.append(make('kbd', '', a.key));
-      if (!a.fav) { b.append(a.label); return b; }
-      // 收藏：写入后 ui/favorites.js 的 paintHearts 按 data-fav 就地改 .on、aria-pressed、提示和 .fav-label。
-      b.dataset.fav = d.uuid; b.classList.toggle('on', a.on); b.setAttribute('aria-pressed', String(a.on));
-      b.title = a.on ? t('取消收藏（F）') : t('收藏（F）'); b.append(make('span', 'fav-label', a.label));
+      b.append(a.fav ? make('span', 'fav-label') : a.label);
       return b;
     }));
+    out.fav(!!d.fav);
+  }, fav(on) {
+    const b = refs.acts.querySelector('[data-act="fav"]'); if (!b) return;
+    cls(b, 'on', on); attr(b, 'aria-pressed', String(on)); attr(b, 'title', on ? t('取消收藏（F）') : t('收藏（F）'));
+    text(b.querySelector('.fav-label'), on ? t('已收藏') : t('收藏', {context: 'verb'}));
   }};
   return out;
 }
-// 按内容的签名重画一小块：签名没变就不动。
-function refill(node, sig, build) { if (node.dataset.sig !== sig) { node.dataset.sig = sig; node.replaceChildren(...build()); } }
+/** 收藏写入成功后（ui/detail.js 的 noteFavorite）：底栏正显示这张时改收藏按钮。 */
+export function viewerFav(uuid, on) { if (bar?.d?.uuid === uuid) { bar.d.fav = on; bar.fav(on); } }
 /** 大图底栏的动作：「跳过 S」「排除 X」「收藏 F」「信息 I」和「更多像这张的」。只在这一页按这个键做的就是它时才画（#424 的 2-1、2-7）。 */
 function viewerActions(d) {
   const out = [];
   if (pageOf(state.route).skip && !d.memberships.length && !d.unknown) out.push({act: 'skip', key: 'S', label: t('跳过')});
   if (!d.excluded) out.push({act: 'exclude', key: 'X', label: t('排除')});
-  out.push({act: 'fav', key: 'F', label: d.fav ? t('已收藏') : t('收藏', {context: 'verb'}), fav: true, on: !!d.fav});
+  out.push({act: 'fav', key: 'F', fav: true});
   if (keyScope(viewOf(state.route)) && !hooks.previewing()) out.push({act: 'info', key: 'I', label: t('信息')});
   out.push({act: 'like', label: t('更多像这张的')});
   return out;
@@ -176,10 +200,7 @@ async function refreshBar(item) {
   let d;
   try { d = await readDetail(item.uuid); } catch (e) { if (state.viewerItem?.uuid === item.uuid) bar?.failed(e.message); return; }
   if (!d || state.viewerItem?.uuid !== item.uuid) return;
-  setDetail(d);
-  const asking = shouldAsk(d, item.uuid, hooks.askEnabled());
-  setQuestion(asking ? {q: d.question, ident: item.uuid} : null);
-  bar?.update(d, asking);
+  bar?.update(d, adoptDetail(d, item.uuid, hooks.askEnabled()));
 }
 
 // ---------- 开、关、翻 ----------
@@ -188,19 +209,22 @@ const root = () => $('viewer'), chrome = () => [backdrop, root().querySelector('
 export function openViewer(i) {
   if (i < 0 || !state.items[i]) return;
   if (state.viewer >= 0) { showViewer(i); return; }
-  const mine = ++closing, item = state.items[i], thumb = thumbs.find(item.uuid);
+  const mine = ++closing, item = state.items[i];
   state.viewer = i;
   document.body.classList.add('viewing');
-  const ready = arrange(item, i);
+  // 层先登记上：等预览图解码的这 50–250ms 里按 Esc，关的是大图（onDismiss → closeViewer，开场随之作废），不落到页面上。
+  layer.open();
   showViewer(i);
-  // 展开：等预览图解码（有上下限），然后从缩略图的位置长到大图的位置。
+  const ready = shownReady;
+  // 展开：等预览图解码（有上下限），然后从缩略图的位置长到大图的位置。缩略图等完再找：等的时候网格可能重画过。
   Promise.all([sleep(OPEN_MIN_MS), Promise.race([ready, sleep(OPEN_MAX_MS)])]).then(() => {
     if (mine !== closing || state.viewer < 0) return;
-    share({from: thumb, to: () => current?.frame, radius: [8, 0], update: () => {
+    share({from: thumbs.find(item.uuid), to: () => current?.frame, radius: [8, 0], update: () => {
       if (mine !== closing) return;
       // 上一次缩回还没走完就又打开：先撤掉它停在终点的动画。
       for (const el of [...slots.map(x => x.frame), ...chrome()]) for (const anim of el.getAnimations?.() || []) anim.cancel();
-      root().hidden = false; cls(root(), 'is-closing', false); layer.open();
+      root().hidden = false; cls(root(), 'is-closing', false);
+      root().focus?.({preventScroll: true});   // 层登记时大图还藏着，焦点进不去，这里补上
       for (const el of chrome()) enter(el, {from: 'fade', dur: 2});
     }});
   });
@@ -225,6 +249,7 @@ export function closeViewer(reason) {
     if (mine !== closing) return;
     root().hidden = true; cls(root(), 'is-closing', false);
     for (const el of [frameEl, ...chrome()]) for (const a of el?.getAnimations?.() || []) a.cancel();
+    release();
   };
   if (reason === 'silent' || !frameEl || root().hidden) { done(); return; }
   // 缩回去：等视图把滚进视野的那张画出来（两帧），找它的缩略图；退场期间不接点击（.is-closing）。
@@ -246,7 +271,7 @@ export async function showViewer(i, held = null) {
   state.viewer = Math.max(0, i); hooks.setCursor(state.viewer); state.viewerItem = item;
   const at = state.items.findIndex(x => x?.uuid === item.uuid);
   text($('viewerCount'), at >= 0 ? `${number(at + 1)} / ${number(state.total)}` : t('已移出当前列表 · ← → 继续'));
-  if (!same) { arrange(item, at >= 0 ? at : i); noteSize(); }
+  if (!same) { bar?.loading(item.uuid); shownReady = arrange(item, at >= 0 ? at : i); noteSize(); }
   return refreshBar(item);
 }
 // 主区不是网格的页面把一张图滚进视野：页面在注册表里登记 reveal(uuid)（首页、按组整理）。

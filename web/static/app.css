@@ -113,9 +113,7 @@ p{margin:0;font-size:var(--fs-12);line-height:1.6}
 .char-index{padding-bottom:30px}
 .more{margin-top:6px;color:var(--muted)}
 
-/* 检查面板 */
-.dot{width:8px;height:8px;border-radius:var(--radius-round);flex-shrink:0}
-.dot.machine{border:1.5px solid #86869a}
+/* 筛选条上的芯片（ui/filters.js） */
 .variant-chip{font-size:var(--fs-11);padding:var(--space-2) var(--space-2) var(--space-2) var(--space-6);display:inline-flex;align-items:center;gap:var(--space-2)}
 .variant-chip button{border:0;background:transparent;color:var(--muted);font-size:var(--fs-11);padding:0 var(--space-4);border-radius:var(--radius-4)}
 .variant-chip button:hover{background:var(--chip-hover);color:var(--ink2)}
@@ -490,11 +488,7 @@ select:hover{background-color:rgba(var(--sh),.08)}
 .footer{color:var(--muted)}
 #errorBanner,#damageBanner{border:0;background:var(--tone-warn-bg);color:var(--tone-warn-ink);border-radius:var(--radius-12)}
 .dup-badge{border-radius:var(--radius-pill);box-shadow:none}
-/* 检查面板 */
-.dot.confirmed{background:var(--accent)}
-.dot.machine{border-color:var(--accent)}
 .variant-chip{background:var(--sheet);color:var(--ink2);border-radius:var(--radius-pill);box-shadow:0 0 0 1px var(--hair)}
-/* 只由 WD 角色扩展给出的项（#550）：名字后面常显小字「扩展」 */
 /* 选择栏与 toast */
 .selection-bar,.toast{left:calc(50% + 42px)}
 .selection-bar{border:0;background:var(--bar-bg);-webkit-backdrop-filter:blur(18px) saturate(1.6);backdrop-filter:blur(18px) saturate(1.6);color:#fff;border-radius:var(--radius-18);padding:var(--space-6) var(--space-6) var(--space-6) var(--space-8);box-shadow:inset 0 0 0 .5px rgba(255,255,255,.18),0 18px 40px -10px rgba(var(--sh),.5)}
@@ -568,8 +562,6 @@ input,textarea{color:inherit}
 .secondary{border:0;border-radius:var(--radius-12);font-size:var(--fs-12);font-weight:600;color:var(--ink);background:var(--soft);white-space:nowrap;transition:filter .15s}
 .secondary:hover{filter:var(--btn-hover-filter)}
 .secondary kbd{background:transparent;box-shadow:none;padding:0;color:inherit;opacity:.6}
-.large{display:inline-flex;align-items:center;justify-content:center;gap:var(--space-8);height:var(--h-36);padding:var(--space-1) var(--space-6)}
-.large kbd{margin-left:0}
 
 
 /* 首页 */
@@ -610,7 +602,7 @@ input,textarea{color:inherit}
    有选中时让开选择栏，选择结束再出来（#398）。 */
 body:has(#checklist:not([hidden])) .viewport{padding-bottom:64px}
 body:has(#nudge:not([hidden])) .viewport{padding-bottom:120px}
-body:has(#viewer:not([hidden])) .checklist,body:has(#taskPanel:not([hidden])) .checklist,body:has(#inspector:not([hidden])) .checklist{display:none}
+body.viewing .checklist,body.inspecting .checklist,body:has(#taskPanel:not([hidden])) .checklist{display:none}
 body:has(#settingsPage:not([hidden])) .nudge,body:has(#selectionBar:not([hidden])) .nudge{display:none}
 @keyframes cl-pulse{30%{transform:scale(1.08)}60%{transform:scale(.98)}}
 .cl-panel{order:1;width:260px;padding:var(--space-12) var(--space-14) var(--space-8);border-radius:var(--radius-14);background:var(--sheet);box-shadow:0 10px 32px rgba(var(--sh),.22),0 0 0 1px var(--hair);animation:tour-in .25s var(--ease)}
@@ -792,11 +784,6 @@ body:has(#settingsPage:not([hidden])) .nudge,body:has(#selectionBar:not([hidden]
 /* ===================== 深色主题（html[data-theme=dark]，由 theme.js 设置） ===================== */
 :root[data-theme=dark] dialog::backdrop{background:rgba(0,0,0,.45)}
 
-/* ===================== 主动提问（详情/大图的提问条、首页「认一认」） ===================== */
-/* 「不算角色，只当标签」的身份 */
-.tag-ids{display:flex;flex-wrap:wrap;align-items:center;gap:var(--space-6);margin-top:10px}
-.tag-ids span{font-size:var(--fs-11);color:var(--muted);margin-right:2px}
-.tag-ids a{text-decoration:none;color:var(--ink2)}
 .cast-tagged{margin:18px 0 8px;font-size:var(--fs-12);color:var(--muted);display:flex;flex-wrap:wrap;gap:var(--space-4) var(--space-12);align-items:baseline}
 .cast-tagged a{color:var(--ink2);text-decoration:none}
 .cast-tagged a:hover{color:var(--accent-ink)}
@@ -1040,6 +1027,7 @@ dialog.index-add{width:min(720px,calc(100vw - 32px))}
   .shelf-bar .watch-add input{width:100%}
 }
 .img-broken{display:grid;place-items:center;width:100%;height:100%;min-height:24px;background:var(--soft);color:var(--muted);font-size:var(--fs-12)}
+img.is-broken{display:none}
 
 /* 设置（#293）：所有卡片一个样式。每行上方有一条细线；行的标题 12.5px，提示是下面一块 11.5px 的灰字；小标题把卡片分成
    几部分；卡片里的按钮是小的描边胶囊；表格用正文字号；结尾的说明有自己的细线，下方留出空间。 */

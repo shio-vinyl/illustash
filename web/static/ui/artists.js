@@ -1,7 +1,7 @@
 // 详情卡片里的画师（桌面布局，#199；0.4 第 D 步改成部件，#709）：找到了就列出来，没找到时一个「查找画师」；以及点击即授权
 // 的查找。请求和等待在 core/artists.js。
 //
-//   const block = artistBlock({verdict(artist, name, v), find(), findMore(artist, name)});
+//   const block = artistBlock({verdict(uuid, artist, name, v), find(uuid), findMore(uuid, artist, name)}, parentScope);
 //   block.update(d);   // d 是 /api/detail 的回复：artists、maybe、posts
 import {t, tb} from '../core/i18n.js';
 import {number} from '../core/format.js';
@@ -10,9 +10,9 @@ import {hashFor} from '../core/route.js';
 import {session} from '../core/session.js';
 import {confirmAction} from './dialog.js';
 import {toast} from './dom.js';
-import {attr, make, rich, show, text, tpl} from './el.js';
+import {attr, make, refill, rich, show, text, tpl} from './el.js';
 import {keyed} from './keyed.js';
-import {scope} from './scope.js';
+import {app} from './scope.js';
 
 // ---------- 按需查找画师（docs/PROVENANCE.md 第 9 节）：点击即授权这一次查找 ----------
 const LOOKUP_NOTE = t('查找画师会把所选图片的像素哈希和 IQDB 签名（一串文本，不是图片）发给 Danbooru，按结果显示画师和原帖。\n「找 TA 的其他图」会下载这位画师公开作品的小缩略图，只在本机比对；缩略图比完就删，只留比对用的签名。\n\n以后点这两个按钮不再提示。继续吗？');
@@ -49,12 +49,9 @@ const ROW = tpl`<div class="dc-artist"><div class="dc-artist-top"><span class="d
   <a class="dc-artist-more" data-ref="more"></a><div class="text-meta" data-ref="reason"></div><div class="dc-homes" data-ref="homes"></div>
   <button type="button" class="btn is-small is-quiet" data-ref="findMore"><span data-t>找 TA 的其他图</span></button></div>`;
 
-// 一串链接（主页、原帖），中间用 · 隔开。只在内容变了时重画（键是各链接的地址和文字）。
+// 一串链接（主页、原帖），中间用 · 隔开。只在内容变了时重画（签名是各链接的地址和文字）。
 function links(node, list, title = () => '') {
-  const sig = JSON.stringify(list.map(x => [x.url, x.label || x.site]));
-  if (node.dataset.sig === sig) return;
-  node.dataset.sig = sig;
-  node.replaceChildren(...list.flatMap((x, i) => {
+  refill(node, JSON.stringify(list.map(x => [x.url, x.label || x.site])), () => list.flatMap((x, i) => {
     const a = make('a', 'link', x.label || x.site);
     a.href = x.url; a.target = '_blank'; a.rel = 'noreferrer noopener';
     const tip = title(x); if (tip) a.title = tip;
@@ -64,8 +61,8 @@ function links(node, list, title = () => '') {
 const homeTitle = h => t('在 {site} 打开 TA 的主页', {site: h.site});
 
 // 一位画师（确定的或「也许是」的）。
-function artistRow(on) {
-  const {el, refs} = ROW(), s = scope('artist');
+function artistRow(on, parent) {
+  const {el, refs} = ROW(), s = parent.child('artist');
   let cur = null;
   const link = make('a', 'artist-name');
   s.on(refs.yes, 'click', () => on.verdict(cur.id, cur.name, 'yes'));
@@ -89,12 +86,20 @@ function artistRow(on) {
   }};
 }
 
-/** 画师一节：on 是 {verdict(id, name, 'yes' | 'no' | null), find(), findMore(id, name)}。 */
-export function artistBlock(on) {
-  const {el, refs} = BLOCK(), s = scope('artists');
-  const list = keyed(refs.list, {key: a => (a.maybe ? 'maybe:' : '') + a.id, create: a => { const row = artistRow(on); row.update(a); return row; }, scope: s});
-  s.on(refs.find, 'click', () => on.find());
-  return {el, dispose: () => s.dispose(), update(d) {
+/**
+ * 画师一节：on 是 {verdict(uuid, id, name, 'yes' | 'no' | null), find(uuid), findMore(uuid, id, name)}，uuid 是这一节正显示
+ * 的那张图。换图读取途中（loading() 之后、update() 之前）按钮不响应：显示的还是上一张的画师，不能记到新的那张上。
+ * parent 是父作用域（详情卡片的；默认挂在 app 上）。
+ */
+export function artistBlock(on, parent = app) {
+  const {el, refs} = BLOCK(), s = parent.child('artists');
+  let shown = null;
+  const call = (fn, ...args) => { if (shown) fn(shown, ...args); };
+  const rowOn = {verdict: (...args) => call(on.verdict, ...args), findMore: (...args) => call(on.findMore, ...args)};
+  const list = keyed(refs.list, {key: a => (a.maybe ? 'maybe:' : '') + a.id, create: a => { const row = artistRow(rowOn, s); row.update(a); return row; }, scope: s});
+  s.on(refs.find, 'click', () => call(on.find));
+  return {el, dispose: () => s.dispose(), loading() { shown = null; }, update(d) {
+    shown = d.uuid;
     const artists = d.artists || [], maybe = d.maybe || [];
     list.set([...artists.map(a => ({...a, maybe: false})), ...maybe.map(a => ({...a, maybe: true}))]);
     show(refs.none, !artists.length);

@@ -38,6 +38,10 @@ button.chip:hover,a.chip:hover{background:var(--chip-hover);color:var(--ink)}
 .chip:has(> .avatar:first-child){padding-left:var(--space-4)}
 .chip>.avatar{width:20px;height:20px}
 .chip>.chip-count{color:var(--muted);font-size:var(--fs-11)}
+/* 带一个小 × 的芯片（造型、我的标签：名字可以是链接，× 在右边，右内边距收窄）；「＋ 加一个」的芯片是描边、没有底色 */
+.chip.is-variant{gap:var(--space-2);padding-right:var(--space-4)}
+.chip.is-variant>a{color:inherit;text-decoration:none}
+.chip.is-add{background:transparent;box-shadow:inset 0 0 0 1px var(--line);color:var(--muted)}
 /* 选中的芯片底色换成强调色浅底，计数跟着文字色走（--muted 在 --accent-soft 上暗色只有 4.0:1） */
 .chip[aria-pressed=true]>.chip-count,.chip[aria-selected=true]>.chip-count,.chip[aria-current]>.chip-count{color:inherit}
 .seg{display:inline-flex;align-items:center;gap:var(--space-2);padding:var(--space-4);border-radius:var(--radius-pill);background:var(--soft)}

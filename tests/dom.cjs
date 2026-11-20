@@ -99,6 +99,7 @@ class Element extends Node {
   get className() { return this.getAttribute('class') || ''; }
   set className(v) { this.setAttribute('class', v); }
   get id() { return this.getAttribute('id') || ''; }
+  set id(v) { this.setAttribute('id', v); }
   get hidden() { return this.hasAttribute('hidden'); }
   set hidden(v) { if (v) this.setAttribute('hidden', ''); else this.removeAttribute('hidden'); }
   get inert() { return this.hasAttribute('inert'); }
@@ -114,14 +115,15 @@ class Element extends Node {
     if (deep) for (const c of this.childNodes) { const copy = c.cloneNode(true); el.childNodes.push(copy); copy.parentNode = el; }
     return el;
   }
+  // 选择器只认单个简单选择器：[attr]、[attr="值"]、.类名、标签名（matcher）。
   querySelectorAll(selector) {
-    const m = /^\[([\w-]+)\]$/.exec(selector) || /^([a-z]+)$/.exec(selector);
-    if (!m) throw new Error('fake querySelectorAll supports [attr] and tag only: ' + selector);
-    const out = [], test = selector[0] === '[' ? el => el.hasAttribute(m[1]) : el => el.localName === m[1];
+    const test = matcher(selector), out = [];
     const walk = n => { for (const c of n.children) { if (test(c)) out.push(c); walk(c); } };
     walk(this); return out;
   }
   querySelector(selector) { return this.querySelectorAll(selector)[0] || null; }
+  matches(selector) { return matcher(selector)(this); }
+  closest(selector) { const test = matcher(selector); for (let n = this; n?.nodeType === 1; n = n.parentNode) if (test(n)) return n; return null; }
   getBoundingClientRect() { return this.rect || {left: 0, top: 0, width: this.clientWidth, height: this.clientHeight, right: this.clientWidth, bottom: this.clientHeight}; }
   focus() { current.activeElement = this; }
   blur() { if (current.activeElement === this) current.activeElement = current.body; }
@@ -132,6 +134,14 @@ class Element extends Node {
     if (target === this) { for (const c of this.childNodes) c.parentNode = null; this.childNodes = []; }
     parseInto(target, html);
   }
+}
+function matcher(selector) {
+  let m;
+  if ((m = /^\[([\w-]+)\]$/.exec(selector))) return el => el.hasAttribute(m[1]);
+  if ((m = /^\[([\w-]+)="([^"]*)"\]$/.exec(selector))) return el => el.getAttribute(m[1]) === m[2];
+  if ((m = /^\.([\w-]+)$/.exec(selector))) return el => el.classList.contains(m[1]);
+  if ((m = /^([a-z]+)$/.exec(selector))) return el => el.localName === m[1];
+  throw new Error('fake DOM selectors support [attr], [attr="v"], .class and tag only: ' + selector);
 }
 function serialize(n) {
   if (n.nodeType === 3) return n.data.replace(/&/g, '&amp;').replace(/</g, '&lt;');
@@ -160,6 +170,10 @@ class Document extends Node {
     this.documentElement.appendChild(this.body); this.activeElement = this.body;
   }
   createElement(tag) { return new Element(tag); }
+  getElementById(id) {
+    const walk = n => { for (const c of n.children) { if (c.getAttribute('id') === id) return c; const r = walk(c); if (r) return r; } return null; };
+    return walk(this.documentElement);
+  }
   createTextNode(data) { return new Text(String(data)); }
   createDocumentFragment() { return new Fragment(); }
   importNode(node, deep) { return node.cloneNode(deep); }

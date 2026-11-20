@@ -133,10 +133,20 @@ export const searchIcon = () => '<svg width="15" height="15" viewBox="0 0 24 24"
 export function wireDom() {
   // App 无法解码的图片（损坏的文件）：用一个朴素的占位，而不是浏览器的破图图标。
   // 看图器和详情卡片的大图带 id，各自写「读不出来」（ui/viewer.js、ui/detail_card.js）。
+  // <img> 不换掉，只藏起来、在它后面放占位：部件里的图是建一次、之后只换 src 的（详情卡片的头像、按天视图的图），
+  // 换掉节点的话部件手里拿的就是摘下来的那个。同一个 <img> 之后读好了别的图（load），占位撤掉。
   document.addEventListener('error', e => {
     const img = e.target;
     if (!(img instanceof HTMLImageElement) || img.id || !img.getAttribute('src')?.startsWith('/image?')) return;
-    const ph = document.createElement('span'); ph.className = 'img-broken'; ph.textContent = t('无法打开'); img.replaceWith(ph);
+    if (img.classList.contains('is-broken')) return;
+    const ph = document.createElement('span'); ph.className = 'img-broken'; ph.textContent = t('无法打开');
+    img.classList.add('is-broken'); img.after(ph);
+  }, true);
+  document.addEventListener('load', e => {
+    const img = e.target;
+    if (!(img instanceof HTMLImageElement) || !img.classList.contains('is-broken')) return;
+    img.classList.remove('is-broken');
+    if (img.nextElementSibling?.classList.contains('img-broken')) img.nextElementSibling.remove();
   }, true);
   // 停下的页面在错误横幅里说明，并带一个重新载入的按钮。
   onStale(() => {

@@ -3,14 +3,15 @@
 // 节点建一次，之后 update(d, opts) 只经 ui/el.js 的写入函数改变了的地方（翻页、写入后重读都不重建卡片）；
 // 几个小列表（造型、标签、副本、柱子）按内容的签名在变了时重画那一小块，按钮的点击在卡片根上统一接（data-act）。
 //
-//   const card = detailCard(on);       // on：见 ui/detail.js 的 ACTIONS
+//   const card = detailCard({act(name, data, event, d), artist: {verdict, find, findMore}});   // 见 ui/detail.js 的 act、mount
+//   card.loading(uuid);                         // 换图：先换图片，正文等数据（这期间改数据的按钮不响应）
 //   card.update(d, {ask, chart, same, meta, skip, resumeKey});
-//   card.stats(st, d);                // 角色每月张数到了（core/detail.js 的 readCharStats）
-//   card.loading(uuid) / card.failed(message)
+//   card.stats(st, opts, ident, charId);        // 角色每月张数到了（core/detail.js 的 readCharStats）；st 为 null 时藏起来
+//   card.fav(on) / card.failed(message)
 //
-// 大图底栏（ui/viewer.js）用这里的 identities(on, {compact: true}) 和 askBar(on)。
+// 大图底栏（ui/viewer.js）用这里的 identities({compact: true, scope}) 和 askBar()。
 import {t} from '../core/i18n.js';
-import {monthText, number, thumbSize} from '../core/format.js';
+import {imageUrl as img, monthText, number, thumbSize} from '../core/format.js';
 import {evidence, fromExt, howFound, primaryOf, askWhy} from '../core/detail.js';
 import {REASONS, nameWithWork, workLabel} from '../core/labels.js';
 import {unreadableText} from '../core/jobs.js';
@@ -18,20 +19,13 @@ import {charHash, filterRoute, hashFor} from '../core/route.js';
 import {state} from '../core/state.js';
 import {artistBlock} from './artists.js';
 import {canReveal, revealLabel} from '../core/files.js';
-import {attr, cls, css, make, rich, show, text, tpl} from './el.js';
+import {attr, cls, css, make, refill, rich, show, text, tpl} from './el.js';
 import {keyed} from './keyed.js';
-import {scope} from './scope.js';
+import {app} from './scope.js';
 import {setTint} from './tint.js';
 
-const img = (uuid, size) => `/image?id=${encodeURIComponent(uuid)}&size=${size}`;
 // 角色的圆头像：资料库里的封面（/api/characters 的 cover）。
 const avatarOf = id => state.charMap.get(id)?.cover || '';
-// 按内容的签名重画一小块：签名没变就不动。
-function refill(node, sig, build) {
-  if (node.dataset.sig === sig) return;
-  node.dataset.sig = sig;
-  node.replaceChildren(...build());
-}
 function button(className, label, data = {}, title = '') {
   const b = make('button', className); b.type = 'button';
   if (label) b.append(label);
@@ -42,6 +36,8 @@ function button(className, label, data = {}, title = '') {
 const kbd = key => make('kbd', '', key);
 // 详情还没读到时也能用的按钮：只要知道是哪张图（翻页、收藏、放大、关闭、打开文件）。
 const BY_ID = new Set(['nav', 'fav', 'expand', 'close', 'file']);
+/** 换图后详情还没读回时，等这么久才把正文变淡（读得快时不闪）。和 --dur-1 一档，「减少动态效果」时也照样等。 */
+export const DIM_MS = 140;
 // 已排除的原因，自动规则排除的加一句。
 const excludedNote = d => t('已排除 · {reason}', {reason: REASONS[d.excluded.reason] || ''}) + (d.excluded.origin === 'rule' ? t('（自动规则）') : '');
 
@@ -134,8 +130,8 @@ function otherRow(compact) {
  * 角色身份块。compact（大图底栏）：不画主角色的大头像和按钮组，所有角色都是一行。
  * 点击都在外层按 data-act 接：confirm、swap、not、also、like、unvariant、addVariant、alt（data-i）。
  */
-export function identities({compact = false} = {}) {
-  const {el, refs} = WHO(), s = scope('identities');
+export function identities({compact = false, scope: parent = app} = {}) {
+  const {el, refs} = WHO(), s = parent.child('identities');
   cls(el, 'is-compact', compact);
   // 大图底栏的行只增不删：按位置复用，多出来的藏起来，翻图时行和头像 <img> 留着、只换内容（#683 的翻页测量）。
   // 卡片里按角色复用：点了某一行的按钮以后，焦点不会留在换成别的角色的同一位置上。
@@ -157,7 +153,7 @@ export function identities({compact = false} = {}) {
       text(refs.orig, original); show(refs.orig, !!original);
       attr(refs.not, 'data-id', primary.id);
       fillVariants(refs.variants, primary, false);
-    } else show(refs.variants, false);
+    } else { show(refs.variants, false); text(refs.name, ''); }   // 名字清掉：藏着的上一张的名字别被读屏或走查读到
     // 还没有角色：卡片上写「还没认出是谁」（不当标题），大图底栏写「还没有角色」。
     text(refs.noneText, compact ? (d.unknown ? t('已跳过，还没有角色') : t('还没有角色')) : d.unknown ? t('已跳过') : t('还没认出是谁'));
     const note = d.excluded ? excludedNote(d) : d.pending ? t('待确认：像截图') : '';
@@ -168,7 +164,7 @@ export function identities({compact = false} = {}) {
     show(refs.set, !primary);
     others.set(d.memberships.filter(m => compact || m !== primary).map(m => ({m, primary: m === primary})));
     show(refs.also, d.memberships.length > 0 || compact);
-    refill(refs.also, String(!!d.memberships.length), () => [d.memberships.length ? '＋ ' : '＋ ', d.memberships.length ? t('也是…') : t('设为角色…'), ' ', kbd(d.memberships.length ? 'A' : 'C')]);
+    refill(refs.also, String(!!d.memberships.length), () => ['＋ ', d.memberships.length ? t('也是…') : t('设为角色…'), ' ', kbd(d.memberships.length ? 'A' : 'C')]);
     attr(refs.also, 'title', d.memberships.length ? t('追加角色，原有的保留（A）') : t('设为角色（C）'));
     const alts = (d.alternatives || []).slice(0, 9);
     show(refs.altsBox, alts.length > 0);
@@ -187,7 +183,7 @@ export function identities({compact = false} = {}) {
 }
 
 // ---------- 卡片 ----------
-const CARD = tpl`<article class="dc" aria-busy="false">
+const CARD = tpl`<article class="dc is-empty" aria-busy="false">
   <div class="dc-art"><button type="button" class="dc-preview" data-ref="preview" data-act="expand" title="大图查看" data-t-attr="title">
     <img class="dc-img" id="detailImg" data-ref="img" alt="插画预览" data-t-attr="alt" draggable="false"></button>
     <p class="dc-missing" data-ref="missing" hidden></p>
@@ -216,12 +212,12 @@ const CARD = tpl`<article class="dc" aria-busy="false">
     <details class="dc-section dc-fold" data-ref="tagBox"><summary data-t>画面标签</summary><div class="dc-chips" data-ref="tags"></div></details></div>
   <div class="dc-foot" data-ref="foot"></div></article>`;
 
-/** 详情卡片。on 收 {act, el, event} 以外的具体回调，见 ui/detail.js。 */
+/** 详情卡片。on 是 {act(name, data, event, d), artist: {verdict, find, findMore}}，见文件头和 ui/detail.js 的 mount。 */
 export function detailCard(on) {
-  const {el, refs} = CARD(), s = scope('detail-card');
-  const ask = askBar(), who = identities(), artists = artistBlock(on.artist);
+  const {el, refs} = CARD(), s = app.child('detail-card');
+  const ask = askBar(), who = identities({scope: s}), artists = artistBlock(on.artist, s);
   refs.askSlot.replaceWith(ask.el); refs.whoSlot.replaceWith(who.el); refs.artistSlot.replaceWith(artists.el);
-  s.add(ask); s.add(who); s.add(artists);
+  s.add(ask);   // who、artists 的作用域是 s 的子作用域，跟着释放
   let cur = null, pending = null, wanted = '', shown = '', tint;
   const samePics = [];   // 「同一角色的几张」的四格，见 stats()
   // 点击统一在根上接：按钮写 data-act，其余数据在 data-* 上。
@@ -246,22 +242,28 @@ export function detailCard(on) {
     probe.src = url;
     probe.decode().then(put, put);
   }
-  return {
+  const card = {
     el, scope: s, preview: refs.preview, img: refs.img,
     dispose: () => s.dispose(),
     get uuid() { return cur?.uuid ?? pending; },
     /** 开始读一张图：先换图，正文等数据。 */
     loading(uuid) {
       if (cur?.uuid !== uuid) cur = null;
-      pending = uuid; preview(uuid); attr(el, 'aria-busy', 'true'); show(refs.status, !shown); text(refs.status, t('读取图片详情…'));
+      pending = uuid; artists.loading(); preview(uuid); attr(el, 'aria-busy', 'true'); show(refs.status, !shown); text(refs.status, t('读取图片详情…'));
+      s.timeout(() => { if (pending === uuid) cls(el, 'is-dim', true); }, DIM_MS);
     },
-    failed(message) { attr(el, 'aria-busy', 'false'); show(refs.status, true); text(refs.status, message); },
+    failed(message) { attr(el, 'aria-busy', 'false'); cls(el, 'is-dim', false); show(refs.status, true); text(refs.status, message); },
+    /** 收藏按钮的样子。只由卡片自己写（不带 data-fav，ui/favorites.js 的 paintHearts 不碰它）：收藏写入后 ui/detail.js 的
+     *  noteFavorite 调它。 */
+    fav(on) {
+      attr(refs.fav, 'aria-pressed', String(on)); attr(refs.fav, 'title', on ? t('取消收藏（F）') : t('收藏（F）'));
+      attr(refs.fav, 'aria-label', t('收藏', {context: 'verb'}));
+    },
     update(d, opts) {
       cur = d; pending = null; preview(d.uuid); attr(el, 'aria-busy', 'false'); show(refs.status, false);
+      cls(el, 'is-dim', false); cls(el, 'is-empty', false);
       if (tint !== d.color) { tint = d.color; setTint(el, d.color); }
-      const fav = !!d.fav;
-      attr(refs.fav, 'aria-pressed', String(fav)); attr(refs.fav, 'data-fav', d.uuid); attr(refs.fav, 'title', fav ? t('取消收藏（F）') : t('收藏（F）'));
-      attr(refs.fav, 'aria-label', t('收藏', {context: 'verb'}));
+      card.fav(!!d.fav);
       ask.update(opts.ask ? d.question : null);
       who.update(d);
       artists.update(d);
@@ -339,4 +341,5 @@ export function detailCard(on) {
       });
     },
   };
+  return card;
 }

@@ -7,7 +7,7 @@
 import {t} from '../core/i18n.js';
 import {number} from '../core/format.js';
 import {leaves} from '../core/filters.js';
-import {askAnswered, askBody, primaryOf, readCharStats, readDetail, setDetail, setQuestion, shouldAsk} from '../core/detail.js';
+import {adoptDetail, askAnswered, askBody, primaryOf, readCharStats, readDetail, setDetail, setQuestion} from '../core/detail.js';
 import {openFile, revealFile} from '../core/files.js';
 import {fetchChar} from '../core/meta.js';
 import {shownUuid} from '../core/modes.js';
@@ -23,7 +23,7 @@ import {wireDragOut} from './files.js';
 import {write} from './frame.js';
 import {cancelExit, enter, exit} from './motion.js';
 import {detailCard} from './detail_card.js';
-import {bindViewer, closeViewer, openViewer, showViewer, wireViewer} from './viewer.js';
+import {bindViewer, closeViewer, openViewer, showViewer, viewerFav, wireViewer} from './viewer.js';
 
 export {closeViewer, openViewer, peek, peekAt, showViewer, wirePeek, zoomView} from './viewer.js';
 
@@ -36,13 +36,13 @@ let detailGen = 0, card = null, statsFor = null;
 function mount() {
   if (card) return card;
   card = detailCard({act, artist: {
-    verdict: (artist, name, v) => { const ident = card.uuid; mutate('/api/artist/verdict', {ids: [ident], artist, verdict: v, name}, !!v && leaves(state.route, `artist:${artist}`, v === 'yes')); },
-    find: () => { const ident = card.uuid; findArtists([ident], () => inspect(ident, true)); },
-    findMore: (artist, name) => { const ident = card.uuid; findArtistWorks(artist, name, () => inspect(ident, true)); },
+    verdict: (ident, artist, name, v) => mutate('/api/artist/verdict', {ids: [ident], artist, verdict: v, name}, !!v && leaves(state.route, `artist:${artist}`, v === 'yes')),
+    find: ident => findArtists([ident], () => inspect(ident, true)),
+    findMore: (ident, artist, name) => findArtistWorks(artist, name, () => inspect(ident, true)),
   }});
   $('inspector').replaceChildren(card.el);
   // 按住预览图拖动：把这张图拖到别的应用（#450）。
-  wireDragOut(card.preview, () => [card.uuid].filter(Boolean));
+  card.scope.add(wireDragOut(card.preview, () => [card.uuid].filter(Boolean)));
   return card;
 }
 const relayout = () => write(() => renderGrid(), 'detail:grid');
@@ -53,32 +53,32 @@ export function closeInspector() {
   state.focused = null; setDetail(null); if (state.viewer < 0) setQuestion(null);
   pageOf(state.route).focus?.(state.focused); syncCards();
   const box = $('inspector');
-  if (box.hidden || !card) { box.hidden = true; return; }
+  if (box.hidden || !card) { box.hidden = true; document.body.classList.remove('inspecting'); return; }
   // 滑出去以后再藏：中途又打开了（state.focused 有值）就不藏。
   exit(card.el, {to: SLIDE_OUT, remove: false}).then(() => {
     if (state.focused) return;
-    box.hidden = true; card.el.hidden = false; relayout();
+    box.hidden = true; card.el.hidden = false; document.body.classList.remove('inspecting'); relayout();
   });
 }
 export async function inspect(ident, quiet = false) {
   const gen = ++detailGen, c = mount(), box = $('inspector');
   state.focused = ident;
   if (!quiet || c.uuid !== ident) c.loading(ident);
-  if (box.hidden || c.el.hidden) { box.hidden = false; c.el.hidden = false; enter(c.el, {from: SLIDE_IN}); }
+  // body.inspecting：详情卡片开着（app.css 按它藏上手清单，不用 body:has(#inspector:not([hidden]))）。
+  if (box.hidden || c.el.hidden) { box.hidden = false; c.el.hidden = false; document.body.classList.add('inspecting'); enter(c.el, {from: SLIDE_IN}); }
   else cancelExit(c.el);   // 正在滑出时接回来
   pageOf(state.route).focus?.(state.focused); syncCards(); relayout();
   let d;
   try { d = await readDetail(ident); } catch (e) { if (gen === detailGen) c.failed(e.message); return; }
   if (gen !== detailGen) return;
-  setDetail(d);
-  const asking = shouldAsk(d, ident, viewOpts.ask);
-  setQuestion(asking ? {q: d.question, ident} : null);
+  const asking = adoptDetail(d, ident, viewOpts.ask);
   const opts = {ask: asking, chart: viewOpts.chart, same: viewOpts.same, meta: viewOpts.meta, skip: !!pageOf(state.route).skip, resumeKey: viewOf(state.route).bar === 'skipped'};
   c.update(d, opts);
   markDetailKeys();
-  const primary = primaryOf(d);
-  if (statsFor !== primary?.id) { statsFor = primary?.id; c.stats(null, opts); }
-  if (primary && (opts.chart || opts.same)) readCharStats(primary.id, ident).then(st => { if (gen === detailGen) c.stats(st, opts, ident, primary.id); });
+  // 角色卡：换了主角色、或视图选项里两项都关掉时先藏起来；要显示的话读回再画。
+  const primary = primaryOf(d), want = primary && (opts.chart || opts.same) ? primary.id : null;
+  if (statsFor !== want) { statsFor = want; c.stats(null, opts); }
+  if (want) readCharStats(want, ident).then(st => { if (gen === detailGen) c.stats(st, opts, ident, want); });
 }
 
 // ---------- 按钮的动作（卡片和大图底栏共用） ----------
@@ -170,9 +170,12 @@ export async function singleAction(kind) {
   }
 }
 // 收藏写入成功、没有重读时（ui/grid.js 的 favorite）：详情和大图里那张也改掉。changed 是列表里改到的图，ids 是这次写入
-// 点名的图（全选时为空）；这里改到的也加进 changed，好让心形跟着改（ui/favorites.js 的 paintHearts 按 data-fav 就地改）。
+// 点名的图（全选时为空）；这里改到的也加进 changed，好让网格卡片的心形跟着改（ui/favorites.js 的 paintHearts）。
+// 详情卡片和大图底栏的收藏按钮不归 paintHearts 管（它绕开 ui/el.js 的缓存），这里经部件自己改。
 export function noteFavorite(changed, ids, on) {
   for (const x of [state.detail, state.viewerItem]) if (x && (changed.has(x.uuid) || ids?.has(x.uuid))) { x.fav = on; changed.add(x.uuid); }
+  if (card?.uuid && (changed.has(card.uuid) || ids?.has(card.uuid))) card.fav(on);
+  for (const uuid of changed) viewerFav(uuid, on);
 }
 
 // ---------- 翻页 ----------
@@ -201,8 +204,9 @@ export function ensureVisible(i) {
   syncCards();
 }
 
-// 看图器要用的网格和详情的函数（ui/viewer.js 不导入 ui/grid.js、本文件）。载入时只登记，全部包一层：ui/grid.js 和本文件
-// 互相导入，这时 grid.js 的导出可能还没初始化。
+// 看图器要用的网格和详情的函数（ui/viewer.js 不导入 ui/grid.js、本文件）。全部包一层：ui/grid.js 和本文件互相导入，这时
+// grid.js 的导出可能还没初始化。在载入时登记，是 WEB_V2.md「模块载入时不做事」的例外：tests/restore_place.test.cjs 不调
+// wireDetail 也要能 showViewer；这里只登记函数，不碰 DOM、不挂监听。
 bindViewer({
   loadPage: offset => loadPage(offset), get PAGE() { return PAGE; }, get kept() { return kept; }, setCursor: i => setCursor(i),
   previewList: (ids, i) => previewList(ids, i), endPreview: () => endPreview(), previewing: () => previewing(),

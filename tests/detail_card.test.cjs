@@ -110,3 +110,50 @@ test('底部：打开，加上整张图的决定（待确认是排除和保留�
   c.update(detail({unknown: true}), {...OPTS, resumeKey: true});
   assert.deepEqual(byClass(c.el, 'dc-foot')[0].children.map(b => b.textContent), ['打开', '恢复到未识别 S', '排除 X']);
 });
+
+// 换成另一张、详情还没读回时（loading 之后）：卡片和画师行显示的还是上一张，改角色、画师的按钮不响应，翻页照常
+// （#756 审核：画师的「是 TA」曾记到下一张上）。
+test('读取途中只认翻页这类按钮；画师按钮记到正显示的那张', () => {
+  const acts = [], verdicts = [];
+  const c = card.detailCard({act: (name, data, e, d) => acts.push([name, d.uuid]),
+    artist: {verdict: (uuid, id, name, v) => verdicts.push([uuid, id, v]), find() {}, findMore() {}}});
+  const d = detail({memberships: [machine('c0', 'Old', {sources: ['WD']})], artists: [{id: 'p1', name: 'Painter', confirmed: false, count: 1}]});
+  c.update(d, OPTS);
+  const click = el => c.el.dispatchEvent(dom.event('click', {target: el}));
+  const swap = all(c.el).find(x => x.dataset.act === 'swap'), next = all(c.el).find(x => x.dataset.act === 'nav' && x.dataset.step === '1');
+  const yes = all(c.el).find(x => x.localName === 'button' && x.textContent === '是 TA');
+  click(swap); yes.dispatchEvent(dom.event('click'));
+  assert.deepEqual(acts, [['swap', 'a']]); assert.deepEqual(verdicts, [['a', 'p1', 'yes']]);
+  c.loading('b');
+  click(swap); yes.dispatchEvent(dom.event('click'));
+  assert.deepEqual(acts, [['swap', 'a']], '读取途中「换一个」不响应');
+  assert.deepEqual(verdicts, [['a', 'p1', 'yes']], '读取途中画师按钮不响应');
+  click(next);
+  assert.deepEqual(acts.at(-1), ['nav', 'b'], '翻页照常，按的是新的那张');
+  c.update({...d, uuid: 'b'}, OPTS);
+  yes.dispatchEvent(dom.event('click'));
+  assert.deepEqual(verdicts.at(-1), ['b', 'p1', 'yes']);
+});
+
+// 收藏按钮只由卡片自己写（不带 data-fav，ui/favorites.js 的 paintHearts 不碰它）：收藏写入后 noteFavorite 调 fav(true)，
+// 撤销后重读的详情是 fav: false，update 要把它写回去（#756 审核：曾经因为 ui/el.js 的缓存被跳过）。
+test('收藏以后撤销：重读的详情把收藏按钮写回没收藏', () => {
+  const c = card.detailCard({act() {}, artist: {verdict() {}, find() {}, findMore() {}}});
+  const fav = all(c.el).find(x => x.dataset.act === 'fav');
+  c.update(detail({fav: false}), OPTS);
+  assert.equal(fav.getAttribute('aria-pressed'), 'false');
+  assert.equal(fav.hasAttribute('data-fav'), false);
+  c.fav(true);
+  assert.equal(fav.getAttribute('aria-pressed'), 'true');
+  c.update(detail({fav: false}), OPTS);
+  assert.equal(fav.getAttribute('aria-pressed'), 'false');
+  assert.equal(titleOf(fav), '收藏（F）');
+});
+
+test('第一次读回之前不露空架子；读回以后才露出正文', () => {
+  const c = card.detailCard({act() {}, artist: {verdict() {}, find() {}, findMore() {}}});
+  c.loading('a');
+  assert.ok(c.el.classList.contains('is-empty'));
+  c.update(detail({}), OPTS);
+  assert.ok(!c.el.classList.contains('is-empty'));
+});

@@ -1,4 +1,4 @@
-// 收藏（#447）：卡片、详情栏、大图和首页上的心形，以及不重读列表的那条写入路径。什么时候收藏、取消，由 ui/grid.js 的
+// 收藏（#447）：卡片、详情栏、大图和按天视图上的心形，以及不重读列表的那条写入路径。什么时候收藏、取消，由 ui/grid.js 的
 // favorite 决定（选区、F 键、要不要让图离开本页）；判断和本地改值在 core/favorites.js。
 // 每个心形都带 data-fav="uuid"，写入成功后 paintHearts 按 uuid 就地改掉，不重画卡片和详情栏。
 import {exclusive} from '../core/edits.js';
@@ -18,8 +18,6 @@ export function cardHeart(item, small) {
   if (small) return item.fav ? still(item) : '';
   return `<button class="fav-mark${item.fav ? ' on' : ''}" data-fav="${esc(item.uuid)}" ${pressed(!!item.fav, t('收藏', {context: 'verb'}))}>${HEART}</button>`;
 }
-// 首页缩略图：只显示收藏过的，不能点（首页点图是打开详情）。
-export const homeHeart = x => x.fav ? still(x) : '';
 // 详情栏顶部按钮行里的切换按钮。
 export const detailHeart = (uuid, on) => `<button class="icon fav-toggle${on ? ' on' : ''}" data-fav="${esc(uuid)}" ${pressed(on, t('收藏', {context: 'verb'}))}>${HEART}</button>`;
 // 大图底栏的动作：「F 收藏」，已收藏时是「F 已收藏」。
@@ -27,7 +25,7 @@ const actLabel = on => on ? t('已收藏') : t('收藏', {context: 'verb'});
 export const viewerHeart = (uuid, on) => `<button class="alt fav-act${on ? ' on' : ''}" data-vact="fav" data-fav="${esc(uuid)}" aria-pressed="${on}" title="${tip(on)}">`
   + `<kbd>F</kbd><span class="fav-label">${actLabel(on)}</span></button>`;
 
-// 写入之后把页面上这些图的心形都改成 on（卡片、详情栏、大图底栏、首页）。
+// 写入之后把页面上这些图的心形都改成 on（卡片、详情栏、大图底栏、按天视图的 .day-heart）。
 export function paintHearts(uuids, on, root = document) {
   for (const el of root.querySelectorAll('[data-fav]')) {
     if (!uuids.has(el.dataset.fav)) continue;

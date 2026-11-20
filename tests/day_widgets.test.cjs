@@ -89,13 +89,15 @@ test('认一认：收起时「不全是」「都对」；展开后点掉一张�
   card.update({batch: b});
   const btn = text => [...card.el.querySelectorAll('button')].find(x => !x.dataset.peek && x.textContent === text);
   const tile = u => [...card.el.querySelectorAll('button')].find(x => x.dataset.peek === u);
+  // 点图在图的容器上接（按 data-peek 找是哪张）：dom.cjs 不冒泡，直接派发给容器、target 写那张图。
+  const press = u => tile(u).parentNode.dispatchEvent(dom.event('click', {target: tile(u)}));
   assert.equal(card.el.hidden, false);
   assert.equal(btn('不全是').hidden, false); assert.equal(btn('都对').hidden, false); assert.equal(btn('点掉的是…').hidden, true);
   assert.match(card.el.querySelector('[id]').textContent, /Alice/);
   assert.deepEqual([...card.el.querySelectorAll('img')].map(img => img.dataset.thumb), ['a', 'b', 'c', 'a', 'b', 'c']);
   btn('不全是').dispatchEvent(dom.event('click'));
   assert.equal(btn('不全是').hidden, true); assert.equal(btn('都不是').hidden, false);
-  tile('b').dispatchEvent(dom.event('click'));
+  press('b');
   assert.equal(tile('b').getAttribute('aria-pressed'), 'true');
   assert.ok(btn('其余 2 张是')); assert.equal(btn('点掉的是…').hidden, false);
   btn('点掉的是…').dispatchEvent(dom.event('click'));
@@ -105,7 +107,7 @@ test('认一认：收起时「不全是」「都对」；展开后点掉一张�
   card.update({batch: {...b, items: [item('a'), item('c')]}});
   assert.equal(btn('不全是').hidden, true); assert.ok(btn('都对'));
   // 全部点掉：主按钮是「都不是」，常驻的「都不是」不再画
-  tile('a').dispatchEvent(dom.event('click')); tile('c').dispatchEvent(dom.event('click'));
+  press('a'); press('c');
   const all = [...card.el.querySelectorAll('button')].filter(x => !x.dataset.peek && x.textContent === '都不是');
   assert.deepEqual(all.map(x => x.hidden), [true, false]);
   card.update({batch: null});
@@ -141,4 +143,28 @@ test('同一帧挂上好几天：每一天都量、都定芯片放几个（帧�
   const labels = days.map(d => [...d.el.querySelectorAll('button')].find(b => b.getAttribute('aria-expanded') !== null).textContent);
   assert.deepEqual(labels, ['另外 9 位', '另外 9 位', '另外 9 位']);
   for (const d of days) d.dispose();
+});
+
+test('同步时「今天」长行：已经显示的图块节点一个都不摘、不挪，新图加进来（#683 第 3 条，用户 2026-11-20 选 A）', async () => {
+  const D = await web.load('core/days.js'), {ctx} = context();
+  const g0 = {day: '2026-11-19', count: 6, people: 0, characters: [], hero: 'a', items: ['a', 'b', 'c', 'd', 'e', 'f'].map(u => item(u))};
+  const opt = {width: 1200, rowHeight: SIZES.rowHeight, gap: SIZES.gap};
+  let state = D.dayCells(g0, opt, 'a');
+  const d = Day.dayWidget(box(g0, 1200, {cells: state.cells, mosaic: state.height}), ctx); flush();
+  const before = new Map(tiles(d).map(b => [b.dataset.id, [b, b.style.left, b.style.top, b.querySelector('img').getAttribute('src')]]));
+  let count = g0.count;
+  for (const batch of [['n1', 'n2'], ['n3'], ['n4', 'n5']]) {
+    count += batch.length;
+    const g = {...g0, count, items: [...batch.map(u => item(u)), ...g0.items]};
+    state = D.growCells(state, g, opt);
+    d.update(box(g, 1200, {cells: state.cells, mosaic: state.height})); flush();
+  }
+  for (const [id, [el, left, top, src]] of before) {
+    const now = tiles(d).find(b => b.dataset.id === id);
+    assert.equal(now, el, `${id} 还是原来那个节点`); assert.equal(el.inert, false);
+    assert.deepEqual([el.style.left, el.style.top, el.querySelector('img').getAttribute('src')], [left, top, src], `${id} 没挪、地址没换`);
+  }
+  assert.deepEqual(tiles(d).map(b => b.dataset.id).slice(6), ['n1', 'n2', 'n3']);   // 两行以后的 n4、n5 只算进「+N」
+  assert.ok(tiles(d).at(-1).dataset.more);
+  d.dispose();
 });

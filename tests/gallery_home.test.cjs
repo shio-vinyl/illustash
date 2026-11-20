@@ -170,3 +170,15 @@ test('第一次读的时候来了同步：读完补读最新的几天（#757）'
   assert.equal(new URL(reads[1], 'http://x').searchParams.get('days'), '2');
   scopes.page('library');
 });
+test('同一页又画几次（筛选、搜索变了）：页面只建一次，活着的作用域数不涨（页面样板第 4 条）', async () => {
+  const h = daysHarness(path => path.startsWith('/api/home') ? {days: [oneDay], next: ''} : {batch: null});
+  scopes.setDev(true);
+  const scope = scopes.page('days');
+  await daysPage.render({samePage: false, scope});
+  const page = h.page.el('homePage').children[0], alive = scopes.live().count;
+  for (const q of ['a', 'ab', 'abc']) { h.state.route = {page: 'days', q}; await daysPage.render({samePage: true, scope}); await tick(); }
+  assert.equal(h.page.el('homePage').children[0], page, '页面的节点没换');
+  assert.equal(scopes.live().count, alive, '作用域数没涨');
+  scopes.setDev(false);
+  scopes.page('library');
+});

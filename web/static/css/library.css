@@ -2,10 +2,9 @@
    只用 css/tokens.css 的令牌和 css/base.css 的公共部件；重写一块，就删掉 app.css 里对应的旧规则。 */
 @layer pages{
 
-/* ======== 按天（C1 #707）：ui/days.js、ui/day.js、ui/day_cards.js ======== */
+/* ======== 按天（C1 #707）：ui/days.js、ui/day.js、ui/day_cards.js、ui/day_ask.js ======== */
 /* 顶上两张卡：同步状态、认一认。认一认展开后占满一行 */
-.day-cards{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.25fr);gap:var(--space-12);margin-bottom:22px}
-.day-cards>[hidden]{display:none}
+.day-cards{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.25fr);gap:var(--space-12);margin-bottom:var(--space-20)}
 .day-card{display:flex;align-items:center;gap:var(--space-14);min-width:0;margin:0;border:0;color:var(--ink);font:inherit;text-align:left}
 .day-card-text{display:grid;flex:1;gap:var(--space-2);min-width:0}
 .day-card-title{margin:0;overflow:hidden;font-size:var(--fs-13);font-weight:var(--fw-750);white-space:nowrap;text-overflow:ellipsis}
@@ -15,10 +14,9 @@
 button.day-sync{cursor:pointer;transition:background-color var(--dur-1) var(--ease)}
 button.day-sync:hover{background:var(--chip-hover)}
 button.day-sync:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
-/* 同步圆环：进度是 JS 写的 --p（0–100）；完成时打勾，出了问题是警告色 */
-.day-ring{display:grid;flex:none;place-items:center;width:44px;height:44px;border-radius:var(--radius-round);
-  background:conic-gradient(var(--accent) calc(var(--p,0) * 1%),var(--accent-soft) 0)}
-.day-ring>svg{width:34px;height:34px;padding:var(--space-8);border-radius:var(--radius-round);background:var(--soft);fill:none;stroke:var(--accent-ink);stroke-width:2;
+/* 同步圆环：就是 css/base.css 的进度圆环（.avatar-ring，进度是 JS 写的 --p），这里只定大小和里面的勾；出了问题是警告色 */
+.day-ring{width:44px;height:44px}
+.day-ring>svg{width:100%;height:100%;padding:var(--space-6);border-radius:var(--radius-round);background:var(--soft);fill:none;stroke:var(--accent-ink);stroke-width:2;
   stroke-linecap:round;stroke-linejoin:round}
 .day-ring.is-warn{background:var(--warn)}
 .day-ask{flex-wrap:wrap}
@@ -37,22 +35,20 @@ button.day-sync:focus-visible{outline:2px solid var(--accent);outline-offset:2px
 .day-ask.is-open>.day-ask-foot{width:100%}
 .day-ask-state{margin-right:auto;color:var(--muted);font-size:var(--fs-12)}
 
-/* 一天：高度由 ui/day.js 的尺寸定（页头 56、收起的芯片行 40、马赛克两行），这里的高度要和它一致 */
+/* 一天：页头、芯片行、马赛克的高度都由 ui/day.js 按 daySizes 写（唯一的出处），这里不写高度 */
 .day{box-sizing:border-box}
-.day-head{display:flex;align-items:baseline;gap:var(--space-12);height:56px;padding-top:var(--space-8);box-sizing:border-box}
+.day-head{display:flex;align-items:baseline;gap:var(--space-12);padding-top:var(--space-8);box-sizing:border-box}
 .day-meta{color:var(--muted);font-size:var(--fs-12)}
 .day-grid{margin-left:auto;color:var(--accent-ink);font-size:var(--fs-12);font-weight:var(--fw-600);text-decoration:none;white-space:nowrap}
 .day-grid:hover{text-decoration:underline}
 /* 当天的角色：收起时一行，放不下的芯片藏起来（.is-cut），其余收成「另外 N 位」；展开后换行显示全部 */
 .day-chars{display:flex;align-items:flex-start;gap:var(--space-4);overflow:hidden;box-sizing:border-box}
-.day-chars.is-open{padding-bottom:var(--space-12)}
+.day-chars.is-open{flex-wrap:wrap;padding-bottom:var(--space-12)}
 .day-chips{display:contents}
-.day-chars:not(.is-open)>.day-more{flex:none}
-.day-chars.is-open{flex-wrap:wrap}
 .day-chip{flex:none}
 .day-chip.is-cut{display:none}
 .day-more{flex:none;color:var(--ink2);font-weight:var(--fw-600)}
-/* 马赛克：图块由 ui/day.js 按 core/layout.js 的 dayMosaic 定位 */
+/* 马赛克：图块由 ui/day.js 按 core/days.js 的 dayCells / growCells 定位。大图是 css/base.css 的海报（.poster、.poster-cap），这里只改圆角和文字靠左 */
 .day-mosaic{position:relative}
 .day-tile{position:absolute;margin:0;padding:0;overflow:hidden;border:0;border-radius:var(--radius-8);background:var(--tint-soft);cursor:pointer;
   transition:box-shadow var(--dur-2) var(--ease)}
@@ -61,11 +57,7 @@ button.day-sync:focus-visible{outline:2px solid var(--accent);outline-offset:2px
 .day-tile:hover{box-shadow:var(--shadow-hover)}
 .day-tile:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .day-tile[aria-current=true]{box-shadow:0 0 0 3px var(--accent)}
-.day-cap{position:absolute;right:var(--space-14);bottom:var(--space-12);left:var(--space-14);z-index:var(--z-page-1);display:grid;gap:var(--space-2);color:var(--on-image);
-  text-align:left;text-shadow:var(--image-text-shadow);pointer-events:none}
-.day-cap>b{overflow:hidden;font-size:var(--fs-20);font-weight:var(--fw-750);letter-spacing:-.02em;line-height:1.2;white-space:nowrap;text-overflow:ellipsis}
-.day-cap>small{font-size:var(--fs-11);opacity:.85}
-.day-tile.is-hero::after{content:"";position:absolute;inset:0;background:var(--scrim);pointer-events:none}
+.day-tile>.poster-cap{text-align:left;pointer-events:none}
 .day-heart{position:absolute;right:var(--space-6);bottom:var(--space-6);z-index:var(--z-page-2);display:none;color:var(--fav)}
 .day-heart.on{display:block}
 .day-heart>svg{width:15px;height:15px;fill:currentColor;stroke:var(--on-image);stroke-width:1.2}
@@ -73,7 +65,6 @@ button.day-sync:focus-visible{outline:2px solid var(--accent);outline-offset:2px
   background:var(--glass-solid);color:var(--ink);font-size:var(--fs-11);font-weight:var(--fw-600)}
 .day-plus{position:absolute;inset:0;z-index:var(--z-page-2);display:grid;place-items:center;background:var(--scrim);color:var(--on-image);font-size:var(--fs-20);
   font-weight:var(--fw-750);letter-spacing:-.02em}
-.day-dup[hidden],.day-plus[hidden],.day-cap[hidden]{display:none}
 
 /* 末尾：读更早几天时的占位（和一天同样的形状，读的时候呼吸），读完后的说明 */
 .day-load{display:grid;gap:var(--space-12);opacity:.6}
@@ -83,6 +74,6 @@ button.day-sync:focus-visible{outline:2px solid var(--accent);outline-offset:2px
 .day-load>span>i:first-child{flex:none;width:240px}
 .day-load.is-busy{animation:day-breathe calc(var(--dur-3) * 2.4) var(--ease) infinite alternate}
 @keyframes day-breathe{from{opacity:.6}to{opacity:.25}}
-.day-end{display:flex;align-items:center;gap:var(--space-14);margin:var(--space-10) 0 40px;color:var(--muted);font-size:var(--fs-12)}
+.day-end{display:flex;align-items:center;gap:var(--space-14);margin:var(--space-10) 0 var(--space-24);color:var(--muted);font-size:var(--fs-12)}
 .day-end::before,.day-end::after{content:"";flex:1;height:1px;background:var(--line)}
 }

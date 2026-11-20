@@ -4,8 +4,11 @@
 //
 // 接口（#718、#717）：/api/home 和图库网格接受同样的筛选，按日期从新到旧给几天，每天 {day, count, people, characters（前八位）,
 // items（最多 18 张）, hero}；before 是排他的游标（上一批的 next），next 为空表示读到底了。marks=fav,color 让每张图带收藏和主色。
+import {addCondition} from './filters.js';
 import {I18N} from './i18n.js';
+import {FIT_MAX, FIT_MIN, dayMosaic} from './layout.js';
 import {libraryFilters} from './pages.js';
+import {viewRoute} from './rail.js';
 import {api, post} from './session.js';
 
 // 每张图带上收藏和主色（缩略图读完之前的占位色，#717）。
@@ -79,6 +82,10 @@ export function dayAfter(day) {
   const [y, m, d] = day.split('-').map(Number), next = new Date(Date.UTC(y, m - 1, d + 1));
   return next.toISOString().slice(0, 10);
 }
+// 今天（本地时间）是哪一天，'YYYY-MM-DD'。
+export function todayKey(now = new Date()) {
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+}
 // 读到的天里最早的一天和总张数（读到底以后写「最早的一张在 X 月 X 日加入 · 共 N 张」）。
 export function summary(days) {
   return {earliest: days.length ? days[days.length - 1].day : '', total: days.reduce((n, g) => n + (g.count || 0), 0)};
@@ -90,6 +97,41 @@ export function summary(days) {
 export function heroFirst(g, keep = '') {
   const items = g.items || [], pick = items.find(x => x.uuid === keep) || items.find(x => x.uuid === g.hero) || items[0];
   return pick ? [pick, ...items.filter(x => x !== pick)] : [];
+}
+const ratioOf = x => x.width > 0 && x.height > 0 ? x.width / x.height : 0;
+// 一天的格子：标准的马赛克（core/layout.js 的 dayMosaic）。返回 {cells, height, rows: 0}；每格 {item, box, hero, index, more}，
+// more 是盖在这一格上的「+N 张」：马赛克没画的（dayMosaic 的 more 已含这一格自己）加上这一天后端没给的张数。
+export function dayCells(g, {width, rowHeight, gap}, hero = '') {
+  const items = heroFirst(g, hero), laid = dayMosaic(items.map(ratioOf), {width, rowHeight, gap});
+  const unsent = Math.max(0, (g.count || 0) - items.length), last = laid.boxes.length - 1;
+  const cells = laid.boxes.map((box, k) => ({item: items[box.i], box, hero: k === 0, index: k,
+    more: k === last && (box.more || unsent) ? (box.more || 1) + unsent : 0}));
+  return {cells, height: laid.height, rows: 0};
+}
+// 同步进行中「今天」那一段怎么长（用户 2026-11-20 定，#707）：已经显示的图不动，也不被挤进「+N」；这一批新来的图接在下面
+// 多长一行（行高同小图，按宽高比从左往右放，放不下的算进「+N」）；最多多长 maxRows 行，再来的新图只加大「+N 张」。
+// prev 是这一天现在的格子（第一次是标准的 dayCells），g 是重读到的这一天。返回新的 {cells, height, rows}。
+// 已显示的图换成重读到的那份数据（收藏、主色、角色可能变了），后端这次没给回来的（只给最新的 18 张）照旧留着。
+export function growCells(prev, g, {width, rowHeight, gap}, maxRows = 2) {
+  const byId = new Map((g.items || []).map(x => [x.uuid, x])), shown = new Set(prev.cells.map(c => c.item.uuid));
+  const cells = prev.cells.map(c => ({...c, item: byId.get(c.item.uuid) || c.item, more: 0}));
+  let {height, rows} = prev;
+  const fresh = (g.items || []).filter(x => !shown.has(x.uuid));
+  if (fresh.length && rows < maxRows) {
+    const y = height + gap;
+    let x = 0;
+    for (const item of fresh) {
+      const w = Math.min(width, Math.min(FIT_MAX, Math.max(FIT_MIN, ratioOf(item) || .75)) * rowHeight);
+      if (x && x + w > width) break;
+      cells.push({item, box: {x, y, w, h: rowHeight}, hero: false, index: cells.length, more: 0});
+      x += w + gap;
+    }
+    height = y + rowHeight; rows++;
+  }
+  // 没画出来的张数盖在最后一格上（那一格自己的图也算没画出来）。
+  const hidden = (g.count || 0) - cells.length;
+  if (hidden > 0 && cells.length) cells[cells.length - 1].more = hidden + 1;
+  return {cells, height, rows};
 }
 
 // ---------- 芯片行 ----------
@@ -106,19 +148,19 @@ export function fitChips(widths, room, moreWidth, gap, hidden = 0) {
 }
 
 // ---------- 一天多高、各天的框 ----------
-// 一天由上到下：页头、角色芯片行（当天有角色时）、马赛克（大图高两行）。芯片行收起时一行高；展开后的高度由界面量了报上来。
-// sizes：{head, chips, rowHeight, gap, after}，after 是两天之间的距离。
+// 一天由上到下：页头、角色芯片行（当天有角色时）、马赛克（大图高两行；同步时长出来的行另算）。芯片行收起时一行高；展开后的
+// 高度由界面量了报上来。sizes：{head, chips, rowHeight, gap, after}（ui/day.js 的 daySizes，唯一的出处），after 是两天之间的距离。
 export const mosaicHeight = ({rowHeight, gap}) => rowHeight * 2 + gap;
-export function dayHeight(g, sizes, chipsHeight = sizes.chips) {
+export function dayHeight(g, sizes, chipsHeight = sizes.chips, mosaic = mosaicHeight(sizes)) {
   const chips = (g.characters || []).length ? chipsHeight : 0;
-  return sizes.head + chips + mosaicHeight(sizes) + sizes.after;
+  return sizes.head + chips + mosaic + sizes.after;
 }
-// 各天的框（交给 ui/virtual.js）：一列，从 top 往下排。opened 是展开了芯片行的天 -> 量到的芯片行高度。
-// 返回 {boxes, height}；框带上这一天的数据 g。
-export function dayBoxes(days, {width, top = 0, sizes, opened = new Map()}) {
+// 各天的框（交给 ui/virtual.js）：一列，从 top 往下排。opened 是展开了芯片行的天 -> 量到的芯片行高度；mosaics 是同步时
+// 长了行的天 -> 马赛克的高度。返回 {boxes, height}；框带上这一天的数据 g。
+export function dayBoxes(days, {width, top = 0, sizes, opened = new Map(), mosaics = new Map()}) {
   let y = top;
   const boxes = days.map(g => {
-    const h = dayHeight(g, sizes, opened.get(g.day));
+    const h = dayHeight(g, sizes, opened.get(g.day), mosaics.get(g.day));
     const box = {key: g.day, x: 0, y, w: width, h, g};
     y += h;
     return box;
@@ -136,16 +178,11 @@ export function dayAt(boxes, y) {
 }
 
 // ---------- 去网格 ----------
-// 「在网格里看」和点当天的角色：带着现在的筛选和搜索去网格，加上这一天（和这个角色）。
-const KEEP = ['q', 'tag', 'utag', 'work', 'artist', 'has', 'not', 'from', 'to'];
+// 「在网格里看」和点当天的角色：带着现在的筛选和搜索去网格（core/rail.js 的 viewRoute，和切视图同一套），只看这一天；
+// 点角色时再加一个 char 条件（core/filters.js 的 addCondition：不合法的地址参数照常读，「不含」里的同一个角色拿掉）。
 export function gridRoute(route, day, char = '') {
-  const r = {page: 'library', day};
-  for (const k of KEEP) if (Array.isArray(route[k]) ? route[k].length : route[k]) r[k] = route[k];
-  if (char) {
-    const has = Array.isArray(route.has) ? route.has : typeof route.has === 'string' && route.has ? JSON.parse(route.has) : [];
-    r.has = has.includes('char:' + char) ? has : [...has, 'char:' + char];
-  }
-  return r;
+  const r = {...viewRoute(route, 'grid'), day};
+  return char ? addCondition(r, 'char:' + char) : r;
 }
 
 // ---------- 认一认 ----------

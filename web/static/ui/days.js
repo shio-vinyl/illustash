@@ -14,8 +14,8 @@
 //   改动、撤销之后：重读视野附近的几天；重读的范围里没了的天（筛选下最后一张被移走）去掉，游标、看图的列表和总张数跟着变。
 // - 滚动时告诉活页条现在看到哪一天（selectDay）；在这一页里点活页条的某一天或某个月，直接滚过去（onPick），不换地址。
 // - 点图打开详情卡片，双击看大图，点「+N 张」进网格看这一天；认一认的图 Space 或长按看大图（wireDays 登记一次）。
-import {FIRST_DAYS, MAX_DAYS, MORE_DAYS, dayAfter, dayAt, dayBoxes, dayQuery, gridRoute, heroFirst, mergeDays, readDayPeople, readDays,
-  summary} from '../core/days.js';
+import {FIRST_DAYS, MAX_DAYS, MORE_DAYS, dayAfter, dayAt, dayBoxes, dayCells, dayQuery, gridRoute, growCells, heroFirst, mergeDays, readDayPeople,
+  readDays, summary, todayKey} from '../core/days.js';
 import {dayLabel, number} from '../core/format.js';
 import {t} from '../core/i18n.js';
 import {onJob} from '../core/jobs.js';
@@ -25,7 +25,7 @@ import {readError} from '../core/session.js';
 import {state} from '../core/state.js';
 import {indexOf, inspect, openViewer, wirePeek} from './detail.js';
 import {$, toast} from './dom.js';
-import {dayWidget} from './day.js';
+import {daySizes, dayWidget} from './day.js';
 import {dayAsk} from './day_ask.js';
 import {syncCard} from './day_cards.js';
 import {cls, css, show, text, tpl} from './el.js';
@@ -39,19 +39,13 @@ import {virtual} from './virtual.js';
 const PAGE = tpl`<div class="days-page"><div class="day-cards" data-ref="cards"></div><div class="days" data-ref="days"></div><div data-ref="empty" hidden></div>
   <div class="day-load" data-ref="load" aria-hidden="true"><i></i><span data-ref="shape"><i></i><i></i><i></i><i></i></span></div>
   <button class="btn is-small day-retry" type="button" data-ref="retry" hidden data-t>读取失败，重试</button><p class="day-end" data-ref="end" hidden></p></div>`;
-// 一天各部分的尺寸，和 css/library.css「按天」一段一致（页头 56、收起的芯片行 40）；行高随视图选项的缩略图大小。
-const ROWS = [130, 160, 200];
-const sizes = () => ({head: 56, chips: 40, rowHeight: ROWS[viewOpts.homeSize] ?? ROWS[1], gap: 6, after: 36});
+// 一天各部分的尺寸（ui/day.js 的 daySizes，唯一的出处）；小图的行高随视图选项的缩略图大小。
+const sizes = () => daySizes(viewOpts.homeSize);
 // 同步之后那一次重读失败时，过多久再试、最多试几次。
 const RETRY_MS = 5000, RETRIES = 3;
 // 后退回到这一页时按上次读到的天数读，好让页面框架滚回原来的位置（#526）。
 let remembered = {key: '', count: 0};
 let view = null;
-
-function todayKey() {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
 
 // 这一页的部件：进页面时在页面作用域上建一次。
 function daysView(scope) {
@@ -59,7 +53,7 @@ function daysView(scope) {
   $('homePage').replaceChildren(el);
   const v = {route: null, query: null, key: '', gen: 0, abort: null, days: [], next: '', reading: false, failed: false, paging: null, target: '',
     pending: new Set(), refreshing: false, retries: 0, boxes: [], height: 0, width: 0, day: '',
-    heroes: new Map(), open: new Set(), opened: new Map(), people: new Map(), fresh: new Map(), widgets: new Set()};
+    heroes: new Map(), open: new Set(), opened: new Map(), people: new Map(), fresh: new Map(), grow: new Map(), widgets: new Set()};
   // 这一轮读取的凭据：回来的时候代号和查询条件都没变、这一页也还在，回复才算数。
   const ticket = () => ({gen: v.gen, key: v.key});
   const valid = tk => scope.alive && tk.gen === v.gen && tk.key === v.key;
@@ -81,21 +75,24 @@ function daysView(scope) {
     href: (day, char) => hashFor(gridRoute(v.route, day, char)), cover: id => state.charMap.get(id)?.cover,
     toggle, resized: (day, h) => { if (v.opened.get(day) !== h) { v.opened.set(day, h); layout(); } },
   };
+  // 挂着的天：v.widgets 记着它们（详情卡片开着哪张时逐个标），摘掉时从里面去掉。
   const list = virtual(viewport, refs.days, {scope, create: box => {
-    const day = dayWidget(box, ctx, scope), dispose = day.dispose, delay = v.fresh.get(box.key);
-    v.widgets.add(day); day.dispose = () => { v.widgets.delete(day); dispose(); };
+    const day = dayWidget(box, ctx, scope), delay = v.fresh.get(box.key);
+    const comp = {el: day.el, update: day.update, mark: day.mark, dispose() { v.widgets.delete(comp); day.dispose(); }};
+    v.widgets.add(comp);
     // 新读到的几天依次淡入（只动透明度：根节点的位移归 ui/virtual.js 管）；之后滚回来重挂时不再播。
     if (delay !== undefined) { v.fresh.delete(box.key); enter(day.el, {from: 'fade', delay}); }
     day.mark(state.focused);
-    return day;
+    return comp;
   }});
 
   // 数据或尺寸变了：排各天的框（宽度量到以后），以及末尾的占位、到底的说明、空状态、看图的列表和同步卡。
   // 末尾三种状态分开：在读（占位，读的时候呼吸）、读失败（重试按钮）、读完了（到底的说明，或者空状态）。
   function layout() {
     if (v.width) {
-      const {boxes, height} = dayBoxes(v.days, {width: v.width, sizes: sizes(), opened: v.opened});
-      v.boxes = boxes.map(b => ({...b, open: v.open.has(b.key), people: v.people.get(b.key)}));
+      const mosaics = new Map([...v.grow].map(([day, x]) => [day, x.height]));
+      const {boxes, height} = dayBoxes(v.days, {width: v.width, sizes: sizes(), opened: v.opened, mosaics});
+      v.boxes = boxes.map(b => ({...b, open: v.open.has(b.key), people: v.people.get(b.key), cells: v.grow.get(b.key)?.cells, mosaic: v.grow.get(b.key)?.height}));
       v.height = height;
       list.set(v.boxes, height);
     }
@@ -112,10 +109,10 @@ function daysView(scope) {
     if (!v.reading) remembered = {key: v.key, count: v.days.length};
     paintSync();
   }
-  // 宽度量一次，变了才重排（一天的高度和宽度无关，变宽变窄时只重排马赛克和芯片行）。
+  // 宽度量一次，变了才重排（一天的高度和宽度无关，变宽变窄时只重排马赛克和芯片行）。同步时长了行的天按标准的马赛克重排。
   const measure = () => {
     const w = refs.days.clientWidth;
-    if (w && Math.abs(w - v.width) >= 1) { v.width = w; layout(); }
+    if (w && Math.abs(w - v.width) >= 1) { v.width = w; v.grow.clear(); scope.write(layout, 'days:layout'); }
   };
   if (typeof ResizeObserver === 'function') scope.observe(new ResizeObserver(() => scope.read(measure, 'days:width'))).observe(refs.days);
   // 等 ui/virtual.js 这一轮的读和写都跑完（内容的高度已经写上），再量、再滚。
@@ -124,10 +121,11 @@ function daysView(scope) {
   function failed(e) { v.failed = true; layout(); toast(readError(e)); }
 
   // ---------- 滚动：活页条跟着选中、接近底部接着读 ----------
+  // 这里在读阶段（量滚动位置），活页条的选中和接着读（会改 DOM）挪到写阶段。
   function onScroll() {
     const top = viewport.scrollTop - offsetOf(), day = dayAt(v.boxes, top + 1);
-    if (day && day !== v.day) { v.day = day; selectDay(day); }
-    if (v.next && !v.failed && top + viewport.clientHeight * 2.5 > v.height) more();
+    if (day && day !== v.day) { v.day = day; scope.write(() => selectDay(day), 'days:select'); }
+    if (v.next && !v.failed && top + viewport.clientHeight * 2.5 > v.height) scope.write(() => more(), 'days:more');
   }
   scope.on(viewport, 'scroll', () => scope.read(onScroll, 'days:scroll'), {passive: true});
 
@@ -140,7 +138,7 @@ function daysView(scope) {
     const count = restore && remembered.key === key ? Math.max(FIRST_DAYS, remembered.count) : FIRST_DAYS;
     v.abort?.abort(); v.abort = new AbortController();
     Object.assign(v, {query, key, gen: v.gen + 1, days: [], next: '', day: '', reading: true, failed: false, paging: null, target: route.at || ''});
-    for (const m of [v.heroes, v.open, v.opened, v.people, v.fresh]) m.clear();
+    for (const m of [v.heroes, v.open, v.opened, v.people, v.fresh, v.grow]) m.clear();
     layout();
     const tk = ticket(), days = [];
     let next = '';
@@ -237,14 +235,21 @@ function daysView(scope) {
       return false;
     }
     if (!valid(tk)) return true;
-    const merged = mergeDays(v.days, r.days, {newest, next: r.next});
+    const top = v.days[0], merged = mergeDays(v.days, r.days, {newest, next: r.next});
     v.days = merged.days;
+    // 同步进来新图：最上面那一天（今天）长一行，已经显示的图不动（growCells）。改动、撤销之后变了的天按标准的马赛克重排。
+    if (kind === 'newest' && top && v.width && merged.changed.has(top.day) && v.days[0]?.day === top.day) grow(top, v.days[0]);
+    if (kind === 'around') for (const day of merged.changed) v.grow.delete(day);
     if (merged.end) v.next = r.next;
     // 重读过的这几天，展开的角色名单作废：开着的重读，收着的下次展开时再读。
     for (const g of r.days) forgetPeople(g.day);
     for (const day of merged.changed) forgetPeople(day);
     layout();
     return true;
+  }
+  function grow(old, g) {
+    const s = sizes(), opt = {width: v.width, rowHeight: s.rowHeight, gap: s.gap};
+    v.grow.set(g.day, growCells(v.grow.get(g.day) || dayCells(old, opt, v.heroes.get(g.day)), g, opt));
   }
   function forgetPeople(day) {
     if (!v.people.has(day)) return;

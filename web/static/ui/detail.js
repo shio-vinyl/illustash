@@ -240,7 +240,7 @@ export async function step(delta) {
   setCursor(n); ensureVisible(n);
   if (state.viewer >= 0) showViewer(n); else inspect(state.items[n].uuid);
 }
-// 把网格滚到第 i 张可见。主区不是网格的页面（首页从详情栏、大图翻页，按组整理看大图）不按网格的行去滚，交给页面登记的
+// 把网格滚到第 i 张可见。主区不是网格的页面（按天视图从详情栏、大图翻页，按组整理看大图）不按网格的行去滚，交给页面登记的
 // reveal 把那张图滚进视野（#424 的 2-11）。
 export function ensureVisible(i) {
   if (viewOf(state.route).area !== 'grid') { reveal(state.items[i]?.uuid); return; }
@@ -316,11 +316,11 @@ export function zoomView(factor, cx, cy) {
   view.x = px - (px - view.x) * k; view.y = py - (py - view.y) * k; view.scale = next;
   if (next === 1) { view.x = 0; view.y = 0; } applyView();
 }
-// 主区不是网格的页面把一张图滚进视野：页面在注册表里登记 reveal(uuid)（首页、按组整理）。
+// 主区不是网格的页面把一张图滚进视野：页面在注册表里登记 reveal(uuid)（按天视图、按组整理）。
 const reveal = uuid => { if (uuid) pageOf(state.route).reveal?.(uuid); };
 
 // ---------- 面板页看大图（#424 的 2-2、2-34） ----------
-// 按组整理的缩略图、首页「认一认」的图，点一下是「不算」或「不是 TA」，看大图用长按，或焦点在图上、鼠标停在图上时按
+// 按组整理的缩略图、按天视图「认一认」的图，点一下是「不算」或「不是 TA」，看大图用长按，或焦点在图上、鼠标停在图上时按
 // Space（grid.js 的键盘处理调 peek）；身份整理的样图、画师抽查的图点一下就看大图（页面自己调 peekAt）。这样的图带
 // data-peek（uuid），所在的区域用 wirePeek 登记，list(el) 返回它那一组的 uuid：大图里翻的就是这一组（grid.js 的 previewList）。
 const LONG_PRESS = 450, peeks = [];

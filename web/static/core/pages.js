@@ -16,7 +16,7 @@ import {state} from './state.js';
 //   area       主区：'grid' 或 index.html 里的某个面板 id
 //   panel      不用 #grid 的页面：reload()、R、同步到达新图、NSFW 切换后的重绘都按它判断
 //   keys       单图快捷键在这页的范围：'grid' 网格页全部生效（主区是 #grid 的页面不写也是它）；'shown' 只对详情栏或大图里
-//              那张图生效，没有网格光标（首页）；主区不是网格、也没写的页面不响应（keyScope）
+//              那张图生效，没有网格光标（按天视图）；主区不是网格、也没写的页面不响应（keyScope）
 //   click      点卡片做什么：'browse' 打开详情（选择要主动进入）、'cleanup' 切换选中、'own' 页面自己处理
 //   entry      属于活页条的哪个一级入口（core/rail.js 的 ENTRIES）：'library' 图库、'catalog' 资料库、'galleries' 画廊、'tidy' 整理、
 //              'settings' 设置（底部的齿轮）；'' 哪个都不亮（画师抽查，入口在设置里）

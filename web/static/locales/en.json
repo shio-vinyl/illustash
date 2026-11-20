@@ -1429,7 +1429,7 @@
   "方向键": "Arrow keys",
   "移动光标，按住 Shift 同时选中；详情栏打开时换图（↑ ↓ 换到上一行、下一行），大图里 ← → 换图": "Move the cursor, with Shift to select as well; with the details open, go to another picture (↑ ↓ to the row above or below); in the large view, ← → go to another picture",
   "整理页或选择模式下切换光标处那张的选中，浏览页打开它的详情": "On cleanup pages or while selecting, select or deselect the picture at the cursor; on browsing pages, open its details",
-  "打开或关闭大图；按组整理、首页「认一认」里看焦点所在或鼠标停着的那张": "Open or close the large view; in By group and Who's this? on the home page, the picture with focus or under the pointer",
+  "打开或关闭大图；按组整理、按天视图「认一认」里看焦点所在或鼠标停着的那张": "Open or close the large view; in By group and Who's this? in the By day view, the picture with focus or under the pointer",
   "打开或关闭详情栏（光标那张）；大图里关掉大图，在详情栏里看这张": "Open or close the details panel (for the picture at the cursor); in the large view, close it and show this picture's details",
   "不是这个角色：有选中时作用于选中的图（角色页移出，图库、重复等页选「不是…」），没有选中时移除当前这张的角色": "Not this character: with a selection, for the selected pictures (removed from the character on its page, “Not…” on Library, Duplicates and similar pages); without one, remove a character from the current picture",
   "换成别的角色：图上已有角色时换掉它（角色页换掉本页的角色），还没有角色时设为角色": "Change to another character: replaces the one on the picture (on a character page, that character), or assigns one if it has none",

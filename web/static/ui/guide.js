@@ -151,7 +151,7 @@ async function placeTour(moved) {
     Object.assign(bubble.style, {left: (W - bw) / 2 + 'px', top: (H - bh) / 2 + 'px'});
     return;
   }
-  // 大的区域（首页）只点亮顶部，也就是最先几张图片所在的地方。
+  // 大的区域（按天视图）只点亮顶部，也就是最先几张图片所在的地方。
   const box = {left: r.left - pad, top: r.top - pad, width: r.width + pad * 2, height: Math.min(r.height, H * .45) + pad * 2};
   Object.assign(hole.style, {left: box.left + 'px', top: box.top + 'px', width: box.width + 'px', height: box.height + 'px'}); hole.classList.remove('none');
   const right = box.left + box.width + 14, below = box.top + box.height + 14;

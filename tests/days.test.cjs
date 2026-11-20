@@ -105,11 +105,16 @@ test('一天多高、各天的框：没有角色的天没有芯片行；展开�
   assert.equal(D.dayAt([], 10), '');
 });
 
-test('去网格：带着现在的筛选和这一天；点角色再加一个 char 条件', () => {
-  const route = {page: 'days', q: 'x', has: ['fav'], sort: 'oldest'};
-  assert.deepEqual(D.gridRoute(route, '2026-11-19'), {page: 'library', day: '2026-11-19', q: 'x', has: ['fav']});
-  assert.deepEqual(D.gridRoute(route, '2026-11-19', 'e1'), {page: 'library', day: '2026-11-19', q: 'x', has: ['fav', 'char:e1']});
+test('去网格：带着现在的筛选和这一天；点角色再加一个 char 条件；地址里的 has 不合法也不抛错', () => {
+  const route = {page: 'days', q: 'x', has: ['fav'], sort: 'oldest', at: '2026-11-01'};
+  const plain = D.gridRoute(route, '2026-11-19');
+  assert.equal(plain.page, 'library'); assert.equal(plain.day, '2026-11-19'); assert.equal(plain.q, 'x'); assert.deepEqual(plain.has, ['fav']);
+  assert.equal(plain.sort, undefined); assert.equal(plain.at, undefined);
+  const withChar = D.gridRoute(route, '2026-11-19', 'e1');
+  assert.deepEqual(withChar.has, ['fav', 'char:e1']); assert.equal(withChar.day, '2026-11-19'); assert.equal(withChar.q, 'x');
   assert.deepEqual(D.gridRoute({page: 'days', has: '["char:e1"]'}, '2026-11-19', 'e1').has, ['char:e1']);
+  assert.deepEqual(D.gridRoute({page: 'days', has: '{坏的', not: ['char:e1']}, '2026-11-19', 'e1').has, ['char:e1']);
+  assert.deepEqual(D.gridRoute({page: 'days', not: ['char:e1']}, '2026-11-19', 'e1').not, []);
 });
 
 test('认一认的请求体：都对、其余是、都不是、点掉的是另一个角色', () => {
@@ -132,4 +137,39 @@ test('展开一天的全部角色：分页汇总 memberships，按张数排', as
   assert.deepEqual(people.map(p => [p.id, p.count]), [['x', 2], ['y', 1], ['z', 1]]);
   assert.equal(seen.length, 2);
   assert.equal(seen[0].get('day'), '2026-11-19'); assert.equal(seen[0].get('q'), 'k'); assert.equal(seen[1].get('offset'), '2');
+});
+
+test('同步时「今天」长行：已显示的格子框不变，新图接在下面一行；最多两行，再来只加大「+N 张」；后端没给回来的图照旧留着', () => {
+  const opt = {width: 1000, rowHeight: 100, gap: 6};
+  const g0 = day('2026-11-19', ['a', 'b', 'c', 'd', 'e']);
+  const base = D.dayCells(g0, opt, 'a');
+  assert.equal(base.rows, 0); assert.equal(base.height, 206);
+  const boxes = cells => new Map(cells.map(c => [c.item.uuid, c.box]));
+  // 第一批：两张新图
+  const g1 = {...g0, count: 7, items: [item('n1'), item('n2'), ...g0.items]};
+  const one = D.growCells(base, g1, opt);
+  assert.equal(one.rows, 1); assert.equal(one.height, 206 + 6 + 100);
+  for (const c of base.cells) assert.deepEqual(boxes(one.cells).get(c.item.uuid), c.box, '已显示的不动');
+  assert.deepEqual(one.cells.slice(-2).map(c => [c.item.uuid, c.box.y, c.box.h]), [['n1', 212, 100], ['n2', 212, 100]]);
+  assert.ok(one.cells.every(c => !c.more), '都画出来了，没有「+N」');
+  // 第二批（后端只给最新的几张，a、b 没回来）：a、b 照旧留着
+  const g2 = {...g0, count: 8, items: [item('n3'), item('n1'), item('n2'), item('c')]};
+  const two = D.growCells(one, g2, opt);
+  assert.equal(two.rows, 2); assert.deepEqual(two.cells.map(c => c.item.uuid).slice(0, 2), ['a', 'b']);
+  assert.equal(two.cells.at(-1).item.uuid, 'n3'); assert.equal(two.cells.at(-1).box.y, 318);
+  // 第三批：不再长行，新图只算进「+N」
+  const g3 = {...g0, count: 10, items: [item('n4'), item('n5'), ...g2.items]};
+  const three = D.growCells(two, g3, opt);
+  assert.equal(three.rows, 2); assert.equal(three.height, two.height); assert.equal(three.cells.length, two.cells.length);
+  assert.equal(three.cells.at(-1).more, 10 - three.cells.length + 1);
+  // 一张太宽的新图：收窄到这一行的宽度
+  const wide = D.growCells(base, {...g0, count: 6, items: [item('w', {width: 5000, height: 1000}), ...g0.items]}, opt);
+  assert.ok(wide.cells.at(-1).box.w <= 1000);
+  // 一天的框算上长出来的行
+  const sizes = {head: 56, chips: 40, rowHeight: 100, gap: 6, after: 36};
+  assert.equal(D.dayBoxes([g1], {width: 1000, sizes, mosaics: new Map([[g1.day, one.height]])}).boxes[0].h, 56 + one.height + 36);
+});
+
+test('今天是哪一天：本地时间', () => {
+  assert.equal(D.todayKey(new Date(2026, 0, 5, 23, 30)), '2026-01-05');
 });

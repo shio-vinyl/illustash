@@ -129,9 +129,9 @@ function showNone(text, next = []) {
   drawEmpty($('empty'), {icon: 'search', fact: text, next});
   renderHeading();
 }
-// 首页借用网格的列表放它自己的图（详情栏翻页、大图都按这个列表走）。
-// 面板页看一组图的大图（previewList：按组整理、首页「认一认」、身份整理、画师抽查，#424 的 2-2、2-34）时列表先换成那一组，
-// 关大图时还回去（endPreview，ui/detail.js 的 closeViewer 调用）；这期间页面自己再 showList（首页写入后重画），换的是要还回去的那份。
+// 按天视图借用网格的列表放它自己的图（详情栏翻页、大图都按这个列表走）。
+// 面板页看一组图的大图（previewList：按组整理、按天视图「认一认」、身份整理、画师抽查，#424 的 2-2、2-34）时列表先换成那一组，
+// 关大图时还回去（endPreview，ui/detail.js 的 closeViewer 调用）；这期间页面自己再 showList（按天视图写入后重画），换的是要还回去的那份。
 let lent = null;
 export function showList(items) { if (lent) { lent = items; return; } state.items = items; state.total = items.length; }
 export function previewList(ids, i) {
@@ -437,7 +437,7 @@ export function resetForRoute() { quitSelecting(); state.cursor = -1; state.tota
 // 键盘光标移到第 i 张（详情栏和大图翻页时跟着走）。
 export function setCursor(i) { state.cursor = i; }
 // I 和大图底栏的「信息」：开关详情栏（#424 的 2-7）。大图里是关掉大图、在详情栏里看这张；网格里看光标那张（没有光标取
-// 第一张），详情栏已经开着同一张就关掉，开着别的（整理页点图只选中、不换详情栏）就换成光标那张。首页没有光标，只能关。
+// 第一张），详情栏已经开着同一张就关掉，开着别的（整理页点图只选中、不换详情栏）就换成光标那张。按天视图没有光标，只能关。
 // 不显示详情栏的面板页，以及面板页借列表看的大图（previewList）不响应。
 export function toggleInfo() {
   const scope = keyScope(viewOf(state.route)); if (!scope || previewing()) return;
@@ -794,7 +794,7 @@ export async function sweep() {
 
 // ---------- 收藏（#447） ----------
 // 心形和不重读的写入在 ui/favorites.js，判断在 core/favorites.js。这一页按收藏筛选、图会离开本页时（「只看收藏」里取消）
-// 照其他写入走 mutate：淡出、重读；否则只在本地改掉这些图和同组副本的心形，面板页（首页）自己重读。
+// 照其他写入走 mutate：淡出、重读；否则只在本地改掉这些图和同组副本的心形，面板页（按天视图）自己重读。
 function favorite(payload, add) {
   if (favLeaves(add)) return mutate('/api/favorite', {...payload, add}, true);
   const ids = payload.ids && new Set(payload.ids), exclude = state.sel.exclude;
@@ -994,7 +994,7 @@ export function wireGrid() {
       else e.target.blur();
       return;
     }
-    // Space 看大图的缩略图（按组整理、首页「认一认」，ui/detail.js 的 peek）：焦点在图上或鼠标停在图上时 Space 是看大图，
+    // Space 看大图的缩略图（按组整理、按天视图「认一认」，ui/detail.js 的 peek）：焦点在图上或鼠标停在图上时 Space 是看大图，
     // 不是按下这个按钮（点一下是「不算」，#424 的 2-2）。
     if (e.key === ' ' && !mod && !m.viewer && !edits.busy && peek(e.target)) { e.preventDefault(); return; }
     // 焦点在按钮、开关、链接上时，Enter、Space 归它自己（#422 的 2-5）：链接只认 Enter，Space 照常是页面的快捷键。
@@ -1015,7 +1015,7 @@ export function wireGrid() {
     if ((key === 'y' || key === 'n') && !mod && !edits.busy && view.bar === 'audit' && n) { e.preventDefault(); answerAudit(key === 'y'); return; }
     if ((key === 'y' || key === 'n') && !mod && !edits.busy && state.question && [state.focused, m.viewer && state.viewerItem?.uuid].includes(state.question.ident)) { e.preventDefault(); answerAsk(key === 'y' ? 'yes' : 'no'); return; }
     if (edits.busy || !scope) return;
-    // 首页（scope 'shown'）没有网格光标：下面的键只作用于详情栏或大图里那张，两者都没开时不响应；方向键只有 ← → 翻页，
+    // 按天视图（scope 'shown'）没有网格光标：下面的键只作用于详情栏或大图里那张，两者都没开时不响应；方向键只有 ← → 翻页，
     // ↑ ↓ 照常滚动页面。
     if (!grid && !m.viewer && !m.detail) return;
     if (key === 'i' && !mod) { e.preventDefault(); toggleInfo(); return; }

@@ -24,9 +24,10 @@ import {attr, cls, css, make, prop, rich, show, text, tpl} from './el.js';
 import {keyed} from './keyed.js';
 import {exit, thumbs} from './motion.js';
 import {scope} from './scope.js';
+import {thumbUrl} from './day.js';
 import {releaseImages} from './virtual.js';
 
-const SYNC = tpl`<button class="group day-card day-sync" type="button"><span class="day-ring" data-ref="ring" aria-hidden="true"><svg viewBox="0 0 20 20"><path
+const SYNC = tpl`<button class="group day-card day-sync" type="button"><span class="avatar-ring day-ring" data-ref="ring" aria-hidden="true"><svg viewBox="0 0 20 20"><path
   data-ref="tick" d="m6 10.4 2.7 2.6L14 7.6"/></svg></span><span class="day-card-text"><b class="day-card-title" data-ref="title"></b><span class="day-card-sub"
   data-ref="sub"></span></span></button>`;
 const ASK = tpl`<section class="group day-card day-ask" aria-labelledby="dayAskTitle"><div class="day-ask-peek" data-ref="peek" aria-hidden="true"></div><div class="day-card-text">
@@ -36,7 +37,6 @@ const ASK = tpl`<section class="group day-card day-ask" aria-labelledby="dayAskT
   <button class="btn is-small" type="button" data-ref="open" data-t>不全是</button><button class="btn is-small is-primary" type="button" data-ref="ok"></button></div></section>`;
 const ASK_TILE = tpl`<button class="day-ask-tile" type="button"><img data-ref="img" alt="" draggable="false" loading="lazy" decoding="async"><i aria-hidden="true">✕</i></button>`;
 const PEEK_IMG = tpl`<img alt="" draggable="false" loading="lazy" decoding="async">`;
-const thumbUrl = uuid => `/image?id=${encodeURIComponent(uuid)}&size=thumb`;
 const ratio = x => x.width > 0 && x.height > 0 ? Math.min(2.4, Math.max(.4, x.width / x.height)) : .75;
 // 收起时露出几张小图。
 const PEEK = 4;
@@ -69,20 +69,27 @@ export function syncCard({open}) {
 }
 
 // ---------- 认一认 ----------
-function askTile(x, toggle) {
+function askTile(x) {
   const {el, refs} = ASK_TILE();
   el.dataset.peek = x.uuid;
   attr(refs.img, 'src', thumbUrl(x.uuid)); thumbs.mark(refs.img, x.uuid);   // 看图器从这张 <img> 展开、缩回（#709）
   css(el, 'aspect-ratio', String(ratio(x)));
-  el.addEventListener('click', () => toggle(x.uuid));
   return {el, update() {}, dispose() { releaseImages(el); }};
 }
 export function askCard({answer, other, later}) {
   const s = scope('day-ask'), {el, refs} = ASK();
   show(el, false);   // 有一批要问的才显示
   let batch = null, off = new Set(), open = false, entity = '';
-  const toggle = uuid => { if (off.has(uuid)) off.delete(uuid); else off.add(uuid); paint(); };
-  const tiles = keyed(refs.tiles, {key: x => x.uuid, create: x => askTile(x, toggle), exit: el => exit(el, {to: 'scale'}), scope: s});
+  const tiles = keyed(refs.tiles, {key: x => x.uuid, create: askTile, exit: el => exit(el, {to: 'scale'}), scope: s});
+  // 点一张图：在「不是 TA」和「是」之间切换（在图的容器上接，按 data-peek 找是哪张）。
+  s.on(refs.tiles, 'click', e => {
+    let tile = e.target;
+    while (tile && tile !== refs.tiles && !tile.dataset?.peek) tile = tile.parentNode;
+    if (!tile || tile === refs.tiles || tile.inert || tile.disabled) return;
+    const uuid = tile.dataset.peek;
+    if (off.has(uuid)) off.delete(uuid); else off.add(uuid);
+    paint();
+  });
   const peek = keyed(refs.peek, {key: x => x.uuid, scope: s, create: x => {
     const {el} = PEEK_IMG(); attr(el, 'src', thumbUrl(x.uuid)); thumbs.mark(el, x.uuid); return {el, update() {}, dispose() { releaseImages(el); }};
   }});

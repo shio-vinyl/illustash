@@ -42,7 +42,7 @@ export const state = {
   // ---- 上手引导的进度：ui/guide.js ----
   guide: null,
 
-  // ---- 网格的列表：ui/grid.js（首页借用它放自己的图，用 showList；写入后作废读取用 listChanged） ----
+  // ---- 网格的列表：ui/grid.js（按天视图借用它放自己的图，用 showList；写入后作废读取用 listChanged） ----
   items: [], total: 0, totalReady: false, readEpoch: 0, countDirty: false, countReload: null,
   pages: new Set(), pending: new Set(), generation: 0, dataVersion: 0, gridKey: '',
   // 角色页「可能也是 TA」「可能认错」两个胶囊的张数。

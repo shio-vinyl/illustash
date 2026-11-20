@@ -172,6 +172,46 @@ test('预览图之间的缝和样式一致', () => {
   assert.equal(Number(token[1]), rail.PEEK.gap);
 });
 
+// 二级层滚动时上下边缘的渐隐（2026-11-20 用户提）：滚到头的那一边不淡；键盘焦点、选中的项让开渐隐完整露出来。
+test('渐隐：上边只在滚过时有，下边只在下面还有内容时有', () => {
+  const {railEdges} = rail;
+  assert.deepEqual(railEdges({scroll: 0, view: 400, total: 400}), {top: false, bottom: false});   // 不够长，不滚
+  assert.deepEqual(railEdges({scroll: 0, view: 400, total: 900}), {top: false, bottom: true});
+  assert.deepEqual(railEdges({scroll: 200, view: 400, total: 900}), {top: true, bottom: true});
+  assert.deepEqual(railEdges({scroll: 500, view: 400, total: 900}), {top: true, bottom: false});
+  assert.deepEqual(railEdges({scroll: 499.5, view: 400, total: 900}), {top: true, bottom: false});   // 缩放下 scrollTop 带小数
+});
+
+test('渐隐：项被盖住时滚到让它完整露出来，滚到头的那一边不用让', () => {
+  const {FADE, railReveal} = rail, box = {view: 400, total: 900};
+  // 中间、完整露出：不滚
+  assert.equal(railReveal({...box, scroll: 200, top: 300, h: 46}), null);
+  // 被下边的渐隐盖住一半：只滚到它下面留出一段渐隐
+  assert.equal(railReveal({...box, scroll: 200, top: 560, h: 46}), 560 + 46 - 400 + FADE);
+  // 被上边的渐隐盖住：滚到它上面留出一段渐隐
+  assert.equal(railReveal({...box, scroll: 200, top: 210, h: 46}), 210 - FADE);
+  // 离顶不到一段渐隐：滚到顶（那时上边没有渐隐）
+  assert.equal(railReveal({...box, scroll: 100, top: 110, h: 46}), 110 - FADE);
+  assert.equal(railReveal({...box, scroll: 100, top: 20, h: 46}), 0);
+  // 滚到底时最后一项贴着下边：下边没有渐隐，不滚
+  assert.equal(railReveal({...box, scroll: 500, top: 846, h: 46}), null);
+  // 选中时放到中间；夹在能滚的范围里
+  assert.equal(railReveal({...box, scroll: 0, top: 500, h: 46}, true), 523 - 200);
+  assert.equal(railReveal({...box, scroll: 0, top: 850, h: 46}, true), 500);
+  // 没有排版（量出来不是数）时不滚
+  assert.equal(railReveal({view: 400, total: 900, scroll: undefined, top: 10, h: 46}), null);
+});
+
+// FADE 要和 css/rail.css 里 .rail-scroll 遮罩的渐隐高度一致：脚本按它让开键盘焦点。
+test('渐隐的高度和样式一致', () => {
+  const fs = require('node:fs'), path = require('node:path');
+  const css = fs.readFileSync(path.join(__dirname, '..', 'web', 'static', 'css', 'rail.css'), 'utf8');
+  const rule = css.match(/\.rail-scroll\{[^}]*\}/)[0];
+  assert.match(rule, new RegExp(`linear-gradient\\(transparent,black ${rail.FADE}px,black calc\\(100% - ${rail.FADE}px\\),transparent\\)`));
+  assert.match(rule, new RegExp(`scroll-padding-block:${rail.FADE}px`));
+  assert.match(rule, new RegExp(`mask-size:100% calc\\(100% \\+ ${rail.FADE * 2}px\\);mask-position:0 -${rail.FADE}px`));
+});
+
 test('时间轴的预览：日期是这一天的样图，月、年是每天的头一张；都带主色', () => {
   const pic = (id, w = 600, h = 900) => ({id, w, h});
   const days = ['2026-11-18', '2026-11-17', '2026-11-15', '2026-11-12', '2026-11-03', '2026-11-01', '2026-10-30'].map((d, i) =>

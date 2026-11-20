@@ -149,6 +149,25 @@ export function peekRow(item, ratioOf = () => 0) {
   return {h, width, pics: boxes.map(b => ({id: list[b.i].id, x: b.x, w: b.w}))};
 }
 
+// ---------- 二级层滚动时上下边缘的渐隐 ----------
+// 二级层比窗口长时上下滚动，边缘那一段渐隐（css/rail.css 的 .rail-scroll）：上边只在已经往下滚过时有，下边只在下面还有内容时有。
+// FADE 是渐隐的高度，和 css/rail.css 里遮罩的 28px 一起改。量的都是滚动区的数（ui/rail.js 在帧任务的读里量）：
+// scroll 是 scrollTop，view 是 clientHeight，total 是 scrollHeight；top、h 是一项的 offsetTop、offsetHeight（相对滚动区）。
+export const FADE = 28;
+export function railEdges({scroll, view, total}) {
+  return {top: scroll > 1, bottom: scroll + view < total - 1};
+}
+// 一项被渐隐盖住（或在看得见的范围外）时，滚到哪里能让它完整露出来；不用滚时返回 null。
+// center：把它放到中间（选中某项时）；否则只滚到刚好露出（键盘焦点到了边缘附近的项）。滚到头的那一边没有渐隐，不用让。
+export function railReveal({top, h, scroll, view, total}, center = false) {
+  if (![top, h, scroll, view, total].every(Number.isFinite)) return null;
+  const edges = railEdges({scroll, view, total}), above = edges.top ? FADE : 0, below = edges.bottom ? FADE : 0;
+  if (top >= scroll + above && top + h <= scroll + view - below) return null;
+  const want = center ? top + h / 2 - view / 2 : top < scroll + above ? top - FADE : top + h - view + FADE;
+  const to = Math.round(Math.max(0, Math.min(Math.max(0, total - view), want)));
+  return to === Math.round(scroll) ? null : to;
+}
+
 // 读时间轴：从这个月起按 /api/calendar 的 prev 一个月一个月往前读（#718：每天的张数和最多四张样图；没有按月汇总的接口，
 // 几百天的图库要读十几次）。参数是图库的筛选（libraryFilters，三种视图共用）和 NSFW 设置。
 // - 参数没变、也没有写入时不重读（换页、改视图不会触发）；同步到了新图（newest）只重读最新的那个月，更早的沿用。

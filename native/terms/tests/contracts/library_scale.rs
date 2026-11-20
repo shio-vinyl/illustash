@@ -229,7 +229,9 @@ fn size() -> usize {
 #[test]
 #[ignore = "显式运行已打开图库的 HTTP 同步基准"]
 fn sync_http() {
-    assert!(!cfg!(debug_assertions), "需用 release 编译");
+    if cfg!(debug_assertions) {
+        panic!("需用 release 编译");
+    }
     let size = size();
     let (_sandbox, root, _) = materialize(&json!({"input":{}}), "scale_sync");
     let (package, photos) = seed(&root, size);

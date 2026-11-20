@@ -2,7 +2,7 @@
 window.CENSUS = {
  "source": "web/static/app.css、web/static/css/base.css、web/static/css/catalog.css、web/static/css/character.css、web/static/css/detail.css、web/static/css/galleries.css、web/static/css/library.css、web/static/css/overlays.css、web/static/css/rail.css、web/static/css/settings.css、web/static/css/tidy.css、web/static/css/tokens.css",
  "files": {
-  "app.css": "f89e0f66b92f9df7282095c2a93b0fd263011b2f1eb2aee506f0bb9e2462d57f",
+  "app.css": "13c7561ea14d9da421fadd576d39661df6c03183df7ac73eeaf54403541b8ba3",
   "css/base.css": "01e49cf9bb28cf1ec3cc4ce7b82b323cc0add3515fe9a84f8cb72eee31337c4d",
   "css/catalog.css": "6af407c23feb8360ce625efb0c23a632e6d405ac0ca90ec378a5665f40a7df88",
   "css/character.css": "52eaf299dfeb41d32014564d83057a714061e8970e67356a9631efc1dc087a71",
@@ -10,14 +10,14 @@ window.CENSUS = {
   "css/galleries.css": "f446c432133be7ce4e2c04c29933f3a849f227b4b15ff09a8a187b1c52b52959",
   "css/library.css": "7f8474b40727892a2116c6b67597d98aef65854406a4d78909ff8ec931f71e43",
   "css/overlays.css": "3e18fddd6cbc8c59478a35b978d51868e4c93aeb4a075a98139d54696dd2601a",
-  "css/rail.css": "4e6316feddf7cee7fb5576fd7a3022b941afc649ef5b0f05a3740b70a85ccb61",
+  "css/rail.css": "e42b74acf9f290263810bb3ac3b2d679af30cdb62e0c36eb6ad849cc1d26951d",
   "css/settings.css": "f4308d031d40a2d389ce6477ebdd14cbd1d5292358f311fe56406034ffd475f6",
   "css/tidy.css": "0dae765ffbd6e5e96298c7b5ad97a2d9a64c085d13ae8bd0ad0d82c49e536bec",
   "css/tokens.css": "ab5cbeb02f1a7698ba0942dbb02c7b11addb0b63812b8e85bbb49d0400646214"
  },
- "sha256": "e43087d145bdb9b7af19bf02b1657b673a0a309cf601320ca35f58c478e28fd2",
- "lines": 1710,
- "rules": 1360,
+ "sha256": "7892b1bbd956674a7761a5825672d7ccaefa952bee23e207a82f8f62220884fb",
+ "lines": 1733,
+ "rules": 1370,
  "themeVars": {
   "light": {
    "--canvas": "#f4f4f6",
@@ -183,12 +183,12 @@ window.CENSUS = {
    "--radius-6": 15,
    "--hair": 27,
    "--sheet": 60,
-   "--radius-round": 21,
+   "--radius-round": 22,
    "--muted": 125,
-   "--space-6": 103,
+   "--space-6": 105,
    "--h-32": 12,
    "--fs-16": 2,
-   "--space-4": 83,
+   "--space-4": 85,
    "--radius-pill": 50,
    "--soft": 71,
    "--accent-soft": 28,
@@ -196,7 +196,7 @@ window.CENSUS = {
    "--fs-12": 120,
    "--ink2": 59,
    "--tone-sand-ink": 3,
-   "--space-8": 118,
+   "--space-8": 119,
    "--faint": 12,
    "--z-popover": 2,
    "--gutter": 7,
@@ -211,15 +211,15 @@ window.CENSUS = {
    "--space-10": 76,
    "--z-page-3": 3,
    "--space-14": 40,
-   "--space-2": 44,
-   "--radius-4": 19,
+   "--space-2": 45,
+   "--radius-4": 20,
    "--chip-hover": 4,
    "--space-20": 9,
    "--z-bar": 1,
-   "--ease": 66,
+   "--ease": 69,
    "--z-toast": 1,
    "--space-16": 21,
-   "--space-12": 82,
+   "--space-12": 81,
    "--z-overlay": 2,
    "--space-24": 5,
    "--h-36": 12,
@@ -227,7 +227,7 @@ window.CENSUS = {
    "--z-page-5": 1,
    "--space-1": 25,
    "--dup-hue": 1,
-   "--radius-8": 21,
+   "--radius-8": 20,
    "--w": 1,
    "--err": 4,
    "--accent": 44,
@@ -313,23 +313,24 @@ window.CENSUS = {
    "--bad": 3,
    "--depth": 1,
    "--fw-750": 14,
-   "--dur-1": 16,
+   "--dur-1": 18,
    "--fw-600": 8,
    "--accent-fill": 3,
    "--on-accent": 3,
    "--fw-400": 3,
-   "--shadow-hover": 6,
-   "--tint-soft": 6,
-   "--dur-2": 11,
+   "--shadow-hover": 7,
+   "--tint-soft": 7,
+   "--dur-2": 12,
    "--dur-3": 6,
    "--scrim": 3,
    "--image-text-shadow": 2,
    "--glass-solid": 5,
-   "--shadow-pop": 2,
+   "--shadow-pop": 3,
    "--glass-surface": 2,
    "--at": 1,
    "--ease-spring": 2,
-   "--z-drawer": 1,
+   "--tint-glow": 1,
+   "--z-drawer": 2,
    "--tint": 8,
    "--tint-shadow": 1
   },
@@ -564,7 +565,7 @@ window.CENSUS = {
    {
     "name": "--radius-4",
     "value": "4px",
-    "uses": 19
+    "uses": 20
    },
    {
     "name": "--radius-6",
@@ -574,7 +575,7 @@ window.CENSUS = {
    {
     "name": "--radius-8",
     "value": "8px",
-    "uses": 21
+    "uses": 20
    },
    {
     "name": "--radius-10",
@@ -609,7 +610,7 @@ window.CENSUS = {
    {
     "name": "--radius-round",
     "value": "50%",
-    "uses": 21
+    "uses": 22
    }
   ],
   "space": [
@@ -621,22 +622,22 @@ window.CENSUS = {
    {
     "name": "--space-2",
     "value": "2px",
-    "uses": 44
+    "uses": 45
    },
    {
     "name": "--space-4",
     "value": "4px",
-    "uses": 83
+    "uses": 85
    },
    {
     "name": "--space-6",
     "value": "6px",
-    "uses": 103
+    "uses": 105
    },
    {
     "name": "--space-8",
     "value": "8px",
-    "uses": 118
+    "uses": 119
    },
    {
     "name": "--space-10",
@@ -646,7 +647,7 @@ window.CENSUS = {
    {
     "name": "--space-12",
     "value": "12px",
-    "uses": 82
+    "uses": 81
    },
    {
     "name": "--space-14",
@@ -730,7 +731,7 @@ window.CENSUS = {
    {
     "name": "--z-drawer",
     "value": "25",
-    "uses": 1
+    "uses": 2
    },
    {
     "name": "--z-menu",
@@ -789,13 +790,13 @@ window.CENSUS = {
    {
     "name": "--shadow-hover",
     "value": "0 1px 2px rgba(var(--sh),.06),0 8px 20px -10px rgba(var(--sh),.28)",
-    "uses": 6,
+    "uses": 7,
     "dark": "0 1px 2px rgba(0,0,0,.3),0 8px 20px -10px rgba(0,0,0,.6)"
    },
    {
     "name": "--shadow-pop",
     "value": "0 0 0 .5px rgba(var(--sh),.08),0 18px 44px -18px rgba(var(--sh),.34)",
-    "uses": 2,
+    "uses": 3,
     "dark": "0 0 0 .5px rgba(255,255,255,.08),0 18px 44px -18px rgba(0,0,0,.7)"
    },
    {
@@ -809,12 +810,12 @@ window.CENSUS = {
    {
     "name": "--dur-1",
     "value": "140ms",
-    "uses": 16
+    "uses": 18
    },
    {
     "name": "--dur-2",
     "value": "240ms",
-    "uses": 11
+    "uses": 12
    },
    {
     "name": "--dur-3",
@@ -826,7 +827,7 @@ window.CENSUS = {
    {
     "name": "--ease",
     "value": "cubic-bezier(.2,.8,.2,1)",
-    "uses": 66
+    "uses": 69
    },
    {
     "name": "--ease-spring",
@@ -1374,7 +1375,7 @@ window.CENSUS = {
  },
  "radius": {
   "kinds": 18,
-  "uses": 196,
+  "uses": 197,
   "table": [
    {
     "value": "0",
@@ -1416,7 +1417,7 @@ window.CENSUS = {
    },
    {
     "value": "var(--radius-4)",
-    "uses": 17,
+    "uses": 18,
     "examples": [
      ".variant-chip button",
      ".progress",
@@ -1436,7 +1437,7 @@ window.CENSUS = {
    },
    {
     "value": "var(--radius-8)",
-    "uses": 19,
+    "uses": 18,
     "examples": [
      ".dup-copy",
      ".rule",
@@ -1527,7 +1528,7 @@ window.CENSUS = {
    },
    {
     "value": "var(--radius-round)",
-    "uses": 21,
+    "uses": 22,
     "examples": [
      ".local-dot",
      ".check",
@@ -1711,8 +1712,8 @@ window.CENSUS = {
   ]
  },
  "padding": {
-  "kinds": 101,
-  "uses": 221,
+  "kinds": 103,
+  "uses": 223,
   "table": [
    {
     "value": "0",
@@ -1775,6 +1776,16 @@ window.CENSUS = {
     ]
    },
    {
+    "value": "var(--space-4)",
+    "uses": 6,
+    "examples": [
+     ".icon-seg",
+     ".cast-rc .ring",
+     ".seg",
+     ".avatar-ring"
+    ]
+   },
+   {
     "value": "var(--space-10) 0",
     "uses": 5,
     "examples": [
@@ -1785,16 +1796,6 @@ window.CENSUS = {
     ]
    },
    {
-    "value": "var(--space-4)",
-    "uses": 5,
-    "examples": [
-     ".icon-seg",
-     ".cast-rc .ring",
-     ".seg",
-     ".avatar-ring"
-    ]
-   },
-   {
     "value": "var(--space-4) var(--space-8)",
     "uses": 5,
     "examples": [
@@ -1802,16 +1803,6 @@ window.CENSUS = {
      ".icon-seg button",
      ".tag",
      ".cast-poster .pill"
-    ]
-   },
-   {
-    "value": "var(--space-6)",
-    "uses": 5,
-    "examples": [
-     ".picker-results",
-     ".dup-copy",
-     ".combo-menu",
-     ".workspace"
     ]
    },
    {
@@ -1865,6 +1856,26 @@ window.CENSUS = {
     ]
    },
    {
+    "value": "var(--space-6)",
+    "uses": 4,
+    "examples": [
+     ".picker-results",
+     ".dup-copy",
+     ".combo-menu",
+     ".day-ring>svg"
+    ]
+   },
+   {
+    "value": "var(--space-8)",
+    "uses": 4,
+    "examples": [
+     ".menu-drop",
+     ".missing",
+     ".rail-peek",
+     ".library-row"
+    ]
+   },
+   {
     "value": "0 var(--space-6)",
     "uses": 3,
     "examples": [
@@ -1880,15 +1891,6 @@ window.CENSUS = {
      ".caption",
      ".nsfw-toggle",
      ".num-field input"
-    ]
-   },
-   {
-    "value": "var(--space-12)",
-    "uses": 3,
-    "examples": [
-     ".palette-head",
-     ".rail-peek",
-     ".library-pop"
     ]
    },
    {
@@ -1928,15 +1930,6 @@ window.CENSUS = {
     ]
    },
    {
-    "value": "var(--space-8)",
-    "uses": 3,
-    "examples": [
-     ".menu-drop",
-     ".missing",
-     ".library-row"
-    ]
-   },
-   {
     "value": "var(--space-8) 0",
     "uses": 3,
     "examples": [
@@ -1944,12 +1937,21 @@ window.CENSUS = {
      ".settings-card .setting-line,.settings-card .switch-line",
      ".settings-card .setting-line,.settings-card .switch-line,.settings-card a.set-link"
     ]
+   },
+   {
+    "value": "var(--space-8) var(--space-10)",
+    "uses": 3,
+    "examples": [
+     ".identity",
+     ".lib-col",
+     ".prov-stat"
+    ]
    }
   ]
  },
  "height": {
-  "kinds": 51,
-  "uses": 115,
+  "kinds": 50,
+  "uses": 114,
   "table": [
    {
     "value": "height: 1px",
@@ -2283,13 +2285,6 @@ window.CENSUS = {
     ]
    },
    {
-    "value": "height: 56px",
-    "uses": 1,
-    "examples": [
-     ".rail-peek-pics>img"
-    ]
-   },
-   {
     "value": "height: 68px",
     "uses": 2,
     "examples": [
@@ -2360,7 +2355,7 @@ window.CENSUS = {
  },
  "zIndex": {
   "kinds": 16,
-  "uses": 34,
+  "uses": 35,
   "table": [
    {
     "value": "var(--z-page-1)",
@@ -2421,8 +2416,9 @@ window.CENSUS = {
    },
    {
     "value": "var(--z-drawer)",
-    "uses": 1,
+    "uses": 2,
     "examples": [
+     ".rail",
      ".rail-l2"
     ]
    },

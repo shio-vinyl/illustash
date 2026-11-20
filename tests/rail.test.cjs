@@ -145,3 +145,94 @@ test('时间轴的一项点了去哪：日历里去那个月，按天、网格�
   assert.equal(rail.timelineHref({...r, page: 'calendar'}, '2026-10-02'), '#/calendar?day=2026-11-01&q=miku&has=%5B%22fav%22%5D&at=2026-10-02');
   assert.deepEqual(rail.viewRoute({...r, at: '2026-10-02'}, 'grid'), {page: 'library', q: 'miku', day: '2026-11-01', has: ['fav']});
 });
+
+// 悬停预览（#706 补）：从项里挑图、定行高，排法交给 core/layout.js 的 strip（那边的测试管放几张、上下限）。
+test('预览的一行：挑哪些图、行高；记下的比例当作已知的', () => {
+  const {PEEK, peekRow} = rail;
+  const tall = id => ({id, w: 700, h: 1000});
+  const day = peekRow({peek: ['a', 'b', 'c', 'd'].map(tall)});
+  assert.deepEqual([day.h, day.pics.map(p => p.id), day.pics.map(p => p.w)], [PEEK.h, ['a', 'b', 'c', 'd'], [59, 59, 59, 59]]);
+  assert.equal(day.width, 59 * 4 + PEEK.gap * 3);
+  // 没给 peek：只放封面，排高一些；宽高未知时问 ratioOf，再没有按 3:4
+  assert.deepEqual(peekRow({cover: 'c'}).pics, [{id: 'c', x: 0, w: 96}]);
+  assert.equal(peekRow({cover: 'c'}).h, PEEK.solo);
+  assert.deepEqual(peekRow({cover: 'c'}, id => id === 'c' ? .6 : 0).pics[0].w, 77);
+  // 作品的角色：圆头像，正圆、小一些
+  const faces = peekRow({peek: [{id: 'a'}, {id: 'b'}], peekRound: true});
+  assert.deepEqual([faces.h, ...faces.pics.map(p => p.w)], [PEEK.face, PEEK.face, PEEK.face]);
+  assert.deepEqual(peekRow({}).pics, []);
+  assert.deepEqual(peekRow({peek: [{id: ''}, null]}).pics, []);
+});
+
+// PEEK.gap 要和 css/rail.css 里 .rail-peek-pics 的 gap（--space-4）一致：脚本按它算一行多宽。
+test('预览图之间的缝和样式一致', () => {
+  const fs = require('node:fs'), path = require('node:path'), root = path.join(__dirname, '..', 'web', 'static');
+  const rule = fs.readFileSync(path.join(root, 'css', 'rail.css'), 'utf8').match(/\.rail-peek-pics\{[^}]*gap:var\((--space-\d+)\)/);
+  const token = fs.readFileSync(path.join(root, 'css', 'tokens.css'), 'utf8').match(new RegExp(rule[1] + ':(\\d+)px'));
+  assert.equal(Number(token[1]), rail.PEEK.gap);
+});
+
+// 二级层滚动时上下边缘的渐隐（2026-11-20 用户提）：滚到头的那一边不淡；键盘焦点、选中的项让开渐隐完整露出来。
+test('渐隐：上边只在滚过时有，下边只在下面还有内容时有', () => {
+  const {railEdges} = rail;
+  assert.deepEqual(railEdges({scroll: 0, view: 400, total: 400}), {top: false, bottom: false});   // 不够长，不滚
+  assert.deepEqual(railEdges({scroll: 0, view: 400, total: 900}), {top: false, bottom: true});
+  assert.deepEqual(railEdges({scroll: 200, view: 400, total: 900}), {top: true, bottom: true});
+  assert.deepEqual(railEdges({scroll: 500, view: 400, total: 900}), {top: true, bottom: false});
+  assert.deepEqual(railEdges({scroll: 499.5, view: 400, total: 900}), {top: true, bottom: false});   // 缩放下 scrollTop 带小数
+});
+
+test('渐隐：项被盖住时滚到让它完整露出来，滚到头的那一边不用让', () => {
+  const {FADE, railReveal} = rail, box = {view: 400, total: 900};
+  // 中间、完整露出：不滚
+  assert.equal(railReveal({...box, scroll: 200, top: 300, h: 46}), null);
+  // 被下边的渐隐盖住一半：只滚到它下面留出一段渐隐
+  assert.equal(railReveal({...box, scroll: 200, top: 560, h: 46}), 560 + 46 - 400 + FADE);
+  // 被上边的渐隐盖住：滚到它上面留出一段渐隐
+  assert.equal(railReveal({...box, scroll: 200, top: 210, h: 46}), 210 - FADE);
+  // 离顶不到一段渐隐：滚到顶（那时上边没有渐隐）
+  assert.equal(railReveal({...box, scroll: 100, top: 110, h: 46}), 110 - FADE);
+  assert.equal(railReveal({...box, scroll: 100, top: 20, h: 46}), 0);
+  // 滚到底时最后一项贴着下边：下边没有渐隐，不滚
+  assert.equal(railReveal({...box, scroll: 500, top: 846, h: 46}), null);
+  // 选中时放到中间；夹在能滚的范围里
+  assert.equal(railReveal({...box, scroll: 0, top: 500, h: 46}, true), 523 - 200);
+  assert.equal(railReveal({...box, scroll: 0, top: 850, h: 46}, true), 500);
+  // 没有排版（量出来不是数）时不滚
+  assert.equal(railReveal({view: 400, total: 900, scroll: undefined, top: 10, h: 46}), null);
+});
+
+// FADE 要和 css/rail.css 里 .rail-scroll 遮罩的渐隐高度一致：脚本按它让开键盘焦点。
+test('渐隐的高度和样式一致', () => {
+  const fs = require('node:fs'), path = require('node:path');
+  const css = fs.readFileSync(path.join(__dirname, '..', 'web', 'static', 'css', 'rail.css'), 'utf8');
+  const rule = css.match(/\.rail-scroll\{[^}]*\}/)[0];
+  assert.match(rule, new RegExp(`linear-gradient\\(transparent,black ${rail.FADE}px,black calc\\(100% - ${rail.FADE}px\\),transparent\\)`));
+  assert.match(rule, new RegExp(`scroll-padding-block:${rail.FADE}px`));
+  assert.match(rule, new RegExp(`mask-size:100% calc\\(100% \\+ ${rail.FADE * 2}px\\);mask-position:0 -${rail.FADE}px`));
+});
+
+test('时间轴的预览：日期是这一天的样图，月、年是每天的头一张；都带主色', () => {
+  const pic = (id, w = 600, h = 900) => ({id, w, h});
+  const days = ['2026-11-18', '2026-11-17', '2026-11-15', '2026-11-12', '2026-11-03', '2026-11-01', '2026-10-30'].map((d, i) =>
+    ({day: d, count: 4, cover: 'p' + i, color: i === 5 ? null : '#a0b0c' + i, samples: [pic('p' + i), pic('q' + i)]}));
+  const items = rail.groupTimeline(days);
+  assert.deepEqual(items[0].peek.map(p => p.id), ['p0', 'q0']);
+  assert.equal(items[0].color, '#a0b0c0');
+  const nov = items.find(x => x.key === 'm:2026-11');
+  assert.deepEqual(nov.peek.map(p => p.id), ['p5']);
+  assert.equal(nov.color, null);   // 那天没有主色
+  const oct = items.find(x => x.key === 'm:2026-10');
+  assert.deepEqual([oct.peek[0], oct.color], [pic('p6'), '#a0b0c6']);
+  // 没有样图的老数据：用封面
+  assert.deepEqual(rail.groupTimeline([{day: '2026-11-18', count: 1, cover: 'z'}])[0].peek, [{id: 'z'}]);
+});
+
+test('读时间轴时样图带上原图宽高，日期带上主色', async () => {
+  globalThis.fetch = async () => ({status: 200, ok: true, headers: {get: () => null}, json: async () => ({
+    days: [{day: '2026-11-18', count: 2, color: '#123456', samples: [{uuid: 'a', width: 800, height: 1200}, {uuid: 'b'}]}], prev: null})});
+  state.nsfw = '';
+  await rail.loadTimeline({page: 'days', q: 'peek', has: [], not: []}, {month: '2026-11'});
+  const [first] = rail.timeline.items;
+  assert.deepEqual([first.cover, first.color, first.peek], ['a', '#123456', [{id: 'a', w: 800, h: 1200}, {id: 'b', w: 0, h: 0}]]);
+});

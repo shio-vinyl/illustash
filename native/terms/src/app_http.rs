@@ -479,8 +479,7 @@ fn startup_progress(stage: &str, done: f64) {
         return;
     }
     *last = Some((permille, stage.to_owned(), Instant::now()));
-    println!("启动进度：{permille} {stage}");
-    let _ = std::io::Write::flush(&mut std::io::stdout());
+    print_progress_line(permille, stage);
 }
 /// 最近一条启动进度行和它打印的时间。
 static LAST_PROGRESS: std::sync::Mutex<Option<(u32, String, Instant)>> = std::sync::Mutex::new(None);
@@ -518,7 +517,21 @@ impl Drop for Keepalive {
 }
 fn print_progress_line(permille: u32, stage: &str) {
     println!("启动进度：{permille} {stage}");
-    let _ = std::io::Write::flush(&mut std::io::stdout());
+    if std::io::Write::flush(&mut std::io::stdout()).is_ok() {
+        trace_startup_output(format_args!("{permille} {stage}"));
+    }
+}
+
+/// 仅供升级测试：记录宿主写出进度的单调时刻，避免把测试读线程的调度延迟算入间隔。
+fn trace_startup_output(event: std::fmt::Arguments<'_>) {
+    static START: std::sync::LazyLock<Option<Instant>> =
+        std::sync::LazyLock::new(|| std::env::var_os("ILLUSTASH_TEST_TRACE_STARTUP_OUTPUT").map(|_| Instant::now()));
+    if let Some(start) = *START {
+        let _ = std::io::Write::write_fmt(
+            &mut std::io::stderr().lock(),
+            format_args!("ILLUSTASH_TEST_STARTUP_OUTPUT_NS {} {event}\n", start.elapsed().as_nanos()),
+        );
+    }
 }
 
 /// 从桌面启动页发起的 `--upgrade`：把升级的各阶段作为启动进度，在无法报告的步骤中保活（#267）。
@@ -553,6 +566,9 @@ fn rescue_reporting(path: &Path, root: &Path) -> Result<crate::app_rescue::Repor
 
 pub(crate) fn run(args: &[String]) -> Result<u8> {
     use crate::diagnostics::{self, Operation, Publication, Stage};
+    if crate::desktop_shell::is_host_child() {
+        trace_startup_output(format_args!("<host start>"));
+    }
     diagnostics::initialize();
     let result = run_inner(args);
     if let Err(error) = &result {
@@ -761,6 +777,9 @@ fn run_inner(args: &[String]) -> Result<u8> {
     let address = host.entry.address(&host.origin);
     println!("图库已启动：{address}");
     std::io::Write::flush(&mut std::io::stdout())?;
+    if desktop_child {
+        trace_startup_output(format_args!("<ready>"));
+    }
     // `start-web.command` 在默认浏览器里打开页面；其他情况下手动打开打印出的地址。
     #[cfg(target_os = "macos")]
     if open {

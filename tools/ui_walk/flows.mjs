@@ -418,6 +418,7 @@ export const FLOWS = [
         const pieces = await page.eval(`document.querySelectorAll('.stage .piece').length`);
         if (['collage', 'magazine', 'hall'].includes(id)) w.check(`${id}：展示页放了图`, pieces > 0, pieces);
         else w.check(`${id}：网格有图`, snap.total === 6, snap.total);
+        if (id === 'color') w.check('色彩：按颜色排', await page.eval(`document.getElementById('sort')?.value`) === 'color', '');
       }
       // 瀑布：等宽的几列、高随图的比例；「方格 / 原始比例」开关藏起来；↓ 走到同一列的下一张。
       const geo = await page.eval(`(() => { const cs = [...document.querySelectorAll('#grid .card')].map(c => [Math.round(parseFloat(c.style.width)), Math.round(parseFloat(c.style.height))]);

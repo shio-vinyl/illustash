@@ -26,7 +26,6 @@
    "ui/shell.js -> ui/detail.js": 1,
    "ui/shell.js -> ui/grid.js": 1,
    "ui/shell.js -> ui/guide.js": 1,
-   "ui/shell.js -> ui/palette.js": 1,
    "ui/tasks.js -> ui/catalog.js": 1
   },
   "undeclared-state": {},
@@ -49,7 +48,7 @@
    "ui/models.js": 3,
    "ui/palette.js": 21,
    "ui/review.js": 14,
-   "ui/shell.js": 12,
+   "ui/shell.js": 9,
    "ui/tasks.js": 17
   },
   "css-literal": {
@@ -127,7 +126,7 @@
    "ui/palette.js": 13,
    "ui/review.js": 8,
    "ui/settings.js": 11,
-   "ui/shell.js": 6
+   "ui/shell.js": 5
   },
   "animation-entry": {
    "ui/catalog.js: requestAnimationFrame": 2,

@@ -6,7 +6,7 @@ window.CENSUS = {
   "css/base.css": "78a3194448badebc82149417d4e92cde36089143afdfbf4a34fe8508e8694b3b",
   "css/catalog.css": "6af407c23feb8360ce625efb0c23a632e6d405ac0ca90ec378a5665f40a7df88",
   "css/character.css": "52eaf299dfeb41d32014564d83057a714061e8970e67356a9631efc1dc087a71",
-  "css/detail.css": "9ae041f309815b2c7b18289ad88cf0e24c932d155b4e5d4959156ded67bc7f4c",
+  "css/detail.css": "a9eaf043f2074eea276c1b235e7da4db3630a280ad99ea15956c62d2ecba2904",
   "css/galleries.css": "f446c432133be7ce4e2c04c29933f3a849f227b4b15ff09a8a187b1c52b52959",
   "css/library.css": "7f8474b40727892a2116c6b67597d98aef65854406a4d78909ff8ec931f71e43",
   "css/overlays.css": "3e18fddd6cbc8c59478a35b978d51868e4c93aeb4a075a98139d54696dd2601a",
@@ -15,9 +15,9 @@ window.CENSUS = {
   "css/tidy.css": "0dae765ffbd6e5e96298c7b5ad97a2d9a64c085d13ae8bd0ad0d82c49e536bec",
   "css/tokens.css": "debccd019e1f850d3aaccc13ae456b24e58b704772df86b167b6b16858a42e2c"
  },
- "sha256": "3f5c99e4be51640ad801cb85d2e8b5686d38a5c075d0fc3a5c5146278f661f43",
- "lines": 1753,
- "rules": 1365,
+ "sha256": "eeee08197f2008950d32e6ab598eb6c538fc180619908cfc4c74624bb47361a5",
+ "lines": 1754,
+ "rules": 1366,
  "themeVars": {
   "light": {
    "--canvas": "#f4f4f6",

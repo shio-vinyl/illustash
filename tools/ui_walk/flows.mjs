@@ -603,19 +603,28 @@ export const FLOWS = [
           await p.send('Input.dispatchMouseEvent', {type: 'mouseMoved', x: Math.round(from.x + (to.x - from.x) * k / 8), y: Math.round(from.y + (to.y - from.y) * k / 8), button: 'left', buttons: 1});
           await sleep(16);
         }
-        const offs = await p.eval(`[...document.querySelectorAll('#railItems .rail-item.is-off')].filter(x => x.offsetParent).length`);
+        offs = await p.eval(`[...document.querySelectorAll('#railItems .rail-item.is-off')].map(x => x.offsetParent ? x.railItem?.label : null).filter(Boolean)`);
         await p.send('Input.dispatchMouseEvent', {type: 'mouseReleased', x: to.x, y: to.y, button: 'left', clickCount: 1});
         await sleep(900);
-        return offs;
       };
+      let offs = [];   // 上一次拖动时活页条上变淡（不接收）的项
       let before = await count('Summer');
       snap = await w.step('按住展示页的一张图拖到活页条上的 Summer', p => dragOnto(p, '.stage .piece:nth-child(3) img', 'Summer'), {shot: true});
       w.check('放进去了', await count('Summer') === before + 1, {before, after: await count('Summer')});
+      const condName = await inPage(page, `return (await (await fetch('/api/galleries')).json()).find(x => !x.kind)?.name || '';`);
+      w.check('拖动时按条件的画廊变淡、不接收', !!condName && offs.includes(condName), {condName, offs});
       w.check('有提示和撤销', !!(await page.eval(`!document.getElementById('toast').hidden && !document.getElementById('toastUndo').hidden`)), '');
       w.check('活页条换回画廊这一组', await page.eval(`![...document.querySelectorAll('#railItems .rail-item')].some(x => x.offsetParent && x.dataset.key === 'new')`), '');
       await w.step('⌘Z 撤销', p => p.key('z', {modifiers: ['Meta']}));
       await sleep(600);
       w.check('撤销以后拿出来了', await count('Summer') === before, {before, after: await count('Summer')});
+      // 松手在按条件的画廊上：不写入，缩略图飞回去（它在活页条上是 pointer-events: none，指针下面落空）。
+      const writes = await inPage(page, `return (await (await fetch('/api/galleries')).json()).map(g => g.name + ':' + (g.kind || '')).join(',');`);
+      const summerBefore = await count('Summer');
+      await w.step('按住展示页的一张图拖到按条件的画廊上', p => dragOnto(p, '.stage .piece:nth-child(3) img', condName));
+      await sleep(600);
+      w.check('松手在按条件的画廊上：什么也没写，缩略图收回去了', await count('Summer') === summerBefore && !await page.eval(`!!document.querySelector('.lift')`)
+        && await inPage(page, `return (await (await fetch('/api/galleries')).json()).map(g => g.name + ':' + (g.kind || '')).join(',');`) === writes, condName);
 
       // 网格里：选中一张，选择栏末尾有「放进画廊…」；按住选中的图拖到 Summer。
       await w.step('收藏换成瀑布，进入选择模式，点第一张', async p => {

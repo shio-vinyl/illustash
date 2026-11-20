@@ -26,8 +26,10 @@ import {renderChrome} from './shell.js';
 // ---------- 一个画廊：进页面之前 ----------
 // 先读画廊列表和各画廊的展示方式。地址的页面和这个画廊的展示方式不符（记着的是展示页，地址是网格页，或反过来）时换到对的那页。
 // 网格页不带查询打开时按保存的条件，并把条件写进地址；带查询时按地址（条件可能已经改过）。
+// await 之后已经换了页（route 不再是现在的路由）就什么也不做，返回 false。
 async function prepare(route) {
   await Promise.all([state.galleries ? null : reloadList(), loadShows()]);
+  if (state.route !== route) return false;
   const g = galleryOf(route.id);
   if (!g) { toast(t('画廊不存在')); go({page: 'galleries'}); return false; }
   if (pageFor(showFor(g.id)) !== route.page) { location.replace(galleryHref(g.id)); return false; }
@@ -84,7 +86,7 @@ let updateButtons = null;
 function editButtons(g, r) {
   if (!edited(g, r)) return [];
   if (!updateButtons) {
-    const update = make('button', 'quiet', t('更新画廊')), saveAs = make('button', 'quiet', t('另存为新画廊'));
+    const update = make('button', 'btn is-quiet', t('更新画廊')), saveAs = make('button', 'btn is-quiet', t('另存为新画廊'));
     update.title = t('用现在的条件替换这个画廊保存的条件');
     update.onclick = () => { const x = galleryOf(state.route.id); if (x) change(x, {params: savedParams(state.route)}); };
     saveAs.onclick = () => saveNew(state.route);
@@ -102,7 +104,7 @@ function galleryHead(r, {n}) {
 
 // ---------- 「⋯」菜单 ----------
 // 改名、设封面（用详情栏里那张）、封面改回自动、往前移、往后移、删除画廊。每一步都进撤销栈。菜单建一次，打开时按画廊排项。
-const MORE = tpl`<div class="tag-control more-control"><button class="quiet" data-ref="button" title="更多操作" aria-label="更多操作"
+const MORE = tpl`<div class="tag-control more-control"><button class="btn is-quiet" data-ref="button" title="更多操作" aria-label="更多操作"
   data-t-attr="title aria-label">⋯</button><div class="menu menu-drop more-menu" id="galleryMenu" data-ref="menu" hidden></div></div>`;
 let more = null;
 const menu = createLayer({kind: 'popover', id: 'gallery-menu', el: () => more?.refs.menu, anchor: () => more?.refs.button, menu: true, focusIn: 'first',
@@ -171,7 +173,7 @@ async function refresh(why) {
   const r = state.route;
   if (onPage(r, 'galleries')) { refreshIndex(); return; }
   await reloadList();
-  if (!pageOf(r).gallery && !pageOf(r).stage) return;
+  if (state.route !== r || (!pageOf(r).gallery && !pageOf(r).stage)) return;   // 这期间已经换了页
   if (!galleryOf(r.id)) { go({page: 'galleries'}); return; }
   if (pageOf(r).stage) refreshStage(); else renderChrome();
 }

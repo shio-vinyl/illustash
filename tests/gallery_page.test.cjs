@@ -54,3 +54,23 @@ test('别的失败照旧走错误条', async () => {
   assert.equal(page.el('errorBanner').hidden, false);
   assert.equal(page.el('errorBanner').textContent, '数据库忙');
 });
+
+test('展示页（#710）：同一个地址里连着换两次展示方式，先发的回复晚到也不盖掉后一次的', async () => {
+  const stage = await web.load('ui/gallery_stage.js'), shows = await web.load('core/gallery_shows.js'), {app} = await web.load('ui/scope.js');
+  const g = {id: 4, name: '合成', params: {has: '["tag:x"]'}, cover_manual: false, position: 0};
+  Object.assign(state, {galleries: [g], route: {page: 'showcase', id: '4'}});
+  const waiting = {};
+  globalThis.fetch = path => new Promise(done => { waiting[new URLSearchParams(path.split('?')[1]).get('limit')] = done; });
+  const items = n => Array.from({length: n}, (_, i) => ({uuid: 'u' + i, width: 3, height: 4}));
+  const scope = app.child('stage-test');
+  shows.chooseShow(4, 'magazine');
+  const first = stage.renderStage({scope});
+  shows.chooseShow(4, 'hall');
+  const second = stage.renderStage({samePage: true, scope});
+  waiting['12'](reply(200, {total: 12, items: items(12)}));
+  await second;
+  waiting['9'](reply(200, {total: 9, items: items(9)}));
+  await first;
+  assert.equal(stage.stageTotal(), 12, '舞台上是展厅那一次读到的');
+  scope.dispose();
+});

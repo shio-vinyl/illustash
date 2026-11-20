@@ -403,9 +403,12 @@ export function railNsfw() {
 }
 // 画廊的封面按 NSFW 设置批量读（core/galleries.js）；收藏不在封面接口里，取它的第一张。读到以后重画画廊这一组。
 let galleryCovers = {};
+// 先后两次读取倒序回来时只认后一次（切换 NSFW 后晚到的旧封面不该留下）。
+let coverReads = 0;
 export async function loadGalleryCovers() {
-  const ids = (state.galleries || []).map(g => g.id);
+  const ids = (state.galleries || []).map(g => g.id), seq = ++coverReads;
   const [covers, fav] = await Promise.all([coversFor(ids).catch(() => ({})), previewOf(favGallery()).catch(() => null)]);
+  if (seq !== coverReads) return;
   galleryCovers = {...covers, [FAV]: fav?.items?.[0]?.uuid || null};
   refresh('galleries');
 }

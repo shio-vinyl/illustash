@@ -32,7 +32,7 @@ import {state} from './state.js';
 //   tabs/tab   同一个侧栏入口下的子页签组，以及本页对应哪个页签
 //   toolbar    工具栏组成：'none' 空、'tabs' 只有子页签、'index' 资料库、'library' 图库网格（搜索、筛选、排序、选择、显示方式）、
 //              'filters' 只有搜索框和筛选条（按天、日历）、'grid' 网格页
-//   sorts      排序下拉的选项
+//   sorts      排序下拉的选项；也可以是 r => […]（随地址变，画廊的色彩只有「按颜色」）
 //   sortPref   改了排序记在哪个偏好里（core/route.js 的 sortKey）；不写就是这页自己的「sort.<页面名>」
 //   pool/params 后端 /api/assets 的 pool 参数，以及该页其余查询参数
 //   bar        选择栏的种类；同时决定 S／X／Y／N 几个快捷键在这页是否生效

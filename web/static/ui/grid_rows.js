@@ -107,6 +107,7 @@ function packRows(width, target) {
   packed = justifiedRows(n, i => imageRatio(items[i]), {width, target, gap: state.gap, extra: state.gap}, packed);
   ({starts: rowStarts, tops: rowTops, heights: rowHeights, rows: fitRows} = packed);
 }
+// 瀑布的宽高比也截在上下限里（0.5–2.4，同原始比例）：长条图在框里留底色，换来 rowReach() 有上限（最高一张不超过列宽的两倍）。
 function stackColumns(width) {
   const n = state.total, items = state.items;
   estimate = estimateRatio(n, i => aspect(items[i]));

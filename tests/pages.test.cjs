@@ -201,7 +201,7 @@ test('implement() 只接受登记过的页面名；每个页面都有标题以�
     assert.ok(['browse', 'cleanup', 'select', 'own'].includes(p.click), `${name}.click`);
     assert.ok(['none', 'tabs', 'index', 'library', 'filters', 'grid'].includes(p.toolbar), `${name}.toolbar`);
     // 画廊的排序随展示方式（色彩只有「按颜色」，#710），是函数。
-    const sorts = typeof p.sorts === 'function' ? [...p.sorts({page: name, id: '3'}), 'color'] : p.sorts;
+    const sorts = typeof p.sorts === 'function' ? p.sorts({page: name, id: '3'}) : p.sorts;
     if (p.toolbar === 'grid' || p.toolbar === 'library') assert.ok(sorts.every(s => ['suspicious', 'newest', 'oldest', 'hinted', 'color'].includes(s)), `${name}.sorts`);
     if (p.tabs) assert.ok(p.tab, `${name}.tab`);
     if (p.pool) assert.equal(p.area, 'grid', `${name}：有 pool 的页面用网格`);

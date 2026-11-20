@@ -5,8 +5,9 @@
 // 加一种展示页：在 STAGES 里加一项 {boxes(ratios, size, g), …}，布局函数写进 core/layout.js。每张图是同一个部件（piece），
 // 按框摆（transform、宽高），框上的 rot、z、tape、no、role 写成角度、叠放次序、胶带、编号和样式类；lead 框放标题和导语。
 //
-// 点图开详情卡片，双击看大图（列表借给详情和大图翻页：grid.js 的 showList）；按住拖动把图拖进画廊（ui/drag.js）。
-// 末尾「全部 N 张」去显示全部图的那一种（ALL_SHOW，瀑布）。不能选：选择和批量操作在瀑布、色彩里做。
+// 每张图是一个按钮：点（或 Enter、Space）开详情卡片，双击看大图（列表借给详情和大图翻页：grid.js 的 showList）；按住拖动把
+// 图拖进画廊（ui/drag.js）。末尾「全部 N 张」换成显示全部图的那一种（ALL_SHOW，瀑布）并记住。不能选：选择和批量操作在瀑布、
+// 色彩里做。排版先量后改：读阶段量宽高、算框，写阶段写进去；页面的宽、视口的高变了重排（展厅的墙高跟着视口高）。
 import {number} from '../core/format.js';
 import {t} from '../core/i18n.js';
 import {galleryHref, galleryOf, isFav, isManual, showcaseOf} from '../core/galleries.js';
@@ -37,20 +38,20 @@ const STAGES = {
 const PAGE = tpl`<div class="stage-page"><div class="stage" data-ref="stage"><div class="stage-lead" data-ref="lead" hidden><small data-ref="kicker"></small><b
   data-ref="title"></b><span data-ref="line"></span></div></div><div class="stage-foot" data-ref="foot" hidden><button class="btn" type="button"
   data-ref="all"></button></div><div data-ref="empty" hidden></div></div>`;
-const PIECE = tpl`<figure class="piece"><span class="piece-frame" data-ref="frame"><img data-ref="img" alt="" draggable="false" decoding="async"><i class="piece-tape"
-  data-ref="tape" hidden></i></span><figcaption data-ref="cap"><b class="piece-no" data-ref="no"></b><span data-ref="name"></span></figcaption></figure>`;
+const PIECE = tpl`<button type="button" class="piece"><span class="piece-frame" data-ref="frame"><img data-ref="img" alt="" draggable="false" decoding="async"><i
+  class="piece-tape" data-ref="tape" hidden></i></span><span class="piece-cap" data-ref="cap"><b class="piece-no" data-ref="no"></b><span data-ref="name"></span></span></button>`;
 const nameOf = x => x.memberships?.[0]?.name || '';
 
 // 一张图。框（x、y、w、h）写成定位，其余写成样式：rot 角度、z 叠放、tape 胶带、no 编号、role 样式类。
 function piece(box) {
   const {el, refs} = PIECE();
-  let shown = '';
+  let shown = '', role = '';
   const update = b => {
     const x = b.item;
     css(el, 'transform', `translate(${Math.round(b.x)}px,${Math.round(b.y)}px)${b.rot ? ` rotate(${b.rot}deg)` : ''}`);
     css(el, 'width', `${Math.round(b.w)}px`); css(el, 'height', `${Math.round(b.h)}px`);
     css(el, 'z-index', b.z ? String(b.z) : null);
-    attr(el, 'class', `piece${b.role ? ' is-' + b.role : ''}`);
+    if (role !== (b.role || '')) { if (role) cls(el, 'is-' + role, false); role = b.role || ''; if (role) cls(el, 'is-' + role, true); }
     el.dataset.id = x.uuid;
     if (shown !== x.uuid) { shown = x.uuid; attr(refs.img, 'src', `/image?id=${encodeURIComponent(x.uuid)}&size=${b.w > 360 ? 'preview' : 'medium'}`); thumbs.mark(refs.img, x.uuid); }
     setTint(el, x.color || null);
@@ -69,22 +70,30 @@ function stageView(scope) {
   const {el, refs} = PAGE();
   $('groupsPage').replaceChildren(el);
   const pieces = keyed(refs.stage, {key: b => b.item.uuid, create: piece, scope});
-  let data = null, kind = '', g = null;
-  // 按现在的宽高排一次。宽度变了（窗口、活页条抽屉）重排；展厅的墙高跟着视口高。
+  let data = null, kind = '', g = null, loads = 0;
+  // 读阶段：量页面的宽、视口的高，算好框，再排到写阶段写进去。
   function layout() {
     if (!data?.items?.length || !g) return;
-    const stage = STAGES[kind], width = refs.stage.clientWidth, height = Math.max(380, Math.min(560, $('viewport').clientHeight - 220));
-    const got = stage.boxes(data.items.map(aspect), {width, height}, g);
+    const width = el.clientWidth, height = Math.max(380, Math.min(560, $('viewport').clientHeight - 220));
+    const got = STAGES[kind].boxes(data.items.map(aspect), {width, height}, g), items = data.items;
+    scope.write(() => paint(got, items), 'stage:paint');
+  }
+  function paint(got, items) {
     css(refs.stage, 'height', `${Math.ceil(got.height)}px`);
     css(refs.stage, 'width', got.width ? `${Math.ceil(got.width)}px` : null);
-    pieces.set(got.boxes.map(b => ({...b, item: data.items[b.i]})));
+    pieces.set(got.boxes.map(b => ({...b, item: items[b.i]})));
     show(refs.lead, !!got.lead);
     if (got.lead) {
       css(refs.lead, 'transform', `translate(${Math.round(got.lead.x)}px,${Math.round(got.lead.y)}px)`);
       css(refs.lead, 'width', `${Math.round(got.lead.w)}px`); css(refs.lead, 'height', `${Math.round(got.lead.h)}px`);
     }
+    // 排得下几张就放几张（杂志下面那一排放不满时少几张）：没放上的有，就给「全部 N 张」。
+    show(refs.foot, !data.error && data.total > got.boxes.length);
   }
-  if (typeof ResizeObserver === 'function') scope.observe(new ResizeObserver(() => scope.read(layout, 'stage:layout'))).observe(refs.stage);
+  if (typeof ResizeObserver === 'function') {
+    const watch = scope.observe(new ResizeObserver(() => scope.read(layout, 'stage:layout')));
+    watch.observe(el); watch.observe($('viewport'));
+  }
   // 点图开详情，双击看大图；按住拖动是拖进画廊（拖过以后吞掉那次点击）。
   scope.on(refs.stage, 'click', e => { const p = e.target.closest('.piece'); if (p) inspect(p.dataset.id); });
   scope.on(refs.stage, 'dblclick', e => { const p = e.target.closest('.piece'); if (p) openViewer(indexOf(p.dataset.id)); });
@@ -94,14 +103,15 @@ function stageView(scope) {
   return {scope, total: () => data && !data.error ? data.total : null, async load(route) {
     g = galleryOf(route.id); kind = showOf(showFor(route.id)).id;
     if (!g || !STAGES[kind]) return;
-    const nsfw = state.nsfw, take = showOf(kind).take;
+    const nsfw = state.nsfw, take = showOf(kind).take, seq = ++loads;
     attr(refs.stage, 'class', `stage show-${kind}`); el.dataset.show = kind;
     let got;
     try { got = await showcaseOf(g, take, {nsfw, signal: scope.signal}); } catch (e) {
-      if (e.name !== 'AbortError' && scope.alive && state.route === route) error(readError(e));
+      if (e.name !== 'AbortError' && scope.alive && state.route === route && seq === loads) error(readError(e));
       return;
     }
-    if (!scope.alive || state.route !== route) return;
+    // 同一个地址里又换了展示方式（路由对象不换）：只认最后一次读的。
+    if (!scope.alive || state.route !== route || seq !== loads) return;
     data = got;
     const items = got.items || [];
     showList(items);
@@ -109,12 +119,10 @@ function stageView(scope) {
     text(refs.title, g.name);
     text(refs.line, t('{n} 张', {n: number(got.total || 0)}));
     text(refs.all, t('全部 {n} 张', {n: number(got.total || 0)}));
-    show(refs.foot, !got.error && got.total > items.length);
     show(refs.stage, !!items.length);
     show(refs.empty, !items.length);
     cls(el, 'is-empty', !items.length);
-    if (!items.length) drawEmpty(refs.empty, emptyOf(g, got, nsfw));
-    else layout();
+    if (!items.length) { drawEmpty(refs.empty, emptyOf(g, got, nsfw)); show(refs.foot, false); } else scope.read(layout, 'stage:layout');
     renderHeading();   // 页头的张数
   }};
 }

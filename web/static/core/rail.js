@@ -9,6 +9,8 @@
 //   peek   悬停预览里排的图 [{id, w?, h?}]（w、h 是原图的宽高，用来按真实宽高比排；没有时按图读到以后的样子排）。
 //          不给时预览只放封面（有的话）；peekRound 为真时画成圆头像（作品的角色）
 //   color  这一项的主色（十六进制），悬停预览拿它做很淡的环境光和彩色投影；没有时用中性色
+//   画廊这一组（#710）另有：gallery 是画廊本身（拖图进画廊时按它判断收不收）；heart 为真时画心形（收藏）；
+//   off 为真时变淡、不接收（拖图进画廊时换出来的那组，ui/drag.js）
 import {castWorks} from './catalog.js';
 import {aspect, strip} from './layout.js';
 import {galleryHref, isFav, isManual, withFav} from './galleries.js';
@@ -100,7 +102,7 @@ export function queues(route = state.route) {
 // （ui/drag.js）按它判断收不收。
 export function galleryItems(covers = {}) {
   return withFav().map(g => ({key: isFav(g.id) ? 'fav' : 'g:' + g.id, kind: 'gallery', label: g.name, heart: isFav(g.id), cover: covers[g.id] || null,
-    href: galleryHref(g.id), meta: isManual(g) ? t('手选画廊') : t('按条件的画廊'), gallery: g}));
+    href: galleryHref(g.id), meta: isFav(g.id) ? '' : isManual(g) ? t('手选画廊') : t('按条件的画廊'), gallery: g}));
 }
 
 // ---------- 图库：时间轴 ----------

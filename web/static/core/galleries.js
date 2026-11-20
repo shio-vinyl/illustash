@@ -89,7 +89,7 @@ async function readPreview(g, nsfw, cover, signal) {
   if (cover) { const at = items.findIndex(x => x.uuid === cover); items = at >= 0 ? [items[at], ...items.filter((_, k) => k !== at)] : [{uuid: cover, color: null}, ...items].slice(0, PREVIEW); }
   return {items, total: r.total ?? items.length};
 }
-// 展示页（拼贴、杂志、展厅）的图：按图库默认的排序取前 take 张，带收藏和主色。回 {items, total} 或 {error}。
+// 展示页（拼贴、杂志、展厅）的图：按加入时间从新到旧（order 可以另给）取前 take 张，带收藏和主色。回 {items, total} 或 {error}。
 export async function showcaseOf(g, take, {nsfw = state.nsfw, order = 'newest', signal} = {}) {
   try {
     const r = await api('/api/assets?' + query(g, nsfw, {limit: take, offset: 0, order, marks: 'fav,color'}), {signal});

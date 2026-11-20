@@ -133,7 +133,13 @@
   // ---------- 场景的每一步 ----------
   let syncLoop = null;
   const ops = {
-    async boot() { await until(PAGES.booted, 60000, '应用启动'); watch(); return {dpr: devicePixelRatio, width: innerWidth, height: innerHeight, ua: navigator.userAgent}; },
+    // 启动后先查样式表都加载上了：宿主不发某个样式表（例如 0.4 之前的宿主不发 /css/，#683）时量出来的不是这个前端，直接报错。
+    async boot() {
+      await until(PAGES.booted, 60000, '应用启动'); watch();
+      const links = [...document.querySelectorAll('link[rel=stylesheet]')], missing = links.filter(l => !l.sheet).map(l => l.getAttribute('href'));
+      if (missing.length) throw new Error('样式表没有加载上：' + missing.join(', '));
+      return {dpr: devicePixelRatio, width: innerWidth, height: innerHeight, ua: navigator.userAgent, sheets: links.length};
+    },
     // 跳到一页，等它的第一批图显示出来，再等 settle 毫秒让后续的读取和解码落定。
     async go({page, settle = 1500}) {
       const p = PAGES[page];

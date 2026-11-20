@@ -345,7 +345,6 @@
       <div class="sg-pair"><div style="display:flex;gap:6px"><button class="aa-b yes">对</button><button class="aa-b">不对</button></div><i>.aa-b(.yes) · ui/review.js（画师抽查）：7px 圆角、边框，.yes 黑底</i></div>
       <div class="sg-pair"><div style="display:flex;gap:6px;flex-wrap:wrap" class="picker-staged"><button class="staged-chip">karen blue ×</button><button class="staged-chip">新建「Foo」×</button></div><i>.staged-chip · ui/palette.js：黑底胶囊（已选角色 / 别名）</i></div>
       <div class="sg-pair"><span class="chips" style="position:static"><button class="hint-add">可能是 Karen</button></span><i>.chips .hint-add · ui/grid.js cardHTML：卡片上的“可能是”</i></div>
-      <div class="sg-pair"><button class="shelf-new" style="justify-self:auto">新 3</button><i>.shelf-new · ui/catalog.js drawShelf</i></div>
       <div class="sg-pair"><button class="small">抢救重建</button><i>button.small（无 .quiet）· ui/integrity.js：11px，2/8</i></div>
       <div class="sg-pair"><button class="jump"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="9" cy="9" r="5.5"/><path d="m13.2 13.2 3.8 3.8"/></svg><span>跳到角色</span><kbd>⌘K</kbd></button><i>.jump · index.html 页头</i></div>
       <div class="sg-pair"><button class="nsfw-toggle s-hide" aria-label="NSFW：隐藏"><svg class="r18" viewBox="0 0 44 20" aria-hidden="true"><rect class="plate" x="1.2" y="1.2" width="41.6" height="17.6" rx="5.5"/><text x="22" y="14.1" text-anchor="middle">NSFW</text><path class="cut" d="M6 17.5 38 2.5"/><path class="slash" d="M6 17.5 38 2.5"/></svg></button><i>.nsfw-toggle.s-hide（页头，三态 s-all / s-hide / s-only）</i></div>
@@ -377,7 +376,7 @@
       <div class="sg-pair"><div class="menu menu-drop" style="width:240px"><input type="search" placeholder="我的标签，或 white_hair"></div><i>.menu-drop input · 32 高胶囊，soft 底（弹层里）</i></div>
       <div class="sg-pair"><div class="modal" style="width:240px"><div class="field"><input value="Karen" aria-label="显示名"></div></div><i>.modal .field input · 34 高，7px 圆角，1px 线框，聚焦 3px 外环</i></div>
       <div class="sg-pair"><input class="lib-input" placeholder="图库名称"><i>.lib-input · 30 高胶囊，纸面底 + hair 环</i></div>
-      <div class="sg-pair"><div class="shelf-bar"><span class="watch-add"><input placeholder="关注 Danbooru 上的作品…" style="width:200px"></span></div><i>.shelf-bar .watch-add input · 32 高胶囊，soft 底</i></div>
+      <div class="sg-pair"><span class="watch-add"><input placeholder="关注 Danbooru 上的作品…" style="width:200px"></span><i>.watch-add input（资料库作品页签的工具栏）</i></div>
       <div class="sg-pair"><span class="num-field"><input type="number" value="500"> 张</span><i>.num-field input · 84×30，8px 圆角，线框，右对齐</i></div>
       <div class="sg-pair"><div class="form-grid" style="grid-template-columns:minmax(0,220px);margin:0"><input value="用户名" aria-label="用户名"></div><i>.form-grid input · 6px 圆角，padding 5/8，聚焦出灰紫轮廓</i></div>
       <div class="sg-pair"><code>#pickerSearch</code><i>38 高、15px、无边框 · 命令面板里，见<a class="link" href="#s-dialogs">对话框</a></i></div>
@@ -401,7 +400,7 @@
       <div class="sg-pair"><label class="switch-line" style="width:300px"><span><b>自动检查更新</b><small>启动时和之后每天查一次</small></span><input type="checkbox" class="switch" checked></label><i>.switch-line + input.switch（32×18，原生 checkbox 去外观）</i></div>
       <div class="sg-pair"><label class="switch-line" style="width:300px"><span><b>名称联网查询</b><small>只发送文字</small></span><input type="checkbox" class="switch"></label><i>.switch 关</i></div>
       <div class="sg-pair"><div class="view-group" style="width:300px"><button class="view-opt" role="switch" aria-checked="true"><span>侧栏显示数量</span><i class="view-sw on"></i></button><button class="view-opt" role="switch" aria-checked="false"><span>底部状态栏<small>已加载张数与操作提示</small></span><i class="view-sw"></i></button></div><i>.view-opt + .view-sw（34×20，开=accent-btn，滑块白色）</i></div>
-      <div class="sg-pair"><span class="shelf-watch"><input type="checkbox" class="switch" checked> 关注</span><input type="checkbox" class="switch" disabled style="opacity:.45"><i>.shelf-watch .switch（资料库作品行）；:disabled</i></div>
+      <div class="sg-pair"><label class="cat-watch" style="position:static"><input type="checkbox" class="switch" checked><span>关注新角色</span></label><input type="checkbox" class="switch" disabled style="opacity:.45"><i>.cat-watch .switch（资料库作品卡）；:disabled</i></div>
     </div>
     <p class="sg-note"><b>差别：</b>尺寸 32×18 / 34×20；滑块位移 14 px 两者相同；<code>.switch</code> 开启色是 <code>--accent-btn</code>，关闭色暗色里要单独覆盖（<code>:root[data-theme=dark] .switch:not(:checked)</code>、<code>.view-sw</code>）。</p>
   </div>
@@ -410,7 +409,6 @@
     <p class="sg-src">来源：<code>.segmented</code> — <code>ui/settings.js</code> renderSettings 的 <code>segment()</code>、renderLibrariesCard 的 <code>seg()</code>、<code>ui/grid.js</code> renderViewPop（首页缩略图）、<code>ui/review.js</code> renderSimilar；做成链接标签的版本 <code>.segmented.lib-views</code>（<code>a</code> 而不是 <code>button</code>）— <code>ui/shell.js</code> renderChrome（资料库 角色 / 作品）；<code>.icon-seg</code> — <code>ui/shell.js</code> renderChrome（方格 / 原比例）。</p>
     <div class="sg-stage">
       <div class="sg-pair"><div class="segmented"><button class="on">跟随系统</button><button>浅色</button><button>深色</button></div><i>.segmented &gt; button(.on)</i></div>
-      <div class="sg-pair"><div class="segmented lib-views" role="tablist"><a role="tab" href="#c-forms" class="on" aria-selected="true">角色</a><a role="tab" href="#c-forms" aria-selected="false">作品</a></div><i>.segmented &gt; a(.on)</i></div>
       <div class="sg-pair"><div class="icon-seg" role="group"><button class="on" aria-label="方格"><svg viewBox="0 0 20 20" aria-hidden="true"><rect x="3" y="3" width="6" height="6" rx="1.5"/><rect x="11" y="3" width="6" height="6" rx="1.5"/><rect x="3" y="11" width="6" height="6" rx="1.5"/><rect x="11" y="11" width="6" height="6" rx="1.5"/></svg></button><button aria-label="原始比例"><svg viewBox="0 0 20 20" aria-hidden="true"><rect x="2.5" y="3.5" width="9" height="5.5" rx="1.5"/><rect x="13" y="3.5" width="4.5" height="5.5" rx="1.5"/><rect x="2.5" y="11" width="4.5" height="5.5" rx="1.5"/><rect x="8.5" y="11" width="9" height="5.5" rx="1.5"/></svg></button></div><i>.icon-seg &gt; button(.on)</i></div>
     </div>
     <p class="sg-note"><b>差别：</b><code>.segmented</code> 是 2px 内边距、选中项纸面色加小阴影；<code>.icon-seg</code> 是 3px 内边距、按钮更高，选中同样纸面色加阴影，只是尺寸、内边距和图标专用。两者视觉近似，可以合并成一个。<code>.segmented</code> 在 app.css 里同样定义了两次（第一版 7px 圆角带边线，后一版胶囊）。</p>
@@ -436,11 +434,12 @@
     <p class="sg-note"><b>并行写法：</b>同样是“一排可选项”，另有 <code>.cast-tab</code>（角色页的作品标签）、<code>.cast-buckets button</code>（列表视图的分组）、<code>.settings-nav a</code>（设置页左栏）、<code>.segmented</code>、<code>.menu-item</code>。选中态各自写：<code>.on</code>（accent-soft 底）或 <code>.on</code>（黑底白字）。</p>
   </div>
 
-  <div class="sg-item"><header><h3>角色页的标签组</h3><span class="sg-tag hand">手写</span><span class="sg-cls"><code>.cast-tab</code><code>.cast-allw</code><code>.cast-chip</code><code>.cast-buckets button</code></span></header>
-    <p class="sg-src">来源：<code>ui/catalog.js</code>（角色页的 tabs：<code>.cast-tab</code>、<code>.cast-allw</code>、书架 / 列表；<code>.cast-buckets</code>）。</p>
-    <div class="sg-stage"><div class="cast-tabrow" style="padding-right:0;mask-image:none;-webkit-mask-image:none"><button class="cast-tab on"><span class="cast-av" style="width:24px;height:24px"><img data-ph="0" alt=""></span>全部 <small>312</small></button><button class="cast-tab"><span class="cast-av" style="width:24px;height:24px"><img data-ph="1" alt=""></span>Blue Archive <small>120</small></button><button class="cast-tab plain">原创角色 <small>8</small></button><button class="cast-tab pseudo">未归作品 <small>4</small></button><button class="cast-allw"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="m6 8 4 4 4-4"/></svg>全部作品</button></div></div>
-    <div class="sg-stage"><div class="cast-chips"><span class="cast-chip"><span class="cast-av" style="width:20px;height:20px"><img data-ph="2" alt=""></span>Karen <small>12</small></span></div>
-      <div class="cast-buckets" style="padding:0"><button class="on">全部<small>312</small></button><button>未整理<small>9</small></button></div></div>
+  <div class="sg-item"><header><h3>资料库：角色海报、作品卡、图钉</h3><span class="sg-tag hand">手写</span><span class="sg-cls"><code>.cat-poster</code><code>.cat-rank</code><code>.cat-plus</code><code>.cat-pin</code><code>.cat-work</code><code>.cat-slices</code><code>.cat-faces</code><code>.cat-watch</code><code>.cat-person</code><code>.cat-notice</code></span></header>
+    <p class="sg-src">来源：<code>ui/poster.js</code>（海报和圆头像卡）、<code>ui/work_card.js</code>（作品卡）、<code>ui/pin_button.js</code>（图钉）、<code>ui/works_tab.js</code>（一处提示），样式 <code>css/catalog.css</code>（#711）。海报是 <code>.poster</code> 加排名数字（加重、压在图上也看得清）和「+N」（和张数相同时不写）；作品卡用作品配色做底（<code>setTint</code> 写 <code>--tint</code>，底是 <code>--tint-wash</code> 加一层 <code>--tint-glow</code>），左边作品名大字、张数、一排圆头像，右边几条竖切片，左下是关注开关。悬停时卡片浮起、投影带作品配色，切片依次上浮，头像散开一点，右上出现图钉；钉住的图钉一直显示（<code>aria-pressed="true"</code>）。需要确认的事收成卡片上面的一处 <code>.cat-notice</code>。</p>
+    <div class="sg-stage canvas top"><div style="width:180px"><a class="poster cat-poster"><img data-ph="3" alt=""><span class="cat-rank">2</span><span class="cat-plus">+12</span><span class="poster-cap"><b>Karen</b><small>Blue Archive · 312 张</small></span><button type="button" class="cat-pin" aria-pressed="true" aria-label="已钉住"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M12.4 3.1 16.9 7.6M13.9 4.6 10.6 7.6 6.9 8.1 11.9 13.1 12.4 9.4 15.4 6.1M9.4 10.6 4 16"/></svg></button></a></div>
+      <article class="cat-work" style="width:400px"><a class="cat-work-link"><span class="cat-work-text"><b class="cat-work-name">Blue Archive</b><small>12 位角色 · 312 张</small><span class="cat-faces"><img class="avatar is-small" data-ph="0" alt=""><img class="avatar is-small" data-ph="1" alt=""><img class="avatar is-small" data-ph="2" alt=""><span class="cat-faces-more">+9</span></span></span><span class="cat-slices"><img data-ph="1" alt=""><img data-ph="2" alt=""><img data-ph="3" alt=""><img data-ph="4" alt=""></span></a><label class="cat-watch"><input type="checkbox" class="switch" checked><span>关注新角色</span></label></article>
+      <a class="cat-person" style="width:96px"><img class="avatar is-large" data-ph="2" alt=""><b>合成画师</b><small>21 张</small></a></div>
+    <div class="sg-stage"><div class="cat-notice" style="max-width:560px"><p><span>2 部作品的 Danbooru 链接待确认：核对过才能关注它们的新角色</span><button type="button" class="btn is-small">只看这些</button></p><p><span>上次检查发现 <b>3</b> 个还没收录的角色</span><button type="button" class="btn is-primary is-small">查看并添加…</button></p></div></div>
   </div>
 
   <div class="sg-item"><header><h3>信息标签</h3><span class="sg-tag hand">手写</span><span class="sg-tag dup">写法很多</span></header>
@@ -451,9 +450,7 @@
       <div class="sg-pair"><span class="set-scope">所有图库共用</span><i>.set-scope</i></div>
       <div class="sg-pair"><span class="oc-badge">原创</span><i>.oc-badge</i></div>
       <div class="sg-pair"><span class="pair-label">A</span><i>.pair-label</i></div>
-      <div class="sg-pair"><div class="cast-tags" style="margin:0"><span>12 位角色</span><span class="hot">+3 新</span></div><i>.cast-tags span(.hot)</i></div>
       <div class="sg-pair"><div class="group-traits" style="padding:0"><span>长发</span><span>白发</span></div><i>.group-traits span</i></div>
-      <div class="sg-pair"><span class="cast-plus">+12</span><i>.cast-plus</i></div>
     </div>
     <div class="sg-stage"><p class="sg-cap">关系类型（<code>.rel-kind</code>），颜色写死、暗色另有覆盖：</p>
       <span class="rel-kind k-identical">同一张图</span><span class="rel-kind k-duplicate">重复</span><span class="rel-kind k-crop">裁剪</span><span class="rel-kind k-subtle">细微差别</span><span class="rel-kind k-variant">差分</span><span class="rel-kind k-edit">局部编辑</span></div>
@@ -497,8 +494,6 @@
       <div class="modal" style="max-width:520px"><p class="dialog-lead">关注要用 Danbooru 上的作品 tag。在下面找到这部作品，选中后保存。</p></div>
       <div class="lib-created" style="max-width:520px"><p><b>图库已经建好</b>，保存在 ~/Pictures/Illustash，但没能加入最近图库列表。</p></div>
       <div class="task-asks" style="max-width:520px"><div class="task-ask"><span>上次检查发现 <b>3</b> 个还没收录的角色</span><button class="primary small">查看并添加…</button></div><div class="task-ask prov-confirm"><b>找回画师这次要访问外网，确认后才会发出：</b><ul><li>发给 Danbooru：图片的像素哈希和感知哈希</li><li>本次最多 1,024 MB；遇到拒绝、限流或验证码就停</li></ul><div class="prov-confirm-btns"><button class="primary">授权并开始</button><button class="quiet">取消</button></div></div></div>
-      <div class="shelf-found" style="max-width:520px"><span class="local-dot busy" style="position:static"></span><span>上次检查发现 <b>3</b> 个还没收录的角色</span><div class="spacer"></div><button class="quiet small">查看…</button></div>
-      <details class="shelf-todo" open style="max-width:520px"><summary data-more="展开" data-less="收起"><b>待处理</b><span>2 个旧 tag 需要你认领</span></summary><div class="shelf-todo-row"><span class="mono">fate_stay_night</span><span class="muted-note">Fate/stay night</span><div class="spacer"></div><button class="quiet small">认领</button></div></details>
     </div>
   </div>
 
@@ -648,8 +643,8 @@
   </div>
 
   <div class="sg-item"><header><h3>海报与封面（角色页、整理）</h3><span class="sg-tag hand">手写</span></header>
-    <p class="sg-src">来源：<code>.cast-poster</code> — <code>ui/catalog.js</code> poster()；<code>.group-card</code> — <code>ui/review.js</code>。这几种“封面卡”共用 <code>aspect-ratio</code> + 底部渐变 + 白字的做法，没有共用类。</p>
-    <div class="sg-stage canvas top"><div style="width:180px"><a class="cast-poster" style="aspect-ratio:3/4"><span class="img"><img data-ph="3" alt=""></span><span class="pill l"><i></i>12 新</span><span class="pill r">120</span><span class="cap"><b>Karen</b><small>Blue Archive · 312 张</small></span></a></div>
+    <p class="sg-src">来源：<code>.cat-poster</code> — <code>ui/poster.js</code>；<code>.group-card</code> — <code>ui/review.js</code>。这几种“封面卡”共用 <code>aspect-ratio</code> + 底部渐变 + 白字的做法，没有共用类。</p>
+    <div class="sg-stage canvas top"><div style="width:180px"><a class="poster cat-poster"><img data-ph="3" alt=""><span class="cat-plus">+12</span><span class="poster-cap"><b>Karen</b><small>Blue Archive · 312 张</small></span></a></div>
       <a class="group-card" style="width:180px"><span class="group-covers"><img data-ph="1" alt=""><img data-ph="2" alt=""><img data-ph="3" alt=""><img data-ph="4" alt=""></span><span class="group-meta"><b>相似组 12</b><span>8 张</span></span></a></div>
   </div>
 </section>

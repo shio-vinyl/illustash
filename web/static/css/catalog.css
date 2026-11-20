@@ -150,7 +150,7 @@
 .cat-strip{position:absolute;inset:0;display:flex;gap:var(--space-2)}
 .cat-strip>img{flex:1;min-width:0;height:100%;background:var(--tint-soft);object-fit:cover}
 .cat-hero::after{content:"";position:absolute;inset:0;pointer-events:none;
-  background:var(--scrim)}
+  background:linear-gradient(90deg,rgba(var(--sh),.55),transparent 70%),var(--scrim)}
 .cat-hero-top{position:absolute;top:var(--space-16);right:var(--space-16);left:var(--space-16);z-index:var(--z-page-2);display:flex;align-items:center;gap:var(--space-8)}
 .cat-hero-top>.spacer{flex:1}
 .cat-hero .btn.glass{border-radius:var(--radius-pill);text-decoration:none}

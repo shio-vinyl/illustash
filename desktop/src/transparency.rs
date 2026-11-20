@@ -239,4 +239,5 @@ mod tests {
 
 #[cfg(all(test, target_os = "macos"))]
 #[path = "../tests/support/transparency_webkit.rs"]
+#[allow(dead_code)]
 pub mod webkit_test;

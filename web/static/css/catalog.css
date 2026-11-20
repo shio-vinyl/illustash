@@ -59,7 +59,7 @@
 .cat-pin>span[hidden]{display:none}
 .cat-pin[aria-pressed=true]{color:var(--accent-ink);opacity:1;transform:none}
 .cat-poster:hover>.cat-pin,.cat-poster:focus-within>.cat-pin,.cat-work:hover>.cat-pin,.cat-work:focus-within>.cat-pin{opacity:1;transform:none}
-.cat-pin.is-wide{position:static;width:auto;opacity:1;transform:none;box-shadow:none}
+.cat-pin.is-wide{position:static;display:inline-flex;width:auto;height:var(--h-32);padding:0 var(--space-14);border-radius:var(--radius-pill);opacity:1;transform:none}
 
 /* ---- 最近 30 天在收：带进度圆环的头像一排，「全部」展开成几行 ---- */
 .cat-rings{display:flex;gap:var(--space-16);overflow-x:auto;padding:var(--space-4) var(--space-2) var(--space-6);scrollbar-width:none}

@@ -60,6 +60,7 @@ function expand(refs, box) {
 // ---------- 页面 ----------
 function workView(s) {
   const {el, refs} = PAGE(), pinned = pinButton(s, {wide: true});
+  pinned.el.classList.add('glass');
   refs.pin.replaceWith(pinned.el);
   $('charIndex').replaceChildren(el);
   const people = keyed(refs.posters, {key: x => x.c.id, create: posters(s), scope: s});

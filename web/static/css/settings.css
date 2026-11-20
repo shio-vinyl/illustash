@@ -26,7 +26,6 @@
 .set-fold>summary::before{content:'▸';width:10px;color:var(--muted);transition:transform var(--dur-1) var(--ease)}
 .set-fold[open]>summary::before{transform:rotate(90deg)}
 .set-fold>summary:hover{color:var(--ink)}
-.set-empty{margin:var(--space-8) 0 0;color:var(--muted);font-size:var(--fs-12)}
 
 /* 行（ui/rows.js）：左边文字，右边控件；放不下时控件折到下面 */
 .row{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:var(--space-8) var(--space-12);min-height:44px;padding:var(--space-8) 0;font-size:var(--fs-13)}
@@ -36,6 +35,10 @@ label.row{cursor:pointer}
 .row-title{display:flex;align-items:center;gap:var(--space-8);min-width:0}
 .row-title b{min-width:0;font-weight:var(--fw-600);overflow-wrap:anywhere}
 .row-to{color:inherit;text-decoration:none}
+/* 整行是链接的行（info 带 href）：右边的值「3 部 ›」用强调色，看得出能点 */
+a.row.is-link{color:inherit;text-decoration:none}
+a.row.is-link .row-value{color:var(--accent-ink)}
+a.row.is-link:hover .row-title b{color:var(--accent-ink)}
 .row-to:hover{color:var(--accent-ink)}
 .row-hint{color:var(--muted);font-size:var(--fs-12);overflow-wrap:anywhere}
 .row-link{align-self:flex-start;color:var(--accent-ink);font-size:var(--fs-12)}
@@ -72,12 +75,12 @@ label.row{cursor:pointer}
 a.set-tile:hover{background:var(--wash-hover)}
 .set-tile>b{font-size:var(--fs-20);font-weight:var(--fw-750);font-variant-numeric:tabular-nums}
 .set-tile>span{color:var(--muted);font-size:var(--fs-11)}
-.set-mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:var(--fs-11);word-break:break-all}
 
 @media (max-width:760px){
   .set-page{grid-template-columns:minmax(0,1fr);gap:var(--space-12)}
   .set-nav{z-index:var(--z-page-2);flex-direction:row;overflow-x:auto;padding:var(--space-4) 0 var(--space-8);background:var(--sheet);scrollbar-width:none}
   .set-nav>a{flex:none;white-space:nowrap}
+  .set-nav::-webkit-scrollbar{display:none}   /* scrollbar-width 要 Safari 18.2；macOS 14 的 WKWebView 靠这一条 */
   .row-input.is-wide{width:100%}
   .row-ctrl{flex-basis:100%;justify-content:flex-start}
   label.row .switch{margin-left:auto}

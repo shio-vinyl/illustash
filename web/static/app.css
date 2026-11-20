@@ -877,9 +877,6 @@ img.is-broken{display:none}
 
 /* 设置（#293）：所有卡片一个样式。每行上方有一条细线；行的标题 12.5px，提示是下面一块 11.5px 的灰字；小标题把卡片分成
    几部分；卡片里的按钮是小的描边胶囊；表格用正文字号；结尾的说明有自己的细线，下方留出空间。 */
-.set-sub-note{margin:0 0 2px;font-size:var(--fs-11);color:var(--muted)}
 .set-actions{display:flex;flex-wrap:wrap;align-items:center;gap:var(--space-6);padding:var(--space-10) 0;border-top:1px solid var(--line)}
-.set-actions-label{font-size:var(--fs-12);color:var(--muted);margin-right:2px}
-.set-sub{margin:16px 0 6px;font-size:var(--fs-12);font-weight:600;color:var(--ink2)}
 .lib-path-hint{word-break:break-all}
 }

@@ -66,7 +66,7 @@ cargo clippy --manifest-path crates/core/Cargo.toml --all-targets -- -D warnings
 
 - **证据只增不删，来源互不覆盖。** 新版本的算法写新行，与旧版本并存；同一版本结果不同就拒绝导入。
 - **裁决只来自人，否定永久有效。** 投影时有效裁决先于任何证据：`yes` → 人工确认，`no` → 已否定，之后再多的机器证据也翻不回来。
-- **撤销走统一历史。** 裁决与改类型各是一步 `actions`。撤销裁决不删行，只把那一步标为 `undone`，有效裁决随之回到上一条；改类型的撤销按 `before_json` 恢复原类型。
+- **撤销走统一历史。** 裁决与改类型各是一步 `actions`。撤销裁决不删行，只把那一步标为 `undone`，有效裁决随之回到上一条；改类型的撤销按 `before_json` 恢复原类型。Rust 的裁决返回值和核心撤销入口使用 `store::ActionId`，与图、词条及关系编号区分。读写 SQLite、解析撤销请求与输出 JSON 时按各自边界转换整数。
 - **统一撤销入口的这一半**（`undo_last`）：同一事务里取最近一条未撤销的 `actions`；是词条核心的就撤，不是就返回 `Foreign` 原样交回调用方，不跳过它去撤更早的一步。
 - **哪些步骤归核心撤**：`store.rs` 的 `owns` 判断——非空数组、每项只有 `terms` 一个键；画师切到核心之后，只有 `artist_verdict` 一个键的旧画师判断也算（[TERMS_ARTISTS.md](TERMS_ARTISTS.md)）；标签切到核心之后，恰好是 `uuid`、`tag`、`had` 三个键的旧用户标签步骤也算（[TERMS_LABELS.md](TERMS_LABELS.md)）。角色步骤另按 `character_commands::owns` 判断：新的角色信封 `{"terms": {"v": 2, …}}`，以及每一项都是角色形状（快照、`merge`、`identity_relation`、`identity_anchor`、`profile`）的旧步骤，交角色撤销；角色形状与别的形状混在一步里、或形状不认识，拒绝且什么都不改（[TERMS_CHARACTERS.md](TERMS_CHARACTERS.md) 第 3 节）。原生宿主在同一程序内直接调用核心撤销；命令行 `illustash-terms undo --db <library.sqlite> --action <id>` 在自己的 `BEGIN IMMEDIATE` 事务里核对这一步仍是最近一步再撤，否则按「操作历史已变化」拒绝。
   命令行退出码：0 成功（标准输出一行 JSON），2 输入不合法，3 历史已变化或冲突，4 库里没有词条表或版本不对，5 命令要调用方补一个新 id（`Error::NeedId`），1 其他错误。子命令的现行清单是 `native/terms/src/cli.rs` 的 `COMMANDS`；桌面外壳兼当这个命令行，第一个参数在清单里时只执行命令、不开窗口。原来的收编、切换与核对命令（`sync-*`、`cutover-*`、`verify-*`）随 #201 第 4 步删除。

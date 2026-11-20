@@ -200,10 +200,10 @@ fn undo_hands_foreign_steps_back_without_skipping_them() {
         [],
     )
     .unwrap();
-    let foreign: ActionId = c.query_row("SELECT max(id) FROM actions", [], |r| r.get(0)).unwrap();
+    let foreign = c.query_row("SELECT max(id) FROM actions", [], |r| r.get(0).map(ActionId::from_raw)).unwrap();
     assert_eq!(undo_last(&mut c).unwrap(), Undo::Foreign { action: foreign });
     assert_eq!(state(&c, a1, t).unwrap().as_deref(), Some("confirmed"));
-    c.execute("UPDATE actions SET undone=1 WHERE id=?1", [foreign]).unwrap();
+    c.execute("UPDATE actions SET undone=1 WHERE id=?1", [foreign.raw()]).unwrap();
     assert!(matches!(undo_last(&mut c).unwrap(), Undo::Undone { .. }));
     assert_eq!(state(&c, a1, t).unwrap(), None);
     assert_eq!(undo_last(&mut c).unwrap(), Undo::Nothing);

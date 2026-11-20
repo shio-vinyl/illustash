@@ -16,7 +16,30 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 pub type AssetId = i64;
 pub type TermId = i64;
 pub type RelationId = i64;
-pub type ActionId = i64;
+
+/// 统一历史 `actions` 的步骤 ID，用于把一次裁决和它的撤销关联起来。
+///
+/// ```compile_fail,E0308
+/// use illustash_core::store::{self, TermId};
+///
+/// fn undo_term(conn: &mut rusqlite::Connection, term: TermId) {
+///     let _ = store::undo(conn, Some(term));
+/// }
+/// ```
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ActionId(i64);
+
+impl ActionId {
+    /// 从数据库或协议输入取出步骤编号；步骤是否存在由历史查询判定。
+    pub fn from_raw(id: i64) -> Self {
+        Self(id)
+    }
+
+    /// 取出 SQLite 和公开协议使用的整数编号。
+    pub fn raw(self) -> i64 {
+        self.0
+    }
+}
 
 /// 新词条的 key：随机 UUID v4，永不改变。
 ///
@@ -305,7 +328,7 @@ pub fn judge_in(
         }
     }
     project(conn, &touched.into_iter().collect::<Vec<_>>())?;
-    Ok(action)
+    Ok(ActionId::from_raw(action))
 }
 
 fn evidence_ids(conn: &Connection, filter: &str, args: &[i64]) -> Result<String> {
@@ -329,7 +352,7 @@ pub fn set_kind(conn: &mut Connection, term: TermId, kind: Kind, label: &str) ->
     let assets = assets_of_term(&tx, term)?;
     project(&tx, &assets)?;
     tx.commit()?;
-    Ok(action)
+    Ok(ActionId::from_raw(action))
 }
 
 fn assets_of_term(conn: &Connection, term: TermId) -> Result<Vec<AssetId>> {
@@ -379,7 +402,7 @@ pub fn undo_in(conn: &Connection, expected: Option<ActionId>) -> Result<(Undo, b
     crate::schema::require_current(conn)?;
     let last: Option<(ActionId, String, String)> = conn
         .query_row("SELECT id,label,before_json FROM actions WHERE undone=0 ORDER BY id DESC LIMIT 1", [], |r| {
-            Ok((r.get(0)?, r.get(1)?, r.get(2)?))
+            Ok((ActionId::from_raw(r.get(0)?), r.get(1)?, r.get(2)?))
         })
         .optional()?;
     if expected.is_some() && expected != last.as_ref().map(|l| l.0) {
@@ -394,7 +417,7 @@ pub fn undo_in(conn: &Connection, expected: Option<ActionId>) -> Result<(Undo, b
     if crate::legacy_characters::characters_in_core(conn)? && crate::character_commands::owns(&parsed)?.is_some() {
         {
             crate::schema::begin_writing(conn)?;
-            crate::character_commands::undo(conn, &json!({"action": action}))?;
+            crate::character_commands::undo(conn, &json!({"action": action.raw()}))?;
             return Ok((Undo::Undone { action, label }, true));
         }
     }
@@ -412,21 +435,21 @@ pub fn undo_in(conn: &Connection, expected: Option<ActionId>) -> Result<(Undo, b
         if step == "verdicts" {
             let mut stmt = conn
                 .prepare("SELECT DISTINCT asset_id FROM term_verdicts WHERE action_id=?1 AND asset_id IS NOT NULL")?;
-            for id in stmt.query_map([action], |r| r.get(0))? {
+            for id in stmt.query_map([action.raw()], |r| r.get(0))? {
                 touched.insert(id?);
             }
         } else if let Some(kind) = step.get("kind") {
             let (Some(key), Some(had)) = (kind["term"].as_str(), kind["had"].as_str().and_then(Kind::parse)) else {
-                return Err(Error::Conflict(format!("历史第 {action} 步的记录不完整")));
+                return Err(Error::Conflict(format!("历史第 {} 步的记录不完整", action.raw())));
             };
             let (term, _) = term_by_key(conn, key)?.ok_or_else(|| Error::Conflict(format!("词条 {key} 已不存在")))?;
             conn.execute("UPDATE terms SET kind=?1 WHERE id=?2", params![had.as_str(), term])?;
             touched.extend(assets_of_term(conn, term)?);
         } else {
-            return Err(Error::Conflict(format!("历史第 {action} 步有不认识的词条记录")));
+            return Err(Error::Conflict(format!("历史第 {} 步有不认识的词条记录", action.raw())));
         }
     }
-    conn.execute("UPDATE actions SET undone=1 WHERE id=?1", [action])?;
+    conn.execute("UPDATE actions SET undone=1 WHERE id=?1", [action.raw()])?;
     project(conn, &touched.into_iter().collect::<Vec<_>>())?;
     Ok((Undo::Undone { action, label }, false))
 }

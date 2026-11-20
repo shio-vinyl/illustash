@@ -110,12 +110,19 @@ a.poster:hover>img,button.poster:hover>img{transform:scale(1.04)}
 @supports (backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px)){
   .glass{background:var(--glass-surface);-webkit-backdrop-filter:blur(26px) saturate(1.7);backdrop-filter:blur(26px) saturate(1.7)}
   .glass-bar{background:var(--glass-surface);-webkit-backdrop-filter:blur(14px) saturate(1.6);backdrop-filter:blur(14px) saturate(1.6)}
+  /* 对话框背后（#715）：页面轻轻糊一点，压暗由对话框自己的大扩散阴影画（css/overlays.css）。::backdrop 里不用 var()（规则 17）。 */
+  .glass-scrim::backdrop{-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px)}
 }
-/* 系统要求降低透明度时不用模糊、用不透明底（Safari 还不认这个媒体查询，在那里不生效；规则 16 只许在 .glass、.glass-bar 上写模糊） */
+/* 系统要求降低透明度时不用模糊、用不透明底（规则 16 只许在玻璃表面上写模糊）。WebKit 17 不认这个媒体查询，桌面外壳在 <html> 上
+   写 data-reduce-transparency（#755）：两条并列，哪条成立都退。 */
 @media (prefers-reduced-transparency:reduce){
   .glass{background:var(--glass-solid);-webkit-backdrop-filter:none;backdrop-filter:none}
   .glass-bar{background:var(--glass-solid);-webkit-backdrop-filter:none;backdrop-filter:none}
+  .glass-scrim::backdrop{-webkit-backdrop-filter:none;backdrop-filter:none}
 }
+:root[data-reduce-transparency] .glass{background:var(--glass-solid);-webkit-backdrop-filter:none;backdrop-filter:none}
+:root[data-reduce-transparency] .glass-bar{background:var(--glass-solid);-webkit-backdrop-filter:none;backdrop-filter:none}
+:root[data-reduce-transparency] .glass-scrim::backdrop{-webkit-backdrop-filter:none;backdrop-filter:none}
 .glass-bar>button{display:grid;place-items:center;width:28px;height:var(--h-28);margin:0;padding:0;border:0;border-radius:var(--radius-pill);background:transparent;color:inherit;
   font:inherit;box-shadow:none;cursor:pointer;transition:background-color var(--dur-1) var(--ease),color var(--dur-1) var(--ease)}
 .glass-bar>button:hover{background:var(--wash-hover)}

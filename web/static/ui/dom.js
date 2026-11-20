@@ -9,6 +9,7 @@ import {workLabel} from '../core/labels.js';
 import {AREAS, pageOf} from '../core/pages.js';
 import {state} from '../core/state.js';
 import {createLayer} from './overlay.js';
+import {popOpen, showPop} from './pop.js';
 export const $ = id => document.getElementById(id);
 // 主区切换：显示 area（core/pages.js 登记的主区，默认是当前页的），隐藏其余几个。网格的空状态跟着网格：换到别的主区时
 // 收起，回到网格时由 reload 按读到的结果显示。
@@ -28,7 +29,7 @@ export const emptyLink = (href, label) => `<a class="quiet link" href="${href}">
 const helpLayer = createLayer({kind: 'popover', id: 'page-help', el: () => $('pageHelpPop'), anchor: () => $('pageHelp'), focusIn: 'self',
   onDismiss: reason => showHelp(false, reason)});
 function showHelp(open, reason) {
-  const pop = $('pageHelpPop'); if (pop) pop.hidden = !open;
+  showPop($('pageHelpPop'), open);
   $('pageHelp')?.setAttribute('aria-expanded', open); $('pageHelp')?.classList.toggle('on', open);
   if (open) helpLayer.open(); else helpLayer.close(reason);
 }
@@ -36,10 +37,10 @@ export function helpTip(lines) {
   if (!lines?.length) return ['', ''];
   const label = t('这一页的说明');
   return [`<button class="icon small" id="pageHelp" title="${label}" aria-label="${label}" aria-expanded="false" aria-controls="pageHelpPop">?</button>`,
-    `<div id="pageHelpPop" class="menu menu-drop" role="dialog" aria-label="${label}" tabindex="-1" hidden>${lines.map(x => `<p>${x}</p>`).join('')}</div>`];
+    `<div id="pageHelpPop" class="menu glass menu-drop" role="dialog" aria-label="${label}" tabindex="-1" hidden>${lines.map(x => `<p>${x}</p>`).join('')}</div>`];
 }
 // 标题画好之后调一次：给「?」挂上开关。
-export function wireHelpTip() { const b = $('pageHelp'); if (b) b.onclick = () => showHelp($('pageHelpPop').hidden); }
+export function wireHelpTip() { const b = $('pageHelp'); if (b) b.onclick = () => showHelp(!popOpen($('pageHelpPop'))); }
 // 帮助文字和提示用 ⌘ 写；其他系统显示 Ctrl。
 export function platformHints(root, mac = isMac) {
   if (mac) return;
@@ -48,24 +49,26 @@ export function platformHints(root, mac = isMac) {
   for (const el of root.querySelectorAll('[title]')) el.title = platformText(el.title, mac);
 }
 let toastTimer;
+// 提示条靠 translateX(-50%) 居中，退场只淡出（#715）。
+const hideToast = () => showPop($('toast'), false, {to: 'fade'});
 export function toast(message, withUndo = false) {
-  $('toastText').textContent = message; $('toastUndo').hidden = !withUndo; $('toastAct').hidden = true; $('toast').hidden = false;
-  clearTimeout(toastTimer); toastTimer = setTimeout(() => { $('toast').hidden = true; }, withUndo ? 6000 : 3500);
+  $('toastText').textContent = message; $('toastUndo').hidden = !withUndo; $('toastAct').hidden = true; showPop($('toast'), true);
+  clearTimeout(toastTimer); toastTimer = setTimeout(hideToast, withUndo ? 6000 : 3500);
 }
 // 给正在显示的 toast 追加一点：再补几个字，可选再加一个按钮（如对刚设好的角色所属作品「关注」，#293）。toast 随后会多
 // 停留一会儿。
 // 一次可撤销的写入成功之后（#432 ③-7）：撤销指向这一步，toast 写明做了什么并带「撤销」。text 默认是后端给这一步的名字。
 export function written(undo, text = tb(undo.label)) { setLatest(undo); toast(text, true); }
 export function toastMore(text, label = '', run = null) {
-  if ($('toast').hidden) return;
+  if (!popOpen($('toast'))) return;
   $('toastText').textContent += text;
-  const b = $('toastAct'); b.hidden = !label; b.textContent = label; b.onclick = () => { $('toast').hidden = true; run(); };
-  clearTimeout(toastTimer); toastTimer = setTimeout(() => { $('toast').hidden = true; }, 9000);
+  const b = $('toastAct'); b.hidden = !label; b.textContent = label; b.onclick = () => { hideToast(); run(); };
+  clearTimeout(toastTimer); toastTimer = setTimeout(hideToast, 9000);
 }
 // 指针停在 toast 上时它不消失；它的撤销按钮运行 undo()。
 export function wireToast(undo) {
   $('toast').addEventListener('mouseenter', () => clearTimeout(toastTimer));
-  $('toast').addEventListener('mouseleave', () => { toastTimer = setTimeout(() => { $('toast').hidden = true; }, 2500); });
+  $('toast').addEventListener('mouseleave', () => { toastTimer = setTimeout(hideToast, 2500); });
   $('toastUndo').onclick = () => undo();
 }
 // 角色名字后面用灰色小字写的作品（core/labels.js workLabel）。

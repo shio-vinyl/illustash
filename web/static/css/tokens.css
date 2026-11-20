@@ -30,12 +30,15 @@
   /* 0.4 新增（#705）：新部件的强调色底（亮色比 --accent-btn 略深，白字到 4.6:1）和底上的文字；海报上的文字阴影与压暗渐变；浮层的磨砂玻璃（没有 backdrop-filter 时用 solid） */
   --accent-fill:#676bcd;--on-accent:#fff;--image-text-shadow:0 1px 8px rgba(12,12,18,.3);--scrim:linear-gradient(180deg,rgba(12,12,18,0) 35%,rgba(12,12,18,.62));
   --glass-surface:rgba(255,255,255,.72);--glass-solid:rgba(255,255,255,.96);
+  /* 浮层（#715）：对话框和导览背后的压暗（画成对话框自己的大扩散阴影，::backdrop 里不能用 var()）；提示条、选择栏这类深色条上的字和按钮底，
+     亮暗主题里都是深底，只写这一套 */
+  --dialog-dim:rgba(20,20,30,.22);--tour-dim:rgba(14,14,24,.46);--toast-ink:#fff;--toast-btn:rgba(255,255,255,.12);--toast-btn-hover:rgba(255,255,255,.2);
   /* 看图器（#709）：亮暗主题里都是深底，只在这里写一套 */
   --viewer-bg:#121215;--viewer-ink:#e4e4e9;--viewer-muted:#a3a3ad;--viewer-chip:rgba(255,255,255,.08);--viewer-chip-hover:rgba(255,255,255,.16);--viewer-line:rgba(255,255,255,.2);
   /* 图的主色（#705）：由 ui/tint.js 的 setTint() 写进元素的 --tint 并加 .tint，派生的底色在文件末尾的 .tint 块里算；没写时是中性色 */
   --tint:#9a9aa6}
 /* 暗色主题：html[data-theme=dark]，由 theme.js 设置；颜色成对写在这里，规则里只引用变量。 */
-:root[data-theme=dark]{--tour-dim:rgba(0,0,0,.66);
+:root[data-theme=dark]{--tour-dim:rgba(0,0,0,.66);--dialog-dim:rgba(0,0,0,.45);
   --canvas:#1d1d21;--sheet:#28282d;--ink:#eeeef2;--ink2:#c8c8d0;--muted:#9a9aa3;--faint:#6d6d76;--line:#3a3a41;--hair:rgba(255,255,255,.09);--soft:#323238;
   --accent:#a1a4f3;--accent-btn:#8286e6;--accent-soft:#35375f;--accent-ink:#c0c2ff;--warn:#f0a04b;--r18:#ff6b8f;--r18-soft:#48262f;--sh:0,0,0;
   --sheet-shadow:0 0 0 1px var(--hair),0 12px 32px -16px rgba(0,0,0,.45);

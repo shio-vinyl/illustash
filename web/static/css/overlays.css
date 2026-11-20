@@ -1,4 +1,63 @@
-/* 浮层与全局部件：对话框、任务面板、提示条、菜单、选择栏、引导。归 0.4 第 J 步（浮层与全局部件，#715）；A2（#705）只建了文件和层，规则由那一步写。
-   只用 css/tokens.css 的令牌和 css/base.css 的公共部件；重写一块，就删掉 app.css 里对应的旧规则。 */
+/* 浮层与全局部件（0.4 第 J 步，#715）：弹出层、对话框、命令面板、提示条、引导、任务面板。A2（#705）建了文件和层，规则由 J 写。
+   只用 css/tokens.css 的令牌和 css/base.css 的公共部件；重写一块，就删掉 app.css 里对应的旧规则。
+   - 两种表面：弹出层（菜单、视图选项、任务面板、页面说明、清单）圆角 12、--shadow-pop，磨砂由元素上的 .glass 给（规则 16 只许
+     写在那里）；对话框（openDialog 的 .modal、命令面板、几个静态对话框）圆角 18、--shadow-dialog、--sheet 底。
+   - 这一层高于 legacy：这里只写表面（底色、圆角、阴影、开合动画、字号），位置和尺寸留在 app.css 各自的类上，免得盖掉
+     .more-menu、dialog.relate 这类细化（层的先后压过选择器的权重）。
+   - 开合：进场是这里的 CSS 动画（hidden 去掉、dialog 打开时 display 变回来就重播）；退场由 ui/pop.js、ui/dialog.js 的 closeModal
+     用 Web Animations 播（ui/motion.js），--dur-1，比进场短。「减少动态效果」时令牌里的时长是 0。 */
 @layer overlays{
+
+@keyframes ov-pop{from{opacity:0;transform:scale(.96)}}
+@keyframes ov-dialog{from{opacity:0;transform:translateY(6px) scale(.97)}}
+@keyframes ov-toast{from{opacity:0;transform:translate(-50%,14px) scale(.96)}}
+
+/* ---- 弹出层 ---- */
+.menu{border-radius:var(--radius-12);color:var(--ink);box-shadow:var(--shadow-pop);animation:ov-pop var(--dur-2) var(--ease)}
+/* 没加 .glass 的菜单（别的页面拼的）用同一种不透明底；加了的底色和磨砂由 .glass 给 */
+.menu:not(.glass){background:var(--glass-solid)}
+.menu-item{border-radius:var(--radius-8)}
+.menu-item:hover,.menu-item.on{background:var(--wash-hover)}
+.menu-drop input{border-radius:var(--radius-pill)}
+.view-pop h6,.task-pop h6{font-size:var(--fs-11);font-weight:var(--fw-600)}
+
+/* ---- 对话框：压暗是自己的大扩散阴影，和对话框一起淡入淡出；页面在 ::backdrop 后面轻轻糊一点（css/base.css 的 .glass-scrim） ---- */
+dialog{border:0;border-radius:var(--radius-18);background:var(--sheet);color:var(--ink);box-shadow:var(--shadow-dialog),0 0 0 200vmax var(--dialog-dim)}
+dialog::backdrop{background:transparent}
+dialog[open]{animation:ov-dialog var(--dur-2) var(--ease)}
+.dialog-top h2{font-size:var(--fs-20);font-weight:var(--fw-750);letter-spacing:-.02em}
+/* 操作区的按钮画成胶囊（调用方照旧传 .primary / .quiet，和 css/base.css 的 .btn.is-primary / .btn.is-quiet 同一个样子） */
+.dialog-actions{gap:var(--space-8)}
+.dialog-actions>button{height:var(--h-32);padding:0 var(--space-14);border:0;border-radius:var(--radius-pill);font-size:var(--fs-12);font-weight:var(--fw-600);box-shadow:none}
+.dialog-actions>button.primary{background:var(--accent-fill);color:var(--on-accent)}
+.dialog-actions>button.primary:hover{background:var(--accent-fill);filter:var(--btn-hover-filter)}
+.dialog-actions>button.quiet{background:var(--soft);color:var(--ink2)}
+.dialog-actions>button.quiet:hover{background:var(--chip-hover);color:var(--ink)}
+.dialog-actions>button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.modal .field input,.modal .field select{border-radius:var(--radius-8)}
+.modal .dialog-lead{border-radius:var(--radius-12)}
+
+/* ---- 命令面板（⌘K、角色选择器） ---- */
+#pickerSearch{font-size:var(--fs-20);background:transparent}
+.palette-item{border-radius:var(--radius-8)}
+.palette-item.on,.palette-item.staged{background:var(--accent-soft)}
+.palette-item img,.palette-glyph,#pickerSubject img{border-radius:var(--radius-8)}
+.palette-name{font-size:var(--fs-13)}
+.palette-add{border-radius:var(--radius-8)}
+
+/* ---- 提示条：深色胶囊，从下面弹一下上来（--ease-spring 只给这类「弹一下」），淡出 ---- */
+.toast{border-radius:var(--radius-pill);background:var(--toast-bg);color:var(--toast-ink);box-shadow:var(--shadow-pop);font-weight:var(--fw-600);animation:ov-toast var(--dur-2) var(--ease-spring)}
+.toast-undo{border-radius:var(--radius-pill);background:var(--toast-btn);color:var(--toast-ink);font-weight:var(--fw-600)}
+.toast-undo:hover{background:var(--toast-btn-hover)}
+
+/* ---- 引导：导览气泡用对话框的表面，提示卡和清单用弹出层的表面 ---- */
+.tour-hole{border-radius:var(--radius-12)}
+.tour-bubble{border-radius:var(--radius-18);box-shadow:var(--shadow-dialog);animation:ov-dialog var(--dur-3) var(--ease)}
+.tour-title{font-size:var(--fs-20);font-weight:var(--fw-750);letter-spacing:-.02em;margin-bottom:var(--space-6)}
+.tour-foot>button{border-radius:var(--radius-pill)}
+.nudge{border-radius:var(--radius-18);box-shadow:var(--shadow-pop)}
+.nudge-acts>button,.update-acts>button{border-radius:var(--radius-pill)}
+.cl-pill{border-radius:var(--radius-pill);box-shadow:var(--shadow-pop);font-weight:var(--fw-600)}
+.cl-panel{border-radius:var(--radius-12);box-shadow:var(--shadow-pop);animation:ov-pop var(--dur-2) var(--ease)}
+.cl-check{font-size:var(--fs-11);color:var(--on-accent)}
 }

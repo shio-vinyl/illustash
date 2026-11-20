@@ -125,14 +125,15 @@ export function enter(el, {from = 'rise', dur = 2, delay = 0, ease = 'ease'} = {
   return animate(el, Array.isArray(from) ? from : ENTER[from] || ENTER.rise, {dur, delay, ease});
 }
 /**
- * 出场，比进场短。结束后默认把节点摘掉；remove: false 时改成 hidden = true（藏起来以后再撤掉动画，不会闪一下）。
+ * 出场，比进场短。结束后默认把节点摘掉；remove: false 时改成 hidden = true（藏起来以后再撤掉动画，不会闪一下）；
+ * 给了 done 就只调 done()，由调用方自己收尾（对话框要 close()，#715），同样在撤掉动画之前调。
  * 同一个节点上没走完的出场先取消（返回 false），由这一次接手。
  */
-export async function exit(el, {to = 'rise', dur = 1, delay = 0, remove = true} = {}) {
+export async function exit(el, {to = 'rise', dur = 1, delay = 0, remove = true, done} = {}) {
   const keyframes = Array.isArray(to) ? to : EXIT[to] || EXIT.rise;
   const off = reduced();
   cancelExit(el);
-  if (typeof el?.animate !== 'function') { finishExit(el, remove); return true; }
+  if (typeof el?.animate !== 'function') { finishExit(el, remove, done); return true; }
   const ms = off ? 0 : duration(dur);
   const wait = off ? 0 : Math.max(0, delay);
   const animation = el.animate(keyframes, {duration: ms, delay: wait, easing: easing('ease'), fill: fillMode('forwards', wait)});
@@ -141,15 +142,18 @@ export async function exit(el, {to = 'rise', dur = 1, delay = 0, remove = true} 
   if (exiting.get(el) !== animation) return false;
   exiting.delete(el);
   if (!ok) return false;
-  finishExit(el, remove);
+  finishExit(el, remove, done);
   animation.cancel();
   return true;
 }
 const exiting = new WeakMap();
-function finishExit(el, remove) {
-  if (remove) el?.remove?.();
+function finishExit(el, remove, done) {
+  if (done) done();
+  else if (remove) el?.remove?.();
   else if (el) el.hidden = true;
 }
+/** 节点是不是正在出场（还看得见，但已经在关了）：开关浮层时按它判断「开着」（ui/pop.js）。 */
+export const exitingNow = el => exiting.has(el);
 /** 取消正在进行的出场（节点留在原处，回到自己的样子）。enter() 和下一次 exit() 会自动调它。 */
 export function cancelExit(el) {
   if (!el) return;

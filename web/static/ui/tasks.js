@@ -12,6 +12,7 @@ import {loadLibraries, setSettings, updatesTick} from '../core/settings.js';
 import {$, toast, error, fold, wireFolds, redraw, setDrawn, busy} from './dom.js';
 import {confirmAction} from './dialog.js';
 import {createLayer} from './overlay.js';
+import {showPop} from './pop.js';
 import {openIndexAdd} from './catalog.js';
 import {modelsLine, modelsBar, modelsActions} from './models.js';
 import {cancelExport, exportActive, exportLine, loadFiles, onFiles, revealExport, revealLabel} from '../core/files.js';
@@ -168,7 +169,7 @@ export async function taskTick() {
 // 它在页面的最后，Tab 从「任务」按钮走不过去：打开时焦点移到面板上，Esc 或 × 关闭后回到打开它的按钮（#422）。
 const taskLayer = createLayer({kind: 'popover', id: 'tasks', el: () => $('taskPanel'), anchor: () => $('taskButton'), focusIn: 'self', onDismiss: reason => toggleTasks(false, reason)});
 export function toggleTasks(open = !taskPanel.open, reason) {
-  taskPanel.open = open; $('taskPanel').hidden = !open;
+  taskPanel.open = open; showPop($('taskPanel'), open);
   $('taskButton').setAttribute('aria-expanded', open); $('taskButton').classList.toggle('on', open);
   if (open) { taskLayer.open(); setDrawn($('taskPanel')); renderTasks(); taskTick(); }
   else { provenanceArmed = false; taskLayer.close(reason); }

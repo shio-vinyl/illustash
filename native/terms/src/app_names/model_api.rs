@@ -197,10 +197,9 @@ fn change(path: &Path, key: Option<Option<&str>>, model: Option<&str>, base: Opt
         write_key(account, value)?;
     }
     // 清除是用户请求的结果。若平台拒绝删除，这时回滚仍能保留原引用和旧明文，用户可重试。
-    if change_key == Some(None) {
-        if let Some(account) = &old_account {
-            remove_key(account).map_err(|_| Error::invalid("无法清除模型 API key，请重试"))?;
-        }
+    let explicit_clear = key == Some(None);
+    if let Some(account) = old_account.as_ref().filter(|_| explicit_clear) {
+        remove_key(account).map_err(|_| Error::invalid("无法清除模型 API key，请重试"))?;
     }
     if let Err(error) = tx.commit() {
         if let Some((account, _)) = &staged {
@@ -209,11 +208,9 @@ fn change(path: &Path, key: Option<Option<&str>>, model: Option<&str>, base: Opt
         return Err(error.into());
     }
 
-    // 轮换成功以后才清理旧条目，旧条目的删除故障不会撤回已经保存的新密钥。
-    if staged.is_some() && change_key.is_some() {
-        if let Some(account) = &old_account {
-            cleanup(account);
-        }
+    // 改地址或替换密钥，先提交新配置，再擦除旧条目，避免 COMMIT 失败时丢掉原配置仍在引用的密钥。
+    if let Some(account) = old_account.filter(|_| !explicit_clear && change_key.is_some()) {
+        cleanup(&account);
     }
     if previous.has_legacy {
         let busy: i64 = c.query_row("PRAGMA wal_checkpoint(TRUNCATE)", [], |r| r.get(0))?;

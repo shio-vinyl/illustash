@@ -320,6 +320,40 @@ class NativeNamesTest(unittest.TestCase):
         self.assertNotIn('credential_error', corrected)
         self.assertFalse(stored.exists())
 
+    def test_endpoint_commit_busy_leaves_old_model_key_available(self):
+        self.stop(self.process)
+        with closing(sqlite3.connect(self.lib.db)) as db:
+            self.assertEqual(db.execute('PRAGMA journal_mode=DELETE').fetchone(), ('delete',))
+        self.process, self.log = self.start(self.lib.path)
+        self.token = json.loads(self.request('/api/bootstrap')['body'])['token']
+
+        def save(**fields):
+            return self.request('/api/names', {'action': 'model_api', **fields})
+
+        def receipt():
+            return json.loads(self.request('/api/names')['body'])['model_api']
+
+        self.assertEqual(save(key='synthetic-original-model-key-2345', base=self.service.base)['status'], 200)
+        stored, = (self.support / 'accounts').glob('model-api-*')
+        previous = receipt()
+        self.assertEqual(previous['hint'], '2345')
+        newer = 'https://synthetic-replacement.invalid'
+        with closing(sqlite3.connect(self.lib.db)) as reader:
+            reader.execute('BEGIN')
+            reader.execute("SELECT value FROM name_settings WHERE key='model_base'").fetchone()
+            # DELETE 日志模式下此读锁容许 BEGIN IMMEDIATE 和写入，提交需要的 EXCLUSIVE 锁会等待失败。
+            refused = save(base=newer)
+            self.assertNotEqual(refused['status'], 200, refused['body'])
+        self.assertTrue(stored.is_file())
+        self.assertEqual(receipt(), previous)
+        result = self.request('/api/names', {'action': 'model_api_test'})
+        self.assertEqual(json.loads(result['body']), {'ok': True})
+        completed = save(base=newer)
+        self.assertEqual(completed['status'], 200, completed['body'])
+        self.assertEqual(receipt()['base'], newer)
+        self.assertFalse(receipt()['configured'])
+        self.assertFalse(stored.exists())
+
     def test_bangumi_name_is_published_with_unreadable_model_key(self):
         self.enable()
         result = self.request('/api/names', {'action': 'model_api', 'key': 'synthetic-key-4928',

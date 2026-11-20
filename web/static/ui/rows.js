@@ -92,7 +92,7 @@ const KINDS = {switch: SWITCH, action: ACTION, info: INFO, select: SELECT, field
 // 文字原样用，函数每次按状态取值。
 const read = (v, s) => typeof v === 'function' ? v(s) : v;
 const button = (label, primary) => {
-  const b = make('button', 'btn is-small' + (primary ? ' is-primary' : ' is-quiet'), label);
+  const b = make('button', 'btn is-small' + (primary ? ' is-primary' : ''), label);
   b.type = 'button';
   return b;
 };
@@ -153,7 +153,7 @@ export function rows(container, table, {scope: parent = null} = {}) {
     const update = x => {
       current = x;
       text(b, x.label);
-      cls(b, 'is-primary', Boolean(x.primary)); cls(b, 'is-quiet', !x.primary);
+      cls(b, 'is-primary', Boolean(x.primary));
       setOff(b, Boolean(x.disabled));
       attr(b, 'title', x.title || null);
     };

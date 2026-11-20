@@ -54,6 +54,9 @@ label.row{cursor:pointer}
 .row-input[type=number]{width:96px}
 .row-input.is-wide{width:320px}
 .row .seg{flex-wrap:wrap;background:var(--sheet)}
+/* 次要按钮用默认的 .btn（用户 2026-11-20 定，#714）：组的浅底和 .btn 的浅底同是 --soft，组里改用纸面底，和分段控件、输入框一样 */
+.set-group .btn:not(.is-primary){background:var(--sheet)}
+.set-group .btn:not(.is-primary):hover{box-shadow:var(--shadow-hover)}
 .row-list{display:flex;flex-direction:column;min-width:0}
 .row-list>.is-head{min-height:0}
 .row-items>.row{min-height:36px;padding:var(--space-6) 0;font-size:var(--fs-12)}

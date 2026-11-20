@@ -11,13 +11,13 @@ window.CENSUS = {
   "css/library.css": "111a033624e4d7dac2e9f2c55811b458f41204620a2dfe81df33aeca213804d1",
   "css/overlays.css": "3e18fddd6cbc8c59478a35b978d51868e4c93aeb4a075a98139d54696dd2601a",
   "css/rail.css": "e42b74acf9f290263810bb3ac3b2d679af30cdb62e0c36eb6ad849cc1d26951d",
-  "css/settings.css": "7d2805193297dff491810962dc7cee14c2bf185693f29ea67f1db4e080fe50bb",
+  "css/settings.css": "966d32c4a14265eaf54dc1170b75b94fd429ba8992399989fdf44800f037bf9b",
   "css/tidy.css": "0dae765ffbd6e5e96298c7b5ad97a2d9a64c085d13ae8bd0ad0d82c49e536bec",
   "css/tokens.css": "debccd019e1f850d3aaccc13ae456b24e58b704772df86b167b6b16858a42e2c"
  },
- "sha256": "6eaa12118c75d321a16b48358330a8ac4001de4afacbc0a26a3aed209efc77b2",
- "lines": 1779,
- "rules": 1342,
+ "sha256": "1723c8d231a0c1ca3035792267de665e95d3623c3d6428e542847fc820ac0a98",
+ "lines": 1782,
+ "rules": 1344,
  "themeVars": {
   "light": {
    "--canvas": "#f4f4f6",
@@ -188,7 +188,7 @@ window.CENSUS = {
    "--fs-13": 28,
    "--radius-6": 13,
    "--hair": 22,
-   "--sheet": 56,
+   "--sheet": 57,
    "--radius-round": 25,
    "--muted": 122,
    "--space-6": 115,
@@ -305,7 +305,7 @@ window.CENSUS = {
    "--on-accent": 7,
    "--h-28": 6,
    "--fw-400": 7,
-   "--shadow-hover": 10,
+   "--shadow-hover": 11,
    "--tint-soft": 10,
    "--on-image": 15,
    "--dur-2": 12,
@@ -811,7 +811,7 @@ window.CENSUS = {
    {
     "name": "--shadow-hover",
     "value": "0 1px 2px rgba(var(--sh),.06),0 8px 20px -10px rgba(var(--sh),.28)",
-    "uses": 10,
+    "uses": 11,
     "dark": "0 1px 2px rgba(0,0,0,.3),0 8px 20px -10px rgba(0,0,0,.6)"
    },
    {

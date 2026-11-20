@@ -164,6 +164,7 @@
 .dc-who.is-compact{display:flex;flex-wrap:wrap;align-items:center;gap:var(--space-6)}
 .dc-who.is-compact .dc-others{display:flex;flex-wrap:wrap;gap:var(--space-6)}
 .dc-who.is-compact .dc-other{display:flex;padding:var(--space-2) var(--space-4) var(--space-2) var(--space-2);border-radius:var(--radius-pill);background:var(--viewer-chip)}
+.dc-who.is-compact .dc-other.is-off{display:none}
 .dc-who.is-compact .dc-other-name{color:var(--viewer-ink)}
 .dc-who.is-compact .dc-other-acts{opacity:1}
 .dc-who.is-compact .dc-icon{width:24px;height:24px;color:var(--viewer-muted)}

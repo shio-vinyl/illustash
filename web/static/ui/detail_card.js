@@ -107,6 +107,14 @@ function setAvatar(node, id) {
   const cover = avatarOf(id);
   attr(node, 'src', cover ? img(cover, 'thumb') : null);
 }
+// 按位置复用的一组行：只增不删，用不上的用类名藏起来（不切 hidden 特性，见 ui/viewer.js 的 arrange）。
+function pool(node, create) {
+  const rows = [];
+  return {set(items) {
+    while (rows.length < items.length) { const row = create(); rows.push(row); node.append(row.el); }
+    rows.forEach((row, i) => { cls(row.el, 'is-off', i >= items.length); if (i < items.length) row.update(items[i]); });
+  }};
+}
 // 另一个角色（或大图底栏里的每一个角色）。
 function otherRow(compact) {
   const {el, refs} = OTHER();
@@ -129,9 +137,10 @@ function otherRow(compact) {
 export function identities({compact = false} = {}) {
   const {el, refs} = WHO(), s = scope('identities');
   cls(el, 'is-compact', compact);
-  // 大图底栏按位置复用行：翻图时换的是另一个角色，行和头像 <img> 留着、只换内容，不拆已经显示的头像（#683 的翻页测量）。
+  // 大图底栏的行只增不删：按位置复用，多出来的藏起来，翻图时行和头像 <img> 留着、只换内容（#683 的翻页测量）。
   // 卡片里按角色复用：点了某一行的按钮以后，焦点不会留在换成别的角色的同一位置上。
-  const others = keyed(refs.others, {key: (x, i) => compact ? i : x.m.id, create: x => { const row = otherRow(compact); row.update(x); return row; }, scope: s});
+  const others = compact ? pool(refs.others, () => otherRow(true))
+    : keyed(refs.others, {key: x => x.m.id, create: x => { const row = otherRow(false); row.update(x); return row; }, scope: s});
   return {el, dispose: () => s.dispose(), update(d) {
     const primary = primaryOf(d), pc = primary && (state.charMap.get(primary.id) || primary);
     show(refs.lead, !compact && !!primary); show(refs.none, !primary); show(refs.acts, !compact);

@@ -82,8 +82,8 @@ function charHero(scope, onOut) {
   scope.on(refs.mascot, 'click', () => { setMenu(false); toggleMascot(c); });
   // 横幅上按下不开始网格的拖动选择（ui/grid.js 在 #grid 上听 pointerdown）。
   scope.on(el, 'pointerdown', e => e.stopPropagation());
-  // 横幅的名字滚出视口：页头显示小标题。
-  const seen = scope.observe(new IntersectionObserver(([entry]) => onOut(!entry.isIntersecting), {root: $('viewport')}));
+  // 横幅的名字有一部分滚出视口：页头显示小标题。
+  const seen = scope.observe(new IntersectionObserver(([entry]) => onOut(entry.intersectionRatio < 1), {root: $('viewport'), threshold: [0, 1]}));
   seen.observe(refs.name);
 
   // 横幅的图、最近加入、曲线和同作品：按角色和数据版本读（core/character.js 缓存），回来时还在这个角色上才画。

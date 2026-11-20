@@ -104,8 +104,8 @@ export function tourStop(id) {
       ? {title: t('图库建好了'), text: t('正在读取并识别你的图片。花一分钟认识一下界面？'), next: t('带我看看'), skip: t('自己逛逛')}
       : {title: t('认识一下界面'), text: t('花一分钟看看几个常用的地方？'), next: t('带我看看'), skip: t('不用了')},
     tasks: {target: () => $('taskButton'), title: t('进度在这里'), text: `${counting ? esc(counting) + '<br>' : ''}${t('同步和识别在后台进行，识别好的图会陆续出现在图库里。')}`},
-    home: {route: 'days', target: () => document.querySelector('#homePage .home-j') || $('homePage'), title: t('图库'),
-      text: document.querySelector('#homePage .home-j') ? t('新加入的图按日期排在这里，图上写着认出的角色。认错了就点开它按 C 换成正确的角色，{key} 随时撤销。', {key: shortcut('Z')}) : t('图片导入后会按日期排在这里，图上写着认出的角色。')},
+    home: {route: 'days', target: () => document.querySelector('#homePage .day-tile') || $('homePage'), title: t('图库'),
+      text: document.querySelector('#homePage .day-tile') ? t('新加入的图按日期排在这里，每天上面是当天认出的角色。认错了就点开它按 C 换成正确的角色，{key} 随时撤销。', {key: shortcut('Z')}) : t('图片导入后会按日期排在这里，每天上面是当天认出的角色。')},
     characters: {target: () => document.querySelector('#railEntries [data-entry="catalog"]'), title: t('资料库'), text: t('认出的角色按作品放在这里，点进去只看 TA 的图。')},
     unmatched: {target: () => document.querySelector('#railEntries [data-entry="tidy"]'), title: t('还没认出的图'), text: t('在「整理」里：长得像的会分成一组，一次确认一整组。')},
     end: {title: t('就这些'), text: t('右下角的「上手」清单会跟着你做过的事打勾，全做完就自己消失。以后想再看一遍，在「设置 › 关于」里。'), next: t('开始用吧')},
@@ -151,7 +151,7 @@ async function placeTour(moved) {
     Object.assign(bubble.style, {left: (W - bw) / 2 + 'px', top: (H - bh) / 2 + 'px'});
     return;
   }
-  // 大的区域（首页）只点亮顶部，也就是最先几张图片所在的地方。
+  // 大的区域（按天视图）只点亮顶部，也就是最先几张图片所在的地方。
   const box = {left: r.left - pad, top: r.top - pad, width: r.width + pad * 2, height: Math.min(r.height, H * .45) + pad * 2};
   Object.assign(hole.style, {left: box.left + 'px', top: box.top + 'px', width: box.width + 'px', height: box.height + 'px'}); hole.classList.remove('none');
   const right = box.left + box.width + 14, below = box.top + box.height + 14;

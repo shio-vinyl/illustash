@@ -2,22 +2,22 @@
 window.CENSUS = {
  "source": "web/static/app.css、web/static/css/base.css、web/static/css/catalog.css、web/static/css/character.css、web/static/css/detail.css、web/static/css/galleries.css、web/static/css/library.css、web/static/css/overlays.css、web/static/css/rail.css、web/static/css/settings.css、web/static/css/tidy.css、web/static/css/tokens.css",
  "files": {
-  "app.css": "b77ed8e59862a2f82567d50561fee5d6c25c8f629e8fa0d1eb8a85bde37cef4c",
-  "css/base.css": "78a3194448badebc82149417d4e92cde36089143afdfbf4a34fe8508e8694b3b",
+  "app.css": "9a6fb1b508e964ec0815255d8cd0a91b518a8ebf620f361c15c512cebbcc3950",
+  "css/base.css": "8d42d9f5ff941ea01993efbb0f459f41d48eae15723ee02add7fd327a3ca60f2",
   "css/catalog.css": "6af407c23feb8360ce625efb0c23a632e6d405ac0ca90ec378a5665f40a7df88",
   "css/character.css": "52eaf299dfeb41d32014564d83057a714061e8970e67356a9631efc1dc087a71",
   "css/detail.css": "a9eaf043f2074eea276c1b235e7da4db3630a280ad99ea15956c62d2ecba2904",
   "css/galleries.css": "f446c432133be7ce4e2c04c29933f3a849f227b4b15ff09a8a187b1c52b52959",
   "css/library.css": "7f8474b40727892a2116c6b67597d98aef65854406a4d78909ff8ec931f71e43",
-  "css/overlays.css": "3e18fddd6cbc8c59478a35b978d51868e4c93aeb4a075a98139d54696dd2601a",
+  "css/overlays.css": "0c6933984c96ac9541a36fac6a979f0d314e27449463fdb27d3f1f546c5f4045",
   "css/rail.css": "e42b74acf9f290263810bb3ac3b2d679af30cdb62e0c36eb6ad849cc1d26951d",
   "css/settings.css": "f4308d031d40a2d389ce6477ebdd14cbd1d5292358f311fe56406034ffd475f6",
   "css/tidy.css": "0dae765ffbd6e5e96298c7b5ad97a2d9a64c085d13ae8bd0ad0d82c49e536bec",
-  "css/tokens.css": "debccd019e1f850d3aaccc13ae456b24e58b704772df86b167b6b16858a42e2c"
+  "css/tokens.css": "1d81dbbc12910ac7e48870d18a9b0f48daba0719080a1f79fe2c7e1dda0d2fc0"
  },
- "sha256": "eeee08197f2008950d32e6ab598eb6c538fc180619908cfc4c74624bb47361a5",
- "lines": 1754,
- "rules": 1366,
+ "sha256": "6d4fbdbe29fa0cf39a98b8165c5ef59f298042125e1b263a9d34e2835599b1eb",
+ "lines": 1819,
+ "rules": 1401,
  "themeVars": {
   "light": {
    "--canvas": "#f4f4f6",
@@ -98,6 +98,11 @@ window.CENSUS = {
    "--scrim": "linear-gradient(180deg,rgba(12,12,18,0) 35%,rgba(12,12,18,.62))",
    "--glass-surface": "rgba(255,255,255,.72)",
    "--glass-solid": "rgba(255,255,255,.96)",
+   "--dialog-dim": "rgba(20,20,30,.22)",
+   "--tour-dim": "rgba(14,14,24,.46)",
+   "--toast-ink": "#fff",
+   "--toast-btn": "rgba(255,255,255,.12)",
+   "--toast-btn-hover": "rgba(255,255,255,.2)",
    "--viewer-bg": "#121215",
    "--viewer-ink": "#e4e4e9",
    "--viewer-muted": "#a3a3ad",
@@ -108,6 +113,7 @@ window.CENSUS = {
   },
   "dark": {
    "--tour-dim": "rgba(0,0,0,.66)",
+   "--dialog-dim": "rgba(0,0,0,.45)",
    "--canvas": "#1d1d21",
    "--sheet": "#28282d",
    "--ink": "#eeeef2",
@@ -183,59 +189,59 @@ window.CENSUS = {
    "--tint": "#8a8a96"
   },
   "uses": {
-   "--ink": 61,
+   "--ink": 63,
    "--canvas": 14,
-   "--fs-13": 27,
+   "--fs-13": 28,
    "--radius-6": 14,
-   "--hair": 24,
-   "--sheet": 56,
+   "--hair": 18,
+   "--sheet": 50,
    "--radius-round": 23,
    "--muted": 121,
-   "--space-6": 106,
-   "--h-32": 10,
+   "--space-6": 111,
+   "--h-32": 11,
    "--fs-16": 2,
-   "--space-4": 84,
-   "--radius-pill": 47,
+   "--space-4": 86,
+   "--radius-pill": 57,
    "--soft": 67,
    "--accent-soft": 28,
    "--accent-ink": 38,
-   "--fs-12": 116,
-   "--ink2": 55,
+   "--fs-12": 117,
+   "--ink2": 56,
    "--tone-sand-ink": 3,
-   "--space-8": 125,
-   "--faint": 12,
+   "--space-8": 127,
+   "--faint": 13,
    "--z-popover": 2,
    "--gutter": 7,
    "--z-page-2": 11,
    "--line": 50,
    "--on-image": 9,
-   "--sh": 37,
+   "--sh": 30,
    "--fav": 5,
-   "--fs-10": 9,
-   "--fs-11": 92,
+   "--fs-10": 8,
+   "--fs-11": 93,
    "--z-page-4": 2,
    "--space-10": 75,
-   "--space-2": 50,
+   "--space-2": 53,
    "--radius-4": 21,
-   "--chip-hover": 6,
+   "--chip-hover": 7,
    "--space-20": 11,
    "--z-bar": 1,
-   "--ease": 73,
+   "--ease": 74,
    "--z-toast": 1,
    "--space-16": 23,
-   "--space-12": 84,
+   "--space-12": 86,
    "--h-36": 11,
-   "--fs-15": 6,
-   "--space-14": 37,
-   "--space-1": 23,
+   "--fs-15": 5,
+   "--space-14": 38,
+   "--space-1": 22,
    "--dup-hue": 1,
    "--w": 1,
    "--err": 4,
-   "--accent": 42,
-   "--radius-10": 17,
+   "--accent": 43,
+   "--radius-10": 14,
    "--switch-off": 1,
    "--tag-on-ink": 1,
-   "--radius-8": 22,
+   "--radius-8": 26,
    "--badge-bg": 1,
    "--badge-ink": 1,
    "--tone-indigo-bg": 1,
@@ -256,7 +262,7 @@ window.CENSUS = {
    "--hint-ring": 1,
    "--hint-bg-hover": 1,
    "--palette-hover": 1,
-   "--warn": 12,
+   "--warn": 11,
    "--z-menu": 3,
    "--tone-steel-ink": 1,
    "--tone-steel-bg": 1,
@@ -264,26 +270,25 @@ window.CENSUS = {
    "--tone-amber-bg": 1,
    "--mono": 4,
    "--accent-btn": 12,
-   "--radius-18": 11,
+   "--radius-18": 12,
    "--sheet-shadow": 1,
-   "--fs-20": 9,
+   "--fs-20": 13,
    "--r18": 3,
    "--r18-soft": 1,
    "--r18-on": 1,
    "--select-arrow": 1,
-   "--radius-12": 21,
+   "--radius-12": 26,
    "--seg-on": 4,
    "--scroll-thumb": 1,
    "--glass-chip": 1,
-   "--tone-warn-bg": 1,
+   "--tone-warn-bg": 2,
    "--tone-warn-ink": 1,
    "--bar-bg": 1,
-   "--toast-bg": 1,
-   "--radius-14": 10,
+   "--radius-14": 6,
    "--menu-group": 1,
-   "--wash-hover": 6,
+   "--wash-hover": 7,
    "--view-sw-off": 1,
-   "--btn-hover-filter": 2,
+   "--btn-hover-filter": 3,
    "--space-24": 5,
    "--z-guide-tour": 1,
    "--tour-dim": 2,
@@ -312,21 +317,21 @@ window.CENSUS = {
    "--bad": 3,
    "--z-overlay": 2,
    "--depth": 1,
-   "--fw-750": 15,
+   "--fw-750": 18,
    "--dur-1": 24,
-   "--fw-600": 12,
-   "--accent-fill": 4,
-   "--on-accent": 4,
+   "--fw-600": 18,
+   "--accent-fill": 6,
+   "--on-accent": 6,
    "--h-28": 6,
    "--fw-400": 5,
    "--shadow-hover": 8,
    "--tint-soft": 8,
-   "--dur-2": 12,
-   "--dur-3": 6,
+   "--dur-2": 17,
+   "--dur-3": 7,
    "--scrim": 3,
    "--image-text-shadow": 2,
-   "--glass-solid": 5,
-   "--shadow-pop": 4,
+   "--glass-solid": 8,
+   "--shadow-pop": 9,
    "--glass-surface": 2,
    "--tint-glow": 2,
    "--z-page-5": 1,
@@ -336,9 +341,15 @@ window.CENSUS = {
    "--viewer-chip": 5,
    "--viewer-chip-hover": 2,
    "--viewer-line": 1,
+   "--shadow-dialog": 2,
+   "--dialog-dim": 1,
+   "--toast-bg": 1,
+   "--toast-ink": 2,
+   "--ease-spring": 3,
+   "--toast-btn": 1,
+   "--toast-btn-hover": 1,
    "--z-page-3": 2,
    "--at": 1,
-   "--ease-spring": 2,
    "--z-drawer": 2,
    "--tint": 8,
    "--tint-shadow": 1
@@ -463,6 +474,16 @@ window.CENSUS = {
     ]
    },
    {
+    "title": "浮层（#715）：对话框和导览背后的压暗（画成对话框自己的大扩散阴影，::backdrop 里不能用 var()）；提示条、选择栏这类深色条上的字和按钮底，\n     亮暗主题里都是深底，只写这一套",
+    "names": [
+     "--dialog-dim",
+     "--tour-dim",
+     "--toast-ink",
+     "--toast-btn",
+     "--toast-btn-hover"
+    ]
+   },
+   {
     "title": "看图器（#709）：亮暗主题里都是深底，只在这里写一套",
     "names": [
      "--viewer-bg",
@@ -533,22 +554,22 @@ window.CENSUS = {
    {
     "name": "--fs-10",
     "value": "10px",
-    "uses": 9
+    "uses": 8
    },
    {
     "name": "--fs-11",
     "value": "11px",
-    "uses": 92
+    "uses": 93
    },
    {
     "name": "--fs-12",
     "value": "12px",
-    "uses": 116
+    "uses": 117
    },
    {
     "name": "--fs-13",
     "value": "13px",
-    "uses": 27
+    "uses": 28
    },
    {
     "name": "--fs-14",
@@ -558,7 +579,7 @@ window.CENSUS = {
    {
     "name": "--fs-15",
     "value": "15px",
-    "uses": 6
+    "uses": 5
    },
    {
     "name": "--fs-16",
@@ -568,7 +589,7 @@ window.CENSUS = {
    {
     "name": "--fs-20",
     "value": "20px",
-    "uses": 9
+    "uses": 13
    },
    {
     "name": "--fs-22",
@@ -595,22 +616,22 @@ window.CENSUS = {
    {
     "name": "--radius-8",
     "value": "8px",
-    "uses": 22
+    "uses": 26
    },
    {
     "name": "--radius-10",
     "value": "10px",
-    "uses": 17
+    "uses": 14
    },
    {
     "name": "--radius-12",
     "value": "12px",
-    "uses": 21
+    "uses": 26
    },
    {
     "name": "--radius-14",
     "value": "14px",
-    "uses": 10
+    "uses": 6
    },
    {
     "name": "--radius-16",
@@ -620,12 +641,12 @@ window.CENSUS = {
    {
     "name": "--radius-18",
     "value": "18px",
-    "uses": 11
+    "uses": 12
    },
    {
     "name": "--radius-pill",
     "value": "999px",
-    "uses": 47
+    "uses": 57
    },
    {
     "name": "--radius-round",
@@ -637,27 +658,27 @@ window.CENSUS = {
    {
     "name": "--space-1",
     "value": "1px",
-    "uses": 23
+    "uses": 22
    },
    {
     "name": "--space-2",
     "value": "2px",
-    "uses": 50
+    "uses": 53
    },
    {
     "name": "--space-4",
     "value": "4px",
-    "uses": 84
+    "uses": 86
    },
    {
     "name": "--space-6",
     "value": "6px",
-    "uses": 106
+    "uses": 111
    },
    {
     "name": "--space-8",
     "value": "8px",
-    "uses": 125
+    "uses": 127
    },
    {
     "name": "--space-10",
@@ -667,12 +688,12 @@ window.CENSUS = {
    {
     "name": "--space-12",
     "value": "12px",
-    "uses": 84
+    "uses": 86
    },
    {
     "name": "--space-14",
     "value": "14px",
-    "uses": 37
+    "uses": 38
    },
    {
     "name": "--space-16",
@@ -699,7 +720,7 @@ window.CENSUS = {
    {
     "name": "--h-32",
     "value": "32px",
-    "uses": 10
+    "uses": 11
    },
    {
     "name": "--h-36",
@@ -798,12 +819,12 @@ window.CENSUS = {
    {
     "name": "--fw-600",
     "value": "600",
-    "uses": 12
+    "uses": 18
    },
    {
     "name": "--fw-750",
     "value": "750",
-    "uses": 15
+    "uses": 18
    }
   ],
   "shadow": [
@@ -816,13 +837,13 @@ window.CENSUS = {
    {
     "name": "--shadow-pop",
     "value": "0 0 0 .5px rgba(var(--sh),.08),0 18px 44px -18px rgba(var(--sh),.34)",
-    "uses": 4,
+    "uses": 9,
     "dark": "0 0 0 .5px rgba(255,255,255,.08),0 18px 44px -18px rgba(0,0,0,.7)"
    },
    {
     "name": "--shadow-dialog",
     "value": "0 0 0 .5px rgba(var(--sh),.08),0 30px 80px -26px rgba(var(--sh),.45)",
-    "uses": 0,
+    "uses": 2,
     "dark": "0 0 0 .5px rgba(255,255,255,.08),0 30px 80px -26px rgba(0,0,0,.8)"
    }
   ],
@@ -835,40 +856,40 @@ window.CENSUS = {
    {
     "name": "--dur-2",
     "value": "240ms",
-    "uses": 12
+    "uses": 17
    },
    {
     "name": "--dur-3",
     "value": "380ms",
-    "uses": 6
+    "uses": 7
    }
   ],
   "ease": [
    {
     "name": "--ease",
     "value": "cubic-bezier(.2,.8,.2,1)",
-    "uses": 73
+    "uses": 74
    },
    {
     "name": "--ease-spring",
     "value": "cubic-bezier(.34,1.42,.5,1)",
-    "uses": 2
+    "uses": 3
    }
   ]
  },
- "darkOverrideRules": 1,
+ "darkOverrideRules": 0,
  "literalHexColors": {
-  "kinds": 32,
-  "uses": 65,
+  "kinds": 30,
+  "uses": 60,
   "table": [
    {
     "value": "#fff",
-    "uses": 27,
+    "uses": 24,
     "examples": [
      ".check",
      ".card.selected .check",
      ".card.selected .check::after",
-     ".toast"
+     ".dup-badge"
     ]
    },
    {
@@ -1078,27 +1099,13 @@ window.CENSUS = {
     "examples": [
      ".bar-note"
     ]
-   },
-   {
-    "value": "#ffffff1f",
-    "uses": 1,
-    "examples": [
-     ".toast-undo"
-    ]
-   },
-   {
-    "value": "#ffffff33",
-    "uses": 1,
-    "examples": [
-     ".toast-undo:hover"
-    ]
    }
   ]
  },
- "rgbaCalls": 98,
+ "rgbaCalls": 93,
  "fontSize": {
   "kinds": 17,
-  "uses": 275,
+  "uses": 280,
   "table": [
    {
     "value": "9px (font 简写)",
@@ -1109,7 +1116,7 @@ window.CENSUS = {
    },
    {
     "value": "var(--fs-10)",
-    "uses": 9,
+    "uses": 8,
     "examples": [
      ".chips span",
      ".like-example>.like-drop",
@@ -1119,7 +1126,7 @@ window.CENSUS = {
    },
    {
     "value": "var(--fs-11)",
-    "uses": 91,
+    "uses": 92,
     "examples": [
      ".missing",
      ".footer",
@@ -1129,7 +1136,7 @@ window.CENSUS = {
    },
    {
     "value": "var(--fs-12)",
-    "uses": 116,
+    "uses": 117,
     "examples": [
      ".heading-main>.menu-drop p",
      "p",
@@ -1139,7 +1146,7 @@ window.CENSUS = {
    },
    {
     "value": "var(--fs-13)",
-    "uses": 27,
+    "uses": 28,
     "examples": [
      ":root",
      ".icon.small",
@@ -1158,7 +1165,7 @@ window.CENSUS = {
    },
    {
     "value": "var(--fs-15)",
-    "uses": 6,
+    "uses": 5,
     "examples": [
      "#pickerSearch",
      ".dialog-top h2",
@@ -1183,7 +1190,7 @@ window.CENSUS = {
    },
    {
     "value": "var(--fs-20)",
-    "uses": 9,
+    "uses": 13,
     "examples": [
      "h1",
      "h1.tag-title",
@@ -1247,13 +1254,14 @@ window.CENSUS = {
  },
  "radius": {
   "kinds": 18,
-  "uses": 193,
+  "uses": 207,
   "table": [
    {
     "value": "0",
-    "uses": 1,
+    "uses": 2,
     "examples": [
-     ".search>input"
+     ".search>input",
+     ".task-group"
     ]
    },
    {
@@ -1309,17 +1317,17 @@ window.CENSUS = {
    },
    {
     "value": "var(--radius-8)",
-    "uses": 20,
+    "uses": 24,
     "examples": [
      ".rule",
      "#countHome",
      ".icon",
-     ".menu-item"
+     ".fit-box"
     ]
    },
    {
     "value": "var(--radius-10)",
-    "uses": 17,
+    "uses": 14,
     "examples": [
      ".switch",
      ".rel-no",
@@ -1329,7 +1337,7 @@ window.CENSUS = {
    },
    {
     "value": "var(--radius-12)",
-    "uses": 17,
+    "uses": 22,
     "examples": [
      ".primary",
      "#errorBanner,#damageBanner",
@@ -1346,12 +1354,12 @@ window.CENSUS = {
    },
    {
     "value": "var(--radius-14)",
-    "uses": 10,
+    "uses": 6,
     "examples": [
-     ".toast",
      ".group-card",
      ".pair-card",
-     ".settings-card"
+     ".settings-card",
+     ".shelf-list"
     ]
    },
    {
@@ -1363,12 +1371,12 @@ window.CENSUS = {
    },
    {
     "value": "var(--radius-18)",
-    "uses": 9,
+    "uses": 10,
     "examples": [
      ".content",
-     ".menu",
      ".selection-bar",
-     "dialog"
+     ".sheet",
+     ".dc"
     ]
    },
    {
@@ -1390,7 +1398,7 @@ window.CENSUS = {
    },
    {
     "value": "var(--radius-pill)",
-    "uses": 47,
+    "uses": 57,
     "examples": [
      ".heading-main h1 .icon.small",
      ".staged-chip",
@@ -1412,7 +1420,7 @@ window.CENSUS = {
  },
  "gap": {
   "kinds": 22,
-  "uses": 213,
+  "uses": 215,
   "table": [
    {
     "value": "0",
@@ -1423,17 +1431,16 @@ window.CENSUS = {
    },
    {
     "value": "var(--space-1)",
-    "uses": 4,
+    "uses": 3,
     "examples": [
      ".switch-line>span",
      ".view-opt span,.view-row span",
-     ".cast-poster .cap",
-     ".task-text"
+     ".cast-poster .cap"
     ]
    },
    {
     "value": "var(--space-2)",
-    "uses": 21,
+    "uses": 23,
     "examples": [
      ".variant-chip",
      ".selection-bar",
@@ -1491,7 +1498,7 @@ window.CENSUS = {
    },
    {
     "value": "var(--space-8)",
-    "uses": 46,
+    "uses": 47,
     "examples": [
      ".search-wrap",
      ".sync-now",
@@ -1599,7 +1606,7 @@ window.CENSUS = {
  },
  "padding": {
   "kinds": 99,
-  "uses": 216,
+  "uses": 217,
   "table": [
    {
     "value": "0",
@@ -1652,6 +1659,16 @@ window.CENSUS = {
     ]
    },
    {
+    "value": "0 var(--space-14)",
+    "uses": 5,
+    "examples": [
+     ".cast-tab.plain",
+     ".shelf-bar .watch-add input",
+     ".btn",
+     ".search"
+    ]
+   },
+   {
     "value": "0 var(--space-4)",
     "uses": 5,
     "examples": [
@@ -1689,16 +1706,6 @@ window.CENSUS = {
      ".lib-form",
      ".prov-confirm",
      ".task-item"
-    ]
-   },
-   {
-    "value": "0 var(--space-14)",
-    "uses": 4,
-    "examples": [
-     ".cast-tab.plain",
-     ".shelf-bar .watch-add input",
-     ".btn",
-     ".search"
     ]
    },
    {
@@ -1837,7 +1844,7 @@ window.CENSUS = {
  },
  "height": {
   "kinds": 52,
-  "uses": 112,
+  "uses": 114,
   "table": [
    {
     "value": "height: 1px",
@@ -1903,9 +1910,10 @@ window.CENSUS = {
    },
    {
     "value": "height: 8px",
-    "uses": 2,
+    "uses": 3,
     "examples": [
      ".machine-dot",
+     ".task-item .local-dot",
      ".task-badge"
     ]
    },
@@ -2062,7 +2070,7 @@ window.CENSUS = {
    },
    {
     "value": "height: var(--h-32)",
-    "uses": 8,
+    "uses": 9,
     "examples": [
      ".icon",
      ".menu-drop input",

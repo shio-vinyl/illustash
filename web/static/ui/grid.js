@@ -10,7 +10,7 @@ import {afterSyncLearning, learningNow, learningSettled, learningShown, metaSoon
 import {prefs} from '../core/prefs.js';
 import {SHORTCUTS, currentSource, keyAction, keySelection, modes, selectionSize, shownUuid, viewerTarget} from '../core/modes.js';
 import {keyScope, pageOf, viewOf} from '../core/pages.js';
-import {browsing, cleanup, go, hashFor, stepHistory} from '../core/route.js';
+import {browsing, cleanup, go, hashFor, reRoute, stepHistory} from '../core/route.js';
 import {canLike, likeRoute} from '../core/like.js';
 import {post, readError} from '../core/session.js';
 import {PAGE, countAssets, gridFilters as filters, listIds, readPage} from '../core/assets.js';
@@ -761,7 +761,7 @@ function renderNsfw() {
   b.className = 'nsfw-toggle s-' + (state.nsfw || 'all'); b.title = NSFW_TIP[state.nsfw]; b.setAttribute('aria-label', NSFW_TIP[state.nsfw]);
 }
 export function setNsfw(mode) {
-  state.nsfw = mode; prefs.set('nsfw', mode); renderNsfw(); quitSelecting();
+  state.nsfw = mode; prefs.set('nsfw', mode); reRoute({}); renderNsfw(); quitSelecting();   // 新路由对象：切换前发出的读取晚回来不画
   toast({'': t('已显示全部内容'), hide: t('已隐藏 NSFW'), only: t('只看 NSFW')}[mode]);
   if (!pageOf(state.route).panel) reload(true);
   else pageOf(state.route).refresh?.('nsfw');

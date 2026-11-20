@@ -618,8 +618,8 @@ fn jobs(rows: &[Entity], known: &mut BTreeSet<Job>, attempted: &BTreeSet<Job>) -
     jobs.extend(other.into_iter().filter(|job| !attempted.contains(job)));
     jobs
 }
-/// 角色按实际的写入目标核对来源。归属和候选只负责排队，不决定某个文字键应该写给谁。
-fn character_job(c: &Connection, planned: &[Entity], key: &str, work: &str) -> Result<Vec<Entity>> {
+/// 归属和候选负责排队。名称写入及显示投影共用文字键，只有实际写入目标的作品都匹配时才能查询。
+fn character_job(c: &Connection, planned: &[Entity], key: &str, work: &str) -> Result<Option<Vec<Entity>>> {
     let targets: BTreeSet<_> = crate::names_commands::tag_entities(c, key)?.into_iter().collect();
     let current = entities(c, &dump(&json!(targets)))?;
     if targets.is_empty() || current.len() != targets.len() {
@@ -634,7 +634,7 @@ fn character_job(c: &Connection, planned: &[Entity], key: &str, work: &str) -> R
             return invalid(SOURCE_CHANGED);
         }
     }
-    Ok(current)
+    Ok(current.iter().all(|row| row.work == work).then_some(current))
 }
 fn job_fingerprint(c: &Connection, job: &Job, rows: &[Entity], index: &Value, mode: Fingerprint) -> Result<String> {
     let key = if job.character() { &job.work } else { &job.key };
@@ -779,10 +779,10 @@ fn lookup(
         if job.character() {
             character_job(c, &planned, key, work)
         } else {
-            Ok(Vec::new())
+            Ok(Some(Vec::new()))
         }
     };
-    let before = current(c)?;
+    let Some(before) = current(c)? else { return Ok(()) };
     let index = if job.character() { indexed(c, &before)? } else { Value::Null };
     let job_fp = job_fingerprint(c, job, &before, &index, Fingerprint::Job)?;
     if let Some(marker) = marker {
@@ -818,12 +818,12 @@ fn lookup(
     net::check(&source.cancel)?;
     // 写事务前先用最新的 CCIP 键重查索引名称。识别新加的链接可以没有对应名称，这时查询内容没变。
     // 事务内只核对这次读源库所用的键，因此持有应用写锁时不用等 source.sqlite（#275）。
-    let checked = current(c)?;
+    let checked = current(c)?.ok_or_else(|| Error::invalid(SOURCE_CHANGED))?;
     if job.character() && indexed(c, &checked)? != index {
         return invalid(SOURCE_CHANGED);
     }
     let tx = c.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
-    let publishing = current(&tx)?;
+    let publishing = current(&tx)?.ok_or_else(|| Error::invalid(SOURCE_CHANGED))?;
     if index_keys(&publishing) != index_keys(&checked)
         || job_fingerprint(&tx, job, &publishing, &index, Fingerprint::Job)? != job_fp
     {
@@ -2799,33 +2799,168 @@ mod sources_tests {
             );
         }
 
+        fn link_character(c: &Connection, id: &str, work: &str, system: &str, key: &str) {
+            crate::character_entities::create(
+                c,
+                &crate::character_entities::New { id, kind: "character", work, ..Default::default() },
+                "import",
+            )
+            .unwrap();
+            c.execute(
+                "INSERT INTO term_links(system,key,term_id,current,source,added_at)
+                 SELECT ?1,?2,id,1,'import','2026-11-19' FROM terms WHERE key=?3",
+                [system, key, id],
+            )
+            .unwrap();
+            crate::character_names::put_name(c, id, "zh", "bangumi", "原有名字", "display", 0, 0).unwrap();
+        }
+
+        fn stored_names(c: &Connection, id: &str) -> Vec<String> {
+            c.prepare("SELECT value FROM term_names WHERE term_id=(SELECT id FROM terms WHERE key=?) ORDER BY value")
+                .unwrap()
+                .query_map([id], |row| row.get(0))
+                .unwrap()
+                .collect::<rusqlite::Result<_>>()
+                .unwrap()
+        }
+
+        #[test]
+        fn same_tag_in_different_works_does_not_overwrite_other_entity_names() {
+            let lib = Library::load();
+            let mut c = lib.db();
+            let tx = c.transaction().unwrap();
+            crate::schema::begin_writing(&tx).unwrap();
+            for (id, work, system, key) in [
+                ("same_tag_main", "Example", "danbooru", "same_tag"),
+                ("same_tag_peer", "Another Work", "wd_character", "same_tag"),
+                ("base_first", "Example", "ccip_base", r#"["same_base",1]"#),
+                ("base_second", "Another Work", "ccip_base", r#"["same_base",2]"#),
+            ] {
+                link_character(&tx, id, work, system, key);
+                tx.execute(
+                    "INSERT INTO memberships(uuid,entity,status,origin,sources,source_count,ccip_only,skey)
+                     VALUES (?1,?1,'auto','wd','WD',1,0,'')",
+                    [id],
+                )
+                .unwrap();
+            }
+            crate::schema::commit_writing(tx).unwrap();
+            let p = Providers::start();
+            p.set(|a| {
+                a.wikis.insert("same_tag".into(), vec!["合成新名字".into()]);
+                a.wikis.insert("same_base".into(), vec!["合成新名字".into()]);
+            });
+            lib.run(&p, Some("same_tag_peer"), false).unwrap();
+            assert_eq!(stored_names(&c, "same_tag_main"), ["原有名字"]);
+            assert_eq!(stored_names(&c, "same_tag_peer"), ["原有名字"]);
+            lib.run(&p, None, false).unwrap();
+            assert!(stored_names(&c, "same_tag_main").iter().any(|name| name == "合成新名字"));
+            for id in ["same_tag_peer", "base_first", "base_second"] {
+                assert_eq!(stored_names(&c, id), ["原有名字"], "{id}");
+            }
+            for (key, work) in [("same_tag", "Another Work"), ("same_base", "Example"), ("same_base", "Another Work")] {
+                assert!(
+                    c.query_row(
+                        "SELECT 1 FROM name_cache WHERE key=?",
+                        [Job::new("character", key, work).marker()],
+                        |_| Ok(())
+                    )
+                    .optional()
+                    .unwrap()
+                    .is_none(),
+                    "不适用的任务不写完成标记：{key} {work}"
+                );
+            }
+
+            // 链接变化后，这两个原先跳过的任务可以在下一轮正常取得名称。
+            let tx = c.transaction().unwrap();
+            crate::schema::begin_writing(&tx).unwrap();
+            tx.execute(
+                "UPDATE term_links SET current=0
+                 WHERE term_id IN (SELECT id FROM terms WHERE key IN ('same_tag_main','base_second'))",
+                [],
+            )
+            .unwrap();
+            crate::schema::commit_writing(tx).unwrap();
+            lib.run(&p, None, false).unwrap();
+            for id in ["same_tag_peer", "base_first"] {
+                assert!(stored_names(&c, id).iter().any(|name| name == "合成新名字"), "{id}");
+            }
+            assert_eq!(stored_names(&c, "base_second"), ["原有名字"]);
+        }
+
+        #[test]
+        fn ambiguity_created_during_lookup_rejects_the_pending_result() {
+            let lib = Library::load();
+            let mut c = lib.db();
+            let tx = c.transaction().unwrap();
+            crate::schema::begin_writing(&tx).unwrap();
+            link_character(&tx, "race_first", "Example", "ccip_base", r#"["race_base",1]"#);
+            crate::schema::commit_writing(tx).unwrap();
+
+            let path = lib.root.join("library.sqlite");
+            let p = Providers::start_with(move |url, query| {
+                if url == "/wiki_pages.json" && test_provider::param(query, "search[title]") == "race_base" {
+                    let mut db = net::db(&path).unwrap();
+                    let tx = db.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate).unwrap();
+                    crate::schema::begin_writing(&tx).unwrap();
+                    link_character(&tx, "race_second", "Another Work", "ccip_base", r#"["race_base",2]"#);
+                    crate::schema::commit_writing(tx).unwrap();
+                }
+            });
+            p.set(|a| {
+                a.wikis.insert("race_base".into(), vec!["合成新名字".into()]);
+            });
+            let error = lib.run(&p, Some("race_first"), false).unwrap_err();
+            assert!(source_changed(&error), "{error:?}");
+            assert_eq!(stored_names(&c, "race_first"), ["原有名字"]);
+            assert_eq!(stored_names(&c, "race_second"), ["原有名字"]);
+            let marker = Job::new("character", "race_base", "Example").marker();
+            assert!(c
+                .query_row("SELECT 1 FROM name_cache WHERE key=?", [marker], |_| Ok(()))
+                .optional()
+                .unwrap()
+                .is_none());
+        }
+
         #[test]
         fn old_character_completion_is_reused_and_current_fingerprint_ignores_work_links() {
             let lib = Library::load();
             let mut c = lib.db();
             let job = Job::new("character", "alice", "Example");
-            let rows = character_job(&c, &[], &job.key, &job.work).unwrap();
+            let rows = character_job(&c, &[], &job.key, &job.work).unwrap().unwrap();
             let index = indexed(&c, &rows).unwrap();
             let legacy = job_fingerprint(&c, &job, &rows, &index, Fingerprint::LegacyJob).unwrap();
             let current = job_fingerprint(&c, &job, &rows, &index, Fingerprint::Job).unwrap();
             assert_ne!(legacy, current);
             let marker = dump(&json!({"sources":legacy}));
             c.execute("INSERT INTO name_cache VALUES (?,?)", [job.marker(), marker.clone()]).unwrap();
+            let timestamp_job = Job::new("character", "bob", "Example");
+            let timestamp = "1795111200.0";
+            let whole_scope = fingerprint(&c, &scope(&c, None).unwrap()).unwrap();
+            c.execute(
+                "INSERT INTO name_cache VALUES (?,?),(?,?)",
+                [timestamp_job.marker().as_str(), timestamp, SOURCES, &whole_scope],
+            )
+            .unwrap();
 
             let p = Providers::start();
             lib.run(&p, None, false).unwrap();
-            assert!(
-                !p.calls().iter().any(|(url, _)| url.split_once('?').is_some_and(|(path, query)| {
-                    path == "/wiki_pages.json" && test_provider::param(query, "search[title]") == "alice"
-                })),
-                "{:?}",
-                p.calls()
-            );
-            assert_eq!(
-                c.query_row("SELECT value FROM name_cache WHERE key=?", [job.marker()], |r| r.get::<_, String>(0))
-                    .unwrap(),
-                marker,
-            );
+            for (old_job, old_marker) in [(&job, marker.as_str()), (&timestamp_job, timestamp)] {
+                assert!(
+                    !p.calls().iter().any(|(url, _)| url.split_once('?').is_some_and(|(path, query)| {
+                        path == "/wiki_pages.json" && test_provider::param(query, "search[title]") == old_job.key
+                    })),
+                    "{:?}",
+                    p.calls()
+                );
+                assert_eq!(
+                    c.query_row("SELECT value FROM name_cache WHERE key=?", [old_job.marker()], |r| r
+                        .get::<_, String>(0))
+                        .unwrap(),
+                    old_marker,
+                );
+            }
 
             let tx = c.transaction().unwrap();
             crate::schema::begin_writing(&tx).unwrap();

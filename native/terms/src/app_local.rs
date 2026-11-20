@@ -6,7 +6,10 @@ use crate::{
     Error, Result,
 };
 use rusqlite::{Connection, OpenFlags};
-use std::collections::{HashMap, HashSet};
+use std::{
+    collections::{HashMap, HashSet},
+    path::Path,
+};
 pub(crate) const ROUTES: &[&str] =
     &["/api/about", "/api/sync", "/api/names", "/api/index", "/api/provenance", "/api/accounts", "/api/oc/groups"];
 fn off() -> Json {
@@ -36,7 +39,7 @@ pub(crate) fn read(context: &LibraryContext, url: &str) -> Result<Json> {
             }
             Json::object([("state", off()), ("history", Json::Array(history))])
         }
-        "/api/names" => names(&tx, q.get("progress").is_some_and(|p| p == "1"))?,
+        "/api/names" => names(&tx, &context.db, q.get("progress").is_some_and(|p| p == "1"))?,
         _ => return Err(Error::Invalid("未迁移宿主接口".into())),
     };
     tx.commit()?;
@@ -74,7 +77,7 @@ fn components(context: &LibraryContext) -> Json {
     let state = |present: bool, label: &str| if present { Json::from(label) } else { None::<String>.into() };
     Json::object([("识别组件", state(worker, "可用")), ("ONNX Runtime", state(runtime, "已安装"))])
 }
-pub(crate) fn names(c: &Connection, progress: bool) -> Result<Json> {
+pub(crate) fn names(c: &Connection, path: &Path, progress: bool) -> Result<Json> {
     let mut out = Json::object([(
         "state",
         Json::object([("status", "off".into()), ("done", 0i64.into()), ("total", 0i64.into())]),
@@ -100,28 +103,7 @@ pub(crate) fn names(c: &Connection, progress: bool) -> Result<Json> {
         loaded_counts(c)?
     };
     out.set("counts", counts);
-    let settings: HashMap<_, _> = c
-        .prepare("SELECT key,value FROM name_settings")?
-        .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?
-        .collect::<rusqlite::Result<_>>()?;
-    let key = settings.get("model_key").or_else(|| settings.get("deepseek_key")).filter(|s| !s.is_empty());
-    out.set(
-        "model_api",
-        Json::object([
-            ("configured", key.is_some().into()),
-            ("hint", key.map(|s| s.chars().skip(s.chars().count().saturating_sub(4)).collect::<String>()).into()),
-            (
-                "model",
-                settings
-                    .get("model_name")
-                    .or_else(|| settings.get("deepseek_model"))
-                    .map(String::as_str)
-                    .unwrap_or("deepseek-chat")
-                    .into(),
-            ),
-            ("base", settings.get("model_base").map(String::as_str).unwrap_or("https://api.deepseek.com").into()),
-        ]),
-    );
+    out.set("model_api", crate::app_names::model_api::status(c, path)?);
     Ok(out)
 }
 /// `/api/names` 统计的角色、作品和皮肤：有效、已链接、未合并的非 OC 身份的角色 tag、作品文本和皮肤变体。

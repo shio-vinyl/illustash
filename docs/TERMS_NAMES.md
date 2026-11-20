@@ -134,7 +134,11 @@ Python 里的词表副本仍给 NameUpdater 用，两边由测试钉住相同。
 
 ### 原生运行与恢复
 
-原生宿主直接提供 GET/POST `/api/names`、entities/works 的远程查询和 local-links 建议。启动按当前包的 names 偏好补拉，`--no-names` 禁止后台与显式刷新，仍可读取已有显示名及模型设置。名称文本查询（角色/作品远程搜索、后台补拉中文名、作品版权解析）的授权有两种来源（2026-10-06，#1）：`--names-network` 仅为本次进程授予；图库的持久授权由用户在界面上同意（`POST /api/names {"action":"network","allow":true|false}`），存在 `library.sqlite` 的 `prefs` 表 `names_network` 行（`{"granted_at":…}`），与启动偏好分开，撤销即删除该行。授权在每次请求时实时读取，撤销后运行中的任务下一次请求即被拒绝。`GET /api/names` 返回 `network:{authorized,this_run,granted_at}`。未授权的非本机请求报「显示名联网尚未授权」（HTTP 502），前端据此显示授权入口，其他失败显示具体原因。保存 key 和修改启动偏好不授予网络。模型 HTTP 401/403 等以本地安全错误报告，不回显服务响应、凭据或请求头。模型设置继续兼容旧 `deepseek_key`/`deepseek_model`，清除仅影响当前包。
+原生宿主直接提供 GET/POST `/api/names`、entities/works 的远程查询和 local-links 建议。启动按当前包的 names 偏好补拉，`--no-names` 禁止后台与显式刷新，仍可读取已有显示名及模型设置。名称文本查询（角色/作品远程搜索、后台补拉中文名、作品版权解析）的授权有两种来源（2026-10-06，#1）：`--names-network` 仅为本次进程授予；图库的持久授权由用户在界面上同意（`POST /api/names {"action":"network","allow":true|false}`），存在 `library.sqlite` 的 `prefs` 表 `names_network` 行（`{"granted_at":…}`），与启动偏好分开，撤销即删除该行。授权在每次请求时实时读取，撤销后运行中的任务下一次请求即被拒绝。`GET /api/names` 返回 `network:{authorized,this_run,granted_at}`。未授权的非本机请求报「显示名联网尚未授权」（HTTP 502），前端据此显示授权入口，其他失败显示具体原因。保存 key 和修改启动偏好不授予网络。模型 HTTP 401/403 等以本地安全错误报告，不回显服务响应、凭据或请求头。模型设置的存储和回退见下文。
+
+模型名和接口地址保留在 `name_settings`。模型 API key 使用 macOS 钥匙串或 Windows 当前用户 DPAPI，SQLite 只保存随机引用。凭据绑定当前机器上的图库路径和接口地址；复制、移动图库或改用其他接口后需要重新填写，除非保存新地址时同时提供 key。删除或替换设置只影响当前包里的凭据。读取设置只返回尾号，保存也不会授予联网权限。
+
+现有可写图库首次打开时迁移 `model_key`，缺失时沿用旧 `deepseek_key`，`deepseek_model` 仍可作为模型名。写入本机存储后才提交引用并启用 `secure_delete` 删除两个旧密钥行。提交后尝试截断 WAL。迁移失败可重新打开图库或保存模型设置重试，原密钥不用于联网。迁移范围是当前图库的有效密钥行，已有副本、备份和更早写入遗留的磁盘字节需分别处理。回退旧版时需要重新填写模型密钥，旧版仍会保存明文。
 
 `backend_effects.kind=names:{"entity":...,"refresh":...}` 持久绑定事件所在包，entity=null 为全范围；单实体包含父角色、同族皮肤和作品。公共 Task 身份包含 canonical 包路径、generation、会话摘要及 task_id；切库先验证替代包，再取消并等待旧任务，退出同样等待。任务与同步选择器捕获原包路径及取消标记，迟到响应不能写入新包或返回新会话。底层 HTTP 每次 25 秒超时，取消期间等待在途 I/O 超时后收尾；等待节流/退避时每 20 ms 检查取消。
 

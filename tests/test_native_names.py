@@ -8,6 +8,7 @@ from concurrent.futures import ThreadPoolExecutor
 import http.server
 import json
 import os
+import shutil
 from pathlib import Path
 import signal
 import sqlite3
@@ -106,7 +107,8 @@ class NativeNamesTest(unittest.TestCase):
         log = tempfile.TemporaryFile(); self.addCleanup(log.close)
         args = [str(self.binary), 'http', '--no-auto-sync', '--library', str(path), '--port', str(self.port), '--root', str(self.resources), *extra]
         if not getattr(self, 'enabled', False): args += ['--no-names']
-        process = subprocess.Popen(args, env=self.env, stdout=log, stderr=log, **SPAWN)
+        env = {**self.env, 'ILLUSTASH_NO_KEYCHAIN': '1'}
+        process = subprocess.Popen(args, env=env, stdout=log, stderr=log, **SPAWN)
         self.addCleanup(self.stop, process)
         enter(self.origin, log, process)
         lifecycle.wait_human_backup(self, self.origin)
@@ -172,6 +174,66 @@ class NativeNamesTest(unittest.TestCase):
         response=self.request('/api/names',{'action':'model_api_test'})
         self.assertEqual(response['status'],200)
         self.assertNotIn(b'private provider',response['body']);self.assertNotIn(b'synthetic-secret',response['body'])
+    def test_legacy_model_key_migrates_after_storage_failure_and_stays_local(self):
+        self.stop(self.process)
+        active = 'synthetic-active-model-key-4829'
+        legacy = 'synthetic-obsolete-model-key-2930'
+        with closing(sqlite3.connect(self.lib.db)) as c:
+            c.execute('PRAGMA journal_mode=WAL')
+            c.executemany('INSERT OR REPLACE INTO name_settings VALUES (?,?)',
+                          [('model_key', active), ('deepseek_key', legacy),
+                           ('deepseek_model', 'synthetic-legacy-model'), ('model_base', self.service.base)])
+            c.commit()
+        accounts = self.support / 'accounts'
+        accounts.write_bytes(b'synthetic obstacle')
+        self.process, self.log = self.start(self.lib.path)
+
+        def rows():
+            with closing(sqlite3.connect(self.lib.db)) as c:
+                return dict(c.execute('SELECT key,value FROM name_settings'))
+
+        def model():
+            response = self.request('/api/names')
+            self.assertEqual(response['status'], 200, response['body'])
+            return json.loads(response['body'])['model_api']
+
+        self.assertEqual(rows()['model_key'], active)
+        self.assertEqual(rows()['deepseek_key'], legacy)
+        self.assertFalse(model()['configured'])
+        self.stop(self.process)
+        accounts.unlink()
+        self.process, self.log = self.start(self.lib.path)
+        self.token = json.loads(self.request('/api/bootstrap')['body'])['token']
+        self.assertEqual(model(), {'configured': True, 'hint': '4829', 'model': 'synthetic-legacy-model',
+                                   'base': self.service.base})
+        self.assertFalse({'model_key', 'deepseek_key'} & rows().keys())
+        files = [self.lib.db, self.lib.db.with_suffix('.sqlite-wal')]
+        for path in files:
+            data = path.read_bytes() if path.is_file() else b''
+            self.assertNotIn(active.encode(), data)
+            self.assertNotIn(legacy.encode(), data)
+        stored, = accounts.glob('model-api-*')
+        if os.name == 'nt':
+            self.assertEqual(stored.suffix, '.dpapi')
+            self.assertNotIn(active.encode(), stored.read_bytes())
+        self.assertEqual(json.loads(self.request('/api/names', {'action': 'model_api_test'})['body']), {'ok': True})
+        self.stop(self.process)
+
+        # 同 ID 的原样复制只得到配置。副本换地址、清除密钥都不会动原包的条目。
+        copy = self.root / 'model-copy.pilib'
+        shutil.copytree(self.lib.path, copy)
+        self.process, self.log = self.start(copy)
+        self.token = json.loads(self.request('/api/bootstrap')['body'])['token']
+        self.assertFalse(model()['configured'])
+        self.assertEqual(self.request('/api/names', {'action': 'model_api', 'key': None})['status'], 200)
+        self.stop(self.process)
+        self.process, self.log = self.start(self.lib.path)
+        self.token = json.loads(self.request('/api/bootstrap')['body'])['token']
+        self.assertEqual(model()['hint'], '4829')
+        self.assertEqual(self.request('/api/names', {'action': 'model_api', 'key': None})['status'], 200)
+        self.assertFalse(model()['configured'])
+        self.assertFalse(stored.exists())
+
     def test_validation_and_disabled_refresh_error_status(self):
         for body in ({'action':'refresh'},{'action':'refresh','entity':3},{'action':'model_api','key':'bad'}, {'action':'model_api','model':'bad space'},{'action':'model_api','base':'http://example.invalid'},{'action':'model_api','base':self.service.base+'?x=1'},{'action':'unknown'}):
             self.assertEqual(self.request('/api/names',body)['status'],400)

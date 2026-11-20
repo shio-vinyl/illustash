@@ -2,7 +2,7 @@
 use crate::{app_library::Library, http_json::Json, Error, Result};
 use rusqlite::{
     backup::{Backup, StepResult},
-    Connection,
+    Connection, OpenFlags,
 };
 use std::collections::HashMap;
 use std::{
@@ -123,8 +123,7 @@ fn copy_cancelled(mut from: impl Read, mut to: impl Write, cancel: &AtomicBool) 
 }
 /// 只对导出快照或新解开的图库包调用，从不对发送方自己的数据库调用。
 /// 模型连接设置（含将来的密钥）、长期联网同意和首次引导记录（回答过哪些问题、勾过哪些项：#116）属于个人数据。
-fn sanitize_database(path: &Path, cancel: Option<Arc<AtomicBool>>) -> Result<()> {
-    let mut c = crate::sqlite::open_with_flags(path, rusqlite::OpenFlags::SQLITE_OPEN_READ_WRITE)?;
+fn sanitize_database(c: &mut Connection, cancel: Option<Arc<AtomicBool>>) -> Result<()> {
     // 大图库导出时压实可能占大部分时间。切换图库、关闭应用时，除了流式复制和备份，也必须能中断这些 SQLite 操作。
     c.progress_handler(1000, cancel.map(|cancel| move || cancel.load(Ordering::SeqCst)))?;
     c.execute_batch("PRAGMA journal_mode=DELETE; PRAGMA secure_delete=ON;")?;
@@ -172,7 +171,8 @@ pub(crate) fn export(library: &Library, dest: &Path, cancel: &Arc<AtomicBool>) -
     // 先复制数据库，作为一致的一组；之后压缩时不持有任何数据库。
     let copies = snapshot(library, &work.0, cancel)?;
     if let Some(copy) = copies.get("library.sqlite") {
-        sanitize_database(copy, Some(cancel.clone()))?;
+        let mut c = crate::sqlite::open_with_flags(copy, OpenFlags::SQLITE_OPEN_READ_WRITE)?;
+        sanitize_database(&mut c, Some(cancel.clone()))?;
         cancelled(cancel)?;
     }
     let mut zip = ZipWriter::new(BufWriter::with_capacity(
@@ -437,7 +437,12 @@ pub(crate) fn import(
     let database = path.join("library.sqlite");
     observer.stage("cleaning");
     if database.try_exists()? {
-        sanitize_database(&database, Some(cancel.clone())).map_err(|e| match import_cancelled(cancel) {
+        let sanitize = || {
+            let mut c = crate::sqlite::open_with_flags(&database, OpenFlags::SQLITE_OPEN_READ_WRITE)?;
+            crate::sqlite::protect_archive(&c)?;
+            sanitize_database(&mut c, Some(cancel.clone()))
+        };
+        sanitize().map_err(|e| match import_cancelled(cancel) {
             Err(stop) => stop,
             Ok(()) => e,
         })?;
@@ -455,7 +460,7 @@ pub(crate) fn import(
     observer.stage("checking");
     // 只发布能打开的图库包：数据库损坏或配置不完整在这里就拒绝并删掉新目录，不登记一个随后打不开的图库。
     if fmt_is_current(&fmt) {
-        opens(&path).map_err(|e| invalid(format!("导入的图库无法打开，已取消导入：{e}")))?;
+        Library::check_import(&path).map_err(|e| invalid(format!("导入的图库无法打开，已取消导入：{e}")))?;
     }
     import_cancelled(cancel)?;
     observer.stage("publishing");
@@ -473,14 +478,6 @@ fn fmt_is_current(fmt: &Json) -> bool {
         Json::Integer(v) => v.parse::<i64>().is_ok_and(|v| v == crate::app_library::FORMAT),
         Json::Scalar(serde_json::Value::Number(v)) => v.as_i64() == Some(crate::app_library::FORMAT),
         _ => false,
-    }
-}
-/// 与打开时相同的校验，含两项完整性检查。核心仍需显式升级的图库包是合法输入：按那次升级会做的方式检查。
-fn opens(path: &Path) -> Result<()> {
-    match Library::open(path) {
-        Ok(_) => Ok(()),
-        Err(Error::Schema(_)) => Library::open_for_upgrade(path).map(|_| ()),
-        Err(e) => Err(e),
     }
 }
 struct Task {
@@ -857,11 +854,9 @@ mod tests {
     fn legacy_database_without_settings_preserves_sparse_rowids() {
         let work = stage(&std::env::temp_dir()).unwrap();
         let path = work.0.join("library.sqlite");
-        let c = crate::sqlite::open(&path).unwrap();
+        let mut c = crate::sqlite::open(&path).unwrap();
         c.execute_batch("CREATE TABLE human(value BLOB); INSERT INTO human(rowid,value) VALUES (37,x'00ff');").unwrap();
-        drop(c);
-        sanitize_database(&path, None).unwrap();
-        let c = crate::sqlite::open(&path).unwrap();
+        sanitize_database(&mut c, None).unwrap();
         let row: (i64, Vec<u8>) =
             c.query_row("SELECT rowid,value FROM human", [], |r| Ok((r.get(0)?, r.get(1)?))).unwrap();
         assert_eq!(row, (37, vec![0, 255]));
@@ -875,10 +870,9 @@ mod tests {
     fn sanitization_honors_export_cancellation_inside_sqlite() {
         let work = stage(&std::env::temp_dir()).unwrap();
         let path = work.0.join("library.sqlite");
-        let c = crate::sqlite::open(&path).unwrap();
+        let mut c = crate::sqlite::open(&path).unwrap();
         c.execute_batch("CREATE TABLE human(value); WITH RECURSIVE n(x) AS (VALUES(1) UNION ALL SELECT x+1 FROM n WHERE x<20000) INSERT INTO human SELECT x FROM n;").unwrap();
-        drop(c);
-        let error = sanitize_database(&path, Some(Arc::new(AtomicBool::new(true)))).unwrap_err();
+        let error = sanitize_database(&mut c, Some(Arc::new(AtomicBool::new(true)))).unwrap_err();
         assert!(matches!(error, Error::Sql(_)), "{error}");
     }
 

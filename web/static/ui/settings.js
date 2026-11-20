@@ -187,7 +187,7 @@ export async function renderNamesCard(fresh = true) {
 const modelHost = m => { try { return new URL(m?.base || 'https://api.deepseek.com').host; } catch (e) { return '—'; } };
 export function renderModelCard() {
   const card = $('modelCard'), m = state.names?.model_api; if (!card || !m) return;
-  if (!setSettingsHTML(card, cardHead(t('名称翻译（可选）'), t('Bangumi 没有中文名时，用兼容 OpenAI 接口的大模型翻译，只发送 tag、日文名和作品名。译名可能不准，悬停提示里会标「机器翻译」。API key 只存在这个图库的数据库里。'), 'library') + `
+  if (!setSettingsHTML(card, cardHead(t('名称翻译（可选）'), t('Bangumi 没有中文名时，用兼容 OpenAI 接口的大模型翻译，只发送 tag、日文名和作品名。译名可能不准，悬停提示里会标「机器翻译」。API key 保存在本机凭据存储中。'), 'library') + `
     <div class="form-grid">
       <label for="modelBase">${t('接口地址')}</label><input id="modelBase" value="${esc(m.base || '')}" placeholder="https://api.deepseek.com" spellcheck="false" autocomplete="off">
       <label for="modelName">${t('模型')}</label><input id="modelName" value="${esc(m.model || '')}" placeholder="deepseek-chat" spellcheck="false" autocomplete="off">

@@ -1,4 +1,6 @@
 //! 原生名称任务的持有者。不可变的图库包路径、持久的请求和可重试的失败。
+pub(crate) mod model_api;
+
 use crate::error::invalid;
 use crate::{
     app_library::Library,
@@ -496,7 +498,7 @@ fn enrich(source: &mut Source, kind: &str, key: &str, work: &str) -> Result<Vec<
         ops.push(replace(kind, key, "wiki", found.map(|v| vec![json!(["zh", v])]).unwrap_or_default()));
     }
     // 模型在回滚的事务里读取待定的选择，然后在不持有数据库锁的情况下发请求。
-    let settings = settings(&c)?;
+    let settings = model_api::credentials(&c, &source.path)?;
     if let Some(secret) = settings.key {
         let tx = c.transaction()?;
         crate::schema::begin_writing(&tx)?;
@@ -535,9 +537,6 @@ fn enrich(source: &mut Source, kind: &str, key: &str, work: &str) -> Result<Vec<
         }
     }
     Ok(ops)
-}
-fn settings(c: &Connection) -> Result<crate::app_accounts::ModelCredentials> {
-    crate::app_accounts::model_credentials(c)
 }
 fn endpoint(base: &str) -> String {
     if base.ends_with("/chat/completions") {
@@ -812,7 +811,7 @@ fn retry_after(failures: u32) -> Duration {
 fn translate_skin(source: &mut Source, key: &str) -> Result<Vec<Value>> {
     // 复用同一条翻译路径，不取 wiki 或 Bangumi。
     let c = net::db(&source.path)?;
-    let settings = settings(&c)?;
+    let settings = model_api::credentials(&c, &source.path)?;
     let choice = choose(&c, "skin", key)?;
     if settings.key.is_none() || !matches!(choice.source.as_str(), "readable" | "model") {
         return Ok(vec![]);
@@ -876,6 +875,11 @@ impl Updater {
     pub fn new(library: &Library, enabled: bool, authorized: bool, generation: u64, session: &str) -> Result<Self> {
         let pref = crate::app_settings::startup(library)?;
         let enabled = enabled && pref.get("names").is_none_or(crate::app_service::truthy);
+        if !library.frozen() {
+            if let Err(error) = model_api::migrate(&library.db()) {
+                eprintln!("迁移名称翻译的模型凭据失败：{error}");
+            }
+        }
         let granted = consent(library)?.is_some();
         Ok(Self {
             state: Arc::new(Mutex::new(json!({"status":if enabled{"idle"}else{"off"},"done":0,"total":0}))),
@@ -915,7 +919,7 @@ impl Updater {
     }
     pub fn info(&self, library: &Library) -> Result<Json> {
         let c = crate::app_library::read_connection(&library.instance_path().join("library.sqlite"))?;
-        let mut v = crate::app_local::names(&c, false)?;
+        let mut v = crate::app_local::names(&c, &library.db(), false)?;
         v.set("state", self.state_json());
         Ok(v)
     }
@@ -1129,7 +1133,7 @@ impl Updater {
                 self.info(library)
             }
             Some("model_api") => {
-                configure(&library.instance_path().join("library.sqlite"), body)?;
+                model_api::configure(&library.db(), body)?;
                 self.info(library)
             }
             Some("network") => {
@@ -1160,67 +1164,8 @@ impl Drop for Updater {
         self.stop();
     }
 }
-fn configure(path: &std::path::Path, body: &Json) -> Result<()> {
-    let mut c = net::db(path)?;
-    let text = |k: &str| -> Result<Option<&str>> {
-        match body.get(k) {
-            None | Some(Json::Scalar(Value::Null)) => Ok(None),
-            Some(Json::Scalar(Value::String(s))) => Ok(Some(s)),
-            _ => invalid("模型设置格式不正确"),
-        }
-    };
-    let key = text("key")?;
-    let model = text("model")?;
-    let base = text("base")?;
-    if let Some(k) = key {
-        let k = k.trim();
-        if !(5..=512).contains(&k.chars().count()) || k.chars().any(char::is_whitespace) {
-            return invalid("API key 格式不正确");
-        }
-    }
-    if let Some(m) = model {
-        if !regex::Regex::new(r"^[\w.:/-]{1,100}$").expect("constant regular expression is valid").is_match(m) {
-            return invalid("模型名称格式不正确");
-        }
-    }
-    if let Some(b) = base {
-        let u = url::Url::parse(b.trim())
-            .map_err(|_| Error::Invalid("接口地址须为 https 地址（本机服务可用 http）".into()))?;
-        if b.chars().count() > 300
-            || u.host_str().is_none()
-            || u.query().is_some()
-            || u.fragment().is_some()
-            || !(u.scheme() == "https"
-                || (u.scheme() == "http" && matches!(u.host_str(), Some("localhost" | "127.0.0.1" | "[::1]"))))
-        {
-            return invalid("接口地址须为 https 地址（本机服务可用 http）");
-        }
-    }
-    let tx = c.transaction()?;
-    tx.execute_batch("INSERT OR IGNORE INTO name_settings SELECT 'model_key',value FROM name_settings WHERE key='deepseek_key'; INSERT OR IGNORE INTO name_settings SELECT 'model_name',value FROM name_settings WHERE key='deepseek_model'; DELETE FROM name_settings WHERE key IN ('deepseek_key','deepseek_model');")?;
-    let base = base.map(|s| s.trim().trim_end_matches('/'));
-    // 密钥只发往输入它时对应的地址：换了地址而没有新密钥时清除密钥，由用户重新输入。
-    if let Some(b) = base {
-        if key.is_none() && b != settings(&tx)?.base {
-            tx.execute("DELETE FROM name_settings WHERE key='model_key'", [])?;
-        }
-    }
-    if body.get("key").is_some() {
-        tx.execute("DELETE FROM name_settings WHERE key='model_key'", [])?;
-        if let Some(k) = key {
-            tx.execute("INSERT INTO name_settings VALUES ('model_key',?)", [k.trim()])?;
-        }
-    }
-    for (k, v) in [("model_name", model), ("model_base", base)] {
-        if let Some(v) = v {
-            tx.execute("INSERT OR REPLACE INTO name_settings VALUES (?,?)", [k, v])?;
-        }
-    }
-    tx.commit()?;
-    Ok(())
-}
 pub(crate) fn test(source: &Source) -> Result<Json> {
-    let settings = settings(&net::db(&source.path)?)?;
+    let settings = model_api::credentials(&net::db(&source.path)?, &source.path)?;
     let Some(key) = settings.key else { return Ok(json!({"ok":false,"error":"尚未设置 API key"}).into()) };
     let body = json!({"model":settings.model,"messages":[{"role":"user","content":"Reply with OK."}],"max_tokens":128,"temperature":0});
     let result = source.fetch(&endpoint(&settings.base), Some(&body), Some(&key)).and_then(|v| {
@@ -2060,12 +2005,11 @@ mod sources_tests {
             run(&mut source, entity, &Mutex::new(json!({})), &Cell::new(false)).map(|_| ())
         }
         fn configure_model(&self, p: &Providers) {
-            self.db()
-                .execute_batch(&format!(
-                    "INSERT OR REPLACE INTO name_settings VALUES ('model_key','sk-test-secret-1234'),('model_base','{}')",
-                    p.base
-                ))
-                .unwrap();
+            model_api::configure(
+                &self.root.join("library.sqlite"),
+                &json!({"key":"sk-test-secret-1234","base":p.base}).into(),
+            )
+            .unwrap();
         }
         fn put(&self, kind: &str, key: &str, lang: &str, source: &str, value: &str) {
             let mut c = self.db();
@@ -2455,8 +2399,8 @@ mod sources_tests {
     fn a_new_model_address_clears_the_key() {
         let lib = Library::load();
         let path = lib.root.join("library.sqlite");
-        let set = |body: &str| configure(&path, &crate::http_json::parse_request(body).unwrap());
-        let key = || settings(&lib.db()).unwrap().key;
+        let set = |body: &str| model_api::configure(&path, &crate::http_json::parse_request(body).unwrap());
+        let key = || model_api::credentials(&lib.db(), &path).unwrap().key;
         set(r#"{"key":"sk-synthetic-0000","base":"https://one.example/"}"#).unwrap();
         assert_eq!(key().as_deref(), Some("sk-synthetic-0000"));
         // 同样的地址（设置卡片每次保存都会发送）以及只改模型，都保留密钥。
@@ -2466,7 +2410,7 @@ mod sources_tests {
         // 新地址而没有密钥：密钥清除，地址保留。
         set(r#"{"base":"https://two.example"}"#).unwrap();
         assert_eq!(key(), None);
-        assert_eq!(settings(&lib.db()).unwrap().base, "https://two.example");
+        assert_eq!(model_api::credentials(&lib.db(), &path).unwrap().base, "https://two.example");
         // 新地址带着密钥：保留新的密钥。
         set(r#"{"key":"sk-synthetic-1111","base":"https://three.example"}"#).unwrap();
         assert_eq!(key().as_deref(), Some("sk-synthetic-1111"));

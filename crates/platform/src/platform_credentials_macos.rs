@@ -2,7 +2,7 @@
 //! 原生钥匙串访问不经过子进程，也不受环境变量覆盖影响。
 use std::{ffi::c_void, ptr};
 type Ref = *const c_void;
-const NOT_FOUND: i32 = -25300;
+pub(super) const NOT_FOUND: i32 = -25300;
 const DUPLICATE: i32 = -25299;
 const PARAM: i32 = -50;
 

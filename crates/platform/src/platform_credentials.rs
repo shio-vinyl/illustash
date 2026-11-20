@@ -30,11 +30,30 @@ pub fn read(kind: &str) -> Result<Option<String>> {
             unreachable!("macOS only")
         }
     } else if cfg!(windows) {
-        windows_secret(kind)?
+        windows_secret(kind)?.unwrap_or_default()
     } else {
         fs::read_to_string(support()?.join("accounts").join(kind)).unwrap_or_default()
     };
     Ok((!value.trim().is_empty()).then(|| value.trim().to_string()))
+}
+/// 读取凭据；只有条目确实不存在时才返回空。适用于需要分辨存储故障与未配置的调用方。
+pub fn read_strict(kind: &str) -> Result<Option<String>> {
+    #[cfg(target_os = "macos")]
+    if keychain() {
+        return match macos::Store::default().read(kind) {
+            Ok(bytes) => String::from_utf8(bytes).map(Some).map_err(|_| crate::Error::invalid("钥匙串凭据格式无效")),
+            Err(macos::NOT_FOUND) => Ok(None),
+            Err(_) => Err(crate::Error::invalid("读取钥匙串失败")),
+        };
+    }
+    #[cfg(windows)]
+    return windows_secret(kind);
+    #[cfg(not(windows))]
+    match fs::read_to_string(secret_path(kind)?) {
+        Ok(value) => Ok(Some(value)),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(e.into()),
+    }
 }
 pub fn write(kind: &str, value: &str) -> Result<()> {
     if keychain() {
@@ -63,14 +82,25 @@ pub fn remove(kind: &str) -> Result<()> {
         let _ = macos::Store::default().remove(kind);
         #[cfg(not(target_os = "macos"))]
         unreachable!("macOS only");
+        Ok(())
     } else {
-        match fs::remove_file(secret_path(kind)?) {
-            Ok(()) => {}
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-            Err(e) => return Err(e.into()),
-        }
+        remove_file(kind)
     }
-    Ok(())
+}
+/// 删除凭据，条目不存在时成功，其他存储错误由调用方处理。
+pub fn remove_strict(kind: &str) -> Result<()> {
+    #[cfg(target_os = "macos")]
+    if keychain() {
+        return macos::Store::default().remove(kind).map_err(|_| crate::Error::invalid("删除钥匙串凭据失败"));
+    }
+    remove_file(kind)
+}
+fn remove_file(kind: &str) -> Result<()> {
+    match fs::remove_file(secret_path(kind)?) {
+        Ok(()) => Ok(()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(e) => Err(e.into()),
+    }
 }
 // Windows 从不读取或迁移旧的明文文件。重新绑定时另写一个 DPAPI blob；
 // 卸载或回退时不会把它误当成明文。
@@ -78,13 +108,14 @@ fn secret_path(kind: &str) -> Result<PathBuf> {
     Ok(support()?.join("accounts").join(if cfg!(windows) { format!("{kind}.dpapi") } else { kind.into() }))
 }
 #[cfg(windows)]
-fn windows_secret(kind: &str) -> Result<String> {
+fn windows_secret(kind: &str) -> Result<Option<String>> {
     let bytes = match fs::read(secret_path(kind)?) {
         Ok(bytes) => bytes,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(String::new()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
         Err(e) => return Err(e.into()),
     };
     String::from_utf8(dpapi::unprotect(&bytes, kind)?)
+        .map(Some)
         .map_err(|_| crate::Error::invalid("Windows 凭据格式无效，请重新绑定"))
 }
 #[cfg(windows)]
@@ -94,12 +125,17 @@ fn windows_put(kind: &str, value: &str) -> Result<()> {
     fs::create_dir_all(path.parent().expect("credential path parent"))?;
     // 账号操作是串行的。任何时候只写密文，临时文件也一样；加密失败时不会覆盖旧的 blob。
     let tmp = path.with_extension("dpapi.tmp");
-    fs::write(&tmp, bytes)?;
+    {
+        use std::io::Write;
+        let mut file = fs::File::create(&tmp)?;
+        file.write_all(&bytes)?;
+        file.sync_all()?;
+    }
     fs::rename(tmp, path)?;
     Ok(())
 }
 #[cfg(not(windows))]
-fn windows_secret(_: &str) -> Result<String> {
+fn windows_secret(_: &str) -> Result<Option<String>> {
     unreachable!("Windows only")
 }
 #[cfg(not(windows))]

@@ -1557,6 +1557,38 @@ pub fn read(c: &Connection, context: &LibraryContext, path: &str, q: &HashMap<St
     };
     Ok((result, 200))
 }
+/// 普通图库的总数等于资产数减去已排除的资产，再减去尚未计入排除的折叠资产。
+/// 以排除表与副本表为起点，只查它们引用的资产；已移出图库的 UUID 不参与扣减。
+fn visible_total(c: &Connection) -> Result<i64> {
+    count(
+        c,
+        "SELECT (SELECT count(*) FROM assets)
+             - (SELECT count(*) FROM excluded x CROSS JOIN assets a ON a.uuid=x.uuid)
+             - (SELECT count(*) FROM duplicates h CROSS JOIN assets a ON a.uuid=h.uuid
+                WHERE h.hidden=1 AND NOT EXISTS(SELECT 1 FROM excluded x WHERE x.uuid=h.uuid))",
+        &[],
+    )
+}
+
+fn selection_total(c: &Connection, f: &HashMap<String, String>, conditions: &str, args: &[Value]) -> Result<Json> {
+    let visible_only = f.iter().all(|(key, value)| match key.as_str() {
+        "order" => true,
+        "status" => value == "all",
+        "nsfw" => value.is_empty(),
+        _ => false,
+    });
+    let total = if visible_only {
+        visible_total(c)?
+    } else {
+        c.query_row(
+            &format!("SELECT count(*) FROM assets a WHERE {conditions}"),
+            rusqlite::params_from_iter(args),
+            |r| r.get::<_, i64>(0),
+        )?
+    };
+    Ok(total.into())
+}
+
 /// 选区的数量（/api/assets/count）、id 列表（/api/ids）或其中一页（/api/assets）。
 fn assets(c: &Connection, context: &LibraryContext, path: &str, q: &HashMap<String, String>) -> Result<Json> {
     let mut f = if path == "/api/assets" { browse_filters(q) } else { q.clone() };
@@ -1573,9 +1605,8 @@ fn assets(c: &Connection, context: &LibraryContext, path: &str, q: &HashMap<Stri
         f.remove("limit");
     }
     let (where_, mut args, order) = selection(c, context, &f)?;
-    let total_sql = format!("SELECT count(*) AS total FROM assets a WHERE {where_}");
     if path == "/api/assets/count" {
-        return Ok(Json::object([("total", get(&typed_rows(c, &total_sql, &args)?.remove(0), "total"))]));
+        return Ok(Json::object([("total", selection_total(c, &f, &where_, &args)?)]));
     }
     if path == "/api/ids" {
         args.extend([Value::Integer(limit), Value::Integer(offset)]);
@@ -1604,7 +1635,7 @@ fn assets(c: &Connection, context: &LibraryContext, path: &str, q: &HashMap<Stri
         args.clear();
         (n.into(), format!("SELECT a.uuid,a.width,a.height FROM selected_assets a ORDER BY {order} LIMIT ? OFFSET ?"))
     } else {
-        let total = if total_needed { get(&typed_rows(c, &total_sql, &args)?.remove(0), "total") } else { null() };
+        let total = if total_needed { selection_total(c, &f, &where_, &args)? } else { null() };
         (
             total,
             format!("SELECT a.uuid,a.width,a.height FROM assets a WHERE {where_} ORDER BY {order} LIMIT ? OFFSET ?"),
@@ -1938,7 +1969,8 @@ mod tests {
                ('a2','a2.png',1,1,'2026-09-30 10:00:00'),('d1','d1.png',1,1,'2026-09-28 10:00:00'),
                ('b1','b1.png',1,1,'2026-09-29 10:00:00'),('a1','a1.png',1,1,'2026-09-30 10:00:00');
              INSERT INTO duplicates VALUES
-               ('d1','g','2',1,'2026-09-28 10:00:00',0,1),('b2','g','2',0,'2026-09-28 10:00:00',1,0);
+               ('d1','g','3',1,'2026-09-28 10:00:00',0,1),('b2','g','3',0,'2026-09-28 10:00:00',1,0),
+               ('removed-copy','g','3',2,'2026-09-28 10:00:00',0,1);
              INSERT INTO excluded VALUES ('e1','photo','manual');
              INSERT INTO terms(key,kind,origin) VALUES
                ('synthetic-general','rating','synthetic'),('synthetic-sensitive','rating','synthetic'),
@@ -2018,7 +2050,9 @@ mod tests {
             ("nsfw=only&pool=duplicates", &["d1"], "1"),
             ("nsfw=only&q=nomatch", &[], "0"),
             ("nsfw=only&pool=excluded", &["e1"], "1"),
+            ("", &["a1", "a2", "a3", "b1", "b2", "c1"], "6"),
             ("nsfw=", &["a1", "a2", "a3", "b1", "b2", "c1"], "6"),
+            ("status=all&order=oldest", &["c1", "b1", "b2", "a1", "a2", "a3"], "6"),
         ];
         for (query, expected, total) in cases {
             let (ids, shown_total, body) = page(query);
@@ -2036,6 +2070,16 @@ mod tests {
             let counted = crate::http_read::read(&context, &url).unwrap().unwrap();
             assert_eq!(get(&counted.0, "total").dump(), *total, "{query}");
         }
+        // 同时被折叠和排除的图片只扣一次，排除表里已移出的 UUID 不扣。
+        let c = crate::sqlite::open(&context.db).unwrap();
+        c.execute_batch("INSERT INTO excluded VALUES ('d1','photo','manual'),('removed','photo','manual');").unwrap();
+        drop(c);
+        let (ids, total, _) = page("limit=2&offset=4");
+        assert_eq!(ids, ["b2", "c1"]);
+        assert_eq!(total, "6");
+        let (body, status) = crate::http_read::read(&context, "/api/assets/count").unwrap().unwrap();
+        assert_eq!(status, 200);
+        assert_eq!(get(&body, "total").integer(), 6);
         std::fs::remove_dir_all(root).unwrap();
     }
 }

@@ -1,4 +1,7 @@
 //! 大图库的同步、名字与浏览基准。只在显式运行 ignored release 测试时生成图库。
+#[path = "library_scale/browse.rs"]
+mod browse;
+
 use super::*;
 use illustash_terms::{app_create, schema, store, Kind};
 use rusqlite::params;

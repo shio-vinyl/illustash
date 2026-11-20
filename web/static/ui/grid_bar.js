@@ -18,6 +18,7 @@ import {$, toast} from './dom.js';
 import {openExport} from './files.js';
 import {favoriteSelection, isSelected, markDetailKeys, mutate, openTagPicker, quitSelecting, reload, selCount, selectionIds, selectionPayload, setArmed, setBar} from './grid.js';
 import {make} from './el.js';
+import {showPop} from './pop.js';
 import {markOc, newIds, openPicker, openRelate, targets} from './palette.js';
 
 // 一个按钮：act 是分派用的名字（runBarAction 按它分支），label 是文字，primary 是主按钮，key 是键标，tip 是悬停提示，off 有值时
@@ -28,7 +29,7 @@ const armed = (act, again, normal) => state.armed === act ? again : normal;
 
 function render() {
   const n = selCount(), bar = $('selectionBar'), r = state.route, kind = viewOf(r).bar;   // 选择栏的种类由页面登记
-  bar.hidden = !n; markDetailKeys(); if (!n) { setArmed(null); return; }
+  showPop(bar, n > 0, {to: 'fade'}); markDetailKeys();   // 靠 translateX(-50%) 居中，退场只淡出（#715） if (!n) { setArmed(null); return; }
   const clear = make('button', 'icon', '×'); clear.id = 'clearSel'; clear.title = t('取消选择（Esc）'); clear.onclick = quitSelecting;
   const count = make('span', 'sel-count', state.sel.all ? t('已选全部 {n} 张', {n: number(n)}) : t('已选 {n} 张', {n: number(n)}));
   const nodes = [clear, count, make('div', 'bar-divider')];

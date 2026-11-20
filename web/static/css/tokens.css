@@ -32,7 +32,7 @@
   --glass-surface:rgba(255,255,255,.72);--glass-solid:rgba(255,255,255,.96);
   /* 浮层（#715）：对话框和导览背后的压暗（画成对话框自己的大扩散阴影，::backdrop 里不能用 var()）；提示条、选择栏这类深色条上的字和按钮底，
      亮暗主题里都是深底，只写这一套 */
-  --dialog-dim:rgba(20,20,30,.22);--tour-dim:rgba(14,14,24,.46);--toast-ink:#fff;--toast-btn:rgba(255,255,255,.12);--toast-btn-hover:rgba(255,255,255,.2);
+  --dialog-dim:rgba(20,20,30,.22);--tour-dim:rgba(14,14,24,.46);--toast-ink:#fff;--toast-btn:rgba(255,255,255,.12);--toast-btn-hover:rgba(255,255,255,.2);--bar-muted:rgba(255,255,255,.55);--bar-armed:#ffb4a8;--bar-note:#ffcf99;
   /* 看图器（#709）：亮暗主题里都是深底，只在这里写一套 */
   --viewer-bg:#121215;--viewer-ink:#e4e4e9;--viewer-muted:#a3a3ad;--viewer-chip:rgba(255,255,255,.08);--viewer-chip-hover:rgba(255,255,255,.16);--viewer-line:rgba(255,255,255,.2);
   /* 图的主色（#705）：由 ui/tint.js 的 setTint() 写进元素的 --tint 并加 .tint，派生的底色在文件末尾的 .tint 块里算；没写时是中性色 */

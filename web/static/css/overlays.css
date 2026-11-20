@@ -91,4 +91,16 @@ dialog[open]{animation:ov-dialog var(--dur-2) var(--ease)}
 .task-ask button{border-radius:var(--radius-pill)}
 .task-ask.prov-confirm{display:block;margin:0;border:0;background:var(--tone-warn-bg);color:var(--ink)}
 .task-foot{margin:var(--space-12) var(--space-6) 0;font-size:var(--fs-11);color:var(--muted)}
+
+/* ---- 选择栏：和提示条同一种深色胶囊，结构归 ui/grid_bar.js（C2）；进场弹一下，退场淡出（ui/pop.js） ---- */
+.selection-bar{border:0;border-radius:var(--radius-pill);padding:var(--space-6) var(--space-6) var(--space-6) var(--space-14);background:var(--bar-bg);color:var(--toast-ink);
+  box-shadow:var(--shadow-pop);animation:ov-toast var(--dur-2) var(--ease-spring)}
+.selection-bar .quiet,.selection-bar .icon,.selection-bar .primary{border-radius:var(--radius-pill)}
+.selection-bar .quiet,.selection-bar .icon{color:var(--toast-ink)}
+.selection-bar .quiet:hover,.selection-bar .icon:hover{background:var(--toast-btn)}
+.selection-bar kbd{background:transparent;box-shadow:none;color:var(--bar-muted);padding:0}
+.selection-bar .quiet.armed{color:var(--bar-armed)}
+.sel-count{color:var(--toast-ink);font-weight:var(--fw-600)}
+.bar-divider{background:var(--toast-btn-hover)}
+.bar-note{color:var(--bar-note)}
 }

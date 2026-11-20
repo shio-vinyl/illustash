@@ -66,8 +66,6 @@
    "background: rgba(12,12,18,.64)": 1,
    "background: rgba(124,128,216,.14)": 1,
    "background: rgba(18,18,24,.4)": 1,
-   "background: rgba(255,255,255,.12)": 1,
-   "background: rgba(255,255,255,.18)": 1,
    "background: rgba(255,255,255,.22)": 1,
    "background: rgba(255,255,255,.3)": 1,
    "background: rgba(255,255,255,.4)": 1,
@@ -85,7 +83,6 @@
    "box-shadow: rgba(0,0,0,.22)": 1,
    "box-shadow: rgba(0,0,0,.25)": 1,
    "box-shadow: rgba(0,0,0,.35)": 1,
-   "box-shadow: rgba(255,255,255,.18)": 1,
    "box-shadow: rgba(255,255,255,.22)": 1,
    "box-shadow: rgba(255,255,255,.25)": 1,
    "color: #3c8d5a": 1,
@@ -93,10 +90,7 @@
    "color: #b0643d": 1,
    "color: #c2463d": 1,
    "color: #ededf1": 1,
-   "color: #ffb4a8": 1,
-   "color: #ffcf99": 1,
-   "color: #ffffff": 14,
-   "color: rgba(255,255,255,.55)": 1,
+   "color: #ffffff": 11,
    "color: rgba(255,255,255,.7)": 1,
    "font-size: .62em": 1,
    "font: 9px": 1,
@@ -128,7 +122,6 @@
    "ui/catalog.js: requestAnimationFrame": 2
   },
   "css-scale": {
-   "app.css: animation-duration: .18s": 1,
    "app.css: animation-duration: .4s": 1,
    "app.css: animation-duration: .5s": 1,
    "app.css: animation-duration: .9s": 1,
@@ -142,7 +135,6 @@
    "app.css: box-shadow: 0 10px 22px -10px": 1,
    "app.css: box-shadow: 0 10px 35px": 1,
    "app.css: box-shadow: 0 18px 32px -14px": 1,
-   "app.css: box-shadow: 0 18px 40px -10px": 1,
    "app.css: box-shadow: 0 1px 2px": 3,
    "app.css: box-shadow: 0 1px 3px": 5,
    "app.css: box-shadow: var(--sheet-shadow)": 1,
@@ -157,7 +149,7 @@
    "app.css: font-weight: 250": 1,
    "app.css: font-weight: 400": 7,
    "app.css: font-weight: 500": 12,
-   "app.css: font-weight: 600": 31,
+   "app.css: font-weight: 600": 30,
    "app.css: font-weight: 650": 4,
    "app.css: font-weight: 700": 11,
    "app.css: font-weight: 750": 2,
@@ -184,7 +176,7 @@
    "app.css: 后代形式的 :has()": 5
   },
   "backdrop-filter": {
-   "app.css: backdrop-filter": 8
+   "app.css: backdrop-filter": 6
   },
   "ui-file-length": {
    "ui/grid.js": 153,

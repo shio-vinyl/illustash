@@ -19,7 +19,6 @@ import {$, toast} from './dom.js';
 import {PAGE, currentItem, endPreview, favoriteOne, kept, loadPage, markDetailKeys, mutate, openTagPicker, previewList, previewing, renderGrid, rowHeight, rowOf, rowTop, setCursor, syncCards, toggleInfo, viewOpts} from './grid.js';
 import {newIds, openPicker, targets} from './palette.js';
 import {findArtistWorks, findArtists} from './artists.js';
-import {markHomeFocus} from './home.js';
 import {wireDragOut} from './files.js';
 import {write} from './frame.js';
 import {cancelExit, enter, exit} from './motion.js';
@@ -28,11 +27,6 @@ import {bindViewer, closeViewer, openViewer, showViewer, wireViewer} from './vie
 
 export {closeViewer, openViewer, peek, peekAt, showViewer, wirePeek, zoomView} from './viewer.js';
 
-// 首页横条左右的箭头也用这两个（ui/home.js）。
-export const INSP_ICONS = {
-  prev: '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="m12 4.5-5.5 5.5 5.5 5.5"/></svg>',
-  next: '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="m8 4.5 5.5 5.5L8 15.5"/></svg>',
-};
 // 卡片滑进、滑出（只动 transform 和 opacity）。
 const SLIDE_IN = [{opacity: 0, transform: 'translateX(24px)'}, {opacity: 1, transform: 'none'}];
 const SLIDE_OUT = [{opacity: 1, transform: 'none'}, {opacity: 0, transform: 'translateX(16px)'}];
@@ -57,7 +51,7 @@ const relayout = () => write(() => renderGrid(), 'detail:grid');
 export function closeInspector() {
   detailGen++; if (state.viewer < 0) kept.hold = null;
   state.focused = null; setDetail(null); if (state.viewer < 0) setQuestion(null);
-  markHomeFocus(); syncCards();
+  pageOf(state.route).focus?.(state.focused); syncCards();
   const box = $('inspector');
   if (box.hidden || !card) { box.hidden = true; return; }
   // 滑出去以后再藏：中途又打开了（state.focused 有值）就不藏。
@@ -72,7 +66,7 @@ export async function inspect(ident, quiet = false) {
   if (!quiet || c.uuid !== ident) c.loading(ident);
   if (box.hidden || c.el.hidden) { box.hidden = false; c.el.hidden = false; enter(c.el, {from: SLIDE_IN}); }
   else cancelExit(c.el);   // 正在滑出时接回来
-  markHomeFocus(); syncCards(); relayout();
+  pageOf(state.route).focus?.(state.focused); syncCards(); relayout();
   let d;
   try { d = await readDetail(ident); } catch (e) { if (gen === detailGen) c.failed(e.message); return; }
   if (gen !== detailGen) return;
@@ -198,7 +192,7 @@ export async function step(delta) {
   setCursor(n); ensureVisible(n);
   if (state.viewer >= 0) showViewer(n); else inspect(state.items[n].uuid);
 }
-// 把网格滚到第 i 张可见。主区不是网格的页面（首页从详情、大图翻页，按组整理看大图）不按网格的行去滚，交给页面登记的
+// 把网格滚到第 i 张可见。主区不是网格的页面（按天视图从详情栏、大图翻页，按组整理看大图）不按网格的行去滚，交给页面登记的
 // reveal 把那张图滚进视野（#424 的 2-11）。
 export function ensureVisible(i) {
   if (viewOf(state.route).area !== 'grid') { const uuid = state.items[i]?.uuid; if (uuid) pageOf(state.route).reveal?.(uuid); return; }

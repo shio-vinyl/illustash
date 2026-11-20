@@ -199,8 +199,8 @@ class FrontendArchitectureTest(unittest.TestCase):
     def test_dialog_markup_in_a_string_counts(self):
         for text in ("el.innerHTML = '<dialog class=\"x\"></dialog>';", "el.insertAdjacentHTML('beforeend', `<dialog>${x}</dialog>`);"):
             with self.subTest(text=text), Tree() as tree:
-                tree.append('ui/home.js', '\n' + text + '\n')
-                self.assertViolation(tree, 'dialog-element', 'ui/home.js')
+                tree.append('ui/days.js', '\n' + text + '\n')
+                self.assertViolation(tree, 'dialog-element', 'ui/days.js')
 
     def test_other_events_and_element_listeners_are_fine(self):
         with Tree() as tree:
@@ -264,8 +264,8 @@ class FrontendArchitectureTest(unittest.TestCase):
 
     def test_new_runtime_dialog(self):
         with Tree() as tree:
-            tree.append('ui/home.js', "\nconst d = document.createElement('dialog');\n")
-            message = self.assertViolation(tree, 'dialog-element', 'ui/home.js')
+            tree.append('ui/days.js', "\nconst d = document.createElement('dialog');\n")
+            message = self.assertViolation(tree, 'dialog-element', 'ui/days.js')
             self.assertIn('ui/dialog.js', message)
         with Tree() as tree:  # 用户 2026-11-15 批准（#470）：ui/dialog.js 是唯一放行的文件，别的文件照旧报错
             dialog = (tree.root / STATIC / 'ui/dialog.js').read_text(encoding='utf-8')
@@ -291,16 +291,16 @@ class FrontendArchitectureTest(unittest.TestCase):
 
     def test_long_line_boundary(self):
         with Tree() as tree:
-            tree.append('ui/home.js', '\nconst ok = "' + 'x' * (200 - len('const ok = "";')) + '";\n')
+            tree.append('ui/days.js', '\nconst ok = "' + 'x' * (200 - len('const ok = "";')) + '";\n')
             self.assertEqual(tree.errors(), [])
-            tree.append('ui/home.js', 'const tooLong = "' + 'x' * 190 + '";\n')
-            message = self.assertViolation(tree, 'long-line', 'ui/home.js')
+            tree.append('ui/days.js', 'const tooLong = "' + 'x' * 190 + '";\n')
+            message = self.assertViolation(tree, 'long-line', 'ui/days.js')
             self.assertIn('200', message)
 
     def test_ui_file_length(self):
         # 规则 21：ui/ 下新文件超过 600 行报错；已经超长的文件再加一行也报错，缩短了算可收紧
         with Tree() as tree:
-            tree.append('ui/home.js', '\n'.join(['// 行'] * 200) + '\n')
+            tree.append('ui/days.js', '\n'.join(['// 行'] * 200) + '\n')
             self.assertEqual(tree.errors(), [])
             path = tree.root / STATIC / 'ui/brand_new.js'
             path.write_text('// 新模块\n' + 'export const x = 1;\n' * 600, encoding='utf-8')
@@ -362,13 +362,13 @@ class FrontendArchitectureTest(unittest.TestCase):
     def test_shrink_lowers_but_never_adds(self):
         with Tree() as tree:
             tree.replace('ui/models.js', "document.addEventListener('click'", "$('models').addEventListener('click'")
-            tree.append('ui/home.js', "\ndocument.addEventListener('click', e => {});\n")  # 一处新违规
+            tree.append('ui/days.js', "\ndocument.addEventListener('click', e => {});\n")  # 一处新违规
             before = tree.baseline()
             code, _ = tree.run_main('--shrink')
             after = tree.baseline()
             self.assertEqual(code, 1, 'the new violation still fails after shrinking')
             self.assertNotIn('ui/models.js::click', after['document-listener'])
-            self.assertNotIn('ui/home.js::click', after['document-listener'])
+            self.assertNotIn('ui/days.js::click', after['document-listener'])
             self.assertEqual(baseline_growth(after, before), [])
 
     def test_baseline_growth_is_detected(self):
@@ -390,9 +390,9 @@ class FrontendArchitectureTest(unittest.TestCase):
             code, _ = tree.run_main('--base-ref', 'HEAD')
             self.assertEqual(code, 0)
             # 把新违规写进基线来“让它通过”
-            tree.append('ui/home.js', "\ndocument.addEventListener('click', e => {});\n")
+            tree.append('ui/days.js', "\ndocument.addEventListener('click', e => {});\n")
             grown = tree.baseline()
-            grown['document-listener']['ui/home.js::click'] = 1
+            grown['document-listener']['ui/days.js::click'] = 1
             (tree.root / BASELINE).write_text(json.dumps({'rules': grown}), encoding='utf-8')
             self.assertEqual(tree.errors(), [])
             code, output = tree.run_main('--base-ref', 'HEAD')
@@ -433,8 +433,8 @@ class FrontendArchitectureTest(unittest.TestCase):
     # ---------- 规则 7：state 字段的写入者（#353） ----------
     def test_state_written_outside_its_writer(self):
         # cursor 的写入者是 ui/grid.js，focused 的是 ui/detail.js，route 的是 core/route.js
-        cases = [('ui/home.js', 'state.cursor = 3;', 'state.cursor', 'ui/grid.js'),
-                 ('ui/home.js', 'state.focused ??= null;', 'state.focused', 'ui/detail.js'),
+        cases = [('ui/days.js', 'state.cursor = 3;', 'state.cursor', 'ui/grid.js'),
+                 ('ui/days.js', 'state.focused ??= null;', 'state.focused', 'ui/detail.js'),
                  ('ui/palette.js', 'state.dataVersion++;', 'state.dataVersion', 'ui/grid.js'),
                  ('ui/palette.js', '--state.generation;', 'state.generation', 'ui/grid.js'),
                  ('ui/shell.js', 'state.route.sort = "x";', 'state.route', 'core/route.js'),
@@ -451,7 +451,7 @@ class FrontendArchitectureTest(unittest.TestCase):
 
     def test_state_reads_and_the_writer_itself_are_fine(self):
         with Tree() as tree:
-            tree.append('ui/home.js', '\nif (state.cursor === 3 || state.cursor >= 2 || state.cursor <= 1 || state.cursor !== 0) go(state.cursor == 1);\n'
+            tree.append('ui/days.js', '\nif (state.cursor === 3 || state.cursor >= 2 || state.cursor <= 1 || state.cursor !== 0) go(state.cursor == 1);\n'
                                       'const f = state.items.filter(x => x).length; state.pending.add(1); const s = "state.cursor = 3";\n'
                                       '// state.cursor = 3;\n')
             tree.append_same_length('ui/grid.js', '\nstate.cursor = 3; state.items[0] = null; state.sel.ids = new Set();\n')
@@ -463,7 +463,7 @@ class FrontendArchitectureTest(unittest.TestCase):
         with Tree() as tree:
             path = tree.root / STATIC / state
             text = path.read_text(encoding='utf-8')
-            path.write_text(text.replace('// ---- 详情栏开着的那张：ui/detail.js ----', '// ---- 详情栏开着的那张：ui/detail.js、ui/home.js ----'), encoding='utf-8')
+            path.write_text(text.replace('// ---- 详情栏开着的那张：ui/detail.js ----', '// ---- 详情栏开着的那张：ui/detail.js、ui/days.js ----'), encoding='utf-8')
             self.assertViolation(tree, 'state-writer', '写了 2 个')
         with Tree() as tree:
             path = tree.root / STATIC / state
@@ -474,8 +474,8 @@ class FrontendArchitectureTest(unittest.TestCase):
             # 换了写入者：原来的写入者再赋值就报错，新写入者不报
             path = tree.root / STATIC / state
             text = path.read_text(encoding='utf-8')
-            path.write_text(text.replace('// ---- 详情栏开着的那张：ui/detail.js ----', '// ---- 详情栏开着的那张：ui/home.js ----'), encoding='utf-8')
-            message = self.assertViolation(tree, 'state-writer', 'ui/detail.js: state.focused（声明的写入者是 ui/home.js）')
+            path.write_text(text.replace('// ---- 详情栏开着的那张：ui/detail.js ----', '// ---- 详情栏开着的那张：ui/days.js ----'), encoding='utf-8')
+            message = self.assertViolation(tree, 'state-writer', 'ui/detail.js: state.focused（声明的写入者是 ui/days.js）')
             self.assertIn('setCursor', message)
 
 
@@ -801,8 +801,8 @@ class FrontendArchitectureTest(unittest.TestCase):
 
     def test_data_in_inner_html(self):
         with Tree() as tree:
-            tree.append('ui/home.js', "\nexport function bad(el, name) { el.innerHTML = `<b>${name}</b>`; }\n")
-            error = self.assertViolation(tree, 'inner-html', 'ui/home.js')
+            tree.append('ui/days.js', "\nexport function bad(el, name) { el.innerHTML = `<b>${name}</b>`; }\n")
+            error = self.assertViolation(tree, 'inner-html', 'ui/days.js')
             self.assertIn('ui/el.js', error)
             self.assertIn('tpl`', error)
         with Tree() as tree:
@@ -834,8 +834,8 @@ class FrontendArchitectureTest(unittest.TestCase):
     # ---------- 规则 11：帧调度和动效的入口（#704） ----------
     def test_animation_frame_outside_frame_js(self):
         with Tree() as tree:
-            tree.append('ui/home.js', '\nexport const later = fn => requestAnimationFrame(fn);\n')
-            error = self.assertViolation(tree, 'animation-entry', 'ui/home.js: requestAnimationFrame')
+            tree.append('ui/days.js', '\nexport const later = fn => requestAnimationFrame(fn);\n')
+            error = self.assertViolation(tree, 'animation-entry', 'ui/days.js: requestAnimationFrame')
             self.assertIn('ui/frame.js', error)
         with Tree() as tree:
             tree.append('ui/frame.js', '\nexport const fade = el => el.animate([{opacity: 0}, {opacity: 1}], 200);\n')

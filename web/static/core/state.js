@@ -19,7 +19,8 @@ export const state = {
   learning: false,
 
   // ---- 后台任务最近一次的回应：core/jobs.js（index、names 别处要换时用 setIndex、setNames、mergeNames） ----
-  sync: {status: 'off'}, syncHistory: [], syncDamaged: null, provenance: null, importTask: null, index: null, names: null,
+  // syncLost：同步状态读不到了（轮询失败，正在按间隔重试），界面别把上一次读到的进度当成现在的。
+  sync: {status: 'off'}, syncLost: false, syncHistory: [], syncDamaged: null, provenance: null, importTask: null, index: null, names: null,
 
   // ---- 设置页读写的数据：core/settings.js（settings 别处要换时用 setSettings） ----
   settings: null, about: null, accounts: null, fold: null, libraries: null, pixivWaiting: null, updates: null,
@@ -42,7 +43,7 @@ export const state = {
   // ---- 上手引导的进度：ui/guide.js ----
   guide: null,
 
-  // ---- 网格的列表：ui/grid.js（首页借用它放自己的图，用 showList；写入后作废读取用 listChanged） ----
+  // ---- 网格的列表：ui/grid.js（按天视图借用它放自己的图，用 showList；写入后作废读取用 listChanged） ----
   items: [], total: 0, totalReady: false, readEpoch: 0, countDirty: false, countReload: null,
   pages: new Set(), pending: new Set(), generation: 0, dataVersion: 0, gridKey: '',
   // 角色页「可能也是 TA」「可能认错」两个胶囊的张数。

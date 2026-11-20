@@ -16,7 +16,7 @@ import {state} from './state.js';
 //   area       主区：'grid' 或 index.html 里的某个面板 id
 //   panel      不用 #grid 的页面：reload()、R、同步到达新图、NSFW 切换后的重绘都按它判断
 //   keys       单图快捷键在这页的范围：'grid' 网格页全部生效（主区是 #grid 的页面不写也是它）；'shown' 只对详情栏或大图里
-//              那张图生效，没有网格光标（首页）；主区不是网格、也没写的页面不响应（keyScope）
+//              那张图生效，没有网格光标（按天视图）；主区不是网格、也没写的页面不响应（keyScope）
 //   click      点卡片做什么：'browse' 打开详情（选择要主动进入）、'cleanup' 切换选中、'own' 页面自己处理
 //   entry      属于活页条的哪个一级入口（core/rail.js 的 ENTRIES）：'library' 图库、'catalog' 资料库、'galleries' 画廊、'tidy' 整理、
 //              'settings' 设置（底部的齿轮）；'' 哪个都不亮（画师抽查，入口在设置里）
@@ -168,6 +168,7 @@ export const poolIs = (route, ...pools) => pools.includes(pageOf(route).pool);
 //                        画廊的条件失效）
 //   failedNext(r)        readFailed 认下的失败在空状态下面给的去处，写法同 emptyNext（画廊的「删除画廊」）
 //   reveal(uuid)         主区不是网格的页面把这张图滚进视野：详情栏、大图翻页时，和面板页借列表看的大图关掉时（#424）
+//   focus(uuid)          主区不是网格的页面标出详情栏开着的那张（ui/detail.js 打开、关掉详情栏时调；关掉时 uuid 为空）
 //   refresh(why)         数据变了之后重画面板页：'edit' 改动之后、'undo' 撤销之后、'learned' 确认角色或同步结束后后台学习
 //                        收尾之后（#400、#404）、'sync' 同步到新图之后、'nsfw' 切换 NSFW 之后、'view' 视图选项之后、
 //                        'ask' 「偶尔问一句」开关之后。筛选变了不走这里，走 render({samePage: true})

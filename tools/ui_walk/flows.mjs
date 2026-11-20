@@ -481,6 +481,31 @@ export const FLOWS = [
       await sleep(600);
       w.check('撤销以后拿出来了', await count('Summer') === before, {before, after: await count('Summer')});
 
+      // 按天视图：按住一张图拖到 Summer。
+      const dayBefore = await count('Summer');
+      await w.step('按天视图里按住一张图拖到活页条上的 Summer', async p => {
+        await goto(p, '#/days'); await p.waitFor(`!!document.querySelector('.day-tile[data-id]:not([data-more]) img')`, 15000);
+        const from = await p.center('.day-tile[data-id]:not([data-more]) img');
+        await p.send('Input.dispatchMouseEvent', {type: 'mouseMoved', x: from.x, y: from.y});
+        await p.send('Input.dispatchMouseEvent', {type: 'mousePressed', x: from.x, y: from.y, button: 'left', clickCount: 1});
+        for (let k = 1; k <= 4; k++) { await p.send('Input.dispatchMouseEvent', {type: 'mouseMoved', x: from.x + k * 6, y: from.y, button: 'left', buttons: 1}); await sleep(16); }
+        await p.waitFor(`!!document.querySelector('.lift') && [...document.querySelectorAll('#railItems .rail-item')].some(x => x.offsetParent && x.dataset.key === 'new')`, 3000);
+        await sleep(600);
+        const to = await p.eval(`(() => { const el = [...document.querySelectorAll('#railItems .rail-item')].find(x => x.offsetParent && x.railItem?.label === 'Summer');
+          const r = el.getBoundingClientRect(); return {x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2)}; })()`);
+        for (let k = 1; k <= 8; k++) {
+          await p.send('Input.dispatchMouseEvent', {type: 'mouseMoved', x: Math.round(from.x + (to.x - from.x) * k / 8), y: Math.round(from.y + (to.y - from.y) * k / 8), button: 'left', buttons: 1});
+          await sleep(16);
+        }
+        await p.send('Input.dispatchMouseEvent', {type: 'mouseReleased', x: to.x, y: to.y, button: 'left', clickCount: 1});
+        await sleep(900);
+      }, {shot: true});
+      w.check('按天视图里拖的也放进去了', await count('Summer') === dayBefore + 1, {before: dayBefore, after: await count('Summer')});
+      w.check('拖过以后没打开详情卡片', !await page.eval(`!!document.querySelector('#inspector:not([hidden])')`), '');
+      await w.step('⌘Z 撤销', p => p.key('z', {modifiers: ['Meta']}));
+      await sleep(600);
+      w.check('撤销以后拿出来了（按天）', await count('Summer') === dayBefore, {before: dayBefore, after: await count('Summer')});
+
       // #646：「更多像这张的」页上有条件也没有「保存为画廊」；普通图库上有。
       snap = await w.step('打开「更多像这张的」并加一个条件', async p => {
         await p.eval(`location.hash = '#/library?like=' + encodeURIComponent(JSON.stringify([${JSON.stringify(ids[0])}])) + '&has=' + encodeURIComponent('["fav"]')`);

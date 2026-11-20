@@ -452,19 +452,25 @@ export const FLOWS = [
     name: 'card-chips',
     title: '卡片上的芯片有样式：随机抽查的角色标签（✓ / ✗ 悬停才出现，正在抽查的着色）、未识别图上的「+ 名字」（#708 审核第 1 条）',
     async run(w, page) {
-      // 读计算样式：不悬停时按钮藏着；在抽查的那个标签有自己的底色，不是浏览器默认的按钮样子。
-      const look = sel => page.eval(`(() => { const el = document.querySelector(${JSON.stringify(sel)}); if (!el) return null; const s = getComputedStyle(el);
-        return {display: s.display, bg: s.backgroundColor, radius: s.borderTopLeftRadius, border: s.borderTopStyle, font: s.fontSize}; })()`);
-      const snap = await w.step('打开随机抽查', () => goto(page, '#/audit'), {shot: true});
-      w.check('抽查页有图', snap.total > 0, `total=${snap.total}`);
-      const open = await look('#grid .card-chips .atag.checked'), button = await look('#grid .card-chips .atag button');
-      w.check('卡片上有抽查的角色标签', !!open, open);
-      w.check('在抽查的标签有底色和圆角', !!open && open.bg !== 'rgba(0, 0, 0, 0)' && open.radius !== '0px', open);
-      w.check('标签上的 ✓ / ✗ 不悬停时藏着', !!button && button.display === 'none', button);
-      await w.step('打开全部未识别', () => goto(page, '#/unmatched'), {shot: true});
-      const hint = await look('#grid .card-chips .hint-add');
-      // 「可能是」要识别组件给出线索才有；有的话检查它不是浏览器默认的按钮。
-      if (hint) w.check('「+ 名字」有自己的底色、没有默认边框', hint.border === 'none' && hint.bg !== 'rgba(0, 0, 0, 0)', hint);
+      // 走查图库里没有抽查和「可能是」的数据：在网格里放一张和 ui/grid_card.js 同样结构的样例卡，读真实浏览器算出来的样式，
+      // 查的是 css/ 里这些类名有规则（审核第 1 条：样式还挂在旧的 .chips 下，新卡片上全丢了）。
+      await w.step('打开网格', () => goto(page, '#/library'));
+      const looks = await page.eval(`(() => {
+        const card = document.createElement('div'); card.className = 'card'; card.style.cssText = 'transform:translate(0,0);width:240px;height:240px';
+        card.innerHTML = '<div class="card-stage"><span class="card-chips"><span class="atag checked open"><b>A</b><button type="button" data-tagact="yes">✓</button></span>'
+          + '<span class="atag checked no"><b>B</b></span><button class="hint-add" type="button">+ C</button></span></div>';
+        document.getElementById('grid').append(card);
+        const s = sel => { const st = getComputedStyle(card.querySelector(sel)); return {display: st.display, bg: st.backgroundColor, radius: st.borderTopLeftRadius,
+          border: st.borderTopStyle, deco: st.textDecorationLine}; };
+        const out = {open: s('.atag.open'), button: s('.atag.open button'), no: s('.atag.no b'), hint: s('.hint-add')};
+        card.remove();
+        return out;
+      })()`);
+      const filled = x => x.bg !== 'rgba(0, 0, 0, 0)' && x.radius !== '0px';
+      w.check('在抽查的标签有底色和圆角', filled(looks.open), looks.open);
+      w.check('标签上的 ✓ / ✗ 不悬停时藏着', looks.button.display === 'none', looks.button);
+      w.check('答了「不是」的标签划掉名字', looks.no.deco.includes('line-through'), looks.no);
+      w.check('「+ 名字」有自己的底色、没有默认边框', filled(looks.hint) && looks.hint.border === 'none', looks.hint);
     },
   },
 

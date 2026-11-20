@@ -99,7 +99,7 @@ a.poster:hover>img,button.poster:hover>img{transform:scale(1.04)}
   font-size:var(--fs-11);font-style:normal;font-weight:var(--fw-750);line-height:1.2;box-shadow:0 0 0 2px var(--sheet)}
 
 /* ---- 心形（收藏）：图上的心形按钮（ui/favorites.js 的 HEART_ICON）。这里只写样子；位置和「悬停才出现」由各处自己写
-   （网格在 css/library.css，首页在 app.css）。收藏过的一直在，still 是只显示、不能点的 ---- */
+   （网格在 css/library.css）。收藏过的一直在，still 是只显示、不能点的 ---- */
 .fav-mark{display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;margin:0;padding:0;border:0;background:transparent;color:var(--on-image);
   opacity:0;cursor:pointer;transition:opacity var(--dur-1) var(--ease),transform var(--dur-1) var(--ease)}
 .fav-mark svg{width:19px;height:19px;fill:transparent;stroke:currentColor;stroke-width:1.7;stroke-linejoin:round;filter:drop-shadow(0 0 1.5px rgba(var(--sh),.55))}

@@ -28,7 +28,7 @@ import {wirePalette} from './ui/palette.js';
 import {wireDetail} from './ui/detail.js';
 // 相似结果页（#449）只在载入时登记它的标题，没有 wire。
 import './ui/like.js';
-import {wireHome} from './ui/home.js';
+import {wireDays} from './ui/days.js';
 import {wireReview} from './ui/review.js';
 import {guideAfterBoot, guideOnOpen, wireGuide} from './ui/guide.js';
 import {afterWrite, afterJob, afterPack} from './ui/effects.js';
@@ -61,7 +61,7 @@ wireGrid();
 wireViewOptions();
 wirePalette();
 wireDetail();
-wireHome();
+wireDays();
 wireReview();
 wireSettings();
 wireCatalog();

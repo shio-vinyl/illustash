@@ -124,9 +124,9 @@ function showNone(text, next = []) {
   drawEmpty($('empty'), {icon: 'search', fact: text, next});
   renderHeading();
 }
-// 首页借用网格的列表放它自己的图（详情栏翻页、大图都按这个列表走）。
-// 面板页看一组图的大图（previewList：按组整理、首页「认一认」、身份整理、画师抽查，#424 的 2-2、2-34）时列表先换成那一组，
-// 关大图时还回去（endPreview，ui/detail.js 的 closeViewer 调用）；这期间页面自己再 showList（首页写入后重画），换的是要还回去的那份。
+// 按天视图借用网格的列表放它自己的图（详情栏翻页、大图都按这个列表走）。
+// 面板页看一组图的大图（previewList：按组整理、按天视图「认一认」、身份整理、画师抽查，#424 的 2-2、2-34）时列表先换成那一组，
+// 关大图时还回去（endPreview，ui/detail.js 的 closeViewer 调用）；这期间页面自己再 showList（按天视图写入后重画），换的是要还回去的那份。
 let lent = null;
 export function showList(items) { if (lent) { lent = items; return; } state.items = items; state.total = items.length; }
 export function previewList(ids, i) {
@@ -182,8 +182,7 @@ export const gridHead = () => $('gridHead');
 // 挂着的卡片（ui/grid_card.js 的部件）：键是图的 uuid，还没读到的是「#序号」的骨架。按图找（#452）：写入后图合拢、
 // 重新排序时，内容没变的卡片只换位置，不重建。值是 {comp, item, i, box, ctx, hue}，记着上一次画的是什么，没变就不调 update。
 let mounted = new Map(), cards = null, ctx = null, ctxKey = '';
-// 滚出范围的卡片部件不扔，留几张下次复用：滚动时不再一直新建、丢弃卡片和它的 <img>。Chromium 里丢掉的卡片连同解码后的
-// 位图迟迟不释放，滚几十屏 GPU 进程多占几百 MiB（#708 用 #683 的方法量出来的）；复用以后建过的卡片数封顶。
+// 滚出范围的卡片部件留着复用（park），不一直新建、丢弃：Chromium 里丢掉的卡片和它的 <img> 迟迟不释放（#708）。
 const spare = [], SPARE_MAX = 160;
 export function renderGrid(relayout = false) {
   if ($('grid').hidden) return;
@@ -236,10 +235,7 @@ function placeCards(from, to, scale) {
     }
     keep.set(key, m); order.push(m.comp.el);
   }
-  for (const m of mounted.values()) {
-    m.comp.el.remove();
-    if (m.item && spare.length < SPARE_MAX) { m.comp.park(); spare.push(m.comp); } else m.comp.dispose();
-  }
+  for (const m of mounted.values()) { m.comp.el.remove(); if (m.item && spare.length < SPARE_MAX) spare.push((m.comp.park(), m.comp)); else m.comp.dispose(); }
   mounted = keep;
   // 卡片按序号排（Tab 和读屏按 DOM 的先后走），只挪不在位置上的那几张。头部留在最前。
   let at = $('gridHead').nextElementSibling;
@@ -305,7 +301,7 @@ export function resetForRoute() { quitSelecting(); state.cursor = -1; state.tota
 // 键盘光标移到第 i 张（详情栏和大图翻页时跟着走）。
 export function setCursor(i) { state.cursor = i; }
 // I 和大图底栏的「信息」：开关详情栏（#424 的 2-7）。大图里是关掉大图、在详情栏里看这张；网格里看光标那张（没有光标取
-// 第一张），详情栏已经开着同一张就关掉，开着别的（整理页点图只选中、不换详情栏）就换成光标那张。首页没有光标，只能关。
+// 第一张），详情栏已经开着同一张就关掉，开着别的（整理页点图只选中、不换详情栏）就换成光标那张。按天视图没有光标，只能关。
 // 不显示详情栏的面板页，以及面板页借列表看的大图（previewList）不响应。
 export function toggleInfo() {
   const scope = keyScope(viewOf(state.route)); if (!scope || previewing()) return;
@@ -372,15 +368,13 @@ function autoScroll() {
   frameWrite(autoScroll, 'grid:autoscroll');
 }
 // ---------- 选择栏与操作 ----------
-// 选择栏本身（按钮、分派）在 ui/grid_bar.js：它导入这里的写入函数，载入时用 setBar() 把画栏、分派和抽查的回答登记进来，
-// 这里不反过来导入它（不产生循环导入）。没登记时（只载入了网格的测试）选择栏不画。
+// 选择栏（按钮、分派）在 ui/grid_bar.js：它导入这里的写入函数，载入时用 setBar() 登记进来，这里不反过来导入它（不产生循环导入）。
 const bar = {render() {}, run() {}, answerAudit() {}};
-/** ui/grid_bar.js 登记选择栏：render() 画栏，run(act) 按 data-act 分派，answerAudit(yes) 回答随机抽查。 */
+/** ui/grid_bar.js 登记选择栏：render() 画栏，run(act) 按 data-act 分派，answerAudit(yes) 回答随机抽查；没登记时不画。 */
 export function setBar(impl) { Object.assign(bar, impl); }
 // 选择栏上等「再点一次」确认的按钮（ui/grid_bar.js 的 needsArm）：记下是哪一个，null 是没有。
 export function setArmed(key) { state.armed = key; }
-// 选择变了：卡片上的选中样子、「选择」按钮、选择栏一起更新。
-// 导出给样式清单页调用（tools/styleguide/live.js，#352）：改名或改参数时，tools/check_styleguide.py 会报出来。
+// 选择变了：卡片上的选中样子、「选择」按钮、选择栏一起更新。样式清单页（tools/styleguide/live.js，#352）也调它。
 export function renderSelection() { syncCards(); markSelectButton(); bar.render(); }
 // 浏览页的「选择」按钮：进了选择模式就显示按下的样子，再点一次退出（#386 的 2-27）。整理页上它是「全选」，没有这个状态。
 export function markSelectButton() {
@@ -537,7 +531,7 @@ export async function sweep() {
 
 // ---------- 收藏（#447） ----------
 // 心形和不重读的写入在 ui/favorites.js，判断在 core/favorites.js。这一页按收藏筛选、图会离开本页时（「只看收藏」里取消）
-// 照其他写入走 mutate：淡出、重读；否则只在本地改掉这些图和同组副本的心形，面板页（首页）自己重读。
+// 照其他写入走 mutate：淡出、重读；否则只在本地改掉这些图和同组副本的心形，面板页（按天视图）自己重读。
 function favorite(payload, add) {
   if (favLeaves(add)) return mutate('/api/favorite', {...payload, add}, true);
   const ids = payload.ids && new Set(payload.ids), exclude = state.sel.exclude;
@@ -692,7 +686,7 @@ export function wireGrid() {
       else e.target.blur();
       return;
     }
-    // Space 看大图的缩略图（按组整理、首页「认一认」，ui/detail.js 的 peek）：焦点在图上或鼠标停在图上时 Space 是看大图，
+    // Space 看大图的缩略图（按组整理、按天视图「认一认」，ui/detail.js 的 peek）：焦点在图上或鼠标停在图上时 Space 是看大图，
     // 不是按下这个按钮（点一下是「不算」，#424 的 2-2）。
     if (e.key === ' ' && !mod && !m.viewer && !edits.busy && peek(e.target)) { e.preventDefault(); return; }
     // 焦点在按钮、开关、链接上时，Enter、Space 归它自己（#422 的 2-5）：链接只认 Enter，Space 照常是页面的快捷键。
@@ -713,7 +707,7 @@ export function wireGrid() {
     if ((key === 'y' || key === 'n') && !mod && !edits.busy && view.bar === 'audit' && n) { e.preventDefault(); bar.answerAudit(key === 'y'); return; }
     if ((key === 'y' || key === 'n') && !mod && !edits.busy && state.question && [state.focused, m.viewer && state.viewerItem?.uuid].includes(state.question.ident)) { e.preventDefault(); answerAsk(key === 'y' ? 'yes' : 'no'); return; }
     if (edits.busy || !scope) return;
-    // 首页（scope 'shown'）没有网格光标：下面的键只作用于详情栏或大图里那张，两者都没开时不响应；方向键只有 ← → 翻页，
+    // 按天视图（scope 'shown'）没有网格光标：下面的键只作用于详情栏或大图里那张，两者都没开时不响应；方向键只有 ← → 翻页，
     // ↑ ↓ 照常滚动页面。
     if (!grid && !m.viewer && !m.detail) return;
     if (key === 'i' && !mod) { e.preventDefault(); toggleInfo(); return; }

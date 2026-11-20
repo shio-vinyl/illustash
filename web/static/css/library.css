@@ -119,4 +119,78 @@
 .cal-count{position:absolute;right:var(--space-6);bottom:var(--space-6);z-index:var(--z-page-2);padding:var(--space-1) var(--space-6);border-radius:var(--radius-pill);
   background:rgba(var(--sh),.55);color:var(--on-image);font-size:var(--fs-11);font-weight:var(--fw-600);font-variant-numeric:tabular-nums}
 .cal-empty{padding:var(--space-24) 0}
+/* ======== 按天（C1 #707）：ui/days.js、ui/day.js、ui/day_cards.js、ui/day_ask.js ======== */
+/* 顶上两张卡：同步状态、认一认。认一认展开后占满一行 */
+.day-cards{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.25fr);gap:var(--space-12);margin-bottom:var(--space-20)}
+.day-card{display:flex;align-items:center;gap:var(--space-14);min-width:0;margin:0;border:0;color:var(--ink);font:inherit;text-align:left}
+.day-card-text{display:grid;flex:1;gap:var(--space-2);min-width:0}
+.day-card-title{margin:0;overflow:hidden;font-size:var(--fs-13);font-weight:var(--fw-750);white-space:nowrap;text-overflow:ellipsis}
+.day-card-title>a{color:inherit;text-decoration:none}
+.day-card-title>a:hover{text-decoration:underline}
+.day-card-sub{overflow:hidden;color:var(--muted);font-size:var(--fs-12);white-space:nowrap;text-overflow:ellipsis}
+button.day-sync{cursor:pointer;transition:background-color var(--dur-1) var(--ease)}
+button.day-sync:hover{background:var(--chip-hover)}
+button.day-sync:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+/* 同步圆环：就是 css/base.css 的进度圆环（.avatar-ring，进度是 JS 写的 --p），这里只定大小和里面的勾；出了问题是警告色 */
+.day-ring{width:44px;height:44px}
+.day-ring>svg{width:100%;height:100%;padding:var(--space-6);border-radius:var(--radius-round);background:var(--soft);fill:none;stroke:var(--accent-ink);stroke-width:2;
+  stroke-linecap:round;stroke-linejoin:round}
+.day-ring.is-warn{background:var(--warn)}
+.day-ask{flex-wrap:wrap}
+.day-ask.is-open{grid-column:1/-1}
+.day-ask-peek{display:flex;flex:none;gap:var(--space-6)}
+.day-ask-peek>img{width:46px;height:46px;border-radius:var(--radius-8);background:var(--tint-soft);object-fit:cover}
+.day-ask-tiles{display:flex;flex-wrap:wrap;gap:var(--space-8);width:100%}
+.day-ask-tile{position:relative;height:120px;margin:0;padding:0;overflow:hidden;border:0;border-radius:var(--radius-8);background:var(--tint-soft);cursor:pointer;
+  transition:opacity var(--dur-1) var(--ease)}
+.day-ask-tile>img{display:block;width:100%;height:100%;object-fit:cover}
+.day-ask-tile>i{position:absolute;inset:0;display:none;place-items:center;background:var(--scrim);color:var(--on-image);font-size:var(--fs-20);font-style:normal;font-weight:var(--fw-750)}
+.day-ask-tile[aria-pressed=true]{opacity:.55}
+.day-ask-tile[aria-pressed=true]>i{display:grid}
+.day-ask-tile:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.day-ask-foot{display:flex;flex:none;align-items:center;gap:var(--space-8);margin-left:auto}
+.day-ask.is-open>.day-ask-foot{width:100%}
+.day-ask-state{margin-right:auto;color:var(--muted);font-size:var(--fs-12)}
+
+/* 一天：页头、芯片行、马赛克的高度都由 ui/day.js 按 daySizes 写（唯一的出处），这里不写高度 */
+.day{box-sizing:border-box}
+.day-head{display:flex;align-items:baseline;gap:var(--space-12);padding-top:var(--space-8);box-sizing:border-box}
+.day-meta{color:var(--muted);font-size:var(--fs-12)}
+.day-grid{margin-left:auto;color:var(--accent-ink);font-size:var(--fs-12);font-weight:var(--fw-600);text-decoration:none;white-space:nowrap}
+.day-grid:hover{text-decoration:underline}
+/* 当天的角色：收起时一行，放不下的芯片藏起来（.is-cut），其余收成「另外 N 位」；展开后换行显示全部 */
+.day-chars{display:flex;align-items:flex-start;gap:var(--space-4);overflow:hidden;box-sizing:border-box}
+.day-chars.is-open{flex-wrap:wrap;padding-bottom:var(--space-12)}
+.day-chips{display:contents}
+.day-chip{flex:none}
+.day-chip.is-cut{display:none}
+.day-more{flex:none;color:var(--ink2);font-weight:var(--fw-600)}
+/* 马赛克：图块由 ui/day.js 按 core/days.js 的 dayCells / growCells 定位。大图是 css/base.css 的海报（.poster、.poster-cap），这里只改圆角和文字靠左 */
+.day-mosaic{position:relative}
+.day-tile{position:absolute;margin:0;padding:0;overflow:hidden;border:0;border-radius:var(--radius-8);background:var(--tint-soft);cursor:pointer;
+  transition:box-shadow var(--dur-2) var(--ease)}
+.day-tile>img{display:block;width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity var(--dur-2) var(--ease)}
+.day-tile.is-in>img{opacity:1}
+.day-tile:hover{box-shadow:var(--shadow-hover)}
+.day-tile:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.day-tile[aria-current=true]{box-shadow:0 0 0 3px var(--accent)}
+.day-tile>.poster-cap{text-align:left;pointer-events:none}
+.day-heart{position:absolute;right:var(--space-6);bottom:var(--space-6);z-index:var(--z-page-2);display:none;color:var(--fav)}
+.day-heart.on{display:block}
+.day-heart>svg{width:15px;height:15px;fill:currentColor;stroke:var(--on-image);stroke-width:1.2}
+.day-dup{position:absolute;top:var(--space-6);left:var(--space-6);z-index:var(--z-page-2);padding:var(--space-1) var(--space-6);border-radius:var(--radius-pill);
+  background:var(--glass-solid);color:var(--ink);font-size:var(--fs-11);font-weight:var(--fw-600)}
+.day-plus{position:absolute;inset:0;z-index:var(--z-page-2);display:grid;place-items:center;background:var(--scrim);color:var(--on-image);font-size:var(--fs-20);
+  font-weight:var(--fw-750);letter-spacing:-.02em}
+
+/* 末尾：读更早几天时的占位（和一天同样的形状，读的时候呼吸），读完后的说明 */
+.day-load{display:grid;gap:var(--space-12);opacity:.6}
+.day-load>i{width:200px;height:28px;border-radius:var(--radius-8);background:var(--soft)}
+.day-load>span{display:flex;gap:var(--space-6)}
+.day-load>span>i{flex:1;border-radius:var(--radius-8);background:var(--soft)}
+.day-load>span>i:first-child{flex:none;width:240px}
+.day-load.is-busy{animation:day-breathe calc(var(--dur-3) * 2.4) var(--ease) infinite alternate}
+@keyframes day-breathe{from{opacity:.6}to{opacity:.25}}
+.day-end{display:flex;align-items:center;gap:var(--space-14);margin:var(--space-10) 0 var(--space-24);color:var(--muted);font-size:var(--fs-12)}
+.day-end::before,.day-end::after{content:"";flex:1;height:1px;background:var(--line)}
 }

@@ -81,8 +81,15 @@ export function syncLine(s) {
 }
 // 同步进行中每 2 s 读一次；读失败 10 s 后再试。重叠的轮询由 core/poll.js 的序号守卫。
 export const pollSync = poller(async fresh => {
-  const {state: s, history, damaged} = await api('/api/sync');
+  let reply;
+  try { reply = await api('/api/sync'); } catch (e) {
+    // 读不到同步状态：记下来、通知一次（按天视图的同步卡写「正在重新连接」），照旧按间隔重试。
+    if (fresh() && !state.syncLost) { state.syncLost = true; await changed.emit('sync', {was: state.sync.status, lost: true}); }
+    throw e;
+  }
+  const {state: s, history, damaged} = reply;
   if (!fresh()) return 0;
+  state.syncLost = false;
   const previous = state.sync, was = previous.status, ended = SYNC_ACTIVE.includes(was) && !SYNC_ACTIVE.includes(s.status);
   state.sync = s; state.syncHistory = history; state.syncDamaged = damaged;
   // 文件夹里的图片可在扫描时计入 imported，后续用 import_done 判断识别结果何时交付。

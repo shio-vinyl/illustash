@@ -169,8 +169,7 @@ test('选择栏的按钮：选中的都已收藏时是「取消收藏」，超�
 });
 
 // 网格卡片上的心形是 ui/grid_card.js 的部件，在 tests/grid_card.test.cjs 里测。
-test('心形：首页只画收藏过的；大图底栏和详情栏的按钮', () => {
-  assert.equal(ui.homeHeart({uuid: 'a'}), '');
+test('心形：大图底栏和详情栏的按钮', () => {
   assert.match(ui.viewerHeart('a', true), /data-vact="fav".*<kbd>F<\/kbd><span class="fav-label">已收藏<\/span>/);
   assert.match(ui.detailHeart('a<', false), /data-fav="a&lt;"/);
 });

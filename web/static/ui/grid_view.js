@@ -48,7 +48,7 @@ function zoomRow() {
 export function renderViewPop() {
   const page = pageOf(state.route), nodes = [];
   if (page.area === 'homePage') {
-    nodes.push(...group(t('首页'), [homeSizeRow(), viewSwitch('hero', t('放大每组主图')), viewSwitch('people', t('分组显示角色数')), viewSwitch('marks', t('图上显示副本数'))]));
+    nodes.push(...group(t('按天'), [homeSizeRow(), viewSwitch('people', t('分组显示角色数')), viewSwitch('marks', t('图上显示副本数'))]));
   }
   if (!page.panel) {
     nodes.push(...group(t('图片网格'), [zoomRow(), viewSwitch('marks', t('图上显示副本数与造型')),
@@ -56,7 +56,7 @@ export function renderViewPop() {
   }
   nodes.push(...group(t('提示'), [viewSwitch('footer', t('底部状态栏'), t('已加载张数与操作提示'))]),
     ...group(t('详情面板'), [viewSwitch('chart', t('每月加入张数'), t('这个角色每月收了多少张')), viewSwitch('same', t('同一角色的其它图')),
-      viewSwitch('meta', t('文件信息与画面标签')), viewSwitch('ask', t('偶尔问一句「是 TA 吗？」'), t('在详情和首页'))]));
+      viewSwitch('meta', t('文件信息与画面标签')), viewSwitch('ask', t('偶尔问一句「是 TA 吗？」'), t('在详情和按天视图'))]));
   const foot = make('div', 'view-foot'), reset = make('button', 'link-button strong', t('恢复默认'));
   reset.id = 'viewReset';
   reset.onclick = () => { resetView(); afterViewChange(true); renderViewPop(); pageOf(state.route).refresh?.('view'); };
@@ -93,7 +93,7 @@ export function wireViewOptions() {
     b.setAttribute('aria-checked', viewOpts[key]); b.querySelector('.view-sw').classList.toggle('on', viewOpts[key]);
     afterViewChange(key === 'hints');
     if (['chart', 'same', 'meta'].includes(key) && state.focused && !$('inspector').hidden) inspect(state.focused, true);
-    if (['hero', 'people', 'marks'].includes(key)) pageOf(state.route).refresh?.('view');
+    if (['people', 'marks'].includes(key)) pageOf(state.route).refresh?.('view');
     if (key === 'ask') { if (state.focused && !$('inspector').hidden) inspect(state.focused, true); pageOf(state.route).refresh?.('ask'); }
   });
   applyViewClasses();

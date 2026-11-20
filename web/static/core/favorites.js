@@ -1,9 +1,9 @@
 // 收藏（#447）：不碰 DOM 的部分。收藏是一个人工标记，后端写在 /api/favorite，筛选条件是 has / not 里的 `fav`，列表、
-// 详情、首页带 marks=fav 时每张图多一个 `fav` 字段（口径：这张或同组任何一份收藏过）。画在哪、怎么写入在 ui/favorites.js
+// 详情、按天视图带 marks=fav 时每张图多一个 `fav` 字段（口径：这张或同组任何一份收藏过）。画在哪、怎么写入在 ui/favorites.js
 // 和 ui/grid.js。可以在 Node 里单独测试（tests/favorites.test.cjs）。
 import {state} from './state.js';
 
-// 读列表、详情、首页时带上的参数：回复里每张图多一个 fav。
+// 读列表、详情时带上的参数（按天视图带 marks=fav,color，core/days.js）：回复里每张图多一个 fav。
 export const MARKS = {marks: 'fav'};
 // 网格卡片要的标记：收藏，再加上每张图的主色（读完之前的底色、悬停投影，#717）。首页、详情栏以后要主色时也用它。
 export const GRID_MARKS = {marks: 'fav,color'};

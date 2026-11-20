@@ -158,7 +158,7 @@ sample('dialog-help', async () => { renderHelpKeys(); return [snapshot($('help')
 // ---- 浮层菜单 ----
 sample('pop-view', async () => {
   const out = [];
-  for (const [page, label] of [['library', '图库页'], ['home', '首页']]) {
+  for (const [page, label] of [['library', '图库页'], ['days', '按天视图']]) {
     state.route = {page}; renderViewPop(); out.push(pair(snapshot($('viewPopover')), `renderViewPop()：${label}`));
   }
   state.route = {page: 'library'};

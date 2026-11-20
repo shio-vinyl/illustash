@@ -61,7 +61,7 @@ test('responses after navigating away update cached data without repainting', as
 
 // 资料库 · 作品（#198，#711 改成作品卡）：作品树取代设置页的作品表。作品页签在 ui/works_tab.js。
 test('work cards follow the work tree, children under their parent, with counts, the watch switch and one notice', async () => {
-  const {worksView, shelf} = await web.load('ui/works_tab.js'), scopes = await web.load('ui/scope.js'), {state} = web.core();
+  const {worksView, worksFilter: shelf} = await web.load('ui/works_tab.js'), scopes = await web.load('ui/scope.js'), {state} = web.core();
   web.fakePage();
   const works = [{id: 'b', name: 'child', parent_id: 'a', count: 1, watchable: false},
     {id: 'a', name: 'parent', parent_id: null, count: 9, tag: 'tag_a', watchable: true},
@@ -75,8 +75,8 @@ test('work cards follow the work tree, children under their parent, with counts,
   const cards = () => view.el.querySelectorAll('.cat-work');
   assert.deepEqual(cards().map(c => c.querySelector('.cat-work-name').textContent), ['parent', 'child', 'orphan']);
   assert.equal(cards()[0].querySelector('small').textContent, '2 位角色 · 9 张');
-  assert.equal(cards()[0].querySelector('.switch').checked, true);
-  assert.equal(cards()[1].querySelector('.switch').checked, false);
+  assert.equal(cards()[0].querySelector('.cat-watch').firstChild.checked, true);
+  assert.equal(cards()[1].querySelector('.cat-watch').firstChild.checked, false);
   const notice = view.el.querySelector('.cat-notice');
   assert.equal(notice.hidden, false);
   assert.match(notice.textContent, /1 部作品的 Danbooru 链接待确认/);

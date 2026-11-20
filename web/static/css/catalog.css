@@ -4,13 +4,18 @@
 @layer pages{
 /* ---- 三个页签共用：同样的宽度、一行工具、节标题 ---- */
 .cat-page,.cat-workpage{position:relative;padding-bottom:var(--space-24)}
+/* 环境光左右伸出去，不让它撑出横向滚动 */
+.cat-workpage{overflow-x:clip}
+.cat-hero-tag{color:inherit;font-size:var(--fs-12);opacity:.85}
+.cat-hero-tag[hidden],.cat-hero-title>small:empty{display:none}
+.cat-hero-title>small{margin-left:var(--space-8);font-size:var(--fs-13);font-weight:var(--fw-400);letter-spacing:0;opacity:.8}
 .cat-tools{display:flex;flex:1;align-items:center;gap:var(--space-8);min-width:0}
 .cat-tools>.search{width:260px}
 .cat-tools-group{display:flex;align-items:center;gap:var(--space-8);min-width:0}
 .cat-tools .spacer{flex:1}
 .cat-filters{display:flex;gap:var(--space-6)}
 .cat-allworks{position:relative}
-.cat-allworks .cast-pop{top:calc(100% + 8px);right:auto;left:0}
+.cat-allworks .cast-pop{top:calc(100% + 8px);right:auto;left:0;width:min(720px,calc(100vw - 160px))}
 .cat-sec{margin-top:var(--space-24)}
 .cat-sec:first-child{margin-top:var(--space-4)}
 .cat-h{display:flex;align-items:baseline;gap:var(--space-10);margin:0 0 var(--space-12);font-size:var(--fs-13);font-weight:var(--fw-600)}
@@ -25,8 +30,10 @@
 
 /* ---- 角色海报：排名数字加重、压在图上也看得清；+N；小查看器的刻度和小地图；图钉 ---- */
 .cat-bento{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:var(--space-12)}
-.cat-bento>.cat-poster{aspect-ratio:auto;min-height:200px}
-.cat-bento>.cat-poster.is-big{grid-column:span 2;grid-row:span 2}
+.cat-poster-wrap{position:relative;min-width:0}
+.cat-bento>.cat-poster-wrap{min-height:200px}
+.cat-bento .cat-poster{height:100%;aspect-ratio:auto}
+.cat-bento>.cat-poster-wrap.is-big{grid-column:span 2;grid-row:span 2}
 .cat-posters{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:var(--space-12)}
 .cat-poster{touch-action:pan-y}
 .cat-poster>img{object-position:50% 22%}
@@ -34,10 +41,10 @@
 .cat-poster>.cat-next{opacity:0;transition:opacity var(--dur-1) var(--ease)}
 .cat-poster>.cat-next.on{opacity:1}
 .cat-poster>.poster-cap{transition:opacity var(--dur-1) var(--ease)}
-.cat-poster.is-big>.poster-cap>b{font-size:var(--fs-display-28)}
+.cat-poster-wrap.is-big .poster-cap>b{font-size:var(--fs-display-28)}
 .cat-rank{position:absolute;top:var(--space-6);left:var(--space-14);z-index:var(--z-page-1);color:var(--on-image);font-size:var(--fs-display-28);font-weight:var(--fw-750);
   line-height:1;letter-spacing:-.03em;text-shadow:var(--image-text-shadow)}
-.cat-poster.is-big>.cat-rank{font-size:var(--fs-display-40)}
+.cat-poster-wrap.is-big .cat-rank{font-size:var(--fs-display-40)}
 .cat-plus{position:absolute;top:var(--space-10);right:var(--space-10);z-index:var(--z-page-1);padding:var(--space-2) var(--space-8);border-radius:var(--radius-pill);
   background:var(--accent-fill);color:var(--on-accent);font-size:var(--fs-11);font-weight:var(--fw-600)}
 .cat-ticks{position:absolute;top:var(--space-6);right:var(--space-10);left:var(--space-10);z-index:var(--z-page-2);display:flex;gap:var(--space-4);opacity:0;
@@ -53,16 +60,19 @@
 
 /* 图钉：海报和作品卡右上角，悬停出现，钉住后一直显示；作品页横幅上是带字的胶囊 */
 .cat-pin{position:absolute;top:var(--space-10);right:var(--space-10);z-index:var(--z-page-3);display:grid;place-items:center;width:var(--h-28);height:var(--h-28);
-  margin:0;padding:0;border:0;border-radius:var(--radius-round);background:var(--sheet);color:var(--ink2);box-shadow:var(--shadow-hover);cursor:pointer;opacity:0;
+  margin:0;padding:0;border:0;border-radius:var(--radius-round);color:var(--ink2);cursor:pointer;opacity:0;
   transform:scale(.85);transition:opacity var(--dur-1) var(--ease),transform var(--dur-1) var(--ease),color var(--dur-1) var(--ease)}
+.cat-pin:not(.is-wide){background:var(--sheet);box-shadow:var(--shadow-hover)}
+.cat-poster-wrap.is-pinned .cat-plus{right:calc(var(--space-10) + var(--h-28) + var(--space-6))}
 .cat-pin>svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
 .cat-pin>span[hidden]{display:none}
 .cat-pin[aria-pressed=true]{color:var(--accent-ink);opacity:1;transform:none}
-.cat-poster:hover>.cat-pin,.cat-poster:focus-within>.cat-pin,.cat-work:hover>.cat-pin,.cat-work:focus-within>.cat-pin{opacity:1;transform:none}
+.cat-poster-wrap:hover>.cat-pin,.cat-poster-wrap:focus-within>.cat-pin,.cat-work:hover>.cat-pin,.cat-work:focus-within>.cat-pin{opacity:1;transform:none}
 .cat-pin.is-wide{position:static;display:inline-flex;width:auto;height:var(--h-32);padding:0 var(--space-14);border-radius:var(--radius-pill);opacity:1;transform:none}
 
 /* ---- 最近 30 天在收：带进度圆环的头像一排，「全部」展开成几行 ---- */
 .cat-rings{display:flex;gap:var(--space-16);overflow-x:auto;padding:var(--space-4) var(--space-2) var(--space-6);scrollbar-width:none}
+.cat-rings::-webkit-scrollbar{display:none}
 .cat-rings[data-open]{flex-wrap:wrap;overflow:visible}
 .cat-ring{display:grid;flex:none;justify-items:center;gap:var(--space-4);width:84px;color:var(--ink);text-align:center;text-decoration:none}
 .cat-ring>.avatar-ring{transition:transform var(--dur-1) var(--ease)}
@@ -117,9 +127,15 @@
   -webkit-line-clamp:2;-webkit-box-orient:vertical}
 .cat-work-text>small{margin-top:var(--space-6);color:var(--ink2);font-size:var(--fs-12)}
 .cat-faces{display:flex;align-items:center;margin-top:auto;padding-bottom:var(--space-24)}
-.cat-faces>.avatar{margin-left:-8px;box-shadow:0 0 0 2px var(--sheet);transition:margin var(--dur-2) var(--ease)}
+.cat-faces>.avatar{margin-left:-8px;box-shadow:0 0 0 2px var(--sheet);transition:transform var(--dur-2) var(--ease)}
 .cat-faces>.avatar:first-child{margin-left:0}
-.cat-work:hover .cat-faces>.avatar:not(:first-child){margin-left:-2px}
+.cat-work:hover .cat-faces>.avatar:nth-child(2){transform:translateX(6px)}
+.cat-work:hover .cat-faces>.avatar:nth-child(3){transform:translateX(12px)}
+.cat-work:hover .cat-faces>.avatar:nth-child(4){transform:translateX(18px)}
+.cat-work:hover .cat-faces>.avatar:nth-child(5){transform:translateX(24px)}
+.cat-work:hover .cat-faces>.avatar:nth-child(6){transform:translateX(30px)}
+.cat-work:hover .cat-faces>.cat-faces-more{transform:translateX(30px)}
+.cat-faces-more{transition:transform var(--dur-2) var(--ease)}
 .cat-faces-more{margin-left:var(--space-6);color:var(--ink2);font-size:var(--fs-11);font-weight:var(--fw-600)}
 .cat-slices{display:flex;gap:var(--space-4);width:46%;padding:var(--space-10) var(--space-10) var(--space-10) 0}
 .cat-slices>img{flex:1;min-width:0;height:100%;border-radius:var(--radius-8);background:var(--tint-soft);object-fit:cover;transition:transform var(--dur-2) var(--ease)}

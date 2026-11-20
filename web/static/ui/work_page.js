@@ -5,16 +5,17 @@
 //
 // 进来的过渡：从作品卡（或活页条二级层钉住的那一项）展开：横幅先裁成卡片的大小、放在卡片的位置，再展开到原位，文字和下面的内容
 // 随后依次淡入（ui/motion.js；开了「减少动态效果」时直接到终态）。卡片在点击时用 launch() 记下自己的位置。
-import {backTo, castWorks, catalogChanged, PSEUDO_NOTES, recentOf, workColor, workCovers, workImages} from '../core/catalog.js';
+import {castWorks, catalogChanged, forgetActivity, loadActivity, loadIndex, PSEUDO_NOTES, recentOf, workColor, workCovers, workImages} from '../core/catalog.js';
 import {imageUrl, number} from '../core/format.js';
 import {t} from '../core/i18n.js';
 import {implement, onPage} from '../core/pages.js';
+import {backTo} from '../core/rail.js';
 import {cameFrom, hashFor, stepHistory} from '../core/route.js';
 import {readError} from '../core/session.js';
 import {state} from '../core/state.js';
-import {setWatch, workDialog} from './catalog.js';
+import {watchToggle, workDialog} from './catalog.js';
 import {$, error} from './dom.js';
-import {attr, make, prop, refill, show, text, tpl} from './el.js';
+import {attr, make, refill, show, text, tpl} from './el.js';
 import {drawEmpty} from './empty.js';
 import {keyed} from './keyed.js';
 import {animate, enter, reduced} from './motion.js';
@@ -25,32 +26,40 @@ import {setTint} from './tint.js';
 
 const PAGE = tpl`<div class="cat-workpage"><div class="cat-glow" data-ref="glow"></div><section class="cat-hero" data-ref="hero"><div class="cat-strip" data-ref="strip"></div><div
   class="cat-hero-top" data-ref="top"><a class="btn glass cat-back" data-ref="back"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M12 4.5 6.5 10l5.5 5.5"/></svg><span
-  data-ref="backLabel"></span></a><span class="spacer"></span><span data-ref="pin"></span><label class="btn glass cat-hero-watch" data-ref="watch"><input type="checkbox"
-  class="switch" data-ref="box"><span data-t>关注新角色</span></label></div><div class="cat-hero-in" data-ref="info"><small data-ref="kind"></small><h1 class="cat-hero-title"
-  data-ref="name"></h1><p data-ref="meta"></p><p class="cat-hero-note" data-ref="note"></p><div class="cat-hero-acts" data-ref="acts"><a class="btn glass" data-ref="lib"
+  data-ref="backLabel"></span></a><span class="spacer"></span><span data-ref="pin"></span><span data-ref="watch"></span></div><div class="cat-hero-in"
+  data-ref="info"><small data-ref="kind"></small><h1 class="cat-hero-title"><span data-ref="name"></span><small data-ref="qualifier"></small></h1><p data-ref="meta"></p><a
+  class="cat-hero-tag" data-ref="tag" target="_blank"
+  rel="noreferrer noopener"></a><p class="cat-hero-note" data-ref="note"></p><div class="cat-hero-acts" data-ref="acts"><a class="btn glass" data-ref="lib"
   data-t>在图库里看全部</a><button type="button" class="btn glass" data-ref="edit" data-t>编辑作品…</button></div></div></section><section class="cat-sec" data-ref="castSec"><h3
   class="cat-h"><span data-t>角色</span><small data-ref="castN"></small></h3><div class="cat-posters" data-ref="posters"></div></section><section class="cat-sec"
   data-ref="recentSec"><h3 class="cat-h"><span data-t>最近加入</span><small data-ref="recentN"></small></h3><div class="cat-recent" data-ref="recent"></div></section><div
   data-ref="empty" hidden></div></div>`;
 const PSEUDO = new Set(['oc', 'other']);
+// 没有来路（页面打开后的第一条）时，返回去作品页签。
+const BACK = {label: t('作品'), href: '#/characters/works'};
 const STRIP = 14;
 
 // ---------- 从哪里展开 ----------
 // 作品卡、活页条的项被点时记下位置；作品页画好以后在一秒内取用（换页之间的空当），过期作废。
-let from = null;
-export function launch(key, el) { from = {key: String(key), box: el.getBoundingClientRect(), at: performance.now()}; }
-onPick('catalog', (item, e) => {
-  const el = e?.target?.closest?.('.rail-item') || document.querySelector(`.rail-item[data-key="${CSS.escape(item.key)}"]`);
-  if (item.kind === 'work' && el) launch(item.key.slice(2), el);
-  return false;
-});
-const takeLaunch = key => { const x = from; from = null; return x && x.key === key && performance.now() - x.at < 1000 ? x.box : null; };
+let launched = null;
+export function launch(key, el) { launched = {key: String(key), box: el.getBoundingClientRect(), at: performance.now()}; }
+const takeLaunch = key => { const x = launched; launched = null; return x && x.key === key && performance.now() - x.at < 1000 ? x.box : null; };
+// 页面启动时调用一次（app.js）：点了活页条上钉住的作品（或 ⌥↑↓ 走到它），记下那个小方块的位置。按项的键找元素：
+// 键盘走到时事件的目标是原来有焦点的那一项。
+export function wireWorkPage() {
+  onPick('catalog', item => {
+    const el = document.querySelector(`.rail-item[data-key="${CSS.escape(item.key)}"]`);
+    if (item.kind === 'work' && el) launch(item.key.slice(2), el);
+    return false;
+  });
+}
 // 横幅从 box 展开：先裁成那一块、放在那里，再展开到原位；文字、按钮和下面的内容依次淡入。
 function expand(refs, box) {
   const to = refs.hero.getBoundingClientRect();
   if (!box || reduced() || !to.width) return;
   const dx = box.left - to.left, dy = box.top - to.top;
   animate(refs.hero, [
+    // 起止的圆角对应 --radius-12（卡片）、--radius-18（横幅）。
     {transform: `translate(${dx}px, ${dy}px)`, clipPath: `inset(0px ${Math.max(0, to.width - box.width)}px ${Math.max(0, to.height - box.height)}px 0px round 12px)`},
     {transform: 'none', clipPath: 'inset(0px 0px 0px 0px round 18px)'}], {dur: 3});
   [refs.top, refs.info].forEach((el, i) => enter(el, {dur: 2, delay: 200 + i * 40}));
@@ -59,16 +68,15 @@ function expand(refs, box) {
 
 // ---------- 页面 ----------
 function workView(s) {
-  const {el, refs} = PAGE(), pinned = pinButton(s, {wide: true});
+  const {el, refs} = PAGE(), pinned = pinButton(s, {wide: true}), watch = watchToggle(s, 'btn glass cat-hero-watch');
   pinned.el.classList.add('glass');
-  refs.pin.replaceWith(pinned.el);
+  refs.pin.replaceWith(pinned.el); refs.watch.replaceWith(watch.el);
   $('charIndex').replaceChildren(el);
   const people = keyed(refs.posters, {key: x => x.c.id, create: posters(s), scope: s});
   const recent = keyed(refs.recent, {key: x => x.uuid, create: thumb, scope: s});
-  let info = null, images = [], loaded = '';
-  s.on(refs.back, 'click', e => { const b = backTo(cameFrom()); if (b.step) { e.preventDefault(); stepHistory(-1); } });
+  let info = null, images = [];
+  s.on(refs.back, 'click', e => { if (backTo(cameFrom(), BACK).step) { e.preventDefault(); stepHistory(-1); } });
   s.on(refs.edit, 'click', () => { if (info) workDialog(info); });
-  s.on(refs.box, 'change', () => { const on = refs.box.checked; prop(refs.box, 'checked', !on); if (info) setWatch(info, on); });
 
   function draw(key) {
     const work = castWorks().find(w => String(w.key) === key) || null;
@@ -77,14 +85,15 @@ function workView(s) {
     const chars = work?.chars || [], count = info?.count ?? work?.images ?? 0, recentN = chars.reduce((n, c) => n + recentOf(c), 0);
     const covers = images.length ? images : workCovers(key);
     setTint(el, workColor(covers));
-    const back = backTo(cameFrom());
+    const back = backTo(cameFrom(), BACK);
     text(refs.backLabel, back.label); attr(refs.back, 'href', back.href);
     text(refs.kind, pseudo ? '' : t('作品'));
-    text(refs.name, name);
+    text(refs.name, name); text(refs.qualifier, info?.qualifier || '');
+    text(refs.tag, info?.tag ? 'Danbooru · ' + info.tag : ''); show(refs.tag, !!info?.tag);
+    attr(refs.tag, 'href', info?.tag ? 'https://danbooru.donmai.us/posts?tags=' + encodeURIComponent(info.tag) : null);
     text(refs.meta, [t('{n} 位角色', {n: number(chars.length)}), t('{n} 张', {n: number(count)}), recentN ? t('最近 30 天 +{n}', {n: number(recentN)}) : ''].filter(Boolean).join(' · '));
     text(refs.note, pseudo ? PSEUDO_NOTES[key] : ''); show(refs.note, pseudo);
-    show(refs.watch, !pseudo && !!info); prop(refs.box, 'checked', !!info && !!state.index?.watch.works.includes(info.id));
-    attr(refs.watch, 'title', info?.watchable ? t('定期检查 Danbooru 上这部作品还没收录的角色（只发送作品名）') : t('先在「编辑作品」里核对 Danbooru 作品 tag，才能关注'));
+    show(watch.el, !pseudo && !!info); watch.update(info, !!info && !!state.index?.watch.works.includes(info.id));
     pinned.update(pseudo ? '' : 'w:' + key);
     show(refs.lib, !pseudo); attr(refs.lib, 'href', hashFor({page: 'library', work: key}));
     show(refs.edit, !pseudo && !!info);
@@ -95,20 +104,26 @@ function workView(s) {
     show(refs.castSec, chars.length > 0);
     people.set(chars.map(c => ({c, sub: t('{n} 张', {n: number(c.count)})})));
     text(refs.recentN, t('{n} 张', {n: number(count)}));
-    show(refs.recentSec, images.length > 0);
+    // 原创角色、未归作品的图是各角色的封面，海报里已经有了，不另列「最近加入」。
+    show(refs.recentSec, !pseudo && images.length > 0);
     recent.set(images.slice(0, 12).map(x => ({...x, href: pseudo ? '' : hashFor({page: 'library', work: key})})));
-    const none = !work && !info;
+    const none = !work && !info && !!state.index;
     show(refs.empty, none); show(refs.hero, !none);
     if (none) drawEmpty(refs.empty, {icon: 'person', fact: t('没有这部作品。'), next: [{label: t('回到作品'), href: '#/characters/works'}]});
   }
+  // 读这部作品的图；直接打开（刷新、从活页条进来）时索引和最近动态可能还没读到，一起读。
   async function load(route) {
     const key = route.id;
-    if (loaded !== key) { images = []; loaded = key; }
     draw(key);
     const box = takeLaunch(key);
     if (box) expand(refs, box);
-    try { images = await workImages(key, s.signal); } catch (e) { if (s.alive && e?.name !== 'AbortError') error(readError(e)); return; }
-    if (!s.alive || state.route !== route) return;
+    const here = () => s.alive && state.route === route;
+    if (!state.index) loadIndex().then(() => { if (here()) draw(key); }, () => {});
+    loadActivity().then(fresh => { if (fresh && here()) draw(key); }, () => {});
+    let list;
+    try { list = await workImages(key, s.signal); } catch (e) { if (here() && e?.name !== 'AbortError') error(readError(e)); return; }
+    if (!here()) return;
+    images = list;
     draw(key);
   }
   const redraw = () => { if (s.alive && onPage(state.route, 'work')) draw(state.route.id); };
@@ -129,7 +144,8 @@ function thumb(x) {
 let view = null;
 implement({work: {
   render: ({samePage, scope}) => { if (!samePage || !view?.scope.alive) view = workView(scope); return view.load(state.route); },
-  refresh: () => view?.redraw(),
+  // NSFW、同步、撤销、改动之后图和计数都可能变了：重读这部作品的图；别的只重画。
+  refresh: why => { if (!view?.scope.alive) return; if (['nsfw', 'sync', 'undo', 'edit'].includes(why)) { if (why === 'nsfw') forgetActivity(); return view.load(state.route); } view.redraw(); },
   onMeta: () => view?.redraw(),
   // 作品名写在横幅上，页头只留右侧的全局控件。
   head: () => ({title: '', sub: ''}),

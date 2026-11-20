@@ -18,7 +18,7 @@ test('the artist directory reads in English', () => {
   Object.assign(dirs.dir, {total: 4011});
   assert.equal(dirs.dirHeading(), '4,011 artists');
   const empty = dirs.emptyState();
-  assert.equal(empty.fact, 'No artists yet');
+  assert.equal(empty.fact, 'No artists yet.');
   assert.equal(empty.next[0].href, '#/settings/artists');
   dirs.dir.q = 'zzz';
   assert.equal(dirs.emptyState().fact, 'No matching artists.');

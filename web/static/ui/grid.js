@@ -701,8 +701,8 @@ export function wireGrid() {
     if (e.key === 'Escape') { if (m.detail) closeInspector(); else quitSelecting(); return; }
     if (key === 'r' && !mod && !pageOf(state.route).panel) { e.preventDefault(); toggleFit(); return; }
     if (key === 'h' && !mod) { e.preventDefault(); setNsfw(state.nsfw === 'hide' ? '' : 'hide'); return; }
-    // /：聚焦本页的搜索框，图库一类页面是 #search，资料库是 #charSearch（#422）。
-    if (e.key === '/' && ($('search') || $('charSearch'))) { e.preventDefault(); ($('search') || $('charSearch')).focus(); return; }
+    // /：聚焦本页工具栏里的搜索框（图库一类页面、资料库三个页签，#422）。
+    const box = e.key === '/' && document.querySelector('#toolbar input[type=search]'); if (box) { e.preventDefault(); box.focus(); return; }
     const n = keySelection(), character = !!state.route.char;
     if ((key === 'y' || key === 'n') && !mod && !edits.busy && view.bar === 'audit' && n) { e.preventDefault(); bar.answerAudit(key === 'y'); return; }
     if ((key === 'y' || key === 'n') && !mod && !edits.busy && state.question && [state.focused, m.viewer && state.viewerItem?.uuid].includes(state.question.ident)) { e.preventDefault(); answerAsk(key === 'y' ? 'yes' : 'no'); return; }

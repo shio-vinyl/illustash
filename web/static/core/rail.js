@@ -20,7 +20,7 @@ import {CHARACTER, libraryFilters, onPage, pageOf, viewOf} from './pages.js';
 import {api} from './session.js';
 import {state} from './state.js';
 import {currentLibraryId} from './settings.js';
-import {hashFor} from './route.js';
+import {hashFor, parseHash} from './route.js';
 
 // ---------- 一级入口 ----------
 // 顺序就是 ⌘1–4（Windows 上 Ctrl）。设置不在这里：它是底部的齿轮。
@@ -213,6 +213,21 @@ export async function loadTimeline(route = state.route, {newest = false, month: 
   }
 }
 
+// ---------- 返回按来路走（#711） ----------
+// 作品页、角色页横幅上的返回写「回到哪里」：hash 是上一条地址（core/route.js 的 cameFrom()）。作品页、角色页写它的名字，资料库的
+// 页签写页签名，别的页写活页条上那个入口的名字。没有上一条（页面打开后的第一条）时去 fallback：{label, href}，由调用方给
+// （作品页回作品页签，角色页回资料库）。step 为真表示后退一步就能回去。
+const SECTION_NAMES = {works: () => t('作品'), artists: () => t('画师')};
+export function backTo(hash, fallback) {
+  if (!hash) return {...fallback, step: false};
+  const r = parseHash(hash), view = viewOf(r);
+  const label = onPage(r, 'work') ? castWorks().find(w => String(w.key) === r.id)?.name || t('作品')
+    : view === CHARACTER ? state.charMap.get(r.char)?.name || t('角色')
+    : onPage(r, 'characters') ? SECTION_NAMES[r.section]?.() || t('资料库')
+    : ENTRIES.find(x => x.id === pageOf(r).entry)?.label() || (pageOf(r).entry === 'settings' ? t('设置') : t('返回'));
+  return {label, href: hash, step: true};
+}
+
 // ---------- 资料库：钉住的作品和角色（#684） ----------
 // 存在浏览器本地，按图库分开（core/prefs.js 的 libraryPrefs，#523），键 'railPins'，值是有序的键列表（'c:<角色 id>'、'w:<作品键>'）。
 // 钉住、取消钉住的按钮在资料库的海报和作品卡上（#711）；这里管存取和顺序，ui/rail.js 画、拖动排序。
@@ -255,7 +270,9 @@ export function pinItems(keys = pins.keys) {
       return {key, kind: 'char', label: c.name, round: true, cover: c.cover || null, color: c.color || null, href: hashFor({page: 'library', char: id}),
         meta: t('{n} 张', {n: number(c.count || 0)})};
     }
-    const w = works.get(id); if (!w || w.pseudo) return null;
+    // 没有直接角色的作品（只挂着子作品的系列）不在 castWorks 里，名字从索引取。
+    const x = works.has(id) ? null : state.index?.works?.find(y => y.id === id);
+    const w = works.get(id) || (x && {name: x.name, chars: []}); if (!w || w.pseudo) return null;
     // 作品的预览是它的角色：一排圆头像（圆形是人）。
     return {key, kind: 'work', label: w.name, cover: w.chars?.[0]?.cover || null, href: hashFor({page: 'work', id}),
       peek: (w.chars || []).filter(c => c.cover).slice(0, PEEK_POOL).map(c => ({id: c.cover})), peekRound: true,

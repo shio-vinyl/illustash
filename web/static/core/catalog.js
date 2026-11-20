@@ -7,8 +7,6 @@ import {api, post} from './session.js';
 import {state} from './state.js';
 import {listeners} from './events.js';
 import {setIndex} from './jobs.js';
-import {onPage, pageOf} from './pages.js';
-import {parseHash} from './route.js';
 // 资料库的数据被对话框改过（关注、作品、只当标签、自建角色的关联）：资料库和作品页据此重画（ui/catalog.js 发，不导入页面）。
 export const catalogChanged = listeners();
 // 每个角色的最近动态（{recent, last}），每种筛选、每个数据版本读一次。
@@ -58,23 +56,14 @@ export function posterPictures(c) {
 // 作品页的「最近加入」和横幅的切片：这部作品最近加入的图（带主色）。原创角色、未归作品不是图库的筛选条件，按各个角色读不划算，
 // 用角色的封面顶上。
 export async function workImages(key, signal) {
-  if (key === 'oc' || key === 'other') return castWorks().find(w => w.key === key)?.chars.filter(c => c.cover).slice(0, 24).map(c => ({uuid: c.cover, color: c.color || null})) || [];
+  if (key === 'oc' || key === 'other') {
+    // 两位角色可能用同一张图做封面（同一张图里的两个原创角色），按 uuid 去重。
+    const seen = new Set(), list = [];
+    for (const c of castWorks().find(w => w.key === key)?.chars || []) if (c.cover && !seen.has(c.cover)) { seen.add(c.cover); list.push({uuid: c.cover, color: c.color || null}); }
+    return list.slice(0, 24);
+  }
   const r = await api('/api/assets?' + new URLSearchParams({work: key, order: 'newest', limit: 24, count: 0, marks: 'color', ...(state.nsfw ? {nsfw: state.nsfw} : {})}), {signal});
   return r?.items || [];
-}
-
-// ---------- 返回按来路走（#711） ----------
-// 作品页横幅左上的返回写「回到哪里」：上一条地址是作品页签写「作品」，资料库写「资料库」，另一部作品、某个角色写它的名字，
-// 别的页写活页条上那个入口的名字；没有上一条（刚打开）时去作品页签。
-const ENTRY_NAMES = {library: () => t('图库'), catalog: () => t('资料库'), galleries: () => t('画廊'), tidy: () => t('整理'), settings: () => t('设置')};
-export function backTo(hash) {
-  if (!hash) return {label: t('作品'), href: '#/characters/works', step: false};
-  const r = parseHash(hash);
-  const label = onPage(r, 'work') ? castWorks().find(w => String(w.key) === r.id)?.name || t('作品')
-    : r.char ? state.charMap.get(r.char)?.name || t('角色')
-    : onPage(r, 'characters') ? (r.section === 'works' ? t('作品') : r.section === 'artists' ? t('画师') : t('资料库'))
-    : ENTRY_NAMES[pageOf(r).entry]?.() || t('返回');
-  return {label, href: hash, step: true};
 }
 
 // ---------- 按作品分的角色 ----------

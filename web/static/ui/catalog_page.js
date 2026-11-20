@@ -16,8 +16,8 @@ import {readError} from '../core/session.js';
 import {state} from '../core/state.js';
 import {artistsView, dirHeading} from './artist_dir.js';
 import {cast, castView} from './cast.js';
-import {allWorksButton, openTagged, refreshLocalLinks} from './catalog.js';
-import {$, error, readFailure} from './dom.js';
+import {allWorksButton, openTagged, refreshLocalLinks, searchField} from './catalog.js';
+import {$} from './dom.js';
 import {attr, make, show, text, tpl, value} from './el.js';
 import {openLocalLinks} from './palette.js';
 import {currentPage} from './scope.js';
@@ -25,33 +25,37 @@ import {renderHeading} from './shell.js';
 import {launch} from './work_page.js';
 import {worksView} from './works_tab.js';
 
-const PAGE = tpl`<div class="cat-page"><div data-ref="cast"></div><div data-ref="works"></div><div data-ref="artists"></div></div>`;
-const CAST_TOOLS = tpl`<div class="cat-tools"><label class="search"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10" cy="10" r="6.5"/><path d="m15 15 5 5"/></svg><input
-  type="search" data-ref="q" spellcheck="false" autocomplete="off" placeholder="搜索角色或作品" aria-label="搜索角色" data-t-attr="placeholder aria-label"></label><span
-  data-ref="all"></span><span class="spacer"></span><button type="button" class="btn" data-ref="tagged" title="不算角色、只当标签的吉祥物和玩家化身" data-t-attr="title"><span
-  data-t>只当标签</span><span class="chip-count" data-ref="taggedN"></span></button><span class="seg" role="group" aria-label="显示方式" data-t-attr="aria-label"><button
-  type="button" data-ref="shelf" data-mode="shelf" data-t>书架</button><button type="button" data-ref="list" data-mode="list" data-t>列表</button></span></div>`;
+const PAGE = tpl`<div class="cat-page"><p class="cat-error" role="alert" data-ref="error"></p><div data-ref="cast"></div><div data-ref="works"></div><div
+  data-ref="artists"></div></div>`;
+const CAST_TOOLS = tpl`<div class="cat-tools"><span data-ref="q"></span><span data-ref="all"></span><span class="spacer"></span><button type="button" class="btn" data-ref="tagged"
+  title="不算角色、只当标签的吉祥物和玩家化身" data-t-attr="title"><span data-t>只当标签</span><span class="chip-count" data-ref="taggedN"></span></button><span class="seg"
+  role="group" aria-label="显示方式" data-t-attr="aria-label"><button type="button" data-ref="shelf" data-mode="shelf" data-t>书架</button><button type="button" data-ref="list"
+  data-mode="list" data-t>列表</button></span></div>`;
 const TABS = [['', () => t('角色')], ['works', () => t('作品')], ['artists', () => t('画师')]];
 
-// 资料库这一页的部件：三个页签各一份，进页面时建一次。
+// 资料库这一页的部件：三个页签各一份，进页面时建一次。读失败时错误写在页签上面的一行里（部件留着），下一次读成功就清掉。
 function indexView(s) {
-  const {el, refs} = PAGE(), tools = CAST_TOOLS(), all = allWorksButton();
-  tools.refs.all.replaceWith(all.el);
+  const {el, refs} = PAGE(), tools = CAST_TOOLS(), all = allWorksButton(), q = searchField(t('搜索角色或作品'));
+  tools.refs.all.replaceWith(all.el); tools.refs.q.replaceWith(q.el);
   $('charIndex').replaceChildren(el);
   const castTab = castView(s), works = worksView(s, {open: (key, card) => launch(key, card)}), artists = artistsView(s, {onDraw: renderHeading});
   refs.cast.append(castTab.el); refs.works.append(works.el); refs.artists.append(artists.el);
   let asked = 0;
+  // 还在这一页、这一个地址（同一页换了页签或筛选，路由对象就换了）。
+  const here = route => s.alive && state.route === route;
+  const fail = (route, e) => { if (here(route)) { text(refs.error, readError(e)); show(refs.error, true); } };
+  const ok = route => { if (here(route)) show(refs.error, false); };
 
   // ---------- 角色页签的工具 ----------
-  onTyped(tools.refs.q, () => search(), 200);
+  onTyped(q.input, () => search(), 200);
   s.on(tools.refs.tagged, 'click', openTagged);
   for (const b of [tools.refs.shelf, tools.refs.list]) s.on(b, 'click', () => { cast.mode = b.dataset.mode; prefs.set('castMode', cast.mode); drawCast(); });
   async function search() {
-    const q = tools.refs.q.value.trim(), ask = ++asked, route = state.route;
-    if (!q) { cast.list = null; drawCast(); return; }
-    let list; try { list = await searchCharacters(q); } catch (e) { if (ask === asked && s.alive) readFailure(refs.cast, e); return; }
-    if (ask !== asked || !s.alive || state.route !== route) return;
-    cast.list = list; drawCast();
+    const word = q.input.value.trim(), ask = ++asked, route = state.route;
+    if (!word) { cast.list = null; drawCast(); return; }
+    let list; try { list = await searchCharacters(word); } catch (e) { if (ask === asked) fail(route, e); return; }
+    if (ask !== asked || !here(route)) return;
+    ok(route); cast.list = list; drawCast();
   }
   function drawCast() {
     attr(tools.refs.shelf, 'aria-pressed', String(cast.mode === 'shelf')); attr(tools.refs.list, 'aria-pressed', String(cast.mode === 'list'));
@@ -65,30 +69,33 @@ function indexView(s) {
   function showTab() {
     const tab = section();
     show(refs.cast, tab === ''); show(refs.works, tab === 'works'); show(refs.artists, tab === 'artists');
+    show(refs.error, false);
+    // 底栏的张数和操作提示是网格页的，资料库不用（#711）。
+    for (const id of ['resultCount', 'hint']) if ($(id)) text($(id), '');
   }
   async function enterCast(route) {
-    cast.list = null; value(tools.refs.q, '');
+    cast.list = null; value(q.input, '');
     if (state.chars.some(c => c.summary)) {
-      try { await refreshMeta(); } catch (e) { error(e.message); return; }
-      if (!s.alive || state.route !== route) return;
+      try { await refreshMeta(); } catch (e) { fail(route, e); return; }
+      if (!here(route)) return;
     }
     drawCast();
-    loadTagged().then(() => { if (s.alive) drawCast(); }, e => error(readError(e)));
-    await loadWorkTree().catch(e => error(readError(e)));
-    if (!s.alive) return;
-    drawCast();
-    readActivity();
+    loadTagged().then(() => { if (here(route)) drawCast(); }, e => fail(route, e));
+    try { await loadWorkTree(); } catch (e) { fail(route, e); return; }
+    if (!here(route)) return;
+    ok(route); drawCast();
+    readActivity(route);
     refreshLocalLinks();
   }
-  async function readActivity() {
-    let fresh; try { fresh = await loadActivity(); } catch (e) { error(readError(e)); return; }
-    if (fresh && s.alive) drawCast();
+  async function readActivity(route) {
+    let fresh; try { fresh = await loadActivity(); } catch (e) { fail(route, e); return; }
+    if (fresh && here(route)) drawCast();
   }
   async function enterWorks(route) {
     works.update();
-    try { await Promise.all([loadIndex(), loadWorkTree()]); } catch (e) { if (s.alive && state.route === route) readFailure(refs.works, e); return; }
-    if (!s.alive || state.route !== route) return;
-    renderHeading(); works.update();
+    try { await Promise.all([loadIndex(), loadWorkTree()]); } catch (e) { fail(route, e); return; }
+    if (!here(route)) return;
+    ok(route); renderHeading(); works.update();
   }
   function open(route, opts) {
     showTab();
@@ -97,14 +104,28 @@ function indexView(s) {
     if (tab === 'works') return enterWorks(route);
     return enterCast(route);
   }
-  // 对话框改了数据：关注、作品、只当标签、自建角色的关联。
-  s.add(catalogChanged.on(async why => {
-    if (why === 'links') { renderHeading(); return; }
-    if (why === 'watch' || why === 'index') { try { await loadIndex(); } catch { /* 读不到就留着上一次的 */ } }
-    if (why === 'tagged' || why === 'watch' || why === 'index') { if (!s.alive) return; renderHeading(); works.update(); drawCast(); }
+  // 数据变了（refresh）：NSFW 换了要重读作品样图和最近动态，正在搜角色时按新设置重搜；撤销后重读作品和「只当标签」。
+  async function refresh(why) {
+    const route = state.route;
+    if (section() === 'artists') { artists.reload(why); return; }
+    try {
+      if (why === 'nsfw') { forgetActivity(); await loadWorkTree(); }
+      if (why === 'undo') await Promise.all([loadTagged(), section() === 'works' ? loadIndex() : null]);
+    } catch (e) { fail(route, e); return; }
+    if (!here(route)) return;
+    renderHeading();
+    if (section() === 'works') { works.update(); return; }
+    if ((why === 'nsfw' || why === 'undo') && q.input.value.trim()) search(); else drawCast();
+    if (why === 'nsfw') readActivity(route);
+  }
+  // 对话框改了数据：关注、作品、只当标签、自建角色的关联。保存关注、作品时 core/catalog.js 已经换上新的索引，这里只重画。
+  s.add(catalogChanged.on(why => {
+    if (!s.alive) return;
+    renderHeading();
+    if (why !== 'links') { works.update(); drawCast(); }
   }));
-  function tools_(r) { return r.section === 'artists' ? artists.tools : r.section === 'works' ? works.tools : tools.el; }
-  return {scope: s, open, tools: tools_, drawCast, works, artists, castTab};
+  function toolsFor(r) { return r.section === 'artists' ? artists.tools : r.section === 'works' ? works.tools : tools.el; }
+  return {scope: s, open, refresh, tools: toolsFor, drawCast, works};
 }
 
 let view = null;
@@ -134,15 +155,7 @@ implement({characters: {head,
   switches: r => ({label: t('资料库'), list: TABS.map(([v, label]) => ({label: label(), href: '#/characters' + (v ? '/' + v : ''), on: (r.section || '') === v}))}),
   tools: r => ensure().tools(r),
   render: opts => ensure().open(state.route, opts),
-  // 计数到达后只重画角色目录（搜索时不动搜索结果）。
-  onMeta: ({directory}) => { if (directory && view?.scope.alive && !state.route.section) { view.drawCast(); } },
-  refresh: async why => {
-    const v = view; if (!v?.scope.alive) return;
-    if (state.route.section === 'artists') { v.artists.reload(why); return; }
-    if (why === 'nsfw') { forgetActivity(); await loadWorkTree().catch(() => {}); }
-    if (why === 'undo' && state.route.section === 'works') { await loadIndex().catch(e => error(readError(e))); }
-    if (why === 'undo') await loadTagged().catch(e => error(readError(e)));
-    if (!v.scope.alive) return;
-    renderHeading();
-    if (state.route.section === 'works') v.works.update(); else { v.drawCast(); if (why === 'nsfw') loadActivity().then(fresh => { if (fresh && v.scope.alive) v.drawCast(); }, () => {}); }
-  }}});
+  // 计数（角色目录）到达后：角色页签重画（搜索时不动搜索结果），作品页签的头像也取角色的封面。
+  onMeta: ({directory}) => { if (!directory || !view?.scope.alive) return; if (state.route.section === 'works') view.works.update(); else if (!state.route.section) view.drawCast(); },
+  refresh: why => view?.scope.alive ? view.refresh(why) : undefined,
+}});

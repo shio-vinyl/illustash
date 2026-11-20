@@ -8,14 +8,13 @@ import {workColor} from '../core/catalog.js';
 import {imageUrl, number} from '../core/format.js';
 import {t} from '../core/i18n.js';
 import {hashFor} from '../core/route.js';
-import {setWatch} from './catalog.js';
-import {attr, make, prop, refill, show, text, tpl} from './el.js';
+import {watchToggle} from './catalog.js';
+import {attr, make, refill, show, text, tpl} from './el.js';
 import {pinButton} from './pin_button.js';
 import {setTint} from './tint.js';
 
 const CARD = tpl`<article class="cat-work"><a class="cat-work-link" data-ref="link"><span class="cat-work-text"><b class="cat-work-name" data-ref="name"></b><small
-  data-ref="meta"></small><span class="cat-faces" data-ref="faces"></span></span><span class="cat-slices" data-ref="slices"></span></a><label class="cat-watch"
-  data-ref="watch"><input type="checkbox" class="switch" data-ref="box"><span data-t>关注新角色</span></label></article>`;
+  data-ref="meta"></small><span class="cat-faces" data-ref="faces"></span></span><span class="cat-slices" data-ref="slices"></span></a></article>`;
 const FACES = 6;
 
 export function workCards(parent, {open}) {
@@ -23,11 +22,10 @@ export function workCards(parent, {open}) {
 }
 
 function card(first, s, open) {
-  const {el, refs} = CARD(), pinned = pinButton(s);
-  el.append(pinned.el);
+  const {el, refs} = CARD(), pinned = pinButton(s), watch = watchToggle(s, 'cat-watch');
+  el.append(watch.el, pinned.el);
   let w = first;
   s.on(refs.link, 'click', e => { if (!e.metaKey && !e.ctrlKey && !e.shiftKey) open?.(w.id, el); });
-  s.on(refs.box, 'change', () => { const on = refs.box.checked; refs.box.checked = !!w.watched; setWatch(w, on); });
   function update(next) {
     w = next;
     attr(refs.link, 'href', hashFor({page: 'work', id: w.id}));
@@ -47,9 +45,8 @@ function card(first, s, open) {
     refill(refs.slices, w.covers.map(x => x.uuid).join('|'), () => w.covers.map(x => {
       const img = make('img'); img.alt = ''; img.loading = 'lazy'; img.decoding = 'async'; img.src = imageUrl(x.uuid); setTint(img, x.color); return img;
     }));
-    show(refs.watch, !w.pseudo);
-    prop(refs.box, 'checked', !!w.watched);
-    attr(refs.watch, 'title', w.watchable ? t('定期检查 Danbooru 上这部作品还没收录的角色（只发送作品名）') : t('先在「编辑作品」里核对 Danbooru 作品 tag，才能关注'));
+    show(watch.el, !w.pseudo);
+    watch.update(w, w.watched);
     pinned.update(w.pseudo ? '' : 'w:' + w.id);
   }
   update(first);

@@ -12,7 +12,7 @@ import {catalogChanged, loadTagged, loadWorkTree, loadLocalLinks, castWorks, PSE
   saveWork} from '../core/catalog.js';
 import {$, toast, toastMore, error, namesAllowButton, searchIcon} from './dom.js';
 import {chooseWork, openDialog} from './dialog.js';
-import {make} from './el.js';
+import {attr, make, prop, tpl} from './el.js';
 import {createLayer, openModal} from './overlay.js';
 import {openPicker, toggleMascot} from './palette.js';
 import {combo} from './combo.js';
@@ -88,11 +88,35 @@ export async function openTagged() {
   refresh();
 }
 
+// ---------- 资料库共用的两个小部件 ----------
+// 搜索框（三个页签各一个）：关掉拼写检查、自动更正和自动大写（#422）；`/` 聚焦 #toolbar 里的搜索框（ui/grid.js）。
+const SEARCH = tpl`<label class="search"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10" cy="10" r="6.5"/><path d="m15 15 5 5"/></svg><input type="search"
+  data-ref="input" spellcheck="false" autocorrect="off" autocapitalize="off" autocomplete="off"></label>`;
+export function searchField(label) {
+  const {el, refs} = SEARCH();
+  refs.input.placeholder = label; refs.input.setAttribute('aria-label', label);
+  return {el, input: refs.input};
+}
+// 「关注新角色」开关（作品卡上、作品页横幅上）：点了经 setWatch 保存，开关的状态等索引回来再按它画。
+const WATCH = tpl`<label><input type="checkbox" class="switch" data-ref="box"><span data-t>关注新角色</span></label>`;
+export function watchToggle(s, className) {
+  const {el, refs} = WATCH();
+  let work = null, on = false;
+  el.className = className;
+  s.on(refs.box, 'change', () => { const want = refs.box.checked; prop(refs.box, 'checked', on); if (work) setWatch(work, want); });
+  return {el, update(w, watched) {
+    work = w; on = !!watched;
+    prop(refs.box, 'checked', on);
+    attr(el, 'title', w?.watchable ? t('定期检查 Danbooru 上这部作品还没收录的角色（只发送作品名）') : t('先在「编辑作品」里核对 Danbooru 作品 tag，才能关注'));
+  }};
+}
+
 // ---------- 关注作品（#198） ----------
 // 关注一个作品，意味着索引检查会去问 Danbooru（只发作品名）有哪些本地索引还没有的角色。关注开关需要一个用户核对过的
 // Danbooru 作品 tag；没有时点开关先打开「编辑作品」去找一个（和 offerWatch 一样）。作品卡和作品页上的开关都走这里。
+// w 可以是作品卡上的摘要：打开对话框前换成索引里的完整那份，免得保存时把上级作品这类没带上的字段清掉。
 export async function setWatch(w, on) {
-  if (on && !w.watchable) { await workDialog(w, {watch: true}); return; }
+  if (on && !w.watchable) { await workDialog(state.index?.works?.find(x => x.id === w.id) || w, {watch: true}); return; }
   const list = (state.index?.watch.works || []).filter(id => id !== w.id);
   await saveWatchList(on ? [...list, w.id] : list);
 }

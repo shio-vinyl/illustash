@@ -92,7 +92,7 @@ test('the empty page says why: a search, NSFW only, or no artists yet with the w
   total = 0;
   await view.start();
   const empty = view.el.querySelector('.empty-state');
-  assert.equal(empty.querySelector('.empty-fact').textContent, '还没有画师');
+  assert.equal(empty.querySelector('.empty-fact').textContent, '还没有画师。');
   assert.equal(dirs.emptyState().next[0].href, '#/settings/artists');
   dirs.dir.q = '无'; assert.equal(dirs.emptyState().fact, '没有符合的画师。');
   dirs.dir.q = ''; state.nsfw = 'only'; assert.match(dirs.emptyState().fact, /只看 NSFW/);

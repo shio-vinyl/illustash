@@ -71,7 +71,7 @@ button.chip:hover,a.chip:hover{background:var(--chip-hover);color:var(--ink)}
    右边是全局的控件组；下面是 #toolbar（.page-tools），空的时候藏起来 */
 .content>.page-head{flex:none;align-items:center;gap:var(--space-12);padding:var(--space-20) 0 var(--space-12)}
 .page-head>.page-heading{display:flex;flex:1;align-items:center;flex-wrap:wrap;gap:var(--space-12);min-width:0}
-.page-head .page-sub:empty{display:none}
+.page-head .page-sub:empty,.page-head .title-page:empty{display:none}
 .page-head>.page-actions{flex:none;margin-left:0}
 .content>.page-tools[hidden]{display:none}
 

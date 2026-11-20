@@ -5,17 +5,16 @@
 // - 最下面一行「不算角色、只当标签：…」和「管理…」（#293）。
 // 页签的部件在进页面时建一次（castView），之后 update() 只按数据改；数据和排序在 core/catalog.js。各项都是链接，点了去角色页。
 import {BUCKETS, castRows, catalog, recentOf} from '../core/catalog.js';
-import {number} from '../core/format.js';
+import {imageUrl, number} from '../core/format.js';
 import {t} from '../core/i18n.js';
 import {nameTip} from '../core/labels.js';
 import {prefs} from '../core/prefs.js';
 import {charHash} from '../core/route.js';
 import {state} from '../core/state.js';
 import {openTagged} from './catalog.js';
-import {attr, css, make, show, text, tpl} from './el.js';
+import {attr, css, make, refill, show, text, tpl} from './el.js';
 import {keyed} from './keyed.js';
 import {personCard, posters} from './poster.js';
-import {imageUrl} from '../core/format.js';
 import {setTint} from './tint.js';
 
 // 「角色」页签显示什么：书架还是列表、搜索结果（null 是没在搜）、列表的排序和档位、显示到第几行、圆环一排是否展开全部。
@@ -82,13 +81,13 @@ function rowItem(x) {
   return {el, update};
 }
 
-// 角色页签。s 是页面的作用域；onChange() 在切换排序、档位这些只影响本页签的操作之后调（页面据此重画页头不需要，留给以后）。
+// 角色页签。s 是页面的作用域；update() 按 state 和 cast 重画（只改变了的地方）。
 export function castView(s) {
   const {el, refs} = VIEW(), poster = posters(s);
   const bento = keyed(refs.bento, {key: x => x.c.id, create: poster, scope: s});
   const big = keyed(refs.big, {key: x => x.c.id, create: poster, scope: s});
   const rings = keyed(refs.rings, {key: x => x.c.id, create: ringItem, scope: s});
-  const mid = keyed(refs.mid, {key: x => x.id, create: x => personCard(person(x)), scope: s});
+  const mid = keyed(refs.mid, {key: x => x.id, create: personCard, scope: s});
   const small = keyed(refs.small, {key: c => c.id, create: chipItem, scope: s});
   const rows = keyed(refs.rows, {key: x => x.c.id, create: rowItem, scope: s});
   let showWork = false;
@@ -132,13 +131,14 @@ export function castView(s) {
   }
   function drawList() {
     const base = cast.list || state.chars, list = castRows(base, cast), max = Math.max(1, ...base.map(c => c.count));
-    refs.buckets.replaceChildren(...BUCKETS.map(([k, label, f]) => {
+    const counts = BUCKETS.map(([, , f]) => base.filter(f).length);
+    refill(refs.buckets, counts.join(',') + cast.bucket, () => BUCKETS.map(([k, label], i) => {
       const b = make('button', 'chip', label); b.type = 'button'; b.dataset.bucket = k;
       b.setAttribute('aria-pressed', String(cast.bucket === k));
-      b.append(make('span', 'chip-count', number(base.filter(f).length)));
+      b.append(make('span', 'chip-count', number(counts[i])));
       return b;
     }));
-    refs.heads.replaceChildren(...COLUMNS.map(([k, label]) => {
+    refill(refs.heads, cast.sort + cast.dir, () => COLUMNS.map(([k, label]) => {
       const th = make('th', '', label() + (cast.sort === k ? (cast.dir < 0 ? ' ↓' : ' ↑') : '')); th.dataset.sort = k;
       th.setAttribute('aria-sort', cast.sort === k ? (cast.dir < 0 ? 'descending' : 'ascending') : 'none');
       return th;
@@ -153,7 +153,9 @@ export function castView(s) {
     if (listMode) drawList(); else drawShelf();
     const tagged = state.tagged || [];
     show(refs.tagged, tagged.length > 0);
-    refs.taggedList.replaceChildren(...tagged.map(x => { const a = make('a', '', x.name); a.href = charHash(x.id); a.append(make('small', '', number(x.count))); return a; }));
+    refill(refs.taggedList, tagged.map(x => x.id + ':' + x.count).join('|'), () => tagged.map(x => {
+      const a = make('a', '', x.name); a.href = charHash(x.id); a.append(make('small', '', number(x.count))); return a;
+    }));
   }
   return {el, update};
 }

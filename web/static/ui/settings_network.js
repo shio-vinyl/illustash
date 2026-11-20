@@ -29,7 +29,7 @@ export async function setNamesNetwork(allow) {
 // Windows 上随包的 DirectML 登记在系统的遥测通道里（#381）；macOS 不带它。
 const DIRECTML_NOTE = t('GPU 加速用的微软 DirectML 组件登记在 Windows 的遥测通道里，可能依照系统的「诊断数据」设置向微软发送使用信息；不想用可在「设置 › 数据 › 识别模型」里关掉「使用 GPU 加速识别」。');
 const ASK = () => t('每次询问'), MANUAL = () => t('手动');
-const said = (service, what) => t('{service}：{what}', {service, what});
+const via = (service, what) => t('{service}：{what}', {service, what});
 const net = s => s.names?.network;
 const modelHost = m => { try { return new URL(m?.base || 'https://api.deepseek.com').host; } catch { return '—'; } };
 // 一行：标题链到 #/settings/<section>，右边是状态文字。
@@ -41,38 +41,38 @@ export function build(main, scope) {
      foot: () => t('同步、图片识别、相似图片检测、学习与分组都只在本机进行。X 的关注通过导入官方数据归档获得，不联网。') + ' '
        + t('识别用的 ONNX Runtime 已关掉微软的遥测，不联网。') + (isMac ? '' : ' ' + DIRECTML_NOTE),
      parts: [
-       line('index', 'characters', t('检查新角色'), said('Danbooru', t('关注作品的名称；添加角色时下载约 20 张公开参考图')), ASK),
+       line('index', 'characters', t('检查新角色'), via('Danbooru', t('关注作品的名称；添加角色时下载约 20 张公开参考图')), ASK),
        // 角色名称和 Danbooru 搜索共用这一项授权：打开时先确认，关掉直接撤销。
        {kind: 'switch', key: 'names', label: t('名称联网查询'), href: '#/settings/characters', hidden: s => !net(s),
-        hint: s => said(t('Bangumi、Danbooru'), t('tag、作品名、日文名')) + ' · ' + t('角色名称和 Danbooru 搜索共用这一项授权，只发送文字')
+        hint: s => via(t('Bangumi、Danbooru'), t('tag、作品名、日文名')) + ' · ' + t('角色名称和 Danbooru 搜索共用这一项授权，只发送文字')
           + (s.settings?.startup?.names ? ' · ' + t('启动时自动（只查新角色）') : ''),
         warn: s => !net(s)?.granted_at && net(s)?.this_run ? t('本次启动已允许（命令行）') : '',
         get: s => !!net(s)?.granted_at,
         set: async on => { await setNamesNetwork(on); refreshSection(); }},
-       line('model', 'characters', t('名称翻译'), s => said(s.names?.model_api?.configured ? modelHost(s.names.model_api) : t('你配置的模型接口'), t('tag、日文名、作品名')),
+       line('model', 'characters', t('名称翻译'), s => via(s.names?.model_api?.configured ? modelHost(s.names.model_api) : t('你配置的模型接口'), t('tag、日文名、作品名')),
          s => s.names?.model_api?.configured ? t('已配置') : t('未配置，不使用')),
-       line('provenance', 'artists', t('找回画师'), said(t('Danbooru（含 IQDB）'), t('像素哈希和 IQDB 签名（一串文本，不是图片）、画师名和账号')),
+       line('provenance', 'artists', t('找回画师'), via(t('Danbooru（含 IQDB）'), t('像素哈希和 IQDB 签名（一串文本，不是图片）、画师名和账号')),
          s => s.provenance?.auto_network ? t('同步后自动，每次有流量上限') : ASK()),
-       line('pixiv', 'artists', t('读取 Pixiv 关注'), said('Pixiv', t('用你在 app 里登录的状态读取关注列表（只读）')),
+       line('pixiv', 'artists', t('读取 Pixiv 关注'), via('Pixiv', t('用你在 app 里登录的状态读取关注列表（只读）')),
          s => s.accounts?.pixiv?.bound ? t('已登录') : t('未登录')),
-       line('lookup', 'artists', t('查找画师、找 TA 的其他图'), said(t('Danbooru、画师主页'), t('所选图片的哈希文本；下载画师公开作品的小图，只在本机比对')), MANUAL),
+       line('lookup', 'artists', t('查找画师、找 TA 的其他图'), via(t('Danbooru、画师主页'), t('所选图片的哈希文本；下载画师公开作品的小图，只在本机比对')), MANUAL),
        line('search', 'characters', t('在 Danbooru 上搜角色和作品'),
-         said('Danbooru', t('你输入的文字；自建角色的名字（核对能否对上 Danbooru）；「设为…」里 Danbooru 候选的 tag（取一张全年龄小图）')),
+         via('Danbooru', t('你输入的文字；自建角色的名字（核对能否对上 Danbooru）；「设为…」里 Danbooru 候选的 tag（取一张全年龄小图）')),
          s => net(s) && !net(s).authorized ? t('未允许，不联网') : MANUAL()),
-       line('saucenao', 'artists', t('以图搜图'), said('SauceNAO', t('已保存 key，还没有功能使用它')), MANUAL, {hidden: s => !s.accounts?.saucenao?.bound}),
-       line('pack', 'characters', t('下载角色资料包'), s => said('GitHub', s.models?.on_demand
+       line('saucenao', 'artists', t('以图搜图'), via('SauceNAO', t('已保存 key，还没有功能使用它')), MANUAL, {hidden: s => !s.accounts?.saucenao?.bound}),
+       line('pack', 'characters', t('下载角色资料包'), s => via('GitHub', s.models?.on_demand
          ? t('一次普通的 HTTPS 下载，取回角色资料包，首次准备时先读一次公开的角色资料包目录；不发送图库里的任何信息')
          : t('一次普通的 HTTPS 下载，取回角色资料包；不发送图库里的任何信息')), MANUAL),
-       line('models', 'data', t('下载识别模型'), s => said((s.models?.sources || []).join(t('、')), t('一次普通的 HTTPS 下载，取回模型文件；不发送图库里的任何信息')),
+       line('models', 'data', t('下载识别模型'), s => via((s.models?.sources || []).join(t('、')), t('一次普通的 HTTPS 下载，取回模型文件；不发送图库里的任何信息')),
          MANUAL, {hidden: s => !s.models?.on_demand}),
        {kind: 'switch', key: 'updates', label: t('自动检查更新'), href: '#/settings/about', hidden: s => !s.updates,
-        hint: said('GitHub', t('一次普通的 HTTPS 请求，读取公开的版本列表和角色资料包目录；不发送图库里的任何信息')) + ' · ' + t('启动时和之后每天查一次 GitHub 上有没有新版本，有新版本时提示你，不会自己下载或安装'),
+        hint: via('GitHub', t('一次普通的 HTTPS 请求，读取公开的版本列表和角色资料包目录；不发送图库里的任何信息')) + ' · ' + t('启动时和之后每天查一次 GitHub 上有没有新版本，有新版本时提示你，不会自己下载或安装'),
         get: s => !!s.updates?.auto,
         set: async on => {
           try { await updatesPost({action: 'auto', allow: on}); toast(on ? t('已打开自动检查更新') : t('已关闭自动检查更新')); } catch (err) { toast(err.message); }
           updatesTick(); refreshSection();
         }},
-       line('install', 'about', t('下载更新'), said('GitHub', t('下载新版本的安装包和签名，校验后安装；不发送图库里的任何信息')), MANUAL,
+       line('install', 'about', t('下载更新'), via('GitHub', t('下载新版本的安装包和签名，校验后安装；不发送图库里的任何信息')), MANUAL,
          {hidden: s => !s.updates?.install}),
      ]},
   ], {scope});

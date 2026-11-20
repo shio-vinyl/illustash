@@ -69,7 +69,7 @@ export async function openLibrary(path, name, agreed = null) {
 const info = () => state.libraries?.info;
 const editable = () => !!info() && !info().test;
 const removingSources = new Set();
-async function removeSource(id) {
+export async function removeSource(id) {
   if (removingSources.has(id)) return;
   removingSources.add(id);
   const token = session.token, route = state.route;
@@ -177,7 +177,7 @@ export const librariesGroup = () => ({key: 'libraries', title: t('图库'), note
      itemText: l => l.name + (devMode && l.test ? ` · ${l.test}` : ''), itemHint: l => home(l.path),
      actions: [{label: t('打开'), run: l => openLibrary(l.path, l.name)},
        {label: t('移出列表'), title: () => t('只从列表里移除，不删除图库'), run: async l => { if (await libraryAction('forget', {path: l.path})) loadLibraries(); }}]},
-    {kind: 'action', key: 'manage', label: t('新建、打开或导入图库'), hint: exportText,
+    {kind: 'action', key: 'manage', label: t('新建、打开或导入图库'), hint: () => exportText(),
      buttons: s => [{act: 'new', label: t('新建图库')}, {act: 'library', label: t('打开其他图库…')},
        {act: 'zip', label: t('导入…'), disabled: importActive()},
        ...(info() ? [{act: 'export', label: t('导出当前图库'), disabled: s.libraries?.export?.status === 'running'}] : [])],

@@ -111,6 +111,7 @@ const countItems = s => [[t('角色'), 'characters'], [t('作品'), 'works'], [t
   .map(([label, k]) => ({k, label, ...counts(s)[k]}));
 
 export function build(main, scope) {
+  let keyInput = null;
   const view = groups(main, [
     {key: 'pack', title: packName(), scope: 'library', note: s => s.pack ? packNote(s.pack) : '', parts: [
       {kind: 'info', key: 'packReading', label: t('正在读取…'), hidden: s => !!s.pack},
@@ -168,7 +169,8 @@ export function build(main, scope) {
   return {update(s) {
     view.update(s);
     // API key 的占位文字写明尾号（不能写进配置表：placeholder 是文字）。
-    const key = main.querySelector('[data-row="modelKey"] input'), m = api();
+    keyInput ??= main.querySelector('[data-row="modelKey"]')?.querySelector('input');
+    const key = keyInput, m = api();
     if (key && m) attr(key, 'placeholder', m.configured ? t('已配置（尾号 {hint}），留空则不修改', {hint: m.hint || ''}) : t('未配置'));
     // 检查或添加角色之后（检查时间或最近一条历史变了）重读每个作品的覆盖。
     if (s.index) loadCoverage(s.index).then(changed => { if (changed) refreshSection(); });

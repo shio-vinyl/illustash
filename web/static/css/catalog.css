@@ -1,4 +1,177 @@
-/* 资料库：角色、作品、画师三个页签，作品卡和作品页。归 0.4 第 F 步（资料库，#711）；A2（#705）只建了文件和层，规则由那一步写。
-   只用 css/tokens.css 的令牌和 css/base.css 的公共部件；重写一块，就删掉 app.css 里对应的旧规则。 */
+/* 资料库：角色、作品、画师三个页签，作品卡和作品页。归 0.4 第 F 步（资料库，#711）。
+   只用 css/tokens.css 的令牌和 css/base.css 的公共部件（.poster、.avatar、.avatar-ring、.btn、.chip、.seg、.search、.glass、.empty-state）；
+   app.css 里原来的 .cast-*、.shelf-* 已经删掉，只留「全部作品」弹层（.cast-pop、.cast-wrow）和对话框用的几条。 */
 @layer pages{
+/* ---- 三个页签共用：同样的宽度、一行工具、节标题 ---- */
+.cat-page,.cat-workpage{position:relative;padding-bottom:var(--space-24)}
+.cat-tools{display:flex;flex:1;align-items:center;gap:var(--space-8);min-width:0}
+.cat-tools>.search{width:260px}
+.cat-tools-group{display:flex;align-items:center;gap:var(--space-8);min-width:0}
+.cat-tools .spacer{flex:1}
+.cat-filters{display:flex;gap:var(--space-6)}
+.cat-allworks{position:relative}
+.cat-allworks .cast-pop{top:calc(100% + 8px);right:auto;left:0}
+.cat-sec{margin-top:var(--space-24)}
+.cat-sec:first-child{margin-top:var(--space-4)}
+.cat-h{display:flex;align-items:baseline;gap:var(--space-10);margin:0 0 var(--space-12);font-size:var(--fs-13);font-weight:var(--fw-600)}
+.cat-h>small{color:var(--muted);font-size:var(--fs-12);font-weight:var(--fw-400)}
+.cat-h>.cat-h-more{margin-left:auto}
+.cat-none,.cat-loading{margin:var(--space-24) 0;color:var(--muted);font-size:var(--fs-12)}
+.cat-error{margin:var(--space-12) 0;color:var(--err);font-size:var(--fs-12)}
+.cat-error:empty{display:none}
+.cat-more{display:flex;margin:var(--space-16) auto 0}
+.cat-mono{font-family:var(--mono);font-size:var(--fs-11)}
+.cat-muted{color:var(--muted)}
+
+/* ---- 角色海报：排名数字加重、压在图上也看得清；+N；小查看器的刻度和小地图；图钉 ---- */
+.cat-bento{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:var(--space-12)}
+.cat-bento>.cat-poster{aspect-ratio:auto;min-height:200px}
+.cat-bento>.cat-poster.is-big{grid-column:span 2;grid-row:span 2}
+.cat-posters{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:var(--space-12)}
+.cat-poster{touch-action:pan-y}
+.cat-poster>img{object-position:50% 22%}
+.cat-poster.is-whole>img{object-fit:contain}
+.cat-poster>.cat-next{opacity:0;transition:opacity var(--dur-1) var(--ease)}
+.cat-poster>.cat-next.on{opacity:1}
+.cat-poster>.poster-cap{transition:opacity var(--dur-1) var(--ease)}
+.cat-poster.is-big>.poster-cap>b{font-size:var(--fs-display-28)}
+.cat-rank{position:absolute;top:var(--space-6);left:var(--space-14);z-index:var(--z-page-1);color:var(--on-image);font-size:var(--fs-display-28);font-weight:var(--fw-750);
+  line-height:1;letter-spacing:-.03em;text-shadow:var(--image-text-shadow)}
+.cat-poster.is-big>.cat-rank{font-size:var(--fs-display-40)}
+.cat-plus{position:absolute;top:var(--space-10);right:var(--space-10);z-index:var(--z-page-1);padding:var(--space-2) var(--space-8);border-radius:var(--radius-pill);
+  background:var(--accent-fill);color:var(--on-accent);font-size:var(--fs-11);font-weight:var(--fw-600)}
+.cat-ticks{position:absolute;top:var(--space-6);right:var(--space-10);left:var(--space-10);z-index:var(--z-page-2);display:flex;gap:var(--space-4);opacity:0;
+  transition:opacity var(--dur-1) var(--ease)}
+.cat-poster:hover>.cat-ticks,.cat-poster:focus-visible>.cat-ticks,.cat-poster.is-dragging>.cat-ticks{opacity:1}
+.cat-ticks>i{flex:1;height:3px;border-radius:var(--radius-4);background:color-mix(in srgb,var(--on-image) 40%,transparent)}
+.cat-ticks>i.on{background:var(--on-image)}
+.cat-poster:hover>.cat-plus{opacity:0}
+.cat-mini{position:absolute;top:var(--space-24);right:var(--space-6);bottom:var(--space-24);z-index:var(--z-page-2);width:3px;border-radius:var(--radius-4);
+  background:color-mix(in srgb,var(--on-image) 30%,transparent)}
+.cat-mini[hidden]{display:none}
+.cat-mini>i{position:absolute;right:0;left:0;border-radius:var(--radius-4);background:var(--on-image)}
+
+/* 图钉：海报和作品卡右上角，悬停出现，钉住后一直显示；作品页横幅上是带字的胶囊 */
+.cat-pin{position:absolute;top:var(--space-10);right:var(--space-10);z-index:var(--z-page-3);display:grid;place-items:center;width:var(--h-28);height:var(--h-28);
+  margin:0;padding:0;border:0;border-radius:var(--radius-round);background:var(--sheet);color:var(--ink2);box-shadow:var(--shadow-hover);cursor:pointer;opacity:0;
+  transform:scale(.85);transition:opacity var(--dur-1) var(--ease),transform var(--dur-1) var(--ease),color var(--dur-1) var(--ease)}
+.cat-pin>svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.cat-pin>span[hidden]{display:none}
+.cat-pin[aria-pressed=true]{color:var(--accent-ink);opacity:1;transform:none}
+.cat-poster:hover>.cat-pin,.cat-poster:focus-within>.cat-pin,.cat-work:hover>.cat-pin,.cat-work:focus-within>.cat-pin{opacity:1;transform:none}
+.cat-pin.is-wide{position:static;width:auto;opacity:1;transform:none;box-shadow:none}
+
+/* ---- 最近 30 天在收：带进度圆环的头像一排，「全部」展开成几行 ---- */
+.cat-rings{display:flex;gap:var(--space-16);overflow-x:auto;padding:var(--space-4) var(--space-2) var(--space-6);scrollbar-width:none}
+.cat-rings[data-open]{flex-wrap:wrap;overflow:visible}
+.cat-ring{display:grid;flex:none;justify-items:center;gap:var(--space-4);width:84px;color:var(--ink);text-align:center;text-decoration:none}
+.cat-ring>.avatar-ring{transition:transform var(--dur-1) var(--ease)}
+.cat-ring:hover>.avatar-ring{transform:scale(1.05)}
+.cat-ring>b,.cat-person>b{max-width:100%;overflow:hidden;font-size:var(--fs-12);font-weight:var(--fw-600);white-space:nowrap;text-overflow:ellipsis}
+.cat-ring>small,.cat-person>small{max-width:100%;overflow:hidden;color:var(--muted);font-size:var(--fs-11);white-space:nowrap;text-overflow:ellipsis}
+.cat-ring>small:empty{display:none}
+
+/* ---- 圆头像卡（常见一档、画师）和芯片（偶尔一档） ---- */
+.cat-people{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:var(--space-20) var(--space-12)}
+.cat-person{display:grid;justify-items:center;gap:var(--space-6);min-width:0;color:var(--ink);text-align:center;text-decoration:none}
+.cat-person>.avatar{transition:transform var(--dur-1) var(--ease),box-shadow var(--dur-1) var(--ease)}
+.cat-person:hover>.avatar{transform:translateY(-3px);box-shadow:var(--shadow-hover)}
+.cat-chips{display:flex;flex-wrap:wrap;gap:var(--space-6)}
+.cat-chip{text-decoration:none}
+
+/* ---- 列表：张数分档、表格 ---- */
+.cat-buckets{display:flex;flex-wrap:wrap;gap:var(--space-6);padding:var(--space-4) 0 var(--space-12)}
+.cat-table{width:100%;border-collapse:separate;border-spacing:0;font-size:var(--fs-12)}
+.cat-table th{position:sticky;top:0;z-index:var(--z-page-1);padding:var(--space-8) var(--space-12);background:var(--sheet);color:var(--muted);font-weight:var(--fw-600);
+  text-align:left;white-space:nowrap;cursor:pointer}
+.cat-table th[aria-sort=ascending],.cat-table th[aria-sort=descending]{color:var(--accent-ink)}
+.cat-table td{padding:var(--space-6) var(--space-12);white-space:nowrap}
+.cat-table tbody tr:hover>td{background:var(--soft)}
+.cat-table tbody td:first-child{border-radius:var(--radius-8) 0 0 var(--radius-8)}
+.cat-table tbody td:last-child{border-radius:0 var(--radius-8) var(--radius-8) 0}
+.cat-who{display:flex;align-items:center;gap:var(--space-12);color:var(--ink);text-decoration:none}
+.cat-who>.avatar{width:36px;height:36px}
+.cat-who b{display:block;font-weight:var(--fw-600)}
+.cat-who small{color:var(--muted);font-size:var(--fs-11)}
+.cat-who small[hidden]{display:none}
+.cat-bar{display:flex;align-items:center;gap:var(--space-10)}
+.cat-bar>i{height:6px;border-radius:var(--radius-4);background:var(--accent)}
+
+/* 只当标签的一行 */
+.cat-tagged{display:flex;flex-wrap:wrap;align-items:center;gap:var(--space-4) var(--space-12);margin:var(--space-20) 0 0;color:var(--muted);font-size:var(--fs-12)}
+.cat-tagged[hidden]{display:none}
+.cat-tagged a{color:var(--ink2);text-decoration:none}
+.cat-tagged a:hover{color:var(--accent-ink)}
+.cat-tagged small{margin-left:var(--space-4);color:var(--faint)}
+
+/* ---- 作品卡：作品名大字 + 作品配色做底 + 一排头像 + 竖切片；悬停浮起，投影带作品配色，切片依次上浮，头像散开 ---- */
+.cat-works{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:var(--space-16)}
+.cat-work{position:relative;height:210px;overflow:hidden;border-radius:var(--radius-12);
+  background:radial-gradient(120% 140% at 0% 0%,var(--tint-glow),transparent 62%),var(--tint-wash);
+  transition:transform var(--dur-2) var(--ease),box-shadow var(--dur-2) var(--ease)}
+.cat-work:hover{transform:translateY(-3px);box-shadow:var(--shadow-hover)}
+.cat-work-link{display:flex;height:100%;color:var(--ink);text-decoration:none}
+.cat-work-link:focus-visible{outline:2px solid var(--accent);outline-offset:-2px;border-radius:var(--radius-12)}
+.cat-work-text{display:flex;flex:1;flex-direction:column;min-width:0;padding:var(--space-16) var(--space-14) var(--space-14) var(--space-20)}
+.cat-work-name{display:-webkit-box;overflow:hidden;font-size:var(--fs-display-28);font-weight:var(--fw-750);line-height:1.1;letter-spacing:-.03em;
+  -webkit-line-clamp:2;-webkit-box-orient:vertical}
+.cat-work-text>small{margin-top:var(--space-6);color:var(--ink2);font-size:var(--fs-12)}
+.cat-faces{display:flex;align-items:center;margin-top:auto;padding-bottom:var(--space-24)}
+.cat-faces>.avatar{margin-left:-8px;box-shadow:0 0 0 2px var(--sheet);transition:margin var(--dur-2) var(--ease)}
+.cat-faces>.avatar:first-child{margin-left:0}
+.cat-work:hover .cat-faces>.avatar:not(:first-child){margin-left:-2px}
+.cat-faces-more{margin-left:var(--space-6);color:var(--ink2);font-size:var(--fs-11);font-weight:var(--fw-600)}
+.cat-slices{display:flex;gap:var(--space-4);width:46%;padding:var(--space-10) var(--space-10) var(--space-10) 0}
+.cat-slices>img{flex:1;min-width:0;height:100%;border-radius:var(--radius-8);background:var(--tint-soft);object-fit:cover;transition:transform var(--dur-2) var(--ease)}
+.cat-work:hover .cat-slices>img{transform:translateY(-4px)}
+.cat-work:hover .cat-slices>img:nth-child(2){transition-delay:25ms}
+.cat-work:hover .cat-slices>img:nth-child(3){transition-delay:50ms}
+.cat-work:hover .cat-slices>img:nth-child(4){transition-delay:75ms}
+.cat-watch{position:absolute;bottom:var(--space-12);left:var(--space-20);display:flex;align-items:center;gap:var(--space-6);color:var(--ink2);font-size:var(--fs-11);cursor:pointer}
+.cat-watch[hidden]{display:none}
+
+/* 作品页签上面的一处提示：链接待确认、以前关注的 tag、发现的新角色 */
+.cat-notice{display:grid;gap:var(--space-8);margin-bottom:var(--space-16);padding:var(--space-12) var(--space-16);border-radius:var(--radius-12);background:var(--soft);
+  font-size:var(--fs-12)}
+.cat-notice[hidden],.cat-notice>[hidden]{display:none}
+.cat-notice>p{display:flex;align-items:center;gap:var(--space-10);margin:0}
+.cat-notice>p>span{flex:1;min-width:0}
+.cat-notice summary{cursor:pointer}
+.cat-todo-row{display:flex;align-items:center;gap:var(--space-10);min-height:var(--h-32)}
+.cat-todo-row>.spacer{flex:1}
+
+/* ---- 作品页：切片横幅 + 作品配色的环境光 ---- */
+.cat-glow{position:absolute;top:-40px;right:-60px;left:-60px;z-index:0;height:520px;pointer-events:none;
+  background:radial-gradient(48% 60% at 18% 32%,var(--tint-glow),transparent 70%),radial-gradient(42% 55% at 78% 40%,var(--tint-glow),transparent 70%);
+  -webkit-mask-image:linear-gradient(var(--canvas) 40%,transparent);mask-image:linear-gradient(var(--canvas) 40%,transparent)}
+.cat-workpage>section,.cat-workpage>div:not(.cat-glow){position:relative;z-index:var(--z-page-1)}
+.cat-hero{height:250px;margin:0 0 var(--space-16);overflow:hidden;border-radius:var(--radius-18);background:var(--tint-soft);color:var(--on-image)}
+.cat-hero[hidden]{display:none}
+.cat-strip{position:absolute;inset:0;display:flex;gap:var(--space-2)}
+.cat-strip>img{flex:1;min-width:0;height:100%;background:var(--tint-soft);object-fit:cover}
+.cat-hero::after{content:"";position:absolute;inset:0;pointer-events:none;
+  background:var(--scrim)}
+.cat-hero-top{position:absolute;top:var(--space-16);right:var(--space-16);left:var(--space-16);z-index:var(--z-page-2);display:flex;align-items:center;gap:var(--space-8)}
+.cat-hero-top>.spacer{flex:1}
+.cat-hero .btn.glass{border-radius:var(--radius-pill);text-decoration:none}
+.cat-hero-watch{gap:var(--space-8);cursor:pointer}
+.cat-hero-watch[hidden],.cat-hero-acts>[hidden]{display:none}
+.cat-hero-in{position:absolute;right:var(--space-24);bottom:var(--space-20);left:var(--space-24);z-index:var(--z-page-2);text-shadow:var(--image-text-shadow)}
+.cat-hero-in>small{font-size:var(--fs-11);letter-spacing:.15em;opacity:.8}
+.cat-hero-title{margin:var(--space-2) 0 0;font-size:var(--fs-display-40);font-weight:var(--fw-750);line-height:1.05;letter-spacing:-.04em}
+.cat-hero-in>p{margin:var(--space-6) 0 0;font-size:var(--fs-13);opacity:.9}
+.cat-hero-in>.cat-hero-note:empty,.cat-hero-in>.cat-hero-note[hidden]{display:none}
+.cat-hero-acts{display:flex;gap:var(--space-8);margin-top:var(--space-12);text-shadow:none}
+.cat-recent{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:var(--space-8)}
+.cat-thumb{display:block;aspect-ratio:1;overflow:hidden;border-radius:var(--radius-8);background:var(--tint-soft)}
+.cat-thumb>img{display:block;width:100%;height:100%;object-fit:cover;transition:transform var(--dur-2) var(--ease)}
+.cat-thumb:hover>img{transform:scale(1.04)}
+
+/* ---- 窄窗口 ---- */
+@media (max-width:900px){
+  .cat-bento{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .cat-works{grid-template-columns:1fr}
+  .cat-tools{flex-wrap:wrap}
+  .cat-tools>.search{width:100%}
+}
 }

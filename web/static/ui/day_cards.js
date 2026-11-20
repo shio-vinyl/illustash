@@ -2,7 +2,7 @@
 // 部件写法照 docs/WEB_V2.md「渲染底座」：{el, update(props), dispose()}；这里不发请求：同步卡的数据由页面（ui/days.js）给，回答交给 ui/day_ask.js。
 //
 //   const sync = syncCard({open: () => …});            // 点卡片打开任务面板
-//   sync.update({sync: state.sync, today});            // today：今天那一天的数据，写「今天认出几位」；最新一天不是今天、或者开着筛选
+//   sync.update({sync: state.sync, today, lost});      // lost：读不到同步状态（state.syncLost）；today：今天那一天的数据，写「今天认出几位」；最新一天不是今天、或者开着筛选
 //                                                      （数字就不是全库的了）时页面给 null，不写这一句
 //
 //   const ask = askCard({answer, other, later});
@@ -34,7 +34,8 @@ const ASK = tpl`<section class="group day-card day-ask" aria-labelledby="dayAskT
   <h3 class="day-card-title" id="dayAskTitle" data-ref="title"></h3><span class="day-card-sub" data-ref="sub"></span></div><div class="day-ask-tiles" data-ref="tiles"></div>
   <div class="day-ask-foot"><span class="day-ask-state" data-ref="state" role="status"></span><button class="btn is-small is-quiet" type="button" data-ref="later" data-t>以后再说</button>
   <button class="btn is-small" type="button" data-ref="none" data-t>都不是</button><button class="btn is-small" type="button" data-ref="other" data-t>点掉的是…</button>
-  <button class="btn is-small" type="button" data-ref="open" data-t>不全是</button><button class="btn is-small is-primary" type="button" data-ref="ok"></button></div></section>`;
+  <button class="btn is-small" type="button" data-ref="open" data-t>不全是</button><button class="btn is-small is-primary" type="button" data-ref="ok"></button>
+  <button class="btn is-small" type="button" data-ref="retry" hidden data-t>重试</button></div></section>`;
 const ASK_TILE = tpl`<button class="day-ask-tile" type="button"><img data-ref="img" alt="" draggable="false" loading="lazy" decoding="async"><i aria-hidden="true">✕</i></button>`;
 const PEEK_IMG = tpl`<img alt="" draggable="false" loading="lazy" decoding="async">`;
 const ratio = x => x.width > 0 && x.height > 0 ? Math.min(2.4, Math.max(.4, x.width / x.height)) : .75;
@@ -48,7 +49,7 @@ export function syncCard({open}) {
   const s = scope('day-sync'), {el, refs} = SYNC();
   show(el, false);   // 读到同步状态之前不显示
   s.on(el, 'click', () => open());
-  function update({sync, today}) {
+  function update({sync, today, lost = false}) {
     const status = sync?.status || 'off', active = SYNC_ACTIVE.includes(status);
     show(el, status !== 'off');
     if (status === 'off') return;
@@ -58,6 +59,8 @@ export function syncCard({open}) {
     cls(refs.ring, 'is-busy', active); cls(refs.ring, 'is-warn', ['error', 'interrupted', 'needs_recognition'].includes(status));
     show(refs.tick, status === 'done');
     text(refs.title, active ? t('正在同步') : TITLES[status]?.() || t('同步'));
+    // 读不到同步状态（轮询失败、正在重试）：不把上一次读到的进度当成现在的。
+    if (lost) { cls(refs.ring, 'is-busy', false); text(refs.sub, t('读不到同步状态，正在重新连接…')); return; }
     const facts = status === 'done' ? [
       ...(sync.finished_at ? [stamp(sync.finished_at)] : []),
       t('新加入 {n} 张', {n: number(sync.imported || 0)}),
@@ -76,7 +79,7 @@ function askTile(x) {
   css(el, 'aspect-ratio', String(ratio(x)));
   return {el, update() {}, dispose() { releaseImages(el); }};
 }
-export function askCard({answer, other, later}) {
+export function askCard({answer, other, later, retry}) {
   const s = scope('day-ask'), {el, refs} = ASK();
   show(el, false);   // 有一批要问的才显示
   let batch = null, off = new Set(), open = false, entity = '';
@@ -98,6 +101,7 @@ export function askCard({answer, other, later}) {
   s.on(refs.none, 'click', () => answer('none', new Set(off)));
   s.on(refs.other, 'click', () => other(new Set(off)));
   s.on(refs.later, 'click', () => later());
+  s.on(refs.retry, 'click', () => retry());
 
   // 每次写全部状态；值没变的不动 DOM（ui/el.js）。
   function paint() {
@@ -116,10 +120,18 @@ export function askCard({answer, other, later}) {
       attr(tile, 'title', (no ? t('点一下：改回「是」') : t('点一下：不是 TA')) + ' · ' + t('长按或 Space 看大图'));
     }
   }
-  function update({batch: next}) {
-    show(el, !!next?.items?.length);
-    // 藏起来（没有题、开关关了、NSFW 换了）：点选和展开都复位，再出现时从头来。
-    if (!next?.items?.length) { batch = null; entity = ''; open = false; off = new Set(); return; }
+  // 没读到（failed）：卡片写一句、给「重试」，其余都藏起来。
+  function failed(on) {
+    cls(el, 'is-failed', on); show(refs.retry, on);
+    for (const n of [refs.peek, refs.tiles, refs.state, refs.later, refs.none, refs.other, refs.open, refs.ok]) if (on) show(n, false);
+    // 标题和 titleFor 一样直接换内容（它是拼出来的节点，不经 text() 的缓存）。
+    if (on) { refs.title.textContent = t('没读到要认的图'); text(refs.sub, ''); }
+  }
+  function update({batch: next, failed: lost = false}) {
+    show(el, lost || !!next?.items?.length);
+    // 藏起来（没有题、开关关了、NSFW 换了）或没读到：点选和展开都复位，再出现时从头来。
+    if (!next?.items?.length) { batch = null; entity = ''; open = false; off = new Set(); failed(lost); return; }
+    failed(false); show(refs.ok, true); show(refs.later, true);
     // 同一个角色、只是少了几张（「点掉的是…」提交了那几张）：留在展开的样子，点掉的只留还在的。其余情况（换了一批）收起、清掉点掉的。
     const shrunk = batch && next.entity === entity && next.items.every(x => batch.items.some(y => y.uuid === x.uuid));
     if (shrunk) off = new Set([...off].filter(u => next.items.some(x => x.uuid === u)));

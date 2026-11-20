@@ -139,35 +139,58 @@ test('展开一天的全部角色：分页汇总 memberships，按张数排', as
   assert.equal(seen[0].get('day'), '2026-11-19'); assert.equal(seen[0].get('q'), 'k'); assert.equal(seen[1].get('offset'), '2');
 });
 
-test('同步时「今天」长行：已显示的格子框不变，新图接在下面一行；最多两行，再来只加大「+N 张」；后端没给回来的图照旧留着', () => {
+test('同步时「今天」长行：已显示的格子框不变，新图接在下面一行；最多两行，再来的只加大没画的张数，不盖在已有的图上', () => {
   const opt = {width: 1000, rowHeight: 100, gap: 6};
   const g0 = day('2026-11-19', ['a', 'b', 'c', 'd', 'e']);
   const base = D.dayCells(g0, opt, 'a');
   assert.equal(base.rows, 0); assert.equal(base.height, 206);
   const boxes = cells => new Map(cells.map(c => [c.item.uuid, c.box]));
-  // 第一批：两张新图
+  // 第一批：两张新图（排在最前）
   const g1 = {...g0, count: 7, items: [item('n1'), item('n2'), ...g0.items]};
-  const one = D.growCells(base, g1, opt);
+  const one = D.growCells(base, g0, g1, opt);
   assert.equal(one.rows, 1); assert.equal(one.height, 206 + 6 + 100);
   for (const c of base.cells) assert.deepEqual(boxes(one.cells).get(c.item.uuid), c.box, '已显示的不动');
   assert.deepEqual(one.cells.slice(-2).map(c => [c.item.uuid, c.box.y, c.box.h]), [['n1', 212, 100], ['n2', 212, 100]]);
-  assert.ok(one.cells.every(c => !c.more), '都画出来了，没有「+N」');
-  // 第二批（后端只给最新的几张，a、b 没回来）：a、b 照旧留着
-  const g2 = {...g0, count: 8, items: [item('n3'), item('n1'), item('n2'), item('c')]};
-  const two = D.growCells(one, g2, opt);
-  assert.equal(two.rows, 2); assert.deepEqual(two.cells.map(c => c.item.uuid).slice(0, 2), ['a', 'b']);
-  assert.equal(two.cells.at(-1).item.uuid, 'n3'); assert.equal(two.cells.at(-1).box.y, 318);
-  // 第三批：不再长行，新图只算进「+N」
-  const g3 = {...g0, count: 10, items: [item('n4'), item('n5'), ...g2.items]};
-  const three = D.growCells(two, g3, opt);
-  assert.equal(three.rows, 2); assert.equal(three.height, two.height); assert.equal(three.cells.length, two.cells.length);
-  assert.equal(three.cells.at(-1).more, 10 - three.cells.length + 1);
+  assert.ok(one.cells.every(c => !c.more), '没有盖在图上的「+N」'); assert.equal(one.hidden, 0);
+  // 第二批：一张新图
+  const g2 = {...g1, count: 8, items: [item('n3'), ...g1.items]};
+  const two = D.growCells(one, g1, g2, opt);
+  assert.equal(two.rows, 2); assert.equal(two.cells.at(-1).item.uuid, 'n3'); assert.equal(two.cells.at(-1).box.y, 318);
+  // 第三批（复核第 3 条）：不再长行，已有的格子一张不变成入口，只是没画的张数加一
+  const g3 = {...g2, count: 9, items: [item('n4'), ...g2.items]};
+  const three = D.growCells(two, g2, g3, opt);
+  assert.equal(three.rows, 2); assert.equal(three.height, two.height);
+  assert.deepEqual(three.cells.map(c => c.item.uuid), two.cells.map(c => c.item.uuid));
+  assert.ok(three.cells.every(c => !c.more)); assert.equal(three.hidden, 1);
   // 一张太宽的新图：收窄到这一行的宽度
-  const wide = D.growCells(base, {...g0, count: 6, items: [item('w', {width: 5000, height: 1000}), ...g0.items]}, opt);
+  const wide = D.growCells(base, g0, {...g0, count: 6, items: [item('w', {width: 5000, height: 1000}), ...g0.items]}, opt);
   assert.ok(wide.cells.at(-1).box.w <= 1000);
   // 一天的框算上长出来的行
   const sizes = {head: 56, chips: 40, rowHeight: 100, gap: 6, after: 36};
   assert.equal(D.dayBoxes([g1], {width: 1000, sizes, mosaics: new Map([[g1.day, one.height]])}).boxes[0].h, 56 + one.height + 36);
+});
+
+test('同步时「今天」长行：只改元数据原地换、不长行；样本是全的而某张图没了，或排在它后面的图出现了，退回标准排；样本截断时留着', () => {
+  const opt = {width: 1000, rowHeight: 100, gap: 6};
+  const g0 = day('2026-11-19', ['a', 'b', 'c', 'd', 'e']), base = D.dayCells(g0, opt, 'a');
+  // 只撤销了一个收藏（复核第 2 条）：不长行，格子还是原来的框，数据换成新的
+  const fav = {...g0, items: g0.items.map(x => x.uuid === 'c' ? {...x, fav: true} : x)};
+  const meta = D.growCells(base, g0, fav, opt);
+  assert.equal(meta.rows, 0); assert.equal(meta.height, base.height);
+  assert.equal(meta.cells.find(c => c.item.uuid === 'c').item.fav, true);
+  // 以前在「+N」里的旧图这次进了样本（不是新来的）：不长行
+  const many = day('2026-11-19', 'abcdefghijklmnopqrstuvwxyz'.split('')), narrow = {width: 400, rowHeight: 100, gap: 6};
+  const cut = D.dayCells({...many, items: many.items.slice(0, 18)}, narrow, 'a');
+  const reshuffled = {...many, items: many.items.slice(0, 19).filter(x => x.uuid !== 'r')};
+  assert.equal(D.growCells(cut, {...many, items: many.items.slice(0, 18)}, reshuffled, narrow).rows, 0);
+  // 同步失败回滚：样本是全的（张数等于 count），a 没了 → 退回标准排
+  assert.equal(D.growCells(base, g0, {...g0, count: 4, items: g0.items.slice(1)}, opt), null);
+  // 样本被截断（count 比样本多）、上一次排在 b 后面的 c 还在、b 却没了 → b 是真的被移走了
+  const big = {...g0, count: 40};
+  assert.equal(D.growCells(D.dayCells(big, opt, 'a'), big, {...big, items: big.items.filter(x => x.uuid !== 'b')}, opt), null);
+  // 样本被截断、最旧的 e 没回来（后面也没有更旧的出现）：是截断，留着
+  const kept = D.growCells(D.dayCells(big, opt, 'a'), big, {...big, items: big.items.slice(0, 4)}, opt);
+  assert.ok(kept && kept.cells.some(c => c.item.uuid === 'e'));
 });
 
 test('今天是哪一天：本地时间', () => {

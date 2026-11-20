@@ -19,7 +19,8 @@ export const state = {
   learning: false,
 
   // ---- 后台任务最近一次的回应：core/jobs.js（index、names 别处要换时用 setIndex、setNames、mergeNames） ----
-  sync: {status: 'off'}, syncHistory: [], syncDamaged: null, provenance: null, importTask: null, index: null, names: null,
+  // syncLost：同步状态读不到了（轮询失败，正在按间隔重试），界面别把上一次读到的进度当成现在的。
+  sync: {status: 'off'}, syncLost: false, syncHistory: [], syncDamaged: null, provenance: null, importTask: null, index: null, names: null,
 
   // ---- 设置页读写的数据：core/settings.js（settings 别处要换时用 setSettings） ----
   settings: null, about: null, accounts: null, fold: null, libraries: null, pixivWaiting: null, updates: null,

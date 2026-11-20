@@ -124,7 +124,7 @@ test('认一认写入被拒：卡片、点选都留着，不换下一批，可�
   globalThis.fetch = async (path, init) => {
     if (path.startsWith('/api/ask/answer')) { answers.push(JSON.parse(init.body)); return {status: 500, ok: false, json: async () => ({error: 'database is locked'})}; }
     const body = path.startsWith('/api/ask') ? (asks.push(path), {batch}) : path.startsWith('/api/home') ? {days: [oneDay], next: ''}
-      : path.startsWith('/api/bootstrap') ? {token: '', total: 0, undo: null} : [];
+      : path.startsWith('/api/bootstrap') ? {token: '', total: 0, undo: {id: 99, label: '收藏 1 张'}} : [];   // 别的写入留下的撤销记录
     return {status: 200, ok: true, json: async () => body};
   };
   await h.render(); await tick();
@@ -180,5 +180,51 @@ test('同一页又画几次（筛选、搜索变了）：页面只建一次，�
   assert.equal(h.page.el('homePage').children[0], page, '页面的节点没换');
   assert.equal(scopes.live().count, alive, '作用域数没涨');
   scopes.setDev(false);
+  scopes.page('library');
+});
+
+test('认一认写成以后，下一批到之前这一批锁着：再点也不会提交第二次（#757 复核第 1 条）', async () => {
+  const answers = [];
+  let asks = 0, release;
+  const batch = {entity: 'e1', name: 'A', kind: 'hint', items: ['a', 'b'].map(uuid => ({uuid, width: 100, height: 100, memberships: []}))};
+  const h = daysHarness(() => ({}));
+  globalThis.fetch = async (path, init) => {
+    if (path.startsWith('/api/ask/answer')) { answers.push(JSON.parse(init.body)); return {status: 200, ok: true, json: async () => ({undo: {id: 5, label: 'x'}})}; }
+    if (path.startsWith('/api/ask')) {
+      asks++;
+      const body = {batch: asks === 1 ? batch : {...batch, entity: 'e2'}};
+      return asks === 1 ? {status: 200, ok: true, json: async () => body} : new Promise(r => { release = () => r({status: 200, ok: true, json: async () => body}); });
+    }
+    const body = path.startsWith('/api/home') ? {days: [oneDay], next: ''} : path.startsWith('/api/bootstrap') ? {token: '', total: 0, undo: null} : [];
+    return {status: 200, ok: true, json: async () => body};
+  };
+  await h.render(); await tick();
+  refBtn(h.page, 'ok').dispatchEvent({type: 'click'}); for (let i = 0; i < 6; i++) await tick();
+  assert.equal(answers.length, 1);
+  assert.equal(refBtn(h.page, 'ok').disabled, true, '下一批没到，这一批还锁着');
+  refBtn(h.page, 'ok').dispatchEvent({type: 'click'}); for (let i = 0; i < 4; i++) await tick();
+  assert.equal(answers.length, 1, '没有第二次提交');
+  release(); for (let i = 0; i < 4; i++) await tick();
+  assert.equal(refBtn(h.page, 'ok').disabled, false, '下一批到了才放开');
+  scopes.page('library');
+});
+test('一次同步进来三个新日期：沿游标补齐中间那天，再算到底和总数（#757 复核第 5 条）', async () => {
+  const d = (day, u) => ({day, count: 1, people: 0, characters: [], hero: u, items: [{uuid: u, width: 100, height: 100, memberships: []}]});
+  const reads = [];
+  let synced = false;
+  const h = daysHarness(() => ({batch: null}));
+  globalThis.fetch = async path => {
+    if (!path.startsWith('/api/home')) return {status: 200, ok: true, json: async () => ({batch: null})};
+    const q = new URL(path, 'http://x').searchParams, before = q.get('before') || '';
+    reads.push(before);
+    const all = synced ? [d('2026-11-04', 'd4'), d('2026-11-03', 'd3'), d('2026-11-02', 'd2'), d('2026-11-01', 'd1')] : [d('2026-11-01', 'd1')];
+    const rest = all.filter(g => !before || g.day < before), page = rest.slice(0, Number(q.get('days')));
+    return {status: 200, ok: true, json: async () => ({days: page, next: rest.length > page.length ? page.at(-1).day : ''})};
+  };
+  await h.render(); await tick();
+  synced = true;
+  daysPage.refresh('sync'); for (let i = 0; i < 10; i++) await tick();
+  assert.deepEqual(reads.slice(1), ['', '2026-11-03'], '最新两天读完还没接上原来那天，沿游标接着读');
+  assert.deepEqual(h.state.items.map(x => x.uuid), ['d4', 'd3', 'd2', 'd1']);
   scopes.page('library');
 });

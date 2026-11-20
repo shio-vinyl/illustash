@@ -735,6 +735,7 @@
   "正在同步": "Syncing",
   "同步已中断": "Sync interrupted",
   "还没有同步过": "Not synced yet",
+  "读不到同步状态，正在重新连接…": "Cannot read the sync status; reconnecting…",
   "等待识别": "Waiting for recognition",
   "今天认出 {n} 位角色": {
     "one": "{n} character recognized today",
@@ -754,6 +755,7 @@
   "不全是": "Not all",
   "点掉的是…": "The ones left out are…",
   "机器认出 {n} 张": "Recognized: {n}",
+  "没读到要认的图": "Could not load pictures to check",
   "外观相似：第 {n} 组": "Similar look: group {n}",
   "可能和第 {n} 组是同一人": "May be the same person as group {n}",
   "点一下图片：不算在这组里 · 长按或 Space 看大图 · 组头的按钮对整组生效": "Click a picture to leave it out of the group · long-press or Space for large view · the buttons on a group act on the whole group",

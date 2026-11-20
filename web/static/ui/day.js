@@ -4,7 +4,8 @@
 // 部件写法照 docs/WEB_V2.md「渲染底座」：{el, update(box), dispose()}，由 ui/virtual.js 按框挂和摘（ui/days.js）。
 //
 //   const day = dayWidget(box, ctx, scope);   // box：{key: 日期, x, y, w, h, g: 这一天的数据, open: 芯片行展开着,
-//                                             //       people: 展开后的全部角色, cells: 同步时长了行的格子（没有就按标准马赛克排）}
+//                                             //       people: 展开后的全部角色, cells、mosaic、hidden: 同步时长了行的格子、
+//                                             //       马赛克高度和没画的张数（没有就按标准马赛克排）}
 //   day.update(box);                          // 数据或宽度变了；图块按 uuid 复用，已有的图不重建、不换地址，新图淡入，挪了位置的滑过去
 //   day.mark(uuid);                           // 详情卡片开着的那张
 //
@@ -106,7 +107,6 @@ export function dayWidget(box, ctx, parent = null) {
   const day = box.key;
   el.dataset.day = day;
   text(refs.title, dayLabel(day));
-  text(refs.grid, t('在网格里看') + ' ›');
 
   const tiles = keyed(refs.mosaic, {key: x => x.item.uuid, create: x => tileWidget(x, ctx, s), scope: s,
     enter: el => enter(el, {from: 'fade'}),
@@ -143,6 +143,8 @@ export function dayWidget(box, ctx, parent = null) {
     css(refs.head, 'height', sizes.head + 'px');
     text(refs.meta, [weekday(day), t('{n} 张', {n: number(g.count)}), ...(ctx.people() && people ? [t('{n} 位角色', {n: number(people)})] : [])].join(' · '));
     attr(refs.grid, 'href', ctx.href(day));
+    // 同步时长了行的天，没画出来的张数写在这里（不盖在哪一张图上，那张图照样能点开，#757 复核第 3 条）。
+    text(refs.grid, (next.hidden ? t('还有 {n} 张，在网格里看', {n: number(next.hidden)}) : t('在网格里看')) + ' ›');
     // 芯片行
     const list = next.open && next.people ? next.people : g.characters || [];
     show(refs.chars, list.length > 0);

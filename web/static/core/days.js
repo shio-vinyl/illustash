@@ -109,14 +109,29 @@ export function dayCells(g, {width, rowHeight, gap}, hero = '') {
   return {cells, height: laid.height, rows: 0};
 }
 // 同步进行中「今天」那一段怎么长（用户 2026-11-20 定，#707）：已经显示的图不动，也不被挤进「+N」；这一批新来的图接在下面
-// 多长一行（行高同小图，按宽高比从左往右放，放不下的算进「+N」）；最多多长 maxRows 行，再来的新图只加大「+N 张」。
-// prev 是这一天现在的格子（第一次是标准的 dayCells），g 是重读到的这一天。返回新的 {cells, height, rows}。
-// 已显示的图换成重读到的那份数据（收藏、主色、角色可能变了），后端这次没给回来的（只给最新的 18 张）照旧留着。
-export function growCells(prev, g, {width, rowHeight, gap}, maxRows = 2) {
-  const byId = new Map((g.items || []).map(x => [x.uuid, x])), shown = new Set(prev.cells.map(c => c.item.uuid));
+// 多长一行（行高同小图，按宽高比从左往右放，放不下的算进没画的张数）；最多多长 maxRows 行，再来的新图只加大没画的张数。
+// 没画的张数（hidden）不盖在哪一张图上（盖上去那张图就点不开了），由一天的部件写在页头「在网格里看」上（#757 复核第 3 条）。
+//
+// prev 是这一天现在的格子（第一次是标准的 dayCells），old 是上一次读到的这一天，g 是这次重读到的。后端每天只给最新的
+// 18 张（items，按新到旧），所以要分清三种情况：
+//   新来的图：排在样本里第一张以前见过的图前面、以前没见过的（以前排在「+N」里、这次因为别的图走了才进样本的旧图不算）
+//   被移走的图（撤销、同步失败回滚、不再符合筛选）：已显示的图不在新样本里，而且样本是全的（张数等于 count），或者样本里
+//     出现了上一次排在它后面的图——这时返回 null，页面改按标准的马赛克排
+//   只改了元数据（收藏、主色、角色）：没有新来的也没有被移走的，格子原地换成新数据，不挪、不长行
+// 返回新的 {cells, height, rows, hidden}，或者 null。
+export function growCells(prev, old, g, {width, rowHeight, gap}, maxRows = 2) {
+  const items = g.items || [], byId = new Map(items.map(x => [x.uuid, x]));
+  const complete = items.length >= (g.count || 0), before = (old?.items || []).map(x => x.uuid);
+  for (const c of prev.cells) {
+    const u = c.item.uuid;
+    if (byId.has(u)) continue;
+    const at = before.indexOf(u);
+    if (complete || (at >= 0 && before.slice(at + 1).some(x => byId.has(x)))) return null;
+  }
+  const known = new Set([...before, ...prev.cells.map(c => c.item.uuid)]), first = items.findIndex(x => known.has(x.uuid));
+  const fresh = (first < 0 ? items : items.slice(0, first)).filter(x => !known.has(x.uuid));
   const cells = prev.cells.map(c => ({...c, item: byId.get(c.item.uuid) || c.item, more: 0}));
   let {height, rows} = prev;
-  const fresh = (g.items || []).filter(x => !shown.has(x.uuid));
   if (fresh.length && rows < maxRows) {
     const y = height + gap;
     let x = 0;
@@ -128,10 +143,7 @@ export function growCells(prev, g, {width, rowHeight, gap}, maxRows = 2) {
     }
     height = y + rowHeight; rows++;
   }
-  // 没画出来的张数盖在最后一格上（那一格自己的图也算没画出来）。
-  const hidden = (g.count || 0) - cells.length;
-  if (hidden > 0 && cells.length) cells[cells.length - 1].more = hidden + 1;
-  return {cells, height, rows};
+  return {cells, height, rows, hidden: Math.max(0, (g.count || 0) - cells.length)};
 }
 
 // ---------- 芯片行 ----------
@@ -191,6 +203,22 @@ export function gridRoute(route, day, char = '') {
 export const ASK_SKIP = 50;
 export async function readAsk(nsfw, skip = [], {signal} = {}) {
   return (await api('/api/ask?' + new URLSearchParams({nsfw, skip: skip.slice(-ASK_SKIP).join(',')}), {signal})).batch || null;
+}
+// 回答一批（一步、一个撤销）：返回后端的回复（带 undo）。失败时抛错：带 status 的是后端明确拒绝了（锁库、参数不对），
+// 不带的是没收到回复（断连），这时用 askLanded 核对这一步是不是已经写进去了。
+export const answerAsk = body => post('/api/ask/answer', body);
+// 断连以后核对：这一批要写的每条人工结论（「是」的图对原角色 confirmed、「不是」的图对原角色 rejected、「点掉的是…」的图对
+// 选中的角色 confirmed）是不是都已经在详情的 assertions 里。都在才算写进去了；读不到也算没有。
+export async function askLanded(body, {signal} = {}) {
+  const want = [...body.yes.map(u => [u, body.entity, 'confirmed']), ...body.no.map(u => [u, body.entity, 'rejected']),
+    ...(body.switch ? body.no.map(u => [u, body.switch, 'confirmed']) : [])];
+  try {
+    for (const [uuid, entity, status] of want) {
+      const d = await api('/api/detail?id=' + encodeURIComponent(uuid), {signal});
+      if (!(d.assertions || []).some(x => x.id === entity && x.status === status)) return false;
+    }
+    return true;
+  } catch { return false; }
 }
 // 「以后再说」：记下这一批问过了，不改图库，不进撤销。
 export const askLater = batch => post('/api/ask/answer', {entity: batch.entity, kind: batch.kind, later: batch.items.map(x => x.uuid)});

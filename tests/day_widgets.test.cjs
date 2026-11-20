@@ -152,19 +152,41 @@ test('同步时「今天」长行：已经显示的图块节点一个都不摘�
   let state = D.dayCells(g0, opt, 'a');
   const d = Day.dayWidget(box(g0, 1200, {cells: state.cells, mosaic: state.height}), ctx); flush();
   const before = new Map(tiles(d).map(b => [b.dataset.id, [b, b.style.left, b.style.top, b.querySelector('img').getAttribute('src')]]));
-  let count = g0.count;
+  let count = g0.count, old = g0;
   for (const batch of [['n1', 'n2'], ['n3'], ['n4', 'n5']]) {
     count += batch.length;
-    const g = {...g0, count, items: [...batch.map(u => item(u)), ...g0.items]};
-    state = D.growCells(state, g, opt);
-    d.update(box(g, 1200, {cells: state.cells, mosaic: state.height})); flush();
+    const g = {...g0, count, items: [...batch.map(u => item(u)), ...old.items]};
+    state = D.growCells(state, old, g, opt); old = g;
+    d.update(box(g, 1200, {cells: state.cells, mosaic: state.height, hidden: state.hidden})); flush();
   }
   for (const [id, [el, left, top, src]] of before) {
     const now = tiles(d).find(b => b.dataset.id === id);
     assert.equal(now, el, `${id} 还是原来那个节点`); assert.equal(el.inert, false);
     assert.deepEqual([el.style.left, el.style.top, el.querySelector('img').getAttribute('src')], [left, top, src], `${id} 没挪、地址没换`);
   }
-  assert.deepEqual(tiles(d).map(b => b.dataset.id).slice(6), ['n1', 'n2', 'n3']);   // 两行以后的 n4、n5 只算进「+N」
-  assert.ok(tiles(d).at(-1).dataset.more);
+  assert.deepEqual(tiles(d).map(b => b.dataset.id).slice(6), ['n1', 'n2', 'n3']);   // 两行以后的 n4、n5 只算进没画的张数
+  // 没画的张数写在页头的「在网格里看」上，不盖在哪一张图上（复核第 3 条）：每张图都还能点开
+  assert.ok(tiles(d).every(b => !b.dataset.more));
+  assert.match([...d.el.querySelectorAll('a')].find(a => !a.dataset.char).textContent, /还有 2 张/);
   d.dispose();
+});
+
+test('同步卡读不到同步状态时写「正在重新连接」；认一认没读到时写一句、给「重试」（#757 复核建议）', () => {
+  const card = Cards.syncCard({open() {}});
+  card.update({sync: {status: 'importing', import_done: 5, import_total: 20}, today: null, lost: true});
+  assert.match(card.el.textContent, /正在重新连接/);
+  card.update({sync: {status: 'importing', import_done: 5, import_total: 20}, today: null});
+  assert.doesNotMatch(card.el.textContent, /正在重新连接/);
+  card.dispose();
+  const retried = [];
+  const ask = Cards.askCard({answer() {}, other() {}, later() {}, retry: () => retried.push(1)});
+  ask.update({batch: null, failed: true});
+  assert.equal(ask.el.hidden, false);
+  const retry = [...ask.el.querySelectorAll('button')].find(b => b.getAttribute('data-ref') === 'retry');
+  assert.equal(retry.hidden, false); assert.match(ask.el.textContent, /没读到要认的图/);
+  retry.dispatchEvent(dom.event('click'));
+  assert.deepEqual(retried, [1]);
+  ask.update({batch: null});
+  assert.equal(ask.el.hidden, true);
+  ask.dispose();
 });

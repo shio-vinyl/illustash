@@ -115,3 +115,58 @@ test('a by-day answer that arrives after leaving the page draws nothing', async 
   resolve({days: [oneDay], next: ''}); await pending;
   assert.deepEqual(h.state.items.map(x => x.uuid), ['library']);
 });
+// 按天页面里的按钮：dom.cjs 只认 [特性] 和标签，按 data-ref 找。
+const refBtn = (page, ref) => [...page.el('homePage').children[0].querySelectorAll('button')].find(b => b.getAttribute('data-ref') === ref && !b.hidden);
+test('认一认写入被拒：卡片、点选都留着，不换下一批，可以再点一次（#757）', async () => {
+  const asks = [], answers = [];
+  const batch = {entity: 'e1', name: 'A', kind: 'hint', items: ['a', 'b'].map(uuid => ({uuid, width: 100, height: 100, memberships: []}))};
+  const h = daysHarness(() => ({}));
+  globalThis.fetch = async (path, init) => {
+    if (path.startsWith('/api/ask/answer')) { answers.push(JSON.parse(init.body)); return {status: 500, ok: false, json: async () => ({error: 'database is locked'})}; }
+    const body = path.startsWith('/api/ask') ? (asks.push(path), {batch}) : path.startsWith('/api/home') ? {days: [oneDay], next: ''}
+      : path.startsWith('/api/bootstrap') ? {token: '', total: 0, undo: null} : [];
+    return {status: 200, ok: true, json: async () => body};
+  };
+  await h.render(); await tick();
+  assert.equal(asks.length, 1);
+  refBtn(h.page, 'ok').dispatchEvent({type: 'click'}); await tick(); await tick(); await tick();
+  assert.equal(answers.length, 1, '发了一次回答');
+  assert.equal(asks.length, 1, '没有去读下一批');
+  assert.ok(refBtn(h.page, 'ok'), '卡片还在');
+  assert.equal(refBtn(h.page, 'ok').disabled, false, '写完放开了');
+  scopes.page('library');
+});
+test('切换 NSFW 以后，之前那次读取晚到的回复不画回来（#757）', async () => {
+  const pending = [];
+  const hidden = {...oneDay, day: '2026-10-01', hero: 'h', items: [{uuid: 'h', width: 100, height: 100, memberships: []}]};
+  const h = daysHarness(() => ({batch: null}));
+  globalThis.fetch = path => path.startsWith('/api/home') ? new Promise(r => pending.push({path, r})) : Promise.resolve({status: 200, ok: true, json: async () => ({batch: null})});
+  const first = h.render(); await tick();
+  h.state.nsfw = 'hide'; daysPage.refresh('nsfw'); await tick();
+  assert.equal(pending.length, 2);
+  pending[1].r({status: 200, ok: true, json: async () => ({days: [hidden], next: ''})});
+  await tick(); await tick();
+  pending[0].r({status: 200, ok: true, json: async () => ({days: [oneDay], next: ''})});
+  await first; await tick(); await tick();
+  assert.deepEqual(h.state.items.map(x => x.uuid), ['h']);
+  h.state.nsfw = '';
+  scopes.page('library');
+});
+test('第一次读的时候来了同步：读完补读最新的几天（#757）', async () => {
+  const reads = [];
+  let release;
+  const h = daysHarness(() => ({batch: null}));
+  globalThis.fetch = path => {
+    if (!path.startsWith('/api/home')) return Promise.resolve({status: 200, ok: true, json: async () => ({batch: null})});
+    reads.push(path);
+    const body = {days: [oneDay], next: ''};
+    return reads.length === 1 ? new Promise(r => { release = () => r({status: 200, ok: true, json: async () => body}); }) : Promise.resolve({status: 200, ok: true, json: async () => body});
+  };
+  const first = h.render(); await tick();
+  daysPage.refresh('sync');
+  assert.equal(reads.length, 1, '读的时候不另发');
+  release(); await first; for (let i = 0; i < 6; i++) await tick();
+  assert.equal(reads.length, 2, '读完补读一次');
+  assert.equal(new URL(reads[1], 'http://x').searchParams.get('days'), '2');
+  scopes.page('library');
+});

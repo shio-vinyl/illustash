@@ -59,6 +59,9 @@ const rolesOf = (w, page, name) => inPage(page, `const r = await fetch('/api/det
 const post = (page, path, body) => inPage(page, `const {api} = await import('/core/session.js');
   return api(${JSON.stringify(path)}, {method: 'POST', body: JSON.stringify(${JSON.stringify(body)})});`);
 
+// 这张图（按 uuid）现在挂着哪些角色（读接口，中英文一样）。
+const namesOf = (page, uuid) => inPage(page, `const r = await fetch('/api/detail?id=' + encodeURIComponent(${JSON.stringify(uuid)}));
+  if (!r.ok) return null; const d = await r.json(); return (d.memberships || []).map(m => m.name).sort();`);
 // 命令面板里搜一个角色名，等结果出来；回车前底栏那句话说明会做什么。
 async function pickerFind(page, name) {
   // 面板没开时不打字：网格里的字母都是快捷键。
@@ -131,9 +134,22 @@ export const FLOWS = [
         snap = await w.step('点掉第一张', p => p.click('#homePage .day-ask .day-ask-tile'), {shot: true});
         w.check('第一张标成「不是 TA」', await page.eval(`document.querySelector('#homePage .day-ask .day-ask-tile').getAttribute('aria-pressed') === 'true'`), '');
         w.check('有了「点掉的是…」', await page.eval(`!document.querySelector('#homePage .day-ask button[data-ref="other"]').hidden`), '');
+        // #675 第二步：选另一个角色，点掉的那张一步记成「不是原角色、是选中的角色」，其余几张留在卡上；撤销一步全撤。
+        const tiles = `#homePage .day-ask .day-ask-tile:not([inert])`;
+        const offId = await page.eval(`document.querySelector('#homePage .day-ask .day-ask-tile').dataset.peek`);
+        const asked = await page.eval(`document.querySelector('#homePage .day-ask [id] a')?.textContent || ''`);
+        const count = await page.eval(`document.querySelectorAll(${JSON.stringify(tiles)}).length`);
+        const pick = w.config.fixture.chars.map(c => c.name).find(n => n !== asked);
+        const before = await namesOf(page, offId);
         await w.step('点「点掉的是…」', p => p.click('#homePage .day-ask button[data-ref="other"]'));
         w.check('角色选择器打开了', await page.waitFor(`document.getElementById('picker').open`, 3000), '');
-        await w.step('Esc 关选择器', p => p.key('Escape'));
+        await w.step(`选 ${pick}，回车`, async p => { await pickerFind(p, pick); await p.key('Enter'); await feedbackEnd(p); }, {shot: true});
+        const after = await namesOf(page, offId);
+        w.check('点掉的那张：不再是原角色，是选中的角色', before.includes(asked) && !after.includes(asked) && after.includes(pick), {before, after, asked, pick});
+        w.check('其余几张留在卡上', await page.eval(`document.querySelectorAll(${JSON.stringify(tiles)}).length`) === count - 1, {count});
+        await w.step('撤销', async p => { await p.click('#undoButton'); await feedbackEnd(p); });
+        const undone = await namesOf(page, offId);
+        w.check('撤销一步，两条结论都还原', same(undone, before), {before, undone});
       }
       snap = await w.step('点第一天的大图（开详情）', p => p.click('#homePage .day .day-tile'), {shot: true});
       w.check('详情打开在点的那张', !!snap.focused, snap.focused);

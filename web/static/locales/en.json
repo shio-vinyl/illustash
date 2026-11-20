@@ -734,6 +734,7 @@
   },
   "正在同步": "Syncing",
   "同步已中断": "Sync interrupted",
+  "还没有同步过": "Not synced yet",
   "等待识别": "Waiting for recognition",
   "今天认出 {n} 位角色": {
     "one": "{n} character recognized today",

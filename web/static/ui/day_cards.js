@@ -1,14 +1,16 @@
 // 按天视图顶上的两张卡（#707，0.4 第 C1 步）：同步状态，和「认一认」（#675，含第二步「点掉的是…」）。
-// 部件写法照 docs/WEB_V2.md「渲染底座」：{el, update(props), dispose()}；这里不发请求，回答交给页面（ui/days.js）。
+// 部件写法照 docs/WEB_V2.md「渲染底座」：{el, update(props), dispose()}；这里不发请求：同步卡的数据由页面（ui/days.js）给，回答交给 ui/day_ask.js。
 //
 //   const sync = syncCard({open: () => …});            // 点卡片打开任务面板
-//   sync.update({sync: state.sync, today});            // today：今天那一天的数据（不是今天就是 null），写「今天认出几位」
+//   sync.update({sync: state.sync, today});            // today：今天那一天的数据，写「今天认出几位」；最新一天不是今天、或者开着筛选
+//                                                      （数字就不是全库的了）时页面给 null，不写这一句
 //
 //   const ask = askCard({answer, other, later});
 //   ask.update({batch});                               // batch 为空时藏起来
 //     answer(how, off)  how 'ok'（点掉的不是 TA、其余是）或 'none'（整批都不是）；off 是点掉的 uuid 集合
 //     other(off)        「点掉的是…」：页面打开角色选择器，把点掉的这几张记成选中的角色（一步、一个撤销）
 //     later()           以后再说
+//   ask.busy(on)                                       // 写入的时候锁住这一批
 //
 // 认一认收起时是一行：几张小图、问句、「不全是」「都对」。点「不全是」展开：图放大，点一张是「不是 TA」（再点改回），
 // Space 或长按看大图（data-peek，页面用 ui/detail.js 的 wirePeek 接）；底下是「以后再说」「都不是」「点掉的是…」和主按钮。
@@ -18,7 +20,7 @@ import {number, stamp} from '../core/format.js';
 import {t} from '../core/i18n.js';
 import {charHash} from '../core/route.js';
 import {workLabel} from '../core/labels.js';
-import {attr, cls, css, make, rich, show, text, tpl} from './el.js';
+import {attr, cls, css, make, prop, rich, show, text, tpl} from './el.js';
 import {keyed} from './keyed.js';
 import {exit, thumbs} from './motion.js';
 import {scope} from './scope.js';
@@ -40,7 +42,8 @@ const ratio = x => x.width > 0 && x.height > 0 ? Math.min(2.4, Math.max(.4, x.wi
 const PEEK = 4;
 
 // ---------- 同步 ----------
-const TITLES = {done: () => t('同步完成'), needs_recognition: () => t('等待识别'), interrupted: () => t('同步已中断'), error: () => t('同步失败')};
+const TITLES = {done: () => t('同步完成'), idle: () => t('还没有同步过'), needs_recognition: () => t('等待识别'), interrupted: () => t('同步已中断'),
+  error: () => t('同步失败')};
 export function syncCard({open}) {
   const s = scope('day-sync'), {el, refs} = SYNC();
   show(el, false);   // 读到同步状态之前不显示
@@ -49,7 +52,8 @@ export function syncCard({open}) {
     const status = sync?.status || 'off', active = SYNC_ACTIVE.includes(status);
     show(el, status !== 'off');
     if (status === 'off') return;
-    const part = active ? syncBar(sync, (done, total) => total ? Math.min(1, (done || 0) / total) : 0) || 0 : 1;
+    // 圆环：进行中按进度，完成是满的；还没同步过（idle）、等待识别、出了问题都是空的。
+    const part = active ? syncBar(sync, (done, total) => total ? Math.min(1, (done || 0) / total) : 0) || 0 : status === 'done' ? 1 : 0;
     css(refs.ring, '--p', String(Math.round(part * 100)));
     cls(refs.ring, 'is-busy', active); cls(refs.ring, 'is-warn', ['error', 'interrupted', 'needs_recognition'].includes(status));
     show(refs.tick, status === 'done');
@@ -58,7 +62,7 @@ export function syncCard({open}) {
       ...(sync.finished_at ? [stamp(sync.finished_at)] : []),
       t('新加入 {n} 张', {n: number(sync.imported || 0)}),
       ...(today?.people ? [t('今天认出 {n} 位角色', {n: number(today.people)})] : []),
-    ] : [syncLine(sync)];
+    ] : status === 'idle' ? [] : [syncLine(sync)];
     text(refs.sub, facts.join(' · '));
   }
   return {el, update, dispose: () => s.dispose()};
@@ -107,10 +111,12 @@ export function askCard({answer, other, later}) {
   }
   function update({batch: next}) {
     show(el, !!next?.items?.length);
-    if (!next?.items?.length) { batch = null; return; }
-    // 换了一个角色：收起、清掉点掉的；同一个角色少了几张（「点掉的是…」提交了那几张）：留在展开的样子，点掉的只留还在的。
-    if (next.entity !== entity) { open = false; off = new Set(); entity = next.entity; titleFor(next); }
-    else off = new Set([...off].filter(u => next.items.some(x => x.uuid === u)));
+    // 藏起来（没有题、开关关了、NSFW 换了）：点选和展开都复位，再出现时从头来。
+    if (!next?.items?.length) { batch = null; entity = ''; open = false; off = new Set(); return; }
+    // 同一个角色、只是少了几张（「点掉的是…」提交了那几张）：留在展开的样子，点掉的只留还在的。其余情况（换了一批）收起、清掉点掉的。
+    const shrunk = batch && next.entity === entity && next.items.every(x => batch.items.some(y => y.uuid === x.uuid));
+    if (shrunk) off = new Set([...off].filter(u => next.items.some(x => x.uuid === u)));
+    else { open = false; off = new Set(); entity = next.entity; titleFor(next); }
     batch = next;
     const why = next.kind === 'hint' ? t('和你确认过的 TA 很像') : next.kind === 'seed' ? '' : t('随机抽查');
     text(refs.sub, [workLabel({id: next.entity, name: next.name}), why, t('机器认出 {n} 张', {n: number(next.items.length)})].filter(Boolean).join(' · '));
@@ -124,5 +130,10 @@ export function askCard({answer, other, later}) {
     refs.title.textContent = '';
     refs.title.append(rich(t('这些是 {name} 吗？'), {name: link}));
   }
-  return {el, update, dispose: () => s.dispose()};
+  // 写入的时候锁住这一批：按钮和图都点不动，写完再放开（ui/day_ask.js）。
+  function busy(on) {
+    cls(el, 'is-busy', on); attr(el, 'aria-busy', on ? 'true' : null);
+    for (const b of el.querySelectorAll('button')) prop(b, 'disabled', on);
+  }
+  return {el, update, busy, dispose: () => s.dispose()};
 }

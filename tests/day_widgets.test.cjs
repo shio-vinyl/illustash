@@ -129,3 +129,16 @@ test('同步卡：进行中写进度；完成后写新加入几张、今天认�
   assert.equal(opened.length, 1);
   card.dispose();
 });
+
+test('同一帧挂上好几天：每一天都量、都定芯片放几个（帧任务的键按部件分开，#757）', () => {
+  const {ctx} = context();
+  const days = ['2026-11-17', '2026-11-16', '2026-11-15'].map(d => Day.dayWidget(box({day: d, count: 1, people: 12, characters: chars(8), hero: 'a', items: [item('a' + d)]}, 420), ctx));
+  for (const d of days) {
+    for (const el of [...d.el.querySelectorAll('a')].filter(a => a.dataset.char)) el.offsetWidth = 100;
+    [...d.el.querySelectorAll('button')].find(b => b.getAttribute('aria-expanded') !== null).offsetWidth = 90;
+  }
+  flush();
+  const labels = days.map(d => [...d.el.querySelectorAll('button')].find(b => b.getAttribute('aria-expanded') !== null).textContent);
+  assert.deepEqual(labels, ['另外 9 位', '另外 9 位', '另外 9 位']);
+  for (const d of days) d.dispose();
+});

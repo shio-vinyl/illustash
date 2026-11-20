@@ -29,12 +29,12 @@ export async function readDays(query, {before = '', days = FIRST_DAYS, signal} =
   return {days: r.days || [], next: r.next || ''};
 }
 
-// 一天的全部角色（展开「另外 N 位」时）：/api/home 只给前八位，其余按同样的筛选和这一天分页读 /api/assets，汇总 memberships。
-// 按当天张数从多到少排，一样多时按名字。图很多的一天最多读 limit × pages 张（默认一万张），读不完的不算进去（芯片行仍以 people 为总数）。
-export async function readDayPeople(query, day, {limit = MAX_PAGE, pages = 50, signal} = {}) {
+// 一天的全部角色（展开「另外 N 位」时）：/api/home 只给前八位，其余按同样的筛选和这一天分页读 /api/assets 直到读完，汇总 memberships。
+// 按当天张数从多到少排，一样多时按名字。
+export async function readDayPeople(query, day, {limit = MAX_PAGE, signal} = {}) {
   const counts = new Map();
-  for (let page = 0; page < pages; page++) {
-    const r = await api('/api/assets?' + new URLSearchParams({...query, day, order: 'newest', offset: page * limit, limit, count: 0}), {signal});
+  for (let offset = 0; ; offset += limit) {
+    const r = await api('/api/assets?' + new URLSearchParams({...query, day, order: 'newest', offset, limit, count: 0}), {signal});
     for (const item of r.items || []) for (const m of item.memberships || []) {
       const c = counts.get(m.id) || {id: m.id, name: m.name, tag: m.tag, count: 0};
       c.count++; counts.set(m.id, c);
@@ -46,27 +46,33 @@ export async function readDayPeople(query, day, {limit = MAX_PAGE, pages = 50, s
 }
 
 // ---------- 同步后并进已读到的天 ----------
-// 两次读到的同一天是不是一样：张数、角色、图（次序、收藏、主色）都没变。一样时沿用旧对象，部件不用更新。
+// 两次读到的同一天是不是一样：部件画出来的东西（张数、角色数、前几位角色、大图、每张图的尺寸、收藏、主色、角色和副本数）都没变。
+// 一样时沿用旧对象，部件不用更新。
+const shown = g => JSON.stringify([g.count, g.people, g.hero, (g.characters || []).map(c => [c.id, c.name, c.tag, c.count]),
+  (g.items || []).map(i => [i.uuid, i.width, i.height, !!i.fav, i.color || '', i.dup?.size || 0, (i.memberships || []).map(m => [m.id, m.name])])]);
 export function sameDay(a, b) {
-  if (!a || !b || a.day !== b.day || a.count !== b.count || a.people !== b.people || a.hero !== b.hero) return false;
-  const chars = x => (x.characters || []).map(c => `${c.id}:${c.count}`).join(' ');
-  const items = x => (x.items || []).map(i => `${i.uuid}:${i.fav ? 1 : 0}:${i.color || ''}`).join(' ');
-  return chars(a) === chars(b) && items(a) === items(b);
+  return !!a && !!b && a.day === b.day && shown(a) === shown(b);
 }
-// 已读到的天 list，并进重读的一段 fresh（从新到旧）。重读的是从 newest（不含这一天，before 游标）往前的几天；newest 为空是从
-// 最新的一天读起（同步之后）。这一段的日期范围里以 fresh 为准：没变的天沿用旧对象，没了的天去掉，新的一天插进来；范围以外的
-// 天原样留着。fresh 为空时不知道范围，什么都不动。返回 {days, changed}：changed 是换了对象的日期。
-export function mergeDays(list, fresh, newest = '') {
-  if (!fresh.length) return {days: list, changed: new Set()};
-  const oldest = fresh[fresh.length - 1].day, before = new Map(list.map(g => [g.day, g])), changed = new Set();
+// 已读到的天 list，并进重读的一段 fresh（从新到旧，读回来的 next 是它的游标）。重读的是从 newest（不含这一天，before 游标）
+// 往前的几天；newest 为空是从最新的一天读起。这一段覆盖的日期范围：上界是 newest（为空时没有上界），下界是 fresh 最早的一天；
+// next 为空说明读到底了，下界一直到最早。范围里以 fresh 为准：没变的天沿用旧对象，没了的天去掉（筛选下最后一张被移走），
+// 新的一天插进来；范围以外的天原样留着。
+// 返回 {days, changed, end}：changed 是换了对象或去掉了的日期；end 为真时范围已经到了已读到的最早一天以下（调用方把游标换成 next）。
+export function mergeDays(list, fresh, {newest = '', next = ''} = {}) {
+  const floor = next ? fresh[fresh.length - 1]?.day : '';
+  if (next && !floor) return {days: list, changed: new Set(), end: false};
+  const inRange = day => (!newest || day < newest) && (!floor || day >= floor);
+  const before = new Map(list.map(g => [g.day, g])), changed = new Set();
   const merged = fresh.map(g => {
     const old = before.get(g.day);
     if (old && sameDay(old, g)) return old;
     changed.add(g.day);
     return g;
   });
-  const newer = newest ? list.filter(g => g.day >= newest) : [];
-  return {days: [...newer, ...merged, ...list.filter(g => g.day < oldest)], changed};
+  for (const g of list) if (inRange(g.day) && !fresh.some(x => x.day === g.day)) changed.add(g.day);
+  const above = list.filter(g => newest && g.day >= newest), below = list.filter(g => !inRange(g.day) && !(newest && g.day >= newest));
+  const end = !list.length || !floor || floor <= list[list.length - 1].day;
+  return {days: [...above, ...merged, ...below], changed, end};
 }
 // 某一天的下一天（'YYYY-MM-DD'）：要从这一天起往前读时当 before 游标（游标不含它自己）。
 export function dayAfter(day) {
@@ -143,9 +149,11 @@ export function gridRoute(route, day, char = '') {
 }
 
 // ---------- 认一认 ----------
-// 下一批要问的：一个角色，几张机器认出的图。skip 是这一轮已经问过的角色。没有可问的、或者读失败时是 null。
-export async function readAsk(nsfw, skip = []) {
-  try { return (await api('/api/ask?' + new URLSearchParams({nsfw, skip: skip.join(',')}))).batch || null; } catch { return null; }
+// 下一批要问的：一个角色，几张机器认出的图；没有可问的是 null，读失败时抛错（调用方分得清「没题」和「没读到」）。
+// skip 是这一轮已经问过的角色；后端最多收 ASK_SKIP 个，只带最近的那些。
+export const ASK_SKIP = 50;
+export async function readAsk(nsfw, skip = [], {signal} = {}) {
+  return (await api('/api/ask?' + new URLSearchParams({nsfw, skip: skip.slice(-ASK_SKIP).join(',')}), {signal})).batch || null;
 }
 // 「以后再说」：记下这一批问过了，不改图库，不进撤销。
 export const askLater = batch => post('/api/ask/answer', {entity: batch.entity, kind: batch.kind, later: batch.items.map(x => x.uuid)});

@@ -28,25 +28,39 @@ test('读几天：带上收藏和主色，before 为空时不发', async () => {
 test('同步后并进：没变的天沿用旧对象，变了的换掉，新的一天插到前面，更早的原样留着', () => {
   const old = [day('2026-11-18', ['a', 'b']), day('2026-11-17', ['c']), day('2026-11-10', ['z'])];
   const fresh = [day('2026-11-19', ['n']), day('2026-11-18', ['m', 'a', 'b']), day('2026-11-17', ['c'])];
-  const {days, changed} = D.mergeDays(old, fresh);
+  // 读了最新三天、后面还有（next 是最早那天的游标）：17 号以下的天原样留着，没到已读的最早一天，游标不换
+  const {days, changed, end} = D.mergeDays(old, fresh, {next: '2026-11-17'});
   assert.deepEqual(days.map(g => g.day), ['2026-11-19', '2026-11-18', '2026-11-17', '2026-11-10']);
   assert.equal(days[2], old[1]); assert.equal(days[3], old[2]);
   assert.deepEqual([...changed].sort(), ['2026-11-18', '2026-11-19']);
+  assert.equal(end, false);
 });
 
-test('同步后并进：重读范围里没了的一天去掉；收藏、主色变了也算变了', () => {
+test('同步后并进：重读范围里没了的一天去掉；收藏、主色、角色变了也算变了；范围到了已读的最早一天以下时换游标', () => {
   const old = [day('2026-11-18', ['a']), day('2026-11-17', ['c'])];
   const fresh = [day('2026-11-18', ['a'], {items: [item('a', {fav: true})]}), day('2026-11-16', ['d'])];
-  const {days, changed} = D.mergeDays(old, fresh);
-  assert.deepEqual(days.map(g => g.day), ['2026-11-18', '2026-11-16']);
-  assert.ok(changed.has('2026-11-18'));
-  assert.deepEqual(D.mergeDays(old, []).days, old);
+  const merged = D.mergeDays(old, fresh, {next: '2026-11-16'});
+  assert.deepEqual(merged.days.map(g => g.day), ['2026-11-18', '2026-11-16']);
+  assert.ok(merged.changed.has('2026-11-18')); assert.ok(merged.changed.has('2026-11-17'));
+  assert.equal(merged.end, true);
+  const renamed = day('2026-11-18', ['a'], {items: [item('a', {memberships: [{id: 'x', name: 'X'}]})]});
+  assert.equal(D.sameDay(old[0], renamed), false);
+  assert.equal(D.sameDay(old[0], day('2026-11-18', ['a'])), true);
+});
+
+test('筛选下最后一张被移走：读回来是空的、也读到底了，这一段的天都去掉，游标清空', () => {
+  const old = [day('2026-11-18', ['a'])];
+  const {days, changed, end} = D.mergeDays(old, [], {next: ''});
+  assert.deepEqual(days, []); assert.deepEqual([...changed], ['2026-11-18']); assert.equal(end, true);
+  // 只重读中间一段、读回来空的：上面的天留着
+  const two = [day('2026-11-19', ['n']), day('2026-11-18', ['a'])];
+  assert.deepEqual(D.mergeDays(two, [], {newest: '2026-11-19', next: ''}).days.map(g => g.day), ['2026-11-19']);
 });
 
 test('重读中间一段（改动之后重读视野附近）：只换这一段，前后的天原样留着；dayAfter 给游标', () => {
   const old = [day('2026-11-19', ['n']), day('2026-11-18', ['a']), day('2026-11-17', ['c']), day('2026-11-10', ['z'])];
   const fresh = [day('2026-11-18', ['a'], {count: 2, items: [item('a'), item('b')]}), day('2026-11-17', ['c'])];
-  const {days, changed} = D.mergeDays(old, fresh, D.dayAfter('2026-11-18'));
+  const {days, changed} = D.mergeDays(old, fresh, {newest: D.dayAfter('2026-11-18'), next: '2026-11-17'});
   assert.deepEqual(days.map(g => g.day), ['2026-11-19', '2026-11-18', '2026-11-17', '2026-11-10']);
   assert.equal(days[0], old[0]); assert.equal(days[2], old[2]); assert.equal(days[3], old[3]);
   assert.deepEqual([...changed], ['2026-11-18']);

@@ -66,7 +66,9 @@ function tileWidget(cell, ctx, s) {
     show(refs.dup, dup > 1); text(refs.dup, dup > 1 ? '×' + dup : '');
     attr(el, 'data-more', more ? String(more) : null); show(refs.plus, !!more);
     text(refs.plus, more ? t('+{n} 张', {n: number(more)}) : '');
-    attr(el, 'aria-label', more ? t('还有 {n} 张，在网格里看', {n: number(more)}) : null);
+    // 按钮的可访问名称：「+N」那格说去网格；其余照网格卡片的口径（角色名或「未识别图片」，第几张）。
+    const names = (item.memberships || []).map(m => m.name).join(t('、')) || t('未识别图片');
+    attr(el, 'aria-label', more ? t('还有 {n} 张，在网格里看', {n: number(more)}) : t('{names}，第 {n} 张', {names, n: next.index + 1}));
     css(el, 'left', b.x + 'px'); css(el, 'top', b.y + 'px'); css(el, 'width', b.w + 'px'); css(el, 'height', b.h + 'px');
     if (box && (box.x !== b.x || box.y !== b.y || box.w !== b.w || box.h !== b.h)) flip(el, box, b);
     box = b;
@@ -91,8 +93,11 @@ function chipWidget(c, ctx, day) {
 }
 
 // ---------- 一天 ----------
+// 帧任务的键按部件分开（ui/frame.js 的键是全局去重的）：同一帧挂上好几天时，每一天都要量、都要定芯片放几个。
+let widgets = 0;
 export function dayWidget(box, ctx, parent = null) {
-  const s = parent ? parent.child('day') : scope('day'), {el, refs} = DAY();
+  const s = parent ? parent.child('day') : scope('day'), {el, refs} = DAY(), id = ++widgets;
+  const MEASURE = `day:${id}:measure`, FIT = `day:${id}:fit`;
   let current = box, widths = new Map(), moreWidth = 0, shown = Infinity;
   const day = box.key;
   el.dataset.day = day;
@@ -112,7 +117,7 @@ export function dayWidget(box, ctx, parent = null) {
     for (const el of refs.chips.children) if (!widths.has(el.dataset.char) && !el.classList.contains('is-cut')) widths.set(el.dataset.char, el.offsetWidth || 0);
     if (!refs.more.hidden && refs.more.offsetWidth) moreWidth = refs.more.offsetWidth;
     if (current.open) { const h = refs.chars.offsetHeight; if (h) ctx.resized(day, h); return; }
-    s.write(fit, 'day:fit');
+    s.write(fit, FIT);
   }
   function fit() {
     const g = current.g, list = g.characters || [], hidden = Math.max(0, (g.people || list.length) - list.length);
@@ -141,7 +146,7 @@ export function dayWidget(box, ctx, parent = null) {
       show(refs.more, true); text(refs.more, t('收起'));
     }
     // 每次更新后量一次（只量新出现的芯片，已量过的记着），再定放几个；展开时量整行的高度。
-    s.read(measure, 'day:measure');
+    s.read(measure, MEASURE);
     // 马赛克：大图本页期间固定（ctx.hero），其余按后端的次序
     const items = heroFirst(g, ctx.hero(day));
     if (items[0]) ctx.hold(day, items[0].uuid);
@@ -149,7 +154,7 @@ export function dayWidget(box, ctx, parent = null) {
     css(refs.mosaic, 'height', mosaicHeight(sizes) + 'px');
     // 「+N」盖在最后一格上：马赛克没画的（b.more 已含这一格自己）加上这一天后端没给的张数。
     const unsent = Math.max(0, (g.count || 0) - items.length), last = laid.boxes.length - 1;
-    tiles.set(laid.boxes.map((b, k) => ({item: items[b.i], box: b, hero: k === 0,
+    tiles.set(laid.boxes.map((b, k) => ({item: items[b.i], box: b, hero: k === 0, index: k,
       more: k === last && (b.more || unsent) ? (b.more || 1) + unsent : 0})));
   }
   update(box);

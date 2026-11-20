@@ -121,7 +121,7 @@ export function rows(container, table, {scope: parent = null} = {}) {
     if (spec.href) {
       // 标题是链接：把 <b> 包进 <a>。
       const a = make('a', 'row-to');
-      refs.label.replaceWith(a); a.appendChild(refs.label);
+      refs.label.replaceWith(a); a.append(refs.label);
       row.to = a;
     }
     if (spec.kind === 'switch') s.on(refs.input, 'change', () => submit(row, refs.input.checked));
@@ -141,7 +141,7 @@ export function rows(container, table, {scope: parent = null} = {}) {
       if (spec.type === 'password' || spec.plain) { attr(refs.input, 'spellcheck', 'false'); attr(refs.input, 'autocomplete', 'off'); }
     }
     if (spec.kind === 'list') row.list = keyed(refs.items, {key: spec.itemKey, create: item => listItem(spec, item), scope: s});
-    container.appendChild(el);
+    container.append(el);
     return row;
   }
 
@@ -182,7 +182,7 @@ export function rows(container, table, {scope: parent = null} = {}) {
     const buttons = (spec.actions || []).map(action => {
       const b = button(typeof action.label === 'function' ? '' : action.label, action.primary);
       own.on(b, 'click', () => press(b, () => action.run(item.current, state)));
-      refs.actions.appendChild(b);
+      refs.actions.append(b);
       return {b, action};
     });
     const update = next => {
@@ -248,7 +248,7 @@ export function rows(container, table, {scope: parent = null} = {}) {
             opt.type = 'button'; opt.dataset.value = o.value;
             row.segScope.on(opt, 'click', () => { if (!opt.disabled) { submit(row, o.value); paint(row); } });
           } else { opt.value = o.value; opt.textContent = o.label; }
-          refs.input.appendChild(opt);
+          refs.input.append(opt);
         }
       }
       const v = spec.get?.(state) ?? '';

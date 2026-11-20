@@ -75,9 +75,16 @@ test('an older sync answer that arrives last does not move the state back', asyn
 });
 
 test('the new-library name is kept as it is typed, so a card refresh restores it', async () => {
-  const {onLibraryInput, libForm} = await web.load('ui/settings.js');
-  onLibraryInput({target: {id: 'libName', value: '合成新图库'}});
-  onLibraryInput({target: {id: 'libPhotos', checked: true}});
+  // 新建图库的表单在「设置 › 图库」（ui/settings_libraries.js）：名字离开输入框时记进 libForm，之后轮询刷新照它写回。
+  const dom = require('./dom.cjs'), {view} = require('./settings_view.cjs');
+  dom.install();
+  const {libForm} = await web.load('ui/settings_libraries.js'), {state} = web.core();
+  Object.assign(state, {route: {page: 'settings'}, importTask: undefined, libraries: {info: null, current: '', home: '/tmp', libraries: [], export: {}}});
+  Object.assign(libForm, {open: true, name: '', folders: {}, photos: false, created: null});
+  const v = (await view('library'))(), input = v.row('formName').querySelector('input');
+  input.value = '合成新图库'; input.dispatchEvent(dom.event('change'));
   assert.equal(libForm.name, '合成新图库');
-  assert.equal(libForm.photos, true);
+  input.value = ''; v.update();
+  assert.equal(input.value, '合成新图库', 'a refresh writes back what was typed');
+  v.dispose(); dom.uninstall();
 });

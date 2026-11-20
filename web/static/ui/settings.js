@@ -47,7 +47,7 @@ function buildPage(scope) {
   const page = make('div', 'set-page'), nav = make('nav', 'set-nav'), main = make('div', 'set-main');
   attr(nav, 'aria-label', t('设置'));
   const links = SECTIONS.map(([id, title]) => {
-    const a = make('a', '', title); attr(a, 'href', `#/settings/${id}`); nav.appendChild(a);
+    const a = make('a', '', title); attr(a, 'href', `#/settings/${id}`); nav.append(a);
     return [id, a];
   });
   page.append(nav, main);

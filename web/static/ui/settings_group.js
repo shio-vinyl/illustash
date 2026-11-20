@@ -58,10 +58,10 @@ function parts(body, list, scope) {
     if (ROW_KINDS.has(part.kind)) { batch.push(part); continue; }
     flush();
     if (part.kind === 'sub') {
-      const h = make('h3', 'set-sub'); body.appendChild(h);
+      const h = make('h3', 'set-sub'); body.append(h);
       updates.push(s => { show(h, !part.hidden?.(s)); text(h, read(part.label, s)); });
     } else if (part.kind === 'note') {
-      const p = make('p', 'set-sub-note'); body.appendChild(p);
+      const p = make('p', 'set-sub-note'); body.append(p);
       updates.push(s => { const v = read(part.text, s) || ''; show(p, v && !part.hidden?.(s)); text(p, v); });
     } else if (part.kind === 'fold') {
       const {el, refs} = FOLD(), own = scope.child('fold');
@@ -71,7 +71,7 @@ function parts(body, list, scope) {
         if (el.open) open[part.key] = true; else delete open[part.key];
         prefs.set('settingsOpen', open);
       });
-      body.appendChild(el);
+      body.append(el);
       const inner = parts(refs.body, part.parts, own);
       updates.push(s => {
         const hidden = Boolean(part.hidden?.(s));
@@ -82,7 +82,7 @@ function parts(body, list, scope) {
       });
     } else if (part.kind === 'block') {
       const el = make('div', part.className || ''); el.dataset.block = part.key;
-      body.appendChild(el);
+      body.append(el);
       const own = scope.child('block'), view = part.mount(el, own);
       updates.push(s => { const hidden = Boolean(part.hidden?.(s)); show(el, !hidden); if (!hidden) view.update?.(s); });
     } else throw new Error(`ui/settings_group.js: 没有 ${part.kind} 这种部分`);
@@ -95,7 +95,7 @@ export function groups(container, defs, {scope}) {
   const built = defs.map(def => {
     const {el, refs} = GROUP(), own = scope.child('group');
     el.dataset.group = def.key;
-    container.appendChild(el);
+    container.append(el);
     if (def.more) { text(refs.more, t('了解详情')); show(refs.more, true); }
     const inner = parts(refs.body, def.parts || [], own);
     own.add(() => el.remove());

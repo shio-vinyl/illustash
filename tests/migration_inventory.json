@@ -141,7 +141,7 @@
 
  "crates/platform/src/platform_backup.rs":"04c32bc17584d76a81f5c27c615592a2897d0dd0845129e0061cfad1632c1c36",
 
- "crates/platform/src/platform_credentials.rs":"c9a7cf5a8a73df22537f31adfce90f82de79600e832b0a254fa4f4cd415efa8d",
+ "crates/platform/src/platform_credentials.rs":"002b95b9c84f67ce116a84b035a280cc9836f5c84c422e24d257f0c013875143",
 
  "crates/platform/src/platform_credentials_macos.rs":"ce5ed4ac622684922a76b47805c9d14244e5f50eba2cf4f841e8deb11e39e9a8",
 
@@ -279,7 +279,7 @@
 
  "native/terms/src/app_library.rs":"0c318da5f120462d5982c053fcdec2d613062c933686afcf02b5300e74af68e4",
 
- "native/terms/src/app_local.rs":"e0c4b4eae2693c69b543d7032bf2776b06e46deb073f3599db82b4c19eed8bdc",
+ "native/terms/src/app_local.rs":"653d4dc6ac3105b0758833fbb443231a455f1b7c4e104c8e0432b79a07b37ac7",
 
  "native/terms/src/app_migrate.rs":"17eac80259f33aaee591c06eb6d96ce217e9f2378216b1ffaa209a1e0c734de4",
 

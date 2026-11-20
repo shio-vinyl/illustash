@@ -80,15 +80,12 @@ pub fn write(kind: &str, value: &str) -> Result<()> {
 }
 /// 删除旧账号凭据，沿用其钥匙串错误处理规则。
 pub fn remove(kind: &str) -> Result<()> {
+    #[cfg(target_os = "macos")]
     if keychain() {
-        #[cfg(target_os = "macos")]
         let _ = macos::Store::default().remove(kind);
-        #[cfg(not(target_os = "macos"))]
-        unreachable!("macOS only");
-        Ok(())
-    } else {
-        remove_file(kind)
+        return Ok(());
     }
+    remove_file(kind)
 }
 /// 删除凭据，条目不存在时成功，其他存储错误由调用方处理。
 pub fn remove_strict(kind: &str) -> Result<()> {

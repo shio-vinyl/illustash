@@ -300,6 +300,7 @@ mod tests {
     #[test]
     fn projected_counts_match_a_whole_load() {
         let (root, c) = library();
+        let path = root.join("library.sqlite");
         let tx = c.unchecked_transaction().unwrap();
         assert!(crate::legacy_names::projection_current(&tx).unwrap());
         let start = crate::names_view::whole_loads();
@@ -317,13 +318,13 @@ mod tests {
             "{counts}"
         );
         assert_eq!(counts["skins"]["total"], 2, "{counts}");
-        assert_eq!(names(&tx, false).unwrap().get("counts").unwrap().dump(), projected.dump());
+        assert_eq!(names(&tx, &path, false).unwrap().get("counts").unwrap().dump(), projected.dump());
         tx.commit().unwrap();
         // 绕过核心提交的写入让投影落后：计数重新计算。
         c.execute("UPDATE meta SET value=CAST(value AS INTEGER)+1 WHERE key='names_version'", []).unwrap();
         assert!(!crate::legacy_names::projection_current(&c).unwrap());
         let start = crate::names_view::whole_loads();
-        assert_eq!(names(&c, false).unwrap().get("counts").unwrap().dump(), projected.dump());
+        assert_eq!(names(&c, &path, false).unwrap().get("counts").unwrap().dump(), projected.dump());
         assert_eq!(crate::names_view::whole_loads() - start, 1);
         drop(c);
         std::fs::remove_dir_all(root).unwrap();

@@ -16,7 +16,7 @@ async function setLanguage(language) {
 }
 
 export function build(main, scope) {
-  return groups(main, [
+  const view = groups(main, [
     {key: 'display', title: t('显示'), scope: 'browser', foot: t('缩略图大小、图上显示什么、详情面板的内容，在顶栏的「视图选项」里调。'), parts: [
       {kind: 'select', seg: true, key: 'theme', label: t('外观'), options: opts([['', t('跟随系统')], ['light', t('浅色')], ['dark', t('深色')]]),
        get: () => prefs.get('theme', ''), set: v => { prefs.set('theme', v); window.applyTheme?.(); refreshSection(); }},
@@ -43,4 +43,5 @@ export function build(main, scope) {
        set: v => saveAfterTasks(v).then(refreshSection, e => toast(e.message))},
     ]},
   ], {scope});
+  return {update: view.update};
 }

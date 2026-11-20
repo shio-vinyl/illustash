@@ -25,8 +25,6 @@ const CREDITS = [
 const HEAD = tpl`<div class="set-about"><img src="/favicon.svg" alt="" width="44" height="44"><div><h2 class="set-about-name" data-ref="name"></h2>
   <p class="set-about-version" data-ref="version"></p></div></div>`;
 
-// 诊断记录（本机的，最近几条）：进这一节时读一次。
-let report = null;
 const version = a => `${a.version}${a.channel ? ' ' + tb(a.channel) : ''}`;
 const environment = a => !a ? [] : [[t('应用'), a.name], [t('版本'), version(a)], [t('构建'), a.build || '—'], [t('数据库架构'), a.schema],
   [a.runtime ? t('运行时') : 'Python', a.runtime || a.python], [t('系统'), a.platform],
@@ -59,7 +57,9 @@ const license = el => {
 };
 
 export function build(main, scope) {
-  return groups(main, [
+  // 诊断记录（本机的，最近几条）：进这一节时读一次，留在这一节里；先发的读取后回来时不盖掉新的。
+  let report = null, asked = 0;
+  const view = groups(main, [
     {key: 'about', title: t('关于'), note: t('在本机识别、整理收藏的插画和里面的角色。'), parts: [
       {kind: 'info', key: 'aboutReading', label: t('正在读取…'), hidden: s => !!s.about},
       {kind: 'block', key: 'head', hidden: s => !s.about, mount: el => {
@@ -91,9 +91,11 @@ export function build(main, scope) {
       ]},
     ]},
   ], {scope});
-}
-// 进这一节：版本信息（读过就不再读）和诊断记录。
-export function loadSection() {
-  if (!state.about) loadAbout().then(refreshSection, e => toast(e.message));
-  diagnosticReport().catch(() => ({available: false, records: []})).then(r => { report = r; refreshSection(); });
+  // 进这一节：版本信息（读过就不再读）和诊断记录。离开以后回来的回复不画、不弹提示。
+  function load() {
+    const route = state.route, here = () => scope.alive && state.route === route, n = ++asked;
+    if (!state.about) loadAbout().then(() => here() && refreshSection(), e => { if (here()) toast(e.message); });
+    diagnosticReport().catch(() => ({available: false, records: []})).then(r => { if (here() && n === asked) { report = r; refreshSection(); } });
+  }
+  return {update: view.update, load};
 }

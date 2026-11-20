@@ -87,9 +87,18 @@ export const currentLibraryId = () => libraryId ??= api('/api/libraries').then(x
 // POST /api/libraries/<action>，带着发起请求的那个页面的 token：确认框可能比它的会话活得久。
 export const libraryRequest = (action, body = {}, token = session.token) =>
   api('/api/libraries/' + action, {method: 'POST', body: JSON.stringify(body), headers: {'X-CSRF-Token': token}});
-// 跟踪进行中的导出，最多一小时。
-export async function pollExport() {
-  for (let i = 0; i < 2400 && state.libraries?.export?.status === 'running'; i++) { await new Promise(r => setTimeout(r, 1500)); await loadLibraries(); }
+// 跟踪进行中的导出，最多一小时；同一时间只有一个轮询。读一次失败时保留上次的状态，退避以后接着读，读到终态才停。
+let exporting = null;
+export function pollExport() {
+  exporting ??= (async () => {
+    let wait = 1500;
+    for (let i = 0; i < 2400 && state.libraries?.export?.status === 'running'; i++) {
+      await new Promise(r => setTimeout(r, wait));
+      try { state.libraries = await api('/api/libraries'); wait = 1500; await changed.emit('libraries'); }
+      catch { wait = Math.min(wait * 2, 15000); }
+    }
+  })().finally(() => { exporting = null; });
+  return exporting;
 }
 // 系统的文件夹选择框，可一次选多个；没有选择框的地方抛出「Unsupported…」。
 export async function chooseFolders(multiple = true) {

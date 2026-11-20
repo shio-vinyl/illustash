@@ -33,11 +33,10 @@ const provReady = s => !!prov(s)?.available;
 async function account(action, body = {}) {
   try { return await accountRequest(action, body); } catch (err) { toast(err.message); return null; }
 }
-const draft = {pixiv: '', x: ''};
 const pixiv = s => s.accounts?.pixiv;
 const desk = s => !!s.accounts?.desktop;
 const inApp = s => pixiv(s)?.via === 'app';
-async function pixivAct(act) {
+async function pixivAct(draft, act) {
   if (act === 'login') { if (await account('pixiv/login')) waitPixivLogin(); return; }
   if (act === 'check') {
     const r = await account('pixiv/check');
@@ -68,7 +67,9 @@ function expiredNote(s) {
 const pasteShown = s => devMode && !desk(s) && (!pixiv(s)?.bound || (pixiv(s).expired && !inApp(s)));
 
 export function build(main, scope) {
-  return groups(main, [
+  // 没保存的 PHPSESSID 和 X 归档路径只留在这一节里，换节、离开设置页就丢掉。
+  const draft = {pixiv: '', x: ''};
+  const view = groups(main, [
     {key: 'provenance', title: t('找回画师'), scope: 'library',
      note: t('逐张查图的画师：用像素哈希和 IQDB 签名（只发哈希文本，不发图片）在 Danbooru 查原帖，并比对你关注的画师。结果在详情面板的「画师」里。'), parts: [
        {kind: 'info', key: 'provReading', label: t('正在读取…'), hidden: s => !!prov(s)},
@@ -86,8 +87,8 @@ export function build(main, scope) {
           try { await saveStartup({provenance: on}); toast(on ? t('同步后会自动查新图的画师') : t('同步后不再自动查画师')); } catch (err) { toast(err.message); }
           loadProvenance();
         }},
-       {kind: 'action', key: 'audit', hidden: s => !provReady(s) || !cov(s), label: t('画师抽查'), hint: t('50 张随机图，逐张核对找到的画师'),
-        href: '#/artist-audit', buttons: () => [], value: '›'},
+       {kind: 'info', key: 'audit', hidden: s => !provReady(s) || !cov(s), label: t('画师抽查'), hint: t('50 张随机图，逐张核对找到的画师'),
+        href: '#/artist-audit', value: '›'},
        {kind: 'note', text: t('登录 Pixiv 后才能比对 NSFW 作品（见下方「账号」）。'), hidden: s => !provReady(s) || !s.accounts || !!pixiv(s)?.bound},
      ]},
     {key: 'pixiv', title: 'Pixiv', scope: 'shared', hidden: s => !s.accounts,
@@ -98,7 +99,7 @@ export function build(main, scope) {
         text: () => devMode ? t('网页版（开发用）：在浏览器里登录 pixiv.net，打开开发者工具（{keys}）→ Application（Safari 为「存储空间」）→ Cookie → pixiv.net，复制 {cookie} 的值粘贴到这里。',
           {keys: isMac ? '⌥⌘I' : 'Ctrl+Shift+I', cookie: 'PHPSESSID'}) : t('请从 Illustash 桌面 app 打开设置，在它的 Pixiv 窗口里登录。')},
        {kind: 'action', key: 'pixivLogin', label: t('尚未登录'), hint: waiting, hidden: s => pixiv(s)?.bound || !desk(s),
-        buttons: s => login(s, t('登录 Pixiv…')), run: (s, act) => pixivAct(act)},
+        buttons: s => login(s, t('登录 Pixiv…')), run: (s, act) => pixivAct(draft, act)},
        {kind: 'action', key: 'pixivBound', hidden: s => !pixiv(s)?.bound,
         label: s => pixiv(s).expired ? t('登录已过期') : t('已绑定'), dot: s => pixiv(s).expired ? 'warn' : null,
         hint: s => {
@@ -108,14 +109,14 @@ export function build(main, scope) {
         },
         buttons: s => [...(desk(s) && !pixiv(s).expired ? login(s, inApp(s) ? t('打开 Pixiv 窗口') : t('改用窗口登录…')) : []),
           {act: 'check', label: t('重新检查')}, {act: 'unbind', label: t('解绑')}],
-        run: (s, act) => pixivAct(act)},
+        run: (s, act) => pixivAct(draft, act)},
        {kind: 'note', text: expiredNote, hidden: s => !expiredNote(s)},
        {kind: 'action', key: 'pixivRelogin', label: t('重新登录'), hint: waiting, hidden: s => !pixiv(s)?.bound || !pixiv(s).expired || !desk(s),
-        buttons: s => login(s, t('重新登录 Pixiv…')), run: (s, act) => pixivAct(act)},
+        buttons: s => login(s, t('重新登录 Pixiv…')), run: (s, act) => pixivAct(draft, act)},
        {kind: 'field', key: 'pixivPaste', label: 'PHPSESSID', hint: t('开发用入口'), type: 'password', placeholder: '12345678_…', hidden: s => !pasteShown(s),
         get: () => draft.pixiv, set: v => { draft.pixiv = v; }},
        {kind: 'action', key: 'pixivBind', label: '', hidden: s => !pasteShown(s),
-        buttons: s => [{act: 'bind', label: pixiv(s)?.bound ? t('重新绑定') : t('绑定')}], run: (s, act) => pixivAct(act)},
+        buttons: s => [{act: 'bind', label: pixiv(s)?.bound ? t('重新绑定') : t('绑定')}], run: (s, act) => pixivAct(draft, act)},
      ]},
     {key: 'x', title: 'X', scope: 'library', hidden: s => !s.accounts,
      note: t('用 X 的官方数据归档导入关注列表：X 设置 → 你的账号 → 下载你的数据，收到邮件后下载 zip 导入。只读取其中的关注（数字账号 ID），私信、推文都不会打开。'), parts: [
@@ -138,6 +139,7 @@ export function build(main, scope) {
        run: async () => { if (await account('saucenao/unbind')) { toast(t('已解绑')); loadAccounts(); } }},
     ]},
   ], {scope});
+  return {update: view.update, load};
 }
 // 进这一节：找回画师的状态和账号各读一次（先立即显示缓存的状态）。
-export function loadSection() { loadProvenance(); loadAccounts(); }
+const load = () => { loadProvenance(); loadAccounts(); };

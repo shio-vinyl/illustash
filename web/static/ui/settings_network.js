@@ -3,7 +3,7 @@
 // 只有点按钮才联网的写「手动」。
 // 找回画师那一行只写状态、不放开关：同步后联不联网由启动时的授权决定（native/terms/src/app_provenance.rs 的
 // auto_network），「设置 › 画师」里「同步后自动查新图」只管本机的签名识别，放在这里会让人以为关掉它就不联网。
-import {t} from '../core/i18n.js';
+import {t, I18N} from '../core/i18n.js';
 import {isMac} from '../core/format.js';
 import {loadProvenance} from '../core/jobs.js';
 import {allowNames, loadAccounts, updatesPost, updatesTick} from '../core/settings.js';
@@ -31,33 +31,42 @@ const ASK = () => t('每次询问'), MANUAL = () => t('手动');
 const via = (service, what) => t('{service}：{what}', {service, what});
 const net = s => s.names?.network;
 const modelHost = m => { try { return new URL(m?.base || 'https://api.deepseek.com').host; } catch { return '—'; } };
+// 找回画师真正会不会在同步后自己联网：要这个图库打开了「同步后自动查新图」（auto）、这次启动有联网授权（auto_network），
+// 并且不是测试图库（frozen 的不同步），宿主 app_provenance.rs 照这三样判断。还没读到或读取失败时写状态未知。
+const provenanceStatus = s => {
+  const p = s.provenance;
+  if (!p) return t('状态未知');
+  return p.auto && p.auto_network && !p.frozen ? t('同步后自动，每次有流量上限') : ASK();
+};
 // 一行：标题链到 #/settings/<section>，右边是状态文字。
 const line = (key, section, label, hint, value, extra = {}) => ({kind: 'info', key, label, href: `#/settings/${section}`, hint, value, ...extra});
 
 export function build(main, scope) {
-  return groups(main, [
+  const view = groups(main, [
     {key: 'network', title: t('会访问网络的功能'), note: t('原图不发出去。找回画师和查找画师会发送由图片算出的哈希和签名文本。'),
-     foot: () => t('同步、图片识别、相似图片检测、学习与分组都只在本机进行。X 的关注通过导入官方数据归档获得，不联网。') + ' '
-       + t('识别用的 ONNX Runtime 已关掉微软的遥测，不联网。') + (isMac ? '' : ' ' + DIRECTML_NOTE),
+     // 几句连在一起：中文句号后面不空格，英文的句子之间空一格。
+     foot: () => [t('同步、图片识别、相似图片检测、学习与分组都只在本机进行。X 的关注通过导入官方数据归档获得，不联网。'),
+       t('识别用的 ONNX Runtime 已关掉微软的遥测，不联网。'), isMac ? '' : DIRECTML_NOTE].filter(Boolean).join(I18N.language === 'zh-CN' ? '' : ' '),
      parts: [
        line('index', 'characters', t('检查新角色'), via('Danbooru', t('关注作品的名称；添加角色时下载约 20 张公开参考图')), ASK),
        // 角色名称和 Danbooru 搜索共用这一项授权：打开时先确认，关掉直接撤销。
        {kind: 'switch', key: 'names', label: t('名称联网查询'), href: '#/settings/characters', hidden: s => !net(s),
-        hint: s => via(t('Bangumi、Danbooru'), t('tag、作品名、日文名')) + ' · ' + t('角色名称和 Danbooru 搜索共用这一项授权，只发送文字')
-          + (s.settings?.startup?.names ? ' · ' + t('启动时自动（只查新角色）') : ''),
-        warn: s => !net(s)?.granted_at && net(s)?.this_run ? t('本次启动已允许（命令行）') : '',
+        // 命令行只对这一次启动放行，开关照存下的授权显示，说明里写一句。
+        hint: s => via(t('Bangumi、Danbooru'), t('tag、作品名、日文名'))
+          + (!net(s)?.granted_at && net(s)?.this_run ? t('；') + t('本次启动已允许（命令行）') : ''),
         get: s => !!net(s)?.granted_at,
         set: async on => { if (await setNamesNetwork(on)) drawGuide(); refreshSection(); }},
        line('model', 'characters', t('名称翻译'), s => via(s.names?.model_api?.configured ? modelHost(s.names.model_api) : t('你配置的模型接口'), t('tag、日文名、作品名')),
          s => s.names?.model_api?.configured ? t('已配置') : t('未配置，不使用')),
        line('provenance', 'artists', t('找回画师'), via(t('Danbooru（含 IQDB）'), t('像素哈希和 IQDB 签名（一串文本，不是图片）、画师名和账号')),
-         s => s.provenance?.auto_network ? t('同步后自动，每次有流量上限') : ASK()),
+         provenanceStatus),
        line('pixiv', 'artists', t('读取 Pixiv 关注'), via('Pixiv', t('用你在 app 里登录的状态读取关注列表（只读）')),
          s => s.accounts?.pixiv?.bound ? t('已登录') : t('未登录')),
        line('lookup', 'artists', t('查找画师、找 TA 的其他图'), via(t('Danbooru、画师主页'), t('所选图片的哈希文本；下载画师公开作品的小图，只在本机比对')), MANUAL),
        line('search', 'characters', t('在 Danbooru 上搜角色和作品'),
          via('Danbooru', t('你输入的文字；自建角色的名字（核对能否对上 Danbooru）；「设为…」里 Danbooru 候选的 tag（取一张全年龄小图）')),
-         s => net(s) && !net(s).authorized ? t('未允许，不联网') : MANUAL()),
+         // 打开资料库时会拿自建角色的名字去问 Danbooru（/api/local-links），所以不是「手动」。
+         s => net(s) && !net(s).authorized ? t('未允许，不联网') : t('只在你搜索或打开资料库时')),
        line('saucenao', 'artists', t('以图搜图'), via('SauceNAO', t('已保存 key，还没有功能使用它')), MANUAL, {hidden: s => !s.accounts?.saucenao?.bound}),
        line('pack', 'characters', t('下载角色资料包'), s => via('GitHub', s.models?.on_demand
          ? t('一次普通的 HTTPS 下载，取回角色资料包，首次准备时先读一次公开的角色资料包目录；不发送图库里的任何信息')
@@ -65,7 +74,7 @@ export function build(main, scope) {
        line('models', 'data', t('下载识别模型'), s => via((s.models?.sources || []).join(t('、')), t('一次普通的 HTTPS 下载，取回模型文件；不发送图库里的任何信息')),
          MANUAL, {hidden: s => !s.models?.on_demand}),
        {kind: 'switch', key: 'updates', label: t('自动检查更新'), href: '#/settings/about', hidden: s => !s.updates,
-        hint: via('GitHub', t('一次普通的 HTTPS 请求，读取公开的版本列表和角色资料包目录；不发送图库里的任何信息')) + ' · ' + t('启动时和之后每天查一次 GitHub 上有没有新版本，有新版本时提示你，不会自己下载或安装'),
+        hint: via('GitHub', t('一次普通的 HTTPS 请求，读取公开的版本列表和角色资料包目录；不发送图库里的任何信息')),
         get: s => !!s.updates?.auto,
         set: async on => {
           try { await updatesPost({action: 'auto', allow: on}); toast(on ? t('已打开自动检查更新') : t('已关闭自动检查更新')); } catch (err) { toast(err.message); }
@@ -75,6 +84,7 @@ export function build(main, scope) {
          {hidden: s => !s.updates?.install}),
      ]},
   ], {scope});
+  return {update: view.update, load};
 }
 // 进这一节：找回画师和账号的状态各读一次（名称、模型、更新由外壳和启动时读）。
-export function loadSection() { loadProvenance(); loadAccounts(); }
+const load = () => { loadProvenance(); loadAccounts(); };

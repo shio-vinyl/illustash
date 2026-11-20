@@ -17,9 +17,12 @@ import {devMode, refreshSection} from './settings_group.js';
 const ORIGINS = [['pixiv', 'Pixiv'], ['x', 'X'], ['other', t('其他')]];
 // 后端列出它知道的出处（#111）；后备值覆盖没有图库信息的旧布局。
 const origins = () => { const list = state.libraries?.info?.origins; return list?.length ? list.map(o => [o.id, tb(o.label)]) : ORIGINS; };
-// 新图库表单里输入的内容存在这里，卡片在后台刷新时不会丢失。created：已发布但没有登记到最近图库里的图库（#97），提供它
-// 而不是再新建一个。
-export const libForm = {open: false, name: '', folders: {}, photos: false, created: null};
+// 新图库表单里输入的内容存在这里，卡片在后台刷新时不会丢失；有意跨节保留（换节再回来，填了一半的表单还在）。
+// created：已发布但没有登记到最近图库里的图库（#97），提供它而不是再新建一个。gen 是这一份表单的编号：取消、重开都换一个，
+// 换以前发出的请求（新建、选文件夹）回来时不再动表单、不自动打开。
+export const libForm = {open: false, name: '', folders: {}, photos: false, created: null, gen: 0};
+// 选文件或发请求之后还在不在原来那一页（离开设置页、换节时路由对象会换）。
+const still = route => state.route === route;
 // #41：可分享的导出不包含个人输入；照实说明，而不要暗示这是一次完整的搬家。
 const EXPORT_LEAVES_OUT = t('不含图片、画师出处缓存和导入过的 X 关注列表；在新电脑上要回查画师，需要重新导入 X 归档。');
 
@@ -103,6 +106,7 @@ function folderRows(first, scope) {
      options: () => origins().map(([value, label]) => ({value, label})), get: () => src.preset,
      set: async preset => { if (await libraryAction('preset', {source: src.id, preset})) { toast(t('出处已更新')); await loadLibraries(); } }},
   ], {scope: own});
+  panel.update(state);   // 建好就画一次，进这一节就能点
   return {el: box, update: next => { src = next; panel.update(state); }, dispose: () => own.dispose()};
 }
 const folders = () => {
@@ -116,21 +120,27 @@ async function create() {
   const sources = Object.entries(libForm.folders).flatMap(([preset, paths]) => paths.map(path => ({kind: 'folder', path, preset})));
   if (libForm.photos) sources.push({kind: 'photos'});
   if (!sources.length) { toast(t('请至少添加一个文件夹')); return; }
+  const gen = libForm.gen, route = state.route;
   const lib = await libraryAction('new', {name: libForm.name, sources});
-  if (lib?.listed === false) { libForm.created = lib; refreshSection(); }
-  else if (lib) { libForm.open = false; openLibrary(lib.path, lib.name); }
+  // 等回复期间点了取消、重开了表单或者离开了这一节：图库照样建好（在图库列表里），只是不自动打开。
+  if (!lib || libForm.gen !== gen || !still(route)) { if (lib) loadLibraries(); return; }
+  if (lib.listed === false) { libForm.created = lib; refreshSection(); }
+  else { libForm.open = false; libForm.gen++; openLibrary(lib.path, lib.name); }
 }
 async function pick(origin) {
-  const picked = await pickFolders(), column = libForm.folders[origin] ||= [];
+  const gen = libForm.gen, picked = await pickFolders();
+  if (libForm.gen !== gen || !libForm.open) return;
+  const column = libForm.folders[origin] ||= [];
   for (const p of picked) if (!Object.values(libForm.folders).some(c => c.includes(p))) column.push(p);
   refreshSection();
 }
+const closeForm = () => { libForm.open = false; libForm.gen++; refreshSection(); };
 const picked = () => origins().flatMap(([id, label]) => (libForm.folders[id] || []).map((path, i) => ({id, label, path, i})));
 
 async function manage(act) {
-  if (act === 'new') { Object.assign(libForm, {open: true, name: '', folders: {}, photos: false, created: null}); refreshSection(); return; }
+  if (act === 'new') { Object.assign(libForm, {open: true, name: '', folders: {}, photos: false, created: null, gen: libForm.gen + 1}); refreshSection(); return; }
   if (act === 'library' || act === 'zip') {
-    const r = await libraryAction('choose', {kind: act}); if (!r?.path) return;
+    const route = state.route, r = await libraryAction('choose', {kind: act}); if (!r?.path || !still(route)) return;
     if (act === 'library') openLibrary(r.path, r.path.split('/').pop().replace(/\.pilib$/, ''));
     else await startImport(r.path);
     return;
@@ -164,8 +174,8 @@ export const librariesGroup = () => ({key: 'libraries', title: t('图库'), note
      buttons: () => [...origins().map(([id, label]) => ({act: id, label, title: t('图片来自 {origin} 的文件夹，子文件夹会一起读取', {origin: label})})),
        ...(!photos() && isMac ? [{act: 'photos', label: t('添加 iCloud 照片')}] : [])],
      run: async (s, act) => {
-       const body = act === 'photos' ? {kind: 'photos'} : {kind: 'folder', preset: act, paths: await pickFolders()};
-       if (body.paths && !body.paths.length) return;
+       const route = state.route, body = act === 'photos' ? {kind: 'photos'} : {kind: 'folder', preset: act, paths: await pickFolders()};
+       if ((body.paths && !body.paths.length) || !still(route)) return;
        const r = await libraryAction('sources/add', body);
        await loadLibraries();
        if (r) { toast((act === 'photos' ? t('已添加 iCloud 照片') : t('已添加 {n} 个文件夹', {n: r.added?.length || 1})) + (r.sync ? t('，正在同步') : '')); if (r.sync) pollSync(); }
@@ -204,7 +214,7 @@ export const librariesGroup = () => ({key: 'libraries', title: t('图库'), note
      hidden: () => !libForm.open, get: () => libForm.name, set: v => { libForm.name = v; }},
     {kind: 'action', key: 'formCreate', label: '', hidden: () => !libForm.open || !!libForm.created,
      buttons: () => [{act: 'create', label: t('创建并打开'), primary: true}, {act: 'cancel', label: t('取消')}],
-     run: (s, act) => act === 'create' ? create() : (libForm.open = false, refreshSection())},
+     run: (s, act) => act === 'create' ? create() : closeForm()},
     {kind: 'action', key: 'formCreated', label: t('图库已经建好'), hidden: () => !libForm.open || !libForm.created,
      hint: () => libForm.created ? t('保存在 {path}，但没能加入最近图库列表：{reason}', {path: home(libForm.created.path), reason: tb(libForm.created.error)})
        + ' ' + t('打开它会再试一次加入列表；再点创建会另建一个带编号的图库。') : '',

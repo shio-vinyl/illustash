@@ -5,7 +5,7 @@ import {state} from '../core/state.js';
 import {REASONS, FOLD_OPTIONS} from '../core/labels.js';
 import {refreshMeta} from '../core/meta.js';
 import {SYNC_ACTIVE, syncLine, pollImports} from '../core/jobs.js';
-import {loadLibraries, saveFold} from '../core/settings.js';
+import {loadLibraries, pollExport, saveFold} from '../core/settings.js';
 import {toast} from './dom.js';
 import {groups, refreshSection, startupRow, taskRow, tiles} from './settings_group.js';
 import {librariesGroup} from './settings_libraries.js';
@@ -14,21 +14,28 @@ import {librariesGroup} from './settings_libraries.js';
 const excluded = s => [
   ...Object.entries(REASONS).map(([k, label]) => ({key: k, href: `#/excluded?reason=${k}`, label, big: number(s.exclInfo?.reasons?.[k] || 0)})),
   {key: 'pending', href: '#/pending', label: t('待确认'), big: number(s.pendingCount || 0)}];
-// 相似折叠的一个勾选项：改动时连同其他已勾的一起保存，保存后重读计数。
+// 相似折叠的勾选项：几个勾选框共用一份「要保存的集合」，快速连点时每次改动都记进去，保存一个接一个地发、每次发最新的
+// 集合，后点的不会把先点的冲掉。最后一次保存落定后清掉这份集合，回到照 state 显示。
+let foldWant = null, foldChain = Promise.resolve();
 const foldRow = ([kind, label, hint]) => ({kind: 'switch', key: 'fold-' + kind, label, hint,
-  disabled: s => !s.fold, get: s => (s.fold || []).includes(kind),
-  set: async on => {
-    const kinds = FOLD_OPTIONS.map(o => o[0]).filter(k => k === kind ? on : (state.fold || []).includes(k));
-    try { await saveFold(kinds); await refreshMeta(); toast(t('已更新，「重复」页现在有 {n} 组', {n: number(state.dupInfo.groups)})); }
-    catch (e) { toast(e.message); }
-    refreshSection();
+  disabled: s => !s.fold, get: s => (foldWant ?? new Set(s.fold || [])).has(kind),
+  set: on => {
+    foldWant ??= new Set(state.fold || []);
+    if (on) foldWant.add(kind); else foldWant.delete(kind);
+    const want = foldWant;
+    foldChain = foldChain.then(async () => {
+      try { await saveFold(FOLD_OPTIONS.map(o => o[0]).filter(k => want.has(k))); await refreshMeta(); toast(t('已更新，「重复」页现在有 {n} 组', {n: number(state.dupInfo.groups)})); }
+      catch (e) { toast(e.message); }
+      if (foldWant === want) foldWant = null;
+    });
+    return foldChain;
   }});
 // 按 App 分的计数只有照片来源才有（X 或 Pixiv 保存的图片）；文件夹图库没有。
 const apps = s => Object.entries((s.syncHistory || []).find(r => r.sources)?.sources || {}).sort((a, b) => b[1].photos - a[1].photos);
 const hasPhotos = s => (s.settings?.package?.sources || s.libraries?.info?.sources || []).some(x => x.kind === 'photos');
 
 export function build(main, scope) {
-  return groups(main, [
+  const view = groups(main, [
     librariesGroup(),
     {key: 'sync', title: t('同步'), scope: 'library', note: t('读取来源里的图片，新增的导入并识别；来源里删掉的图会从图库移除，人工整理记录保留。'), parts: [
       taskRow('syncStatus', s => s.sync?.status === 'off' ? t('这次启动没有开同步') : syncLine(s.sync),
@@ -50,7 +57,12 @@ export function build(main, scope) {
       ...FOLD_OPTIONS.map(foldRow),
     ]},
   ], {scope});
+  return {update: view.update, load};
 }
-export const loadSection = () => loadLibraries();
+// 进这一节读一次图库列表；读到导出还在进行（比如导出途中刷新了页面），接上进度轮询。
+async function load() {
+  await loadLibraries();
+  if (state.libraries?.export?.status === 'running') pollExport();
+}
 // 页面启动时调用一次：读图库列表（顶栏的图库名要用），接着看有没有在跑的导入。
 export function wireLibrary() { loadLibraries(); pollImports(); }

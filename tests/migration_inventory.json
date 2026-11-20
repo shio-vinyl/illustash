@@ -95,7 +95,7 @@
 
  "crates/core/src/legacy_characters.rs":"e74652ae0eb641f8414ac652e596178f50ff974b1983cb536cc5ede62dc94d67",
 
- "crates/core/src/legacy_labels.rs":"80b880279cc1af059178bbf8455a3cd364c99089a5358b3e5b7523dab59e75a5",
+ "crates/core/src/legacy_labels.rs":"fe4ed395d6c7bab467b67810ff5d39edf04cbf0877d356623a319dd18330bc59",
 
  "crates/core/src/legacy_names.rs":"f9ad0e0b8b0794964720853b67cc3375423705d35d6b8b29994217e7d221e48a",
 
@@ -397,7 +397,7 @@
 
  "native/terms/src/http_artists.rs":"2fec7a75db8c4448c9d442d256d5dc52ab19eab1c19be4f54a6b71ad94092577",
 
- "native/terms/src/http_browse.rs":"64d1354f17df1a8ed3eeedaec7ea7f5899ea9c847b6d9bcd6b04579533c71315",
+ "native/terms/src/http_browse.rs":"c9186160aef65cf26586d672d29e4027bb41df5cbaf53962c341e2ded08d9e75",
 
  "native/terms/src/http_characters.rs":"950b68d3b80befe3eb53ace5ceb2f9f61757100b75c3a22450905b5452c3e5c5",
 

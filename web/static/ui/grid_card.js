@@ -113,7 +113,7 @@ const chipsKey = (item, ctx) => JSON.stringify([ctx.char, ctx.maybe, ctx.reason,
 
 /**
  * 一张卡片。scope 是这张卡片自己的作用域（网格给每张卡片建一个子作用域，摘掉时释放）。
- * @returns {{el: HTMLElement, update: Function, mark: Function, flip: Function, leave: (on: boolean) => void, dispose: Function}}
+ * @returns {{el: HTMLElement, update: Function, mark: Function, flip: Function, leave: (on: boolean) => void, park: Function, dispose: Function}}
  */
 export function gridCard(scope) {
   const {el, refs} = CARD();
@@ -180,6 +180,8 @@ export function gridCard(scope) {
     flip(from, to) { return flip(refs.stage, from, to); },
     // 写入后要离开本页：先淡出（写入失败时 leave(false) 收回）。
     leave(on) { cls(el, 'leaving', on); },
+    // 滚出视野、留着下次复用（ui/grid.js 的备用卡片）：去掉图片地址（放掉解码后的位图），下一次 update 当作新的一张来画。
+    park() { attr(refs.img, 'src', null); item = null; cls(el, 'leaving', false); },
     dispose() { releaseImages(el); scope.dispose(); },
   };
 }
@@ -192,5 +194,5 @@ export function skeletonCard() {
     css(el, 'transform', `translate(${box.x}px, ${box.y}px)`);
     css(el, 'width', `${box.w}px`);
     css(el, 'height', `${box.h}px`);
-  }, mark() {}, leave() {}, dispose() {}};
+  }, mark() {}, leave() {}, park() {}, dispose() {}};
 }

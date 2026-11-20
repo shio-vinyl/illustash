@@ -182,6 +182,9 @@ export const gridHead = () => $('gridHead');
 // 挂着的卡片（ui/grid_card.js 的部件）：键是图的 uuid，还没读到的是「#序号」的骨架。按图找（#452）：写入后图合拢、
 // 重新排序时，内容没变的卡片只换位置，不重建。值是 {comp, item, i, box, ctx, hue}，记着上一次画的是什么，没变就不调 update。
 let mounted = new Map(), cards = null, ctx = null, ctxKey = '';
+// 滚出范围的卡片部件不扔，留几张下次复用：滚动时不再一直新建、丢弃卡片和它的 <img>。Chromium 里丢掉的卡片连同解码后的
+// 位图迟迟不释放，滚几十屏 GPU 进程多占几百 MiB（#708 用 #683 的方法量出来的）；复用以后建过的卡片数封顶。
+const spare = [], SPARE_MAX = 160;
 export function renderGrid(relayout = false) {
   if ($('grid').hidden) return;
   const v = $('viewport'), grid = $('grid');
@@ -223,7 +226,7 @@ function placeCards(from, to, scale) {
     const item = state.items[i];
     let key = item ? item.uuid : '#' + i;
     if (keep.has(key)) key = '#' + i;   // 读的过程中列表变了，同一张图出现两次：后一个先当骨架
-    const m = mounted.get(key) || {comp: item ? gridCard(cards.child('card')) : skeletonCard()};
+    const m = mounted.get(key) || {comp: item ? spare.pop() || gridCard(cards.child('card')) : skeletonCard()};
     mounted.delete(key);
     // 重复页的角标颜色看前一组：前面一页后读到时颜色可能变，变了的卡片要重画。
     const box = cardRect(i), hue = dup && item?.dup ? hueAt(i) : null;
@@ -233,7 +236,10 @@ function placeCards(from, to, scale) {
     }
     keep.set(key, m); order.push(m.comp.el);
   }
-  for (const m of mounted.values()) { m.comp.el.remove(); m.comp.dispose(); }
+  for (const m of mounted.values()) {
+    m.comp.el.remove();
+    if (m.item && spare.length < SPARE_MAX) { m.comp.park(); spare.push(m.comp); } else m.comp.dispose();
+  }
   mounted = keep;
   // 卡片按序号排（Tab 和读屏按 DOM 的先后走），只挪不在位置上的那几张。头部留在最前。
   let at = $('gridHead').nextElementSibling;

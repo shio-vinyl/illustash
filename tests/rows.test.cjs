@@ -133,3 +133,57 @@ test('配置表先整张校验：写错 kind 时容器里什么都没插', () =>
   assert.throws(() => R.rows(box, [{kind: 'info', key: 'a', label: 'A', value: () => 1}, {kind: 'table', key: 'x'}]), /没有 table 这种行/);
   assert.equal(box.childNodes.length, 0);
 });
+
+test('设置页的选项（#714）：分段、一行几个按钮、圆点、进度条、链接、数字范围、链接项', async () => {
+  const box = document.createElement('div'), log = [];
+  let finish;
+  const panel = R.rows(box, [
+    {kind: 'select', key: 'theme', seg: true, label: '外观', options: [{value: '', label: '跟随系统'}, {value: 'dark', label: '深色'}],
+     get: s => s.theme, set: v => { log.push(['theme', v]); return new Promise(() => {}); }},   // 还没存好
+    {kind: 'action', key: 'models', label: s => s.line, dot: s => s.dot, progress: s => s.bar, link: s => s.manual,
+     buttons: s => s.buttons, run: (s, act) => { log.push(['act', act]); return new Promise(r => { finish = r; }); }},
+    {kind: 'action', key: 'works', label: '关注的作品', href: '#/characters/works', value: s => `${s.works} 部 ›`},
+    {kind: 'field', key: 'min', label: '只提示图片较多的角色', type: 'number', min: 20, max: 5000, step: 10, unit: '张', get: s => s.min, set: v => log.push(['min', v])},
+    {kind: 'list', key: 'history', label: '最近添加', items: s => s.history, itemKey: x => x.tag, itemText: x => x.name, itemHref: x => x.href || null,
+     actions: [{label: (x, s) => s.armed === x.tag ? '再点一次确认移除' : '移除', run: x => log.push(['drop', x.tag])}]},
+  ]);
+  const s = {theme: 'dark', line: '正在下载', dot: 'busy', bar: {done: 1, total: 4}, manual: {href: 'https://x', label: '手动下载说明'},
+    buttons: [{act: 'cancel', label: '取消'}], works: 3, min: 200, armed: null,
+    history: [{tag: 'a', name: '甲', href: '#/c/1'}, {tag: 'b', name: '乙'}]};
+  panel.update(s);
+  const seg = panel.row('theme').querySelector('.seg');
+  assert.deepEqual(seg.children.map(b => [b.textContent, b.getAttribute('aria-pressed')]), [['跟随系统', 'false'], ['深色', 'true']]);
+  seg.children[0].dispatchEvent(dom.event('click'));
+  assert.deepEqual(log.at(-1), ['theme', '']);
+  assert.equal(seg.children[0].getAttribute('aria-pressed'), 'true', 'the pressed segment shows at once, before the state comes back');
+  panel.update(s);
+  assert.equal(seg.children[0].getAttribute('aria-pressed'), 'true', 'a poll with the old value does not move it back');
+  const models = panel.row('models');
+  assert.equal(models.querySelector('.row-dot').getAttribute('data-dot'), 'busy');
+  assert.equal(models.querySelector('.row-bar').getAttribute('aria-valuenow'), '1');
+  assert.equal(models.querySelector('.row-bar').firstChild.style.width, '25.0%');
+  assert.equal(models.querySelector('.row-link').getAttribute('href'), 'https://x');
+  const cancel = models.querySelector('button');
+  cancel.dispatchEvent(dom.event('click')); cancel.dispatchEvent(dom.event('click'));
+  assert.deepEqual(log.filter(x => x[0] === 'act'), [['act', 'cancel']], 'a pressed button waits for its run to settle');
+  assert.equal(cancel.disabled, true);
+  finish(); await new Promise(r => setTimeout(r));
+  assert.equal(cancel.disabled, false);
+  panel.update({...s, bar: null, dot: '', buttons: [{act: 'download', label: '下载', primary: true}, {act: 'import', label: '从文件导入…', disabled: true, title: '不行'}]});
+  const [download, imp] = models.querySelectorAll('button');
+  assert.equal(models.querySelector('.row-bar').hidden, true);
+  assert.equal(download.classList.contains('is-primary'), true);
+  assert.deepEqual([imp.disabled, imp.getAttribute('title')], [true, '不行']);
+  const works = panel.row('works');
+  assert.equal(works.querySelector('a').getAttribute('href'), '#/characters/works');
+  assert.equal(works.querySelector('.row-value').textContent, '3 部 ›');
+  const min = panel.row('min').querySelector('input');
+  assert.deepEqual(['type', 'min', 'max', 'step'].map(k => min.getAttribute(k)), ['number', '20', '5000', '10']);
+  assert.equal(panel.row('min').querySelector('.row-unit').textContent, '张');
+  const items = panel.row('history').querySelector('.row-items').children;
+  assert.equal(items[0].querySelector('a').getAttribute('href'), '#/c/1');
+  assert.equal(items[1].querySelector('a').hidden, true);
+  panel.update({...s, armed: 'b'});
+  assert.equal(items[1].querySelector('button').textContent, '再点一次确认移除');
+  panel.dispose();
+});

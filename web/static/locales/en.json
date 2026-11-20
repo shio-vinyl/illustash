@@ -1995,6 +1995,7 @@
   "接口地址须为 https 地址（本机服务可用 http）": "The endpoint must be an https address (http for a local service)",
   "模型 API key 尚未迁移，请重新打开图库或保存模型设置": "The model API key has not been migrated. Reopen the library or save the model settings.",
   "无法读取模型 API key，请重新填写或清除": "The model API key could not be read. Enter it again or clear it.",
+  "无法清除模型 API key，请重试": "The model API key could not be cleared. Try again.",
   "尚未设置 API key": "No API key is set",
   "模型接口请求失败": "The model endpoint request failed",
   "无效的引导记录：{e}": "Invalid introduction record: {e}",

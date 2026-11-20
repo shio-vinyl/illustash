@@ -292,6 +292,29 @@ class NativeNamesTest(unittest.TestCase):
         self.assertIn('无法读取模型 API key', json.loads(broken['body'])['model_api']['credential_error'])
         self.assertNotIn(b'invalid-synthetic-credential', broken['body'])
         self.assertNotEqual(self.request('/api/names', {'action': 'model_api_test'})['status'], 200)
+        # 系统删除失败时，设置保留引用并返回错误；解除故障后同一清除动作能完成。
+        def reference():
+            with closing(sqlite3.connect(self.lib.db)) as c:
+                row = c.execute("SELECT value FROM name_settings WHERE key='model_credential'").fetchone()
+                return row[0] if row else None
+
+        original = reference()
+        moved = accounts / 'held-credential'
+        stored.rename(moved)
+        stored.mkdir()
+        error = self.request('/api/names', {'action': 'model_api', 'key': None})
+        self.assertNotEqual(error['status'], 200, error['body'])
+        self.assertIn('无法清除模型 API key', json.loads(error['body'])['error'])
+        self.assertEqual(reference(), original)
+        stored.rmdir()
+        moved.rename(stored)
+        self.assertFalse(save(key=None)['configured'])
+        self.assertIsNone(reference())
+        self.assertFalse(stored.exists())
+
+        self.assertTrue(save(key='synthetic-new-initial-key-4829')['configured'])
+        stored, = accounts.glob('model-api-*')
+        stored.write_bytes(b'\xff\xfeinvalid-synthetic-credential')
         corrected = save(key='synthetic-replacement-key-2673')
         self.assertEqual(corrected['hint'], '2673')
         self.assertNotIn('credential_error', corrected)

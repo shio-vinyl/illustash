@@ -191,9 +191,16 @@ fn change(path: &Path, key: Option<Option<&str>>, model: Option<&str>, base: Opt
         }
     }
     // 新条目写成功才发布它的引用。用新的引用写入，失败可以保留原凭据。
+    let old_account = previous.slot.as_deref().map(|slot| account(path, &previous.base, slot));
     let staged = slot.as_deref().zip(install).map(|(slot, value)| (account(path, next_base, slot), value));
     if let Some((account, value)) = &staged {
         write_key(account, value)?;
+    }
+    // 清除是用户请求的结果。若平台拒绝删除，这时回滚仍能保留原引用和旧明文，用户可重试。
+    if change_key == Some(None) {
+        if let Some(account) = &old_account {
+            remove_key(account).map_err(|_| Error::invalid("无法清除模型 API key，请重试"))?;
+        }
     }
     if let Err(error) = tx.commit() {
         if let Some((account, _)) = &staged {
@@ -202,9 +209,10 @@ fn change(path: &Path, key: Option<Option<&str>>, model: Option<&str>, base: Opt
         return Err(error.into());
     }
 
-    if change_key.is_some() {
-        if let Some(slot) = previous.slot {
-            cleanup(&account(path, &previous.base, &slot));
+    // 轮换成功以后才清理旧条目，旧条目的删除故障不会撤回已经保存的新密钥。
+    if staged.is_some() && change_key.is_some() {
+        if let Some(account) = &old_account {
+            cleanup(account);
         }
     }
     if previous.has_legacy {

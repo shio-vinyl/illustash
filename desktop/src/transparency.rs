@@ -40,12 +40,6 @@ fn is_managed_script(source: &str) -> bool {
     source.starts_with(SCRIPT_MARKER)
 }
 
-/// 过滤掉此前由本模块写入的初始化脚本，保留其余脚本的原始顺序。
-#[cfg(any(target_os = "macos", test))]
-fn keep_unmanaged<T>(items: impl IntoIterator<Item = T>, source_of: impl Fn(&T) -> String) -> Vec<T> {
-    items.into_iter().filter(|item| !is_managed_script(&source_of(item))).collect()
-}
-
 /// 记录最近一次已同步给页面的状态；系统发来其他辅助功能显示选项变化时，状态未变则忽略。
 #[cfg(any(target_os = "macos", test))]
 struct Tracker {
@@ -85,14 +79,14 @@ mod platform {
     use objc2_web_kit::{WKUserContentController, WKUserScript, WKUserScriptInjectionTime};
     use tauri::{AppHandle, Manager};
 
-    use super::{keep_unmanaged, script, Tracker};
+    use super::{is_managed_script, script, Tracker};
 
     thread_local! {
         /// 通知中心返回的观察者令牌：留在这里，应用存活期间持续接收系统通知。
         static OBSERVER: RefCell<Option<Retained<ProtocolObject<dyn NSObjectProtocol>>>> = const { RefCell::new(None) };
     }
 
-    pub(super) fn system_reduced() -> bool {
+    fn system_reduced() -> bool {
         NSWorkspace::sharedWorkspace().accessibilityDisplayShouldReduceTransparency()
     }
 
@@ -139,12 +133,11 @@ mod platform {
         let js = script(reduced);
         let init_js = js.clone();
         // 先更新初始化脚本（供之后的导航和刷新在首次绘制前生效），再在当前页面即时执行，不重新载入页面。
-        let _ = main.with_webview(move |webview| replace_user_script(webview.controller(), &init_js));
+        let _ = main.with_webview(move |webview| update_controller(webview.controller(), &init_js));
         let _ = main.eval(&js);
     }
 
-    /// 用最新脚本替换本模块先前注入的 `WKUserScript`，保留 Tauri 与 i18n 等其他脚本的原始顺序。
-    fn replace_user_script(controller: *mut c_void, js: &str) {
+    fn update_controller(controller: *mut c_void, js: &str) {
         if controller.is_null() {
             return;
         }
@@ -154,11 +147,20 @@ mod platform {
         // SAFETY: `controller` 来自 Tauri `PlatformWebview::controller()`，指向主窗口的 `WKUserContentController`，
         // 且 `with_webview` 回调在主线程上运行，这里已通过 `MainThreadMarker` 确认主线程并检查非空。
         let controller: &WKUserContentController = unsafe { &*(controller as *const WKUserContentController) };
+        replace_user_script(controller, mtm, js);
+    }
+
+    /// 用最新脚本替换本模块先前注入的 WKUserScript，保留其他脚本的原始顺序。
+    pub(in crate::transparency) fn replace_user_script(
+        controller: &WKUserContentController,
+        mtm: MainThreadMarker,
+        js: &str,
+    ) {
         // SAFETY: 在主线程读取 `WKUserContentController` 的 `userScripts` 快照数组。
         let existing = unsafe { controller.userScripts() }.to_vec();
-        let kept = keep_unmanaged(existing, |item| {
+        let kept = existing.into_iter().filter(|item| {
             // SAFETY: `item` 是从 `userScripts` 强引用持有的有效 `WKUserScript`，在主线程读取只读属性 `source`。
-            unsafe { item.source() }.to_string()
+            !is_managed_script(&unsafe { item.source() }.to_string())
         });
         // SAFETY: 在主线程创建新的 `WKUserScript`，在文档开始前（首次绘制之前）仅对主框架注入，与 `initialization_script` 一致。
         let fresh = unsafe {
@@ -169,11 +171,13 @@ mod platform {
                 true,
             )
         };
-        // SAFETY: 在主线程重建脚本列表；`kept` 与 `fresh` 持有强引用，清空后再按原顺序添加回去是安全的。
+        // wry 0.57 在创建 WebView 时装入初始化脚本，之后由外壳更新这条脚本。
+        // WebKit 没有删除单条脚本的公开接口，因此保留其他脚本的对象并按原顺序加回。
+        // SAFETY: 主线程独占此次修改，快照和 fresh 都持有有效的强引用。
         unsafe {
             controller.removeAllUserScripts();
-            for item in &kept {
-                controller.addUserScript(item);
+            for item in kept {
+                controller.addUserScript(&item);
             }
             controller.addUserScript(&fresh);
         }
@@ -193,10 +197,10 @@ mod platform {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     #[test]
     fn script_sets_or_deletes_data_reduce_transparency_with_marker() {
+        use super::{is_managed_script, script};
+
         let on = script(true);
         assert!(is_managed_script(&on));
         assert!(on.contains("document.documentElement.dataset.reduceTransparency = '';"));
@@ -210,6 +214,8 @@ mod tests {
 
     #[test]
     fn tracker_emits_only_on_actual_state_changes() {
+        use super::Tracker;
+
         let mut tracker = Tracker::new(false);
         // 其他辅助功能选项变化但「降低透明度」未变时，不重复触发同步。
         assert_eq!(tracker.update(false), None);
@@ -224,35 +230,13 @@ mod tests {
         assert_eq!(started_on.update(false), Some(false));
     }
 
-    #[test]
-    fn replacing_managed_script_preserves_other_init_scripts_in_order() {
-        let tauri_ipc = "window.__TAURI_INTERNALS__ = {};".to_owned();
-        let i18n_script = "if (location.protocol === 'tauri:') { self.ILLUSTASH_LANGUAGE = \"zh-CN\"; }".to_owned();
-        let old_script = script(false);
-        let new_script = script(true);
-
-        let mut scripts = keep_unmanaged([tauri_ipc.clone(), i18n_script.clone(), old_script], |s| s.clone());
-        scripts.push(new_script.clone());
-
-        assert_eq!(scripts, vec![tauri_ipc.clone(), i18n_script.clone(), new_script]);
-
-        // 连续切换多次后不会累积旧脚本，且其他脚本顺序保持不变。
-        let back_off = script(false);
-        let mut scripts_again = keep_unmanaged(scripts, |s| s.clone());
-        scripts_again.push(back_off.clone());
-        assert_eq!(scripts_again, vec![tauri_ipc, i18n_script, back_off]);
-    }
-
-    #[cfg(target_os = "macos")]
-    #[test]
-    fn macos_can_read_system_reduce_transparency_setting() {
-        // 只读冒烟：确认系统 API 可正常查询，且 `initial()` 返回与系统一致的 `Some(bool)`。
-        assert_eq!(initial(), Some(platform::system_reduced()));
-    }
-
     #[cfg(not(target_os = "macos"))]
     #[test]
     fn non_macos_platforms_do_not_inject_init_script() {
-        assert_eq!(initial(), None);
+        assert_eq!(super::initial(), None);
     }
 }
+
+#[cfg(all(test, target_os = "macos"))]
+#[path = "../tests/support/transparency_webkit.rs"]
+pub mod webkit_test;

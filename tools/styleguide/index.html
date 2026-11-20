@@ -205,8 +205,9 @@
       <div class="sheet" style="flex:1;padding:24px"><p class="text-meta">内容页</p></div>
     </div></div></div>
   <div class="sg-item"><header><h3>悬停预览和页头的分段切换</h3><span class="sg-tag hand">手写</span><span class="sg-cls"><code>.rail-peek</code><code>.seg</code><code>.seg-count</code></span></header>
-    <p class="sg-src">悬停二级项时旁边浮出预览（<code>.rail-peek</code> 是玻璃表面，画在二级层外面，不被滚动区裁掉）。页头上图库三种视图、整理三个页签的切换是链接写法的分段控件（<code>.seg</code> 里放 <code>&lt;a&gt;</code>），选中的 <code>aria-current="page"</code>，和按钮写法同一种「白底浮起」（<code>css/base.css</code>）。</p>
-    <div class="sg-stage"><div class="rail-peek glass" style="position:static"><div class="rail-peek-in"><b>11 月 17 日 周一</b><small>24 张</small><span class="rail-peek-pics"><img data-ph="4" alt=""><img data-ph="5" alt=""><img data-ph="6" alt=""></span></div></div>
+    <p class="sg-src">悬停或键盘焦点到二级项时，旁边滑出一张预览卡（<code>.rail-peek</code> 是玻璃表面，画在二级层外面，不被滚动区裁掉；<code>ui/rail_peek.js</code>）：上面一行图（<code>.rail-peek-pics</code>）一样高、按原图宽高比排，放得下几张放几张，宽高由脚本写（<code>core/rail.js</code> 的 <code>peekRow</code>）；作品的角色加 <code>.is-round</code> 画成圆头像。下面 <code>.rail-peek-cap</code> 是标题和张数，跟着图的宽度折行。卡片圆角 12、内边距 8、图 4。项有主色时卡片加 <code>.tint</code>（<code>setTint</code>），投影和靠活页条那侧的一层光带上主色。没有图的项（整理的队列）只有文字。页头上图库三种视图、整理三个页签的切换是链接写法的分段控件（<code>.seg</code> 里放 <code>&lt;a&gt;</code>），选中的 <code>aria-current="page"</code>，和按钮写法同一种「白底浮起」（<code>css/base.css</code>）。</p>
+    <div class="sg-stage"><div class="rail-peek glass" style="position:static"><div class="rail-peek-in"><span class="rail-peek-pics"><img data-ph="4" alt="" style="width:59px;height:84px"><img data-ph="5" alt="" style="width:112px;height:84px"><img data-ph="6" alt="" style="width:63px;height:84px"></span><span class="rail-peek-cap"><b>11月17日周一</b><small>24 张</small></span></div></div>
+      <div class="rail-peek glass" style="position:static"><div class="rail-peek-in"><span class="rail-peek-pics" hidden></span><span class="rail-peek-cap"><b>未识别</b><small>还没认出角色的图 · 68</small></span></div></div>
       <nav class="seg"><a href="#n-rail" aria-current="page">未识别<small class="seg-count">68</small></a><a href="#n-rail">重复</a><a href="#n-rail">已排除</a></nav></div></div>
 </section>
 

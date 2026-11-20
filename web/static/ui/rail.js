@@ -16,7 +16,7 @@
 //   railRoute(route)       换页时（ui/shell.js applyRoute）：点亮入口和项，收起窄窗口的抽屉，需要时重读时间轴
 //
 // 动效（都经 ui/motion.js，「减少动态效果」时直接到终态）：切一级时标签带回弹滑过去（CSS 过渡，--dur-3、--ease-spring），
-// 旧的二级项依次退场、新的依次进场；悬停二级项时它探出来，相邻的项微微探出，旁边浮出预览（画在二级层外面，不被滚动区裁掉）；
+// 旧的二级项依次退场、新的依次进场；悬停二级项时它探出来，相邻的项微微探出，旁边滑出预览卡（ui/rail_peek.js）；
 // 指示条跟着选中项滑；时间轴、钉住的项增减时其余平滑让位。
 import {ENTRIES, entryHref, forgetTimeline, galleryItems, itemForDay, loadPins, loadTimeline, movePin, noteLibraryView, pinItems, pins, queues, railAt,
   tidyWaiting, timeline, timelineHref} from '../core/rail.js';
@@ -32,6 +32,7 @@ import {attr, cls, css, make, show, text, tpl} from './el.js';
 import {keyed} from './keyed.js';
 import {app} from './scope.js';
 import {animate, countTo, enter, exit, reduced} from './motion.js';
+import {buildPeek, followScroll, hover, hoveredItem} from './rail_peek.js';
 import {createLayer} from './overlay.js';
 import {$} from './dom.js';
 
@@ -51,7 +52,6 @@ const ICONS = {
   gallery: tpl`<svg viewBox="0 0 20 20" aria-hidden="true"><rect x="3" y="4.5" width="14" height="11" rx="2"/><path d="m3.5 13.5 4-4 3 3 2-2 4 4"/></svg>`,
 };
 const iconOf = x => x.kind === 'queue' ? x.key : x.kind === 'gallery' && !x.cover ? (x.key === 'fav' ? 'fav' : 'gallery') : '';
-const PEEK = tpl`<div class="rail-peek-in"><b data-ref="title"></b><small data-ref="meta"></small><span class="rail-peek-pics" data-ref="pics"></span></div>`;
 
 const s = app.child('rail');
 const providers = new Map(), pickers = new Map(), lists = new Map();
@@ -60,6 +60,8 @@ const monthName = new Intl.DateTimeFormat(I18N.locale, {month: 'short'});
 const thumb = id => id ? `/image?id=${encodeURIComponent(id)}&size=thumb` : '';
 const itemsOf = box => box ? [...box.children].filter(x => !x.inert) : [];
 const itemAt = (box, key) => itemsOf(box).find(x => x.dataset.key === key) || null;
+// 二级层可见的内容变了（换入口、换模式、收起抽屉）或悬停的项被摘掉：预览立刻收起，不留在新的那组上。
+const dropHover = el => { if (!el || el === hoveredItem()) hover(null, {now: true}); };
 
 // ---------- 一项 ----------
 function mark(item) {
@@ -113,6 +115,7 @@ function listFor(entry) {
       if (!box.hidden && !list.leaving && pitch) animate(el, [{transform: `translateY(${(from - to) * pitch}px)`}, {transform: 'none'}], {dur: 3, ease: 'spring'});
     },
     exit: async el => {
+      dropHover(el);
       if (box.hidden) return;
       list.leaving++;
       await exit(el, {to: [{opacity: 1, transform: 'none'}, {opacity: 0, transform: 'translateX(-14px) scale(.6)'}], remove: false});
@@ -180,6 +183,7 @@ function settle(toBox) {
   }
 }
 async function swap(fromBox, toBox) {
+  dropHover();
   const gen = ++swapping;
   const quick = reduced() || !fromBox || fromBox.hidden || fromBox === toBox;
   cls($('railInd'), 'is-on', false);
@@ -217,7 +221,7 @@ export function mode(name, items = [], hint = '') {
   }
   if (!temp) {
     const box = group('mode:' + name);
-    temp = {name, list: {box, leaving: 0, keyed: keyed(box, {key: x => x.key, create: itemWidget, scope: s})}};
+    temp = {name, list: {box, leaving: 0, keyed: keyed(box, {key: x => x.key, create: itemWidget, scope: s, exit: dropHover})}};
     temp.list.keyed.set(items);
     swap(lists.get(current)?.box, box).catch(() => {});
   } else temp.list.keyed.set(items);
@@ -237,27 +241,6 @@ export function railRoute(route) {
   setDrawer(false, 'silent');
 }
 
-// ---------- 悬停：抽卡和预览 ----------
-let hovered = null;
-function hover(el) {
-  if (hovered === el) return;
-  if (hovered) for (const x of [hovered, hovered.previousElementSibling, hovered.nextElementSibling]) x?.classList.remove('is-hover', 'is-near');
-  hovered = el;
-  const peek = $('railPeek');
-  if (!el || el.inert) { peek.hidden = true; return; }
-  el.classList.add('is-hover');
-  el.previousElementSibling?.classList.add('is-near'); el.nextElementSibling?.classList.add('is-near');
-  const x = el.railItem, {el: body, refs} = PEEK();
-  text(refs.title, x.label); text(refs.meta, x.meta || ''); show(refs.meta, !!x.meta);
-  for (const id of (x.peek || []).slice(0, 3)) { const img = make('img'); img.alt = ''; img.src = thumb(id); refs.pics.append(img); }
-  show(refs.pics, !!x.peek?.length);
-  peek.replaceChildren(body);
-  s.read(() => {
-    const r = el.getBoundingClientRect();
-    s.write(() => { css(peek, 'transform', `translate(${Math.round(r.right + 14)}px,${Math.round(r.top + r.height / 2)}px) translateY(-50%)`); peek.hidden = false; }, 'rail:peek');
-  }, 'rail:peek-read');
-}
-
 // ---------- 钉住的项拖动排序（#684） ----------
 let drag = null;
 function startDrag(e, el) {
@@ -268,7 +251,7 @@ function moveDrag(e) {
   if (!drag || e.pointerId !== drag.id) return;
   const dy = e.clientY - drag.y;
   if (!drag.moved && Math.abs(dy) < 5) return;
-  if (!drag.moved) { drag.moved = true; drag.el.setPointerCapture?.(e.pointerId); cls(drag.el, 'is-dragging', true); hover(null); }
+  if (!drag.moved) { drag.moved = true; drag.el.setPointerCapture?.(e.pointerId); cls(drag.el, 'is-dragging', true); hover(null, {now: true}); }
   css(drag.el, 'transform', `translateY(${dy}px)`);
 }
 function endDrag(e) {
@@ -289,8 +272,9 @@ function endDrag(e) {
 const drawer = createLayer({kind: 'popover', id: 'rail-drawer', el: () => $('railLayer'), anchor: () => $('sidebarToggle'), focusIn: 'first',
   onDismiss: reason => setDrawer(false, reason)});
 function setDrawer(open, reason) {
+  const was = $('rail').classList.contains('is-drawer');
   cls($('rail'), 'is-drawer', open); attr($('sidebarToggle'), 'aria-expanded', String(open));
-  if (open) { drawer.open(); s.read(measure, 'rail:measure'); } else drawer.close(reason);
+  if (open) { drawer.open(); s.read(measure, 'rail:measure'); } else { if (was) dropHover(); drawer.close(reason); }
 }
 
 // ---------- 键盘 ----------
@@ -331,6 +315,7 @@ function pick(el, e) {
 // ---------- 启动 ----------
 export function wireRail() {
   wired = true;
+  buildPeek(s);
   provide('tidy', () => queues());
   provide('galleries', () => galleryItems(galleryCovers));
   provide('catalog', () => pinItems());
@@ -352,7 +337,7 @@ export function wireRail() {
   s.add(onJob((job, change) => { if (job === 'sync' && change.arrived && current === 'library') loadTimeline(state.route, {newest: true}).catch(() => {}); }));
   const items = $('railItems');
   s.on(items, 'click', e => { const el = e.target.closest('.rail-item'); if (el && !el.inert) pick(el, e); });
-  s.on(items, 'pointerover', e => hover(e.target.closest('.rail-item')));
+  s.on(items, 'pointerover', e => hover(e.target.closest('.rail-item'), {dwell: true}));
   s.on(items, 'pointerleave', () => hover(null));
   s.on(items, 'focusin', e => hover(e.target.closest('.rail-item')));
   s.on(items, 'focusout', () => hover(null));
@@ -360,7 +345,8 @@ export function wireRail() {
   s.on(items, 'pointermove', moveDrag);
   s.on(items, 'pointerup', endDrag);
   s.on(items, 'pointercancel', endDrag);
-  s.on($('railLayer'), 'scroll', () => hover(null), {passive: true});
+  // 滚动：键盘焦点在悬停的那一项上（Tab 走到头时二级层跟着滚）就把预览挪到它的新位置，否则（指针悬停时滚轮）收起。
+  s.on($('railLayer'), 'scroll', followScroll, {passive: true});
   s.on($('sidebarToggle'), 'click', () => setDrawer(!$('rail').classList.contains('is-drawer')));
   // 窗口拉宽到不再是抽屉时，开着的抽屉收起来（不然它一直留在浮层栈里，网格的方向键不响应）。
   const narrow = typeof matchMedia === 'function' ? matchMedia('(max-width: 760px)') : null;

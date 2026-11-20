@@ -38,6 +38,7 @@ class TextService:
         self.failure = None
         self.failures_left = 0
         self.bad_json = False
+        self.alice_zh = "爱丽丝"
         outer = self
         class Handler(http.server.BaseHTTPRequestHandler):
             def log_message(self, *args): pass
@@ -72,7 +73,7 @@ class TextService:
                     elif '/search/subjects' in self.path:
                         value = {'data': [{'id': 1, 'name':'エグザンプル','name_cn':'示例作品'}]}
                     elif '/search/characters' in self.path:
-                        value = {'data': [{'id': 10, 'name': body['keyword'], 'infobox': [{'key':'简体中文名','value':'爱丽丝' if 'リス' in body['keyword'] else '鲍勃'}]}]}
+                        value = {'data': [{'id': 10, 'name': body['keyword'], 'infobox': [{'key':'简体中文名','value':outer.alice_zh if 'リス' in body['keyword'] else '鲍勃'}]}]}
                     elif '/characters/' in self.path:
                         value = [{'name':'エグザンプル','name_cn':'示例作品'}]
                     elif '/chat/completions' in self.path:
@@ -188,8 +189,8 @@ class NativeNamesTest(unittest.TestCase):
         accounts.write_bytes(b'synthetic obstacle')
         self.process, self.log = self.start(self.lib.path)
 
-        def rows():
-            with closing(sqlite3.connect(self.lib.db)) as c:
+        def rows(db=None):
+            with closing(sqlite3.connect(db or self.lib.db)) as c:
                 return dict(c.execute('SELECT key,value FROM name_settings'))
 
         def model():
@@ -200,6 +201,7 @@ class NativeNamesTest(unittest.TestCase):
         self.assertEqual(rows()['model_key'], active)
         self.assertEqual(rows()['deepseek_key'], legacy)
         self.assertFalse(model()['configured'])
+        self.assertIn('尚未迁移', model()['credential_error'])
         self.stop(self.process)
         accounts.unlink()
         self.process, self.log = self.start(self.lib.path)
@@ -219,12 +221,38 @@ class NativeNamesTest(unittest.TestCase):
         self.assertEqual(json.loads(self.request('/api/names', {'action': 'model_api_test'})['body']), {'ok': True})
         self.stop(self.process)
 
-        # 同 ID 的原样复制只得到配置。副本换地址、清除密钥都不会动原包的条目。
+        # 若本机条目存在但读失败，仍保留旧版重填的密钥，避免把读取失败当作缺少条目。
+        replacement = 'synthetic-legacy-replacement-7364'
+        with closing(sqlite3.connect(self.lib.db)) as c:
+            c.execute("INSERT INTO name_settings VALUES ('model_key',?)", (replacement,))
+            c.commit()
+        saved = accounts / 'held-synthetic-credential'
+        stored.rename(saved)
+        stored.mkdir()
+        self.process, self.log = self.start(self.lib.path)
+        self.assertEqual(rows()['model_key'], replacement)
+        self.stop(self.process)
+        stored.rmdir()
+        saved.rename(stored)
+        self.process, self.log = self.start(self.lib.path)
+        self.assertNotIn('model_key', rows())
+        self.assertEqual(model()['hint'], '4829')
+        self.stop(self.process)
+
+        # 同 ID 的原样复制只得到配置。若旧版在副本重填过 key，引用虽在但本机条目确实缺失，应迁移明文。
         copy = self.root / 'model-copy.pilib'
         shutil.copytree(self.lib.path, copy)
         self.process, self.log = self.start(copy)
-        self.token = json.loads(self.request('/api/bootstrap')['body'])['token']
         self.assertFalse(model()['configured'])
+        self.stop(self.process)
+        copy_db = copy / 'library.sqlite'
+        with closing(sqlite3.connect(copy_db)) as c:
+            c.execute("INSERT INTO name_settings VALUES ('model_key',?)", (replacement,))
+            c.commit()
+        self.process, self.log = self.start(copy)
+        self.token = json.loads(self.request('/api/bootstrap')['body'])['token']
+        self.assertEqual(model()['hint'], '7364')
+        self.assertNotIn('model_key', rows(copy_db))
         self.assertEqual(self.request('/api/names', {'action': 'model_api', 'key': None})['status'], 200)
         self.stop(self.process)
         self.process, self.log = self.start(self.lib.path)
@@ -233,6 +261,61 @@ class NativeNamesTest(unittest.TestCase):
         self.assertEqual(self.request('/api/names', {'action': 'model_api', 'key': None})['status'], 200)
         self.assertFalse(model()['configured'])
         self.assertFalse(stored.exists())
+
+    def test_model_settings_clear_failed_migration_and_replace_unreadable_key(self):
+        self.stop(self.process)
+        accounts = self.support / 'accounts'
+        accounts.write_bytes(b'synthetic obstacle')
+        old_key = 'synthetic-unmigrated-key-2351'
+        with closing(sqlite3.connect(self.lib.db)) as c:
+            c.execute("INSERT OR REPLACE INTO name_settings VALUES ('deepseek_key',?)", (old_key,))
+            c.commit()
+        self.process, self.log = self.start(self.lib.path)
+        self.token = json.loads(self.request('/api/bootstrap')['body'])['token']
+
+        def save(**fields):
+            response = self.request('/api/names', {'action': 'model_api', **fields})
+            self.assertEqual(response['status'], 200, response['body'])
+            return json.loads(response['body'])['model_api']
+
+        broken = self.request('/api/names')
+        self.assertIn('尚未迁移', json.loads(broken['body'])['model_api']['credential_error'])
+        self.assertNotIn(old_key.encode(), broken['body'])
+        self.assertNotIn('credential_error', save(key=None))
+        with closing(sqlite3.connect(self.lib.db)) as c:
+            self.assertIsNone(c.execute("SELECT value FROM name_settings WHERE key='deepseek_key'").fetchone())
+        accounts.unlink()
+        self.assertTrue(save(key='synthetic-initial-key-2469', base=self.service.base)['configured'])
+        stored, = accounts.glob('model-api-*')
+        stored.write_bytes(b'\xff\xfeinvalid-synthetic-credential')
+        broken = self.request('/api/names')
+        self.assertIn('无法读取模型 API key', json.loads(broken['body'])['model_api']['credential_error'])
+        self.assertNotIn(b'invalid-synthetic-credential', broken['body'])
+        self.assertNotEqual(self.request('/api/names', {'action': 'model_api_test'})['status'], 200)
+        corrected = save(key='synthetic-replacement-key-2673')
+        self.assertEqual(corrected['hint'], '2673')
+        self.assertNotIn('credential_error', corrected)
+        self.assertFalse(stored.exists())
+
+    def test_bangumi_name_is_published_with_unreadable_model_key(self):
+        self.enable()
+        result = self.request('/api/names', {'action': 'model_api', 'key': 'synthetic-key-4928',
+                                             'base': self.service.base})
+        self.assertEqual(result['status'], 200, result['body'])
+        stored, = (self.support / 'accounts').glob('model-api-*')
+        stored.write_bytes(b'\xff\xfeinvalid-synthetic-credential')
+        self.service.alice_zh = '爱丽丝新译'
+        result = self.request('/api/names', {'action': 'refresh', 'entity': self.alice})
+        self.assertEqual(result['status'], 200, result['body'])
+
+        def published():
+            with closing(sqlite3.connect(self.lib.db)) as c:
+                return c.execute(
+                    "SELECT n.value FROM term_names n JOIN terms t ON t.id=n.term_id "
+                    "WHERE t.key=? AND n.lang='zh' AND n.source='bangumi' AND n.value=?",
+                    (self.alice, self.service.alice_zh)).fetchone()
+        wait_until(published)
+        self.assertFalse(any('/chat/completions' in path for path, _ in self.service.calls))
 
     def test_validation_and_disabled_refresh_error_status(self):
         for body in ({'action':'refresh'},{'action':'refresh','entity':3},{'action':'model_api','key':'bad'}, {'action':'model_api','model':'bad space'},{'action':'model_api','base':'http://example.invalid'},{'action':'model_api','base':self.service.base+'?x=1'},{'action':'unknown'}):

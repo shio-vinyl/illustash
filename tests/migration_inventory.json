@@ -141,7 +141,7 @@
 
  "crates/platform/src/platform_backup.rs":"04c32bc17584d76a81f5c27c615592a2897d0dd0845129e0061cfad1632c1c36",
 
- "crates/platform/src/platform_credentials.rs":"39e1e3e380d8f11623c680121f2dd36a67635b285d79c6665f2d5f3d471a0a31",
+ "crates/platform/src/platform_credentials.rs":"c9a7cf5a8a73df22537f31adfce90f82de79600e832b0a254fa4f4cd415efa8d",
 
  "crates/platform/src/platform_credentials_macos.rs":"ce5ed4ac622684922a76b47805c9d14244e5f50eba2cf4f841e8deb11e39e9a8",
 
@@ -309,9 +309,9 @@
 
  "native/terms/src/app_name_sources.rs":"a9d895621405e92c2bdacd7f547f28feec7f294f307d628ea25d5e2bf27f9515",
 
- "native/terms/src/app_names.rs":"f26083be57a1b6ef5ac97fe5c8f6a940a3503f5ee1c0c9bfff22782b4289f709",
+ "native/terms/src/app_names.rs":"1d3cac72af36706295c0a6b02e96239125db46d6f327e74107bac28c12fcdd6a",
 
- "native/terms/src/app_names/model_api.rs":"91412d1a041a805ba146e1712be041b58269c86eea0086fc98f6f22226f957ef",
+ "native/terms/src/app_names/model_api.rs":"218151b54b2cc22bec47aa3396c9e484a97ebb92c2b47290ac39f8178252030b",
 
  "native/terms/src/app_onboarding.rs":"5e0d950d43ad03ffeb44e19a9090795c479a9e4a6199fcbafe93e107fe9a62a9",
 

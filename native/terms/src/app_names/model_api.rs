@@ -10,8 +10,10 @@ use crate::platform_credentials::{read_strict as read_key, remove_strict as remo
 
 const DEFAULT_BASE: &str = "https://api.deepseek.com";
 const DEFAULT_MODEL: &str = "deepseek-chat";
+const MIGRATION_PENDING: &str = "模型 API key 尚未迁移，请重新打开图库或保存模型设置";
+const READ_FAILED: &str = "无法读取模型 API key，请重新填写或清除";
 
-struct Options {
+pub(super) struct Options {
     base: String,
     model: String,
     slot: Option<String>,
@@ -20,7 +22,7 @@ struct Options {
 }
 
 impl Options {
-    fn read(c: &Connection) -> Result<Self> {
+    pub(super) fn read(c: &Connection) -> Result<Self> {
         let mut rows: HashMap<String, String> = c
             .prepare(
                 "SELECT key,value FROM name_settings WHERE key IN (
@@ -42,6 +44,18 @@ impl Options {
         })
     }
 
+    pub(super) fn has_credential(&self) -> bool {
+        self.has_legacy || self.slot.is_some()
+    }
+
+    pub(super) fn credentials(self, path: &Path) -> Result<Credentials> {
+        if self.has_legacy {
+            return invalid(MIGRATION_PENDING);
+        }
+        let key = self.key(path)?;
+        Ok(Credentials { key, model: self.model, base: self.base })
+    }
+
     fn key(&self, path: &Path) -> Result<Option<String>> {
         self.slot.as_ref().map(|slot| read_key(&account(path, &self.base, slot))).transpose().map(Option::flatten)
     }
@@ -49,8 +63,16 @@ impl Options {
 
 /// 凭据绑定到图库包的位置、保存时的接口及这次保存的版本。同 ID 的副本和改过地址的设置都不能取到原凭据。
 fn account(path: &Path, base: &str, slot: &str) -> String {
+    // 按平台原生路径编码固定摘要输入，避免 Rust 的内部 OsStr 编码变化后找不到已有条目。
+    #[cfg(unix)]
+    let path_bytes = std::os::unix::ffi::OsStrExt::as_bytes(path.as_os_str());
+    #[cfg(windows)]
+    let encoded: Vec<u8> =
+        std::os::windows::ffi::OsStrExt::encode_wide(path.as_os_str()).flat_map(u16::to_le_bytes).collect();
+    #[cfg(windows)]
+    let path_bytes = encoded.as_slice();
     let mut hash = Sha256::new();
-    for bytes in [path.as_os_str().as_encoded_bytes(), base.as_bytes(), slot.as_bytes()] {
+    for bytes in [path_bytes, base.as_bytes(), slot.as_bytes()] {
         hash.update((bytes.len() as u64).to_le_bytes());
         hash.update(bytes);
     }
@@ -69,31 +91,27 @@ pub(super) struct Credentials {
     pub(super) base: String,
 }
 
-pub(super) fn credentials(c: &Connection, path: &Path) -> Result<Credentials> {
-    let options = Options::read(c)?;
-    if options.has_legacy {
-        return invalid("模型 API key 尚未迁移，请重新打开图库或保存模型设置");
-    }
-    let key = options.key(path)?;
-    Ok(Credentials { key, model: options.model, base: options.base })
-}
-
 pub(crate) fn status(c: &Connection, path: &Path) -> Result<Json> {
     let options = Options::read(c)?;
-    let key = match options.key(path) {
-        Ok(key) => key,
-        Err(_) => {
-            // 设置卡仍须可用，才能替换损坏的凭据。实际使用凭据时报告存储错误。
-            eprintln!("无法读取名称翻译的模型凭据");
-            None
+    let (key, error) = if options.has_legacy {
+        (None, Some(MIGRATION_PENDING))
+    } else {
+        match options.key(path) {
+            Ok(key) => (key, None),
+            // 设置卡仍须可用，才能替换损坏的凭据。界面只收到固定的脱敏错误。
+            Err(_) => (None, Some(READ_FAILED)),
         }
     };
-    Ok(Json::object([
+    let mut status = Json::object([
         ("configured", key.is_some().into()),
         ("hint", key.map(|s| s.chars().skip(s.chars().count().saturating_sub(4)).collect::<String>()).into()),
         ("model", options.model.into()),
         ("base", options.base.into()),
-    ]))
+    ]);
+    if let Some(error) = error {
+        status.set("credential_error", error.into());
+    }
+    Ok(status)
 }
 
 /// 会话开始时只处理尚有明文的图库。失败时保留原设置，下次打开或保存时可重试。
@@ -155,8 +173,12 @@ fn change(path: &Path, key: Option<Option<&str>>, model: Option<&str>, base: Opt
     let previous = Options::read(&tx)?;
     let next_base = base.unwrap_or(&previous.base);
     let change_key = key.or_else(|| (next_base != previous.base).then_some(None));
-    // 安全存储优先。旧版回退留下明文时，不让它覆盖已迁移的条目。
-    let install = change_key.unwrap_or_else(|| previous.legacy.as_deref().filter(|_| previous.slot.is_none()));
+    // 仅当系统存储确实已有凭据时才丢弃回退版本写下的旧密钥。读取失败则回滚，保留明文供重试。
+    let install = match change_key {
+        Some(key) => key,
+        None if previous.legacy.is_some() && previous.key(path)?.is_none() => previous.legacy.as_deref(),
+        None => None,
+    };
     let slot = install.map(|_| new_slot()).transpose()?;
 
     tx.execute("DELETE FROM name_settings WHERE key IN ('model_key','deepseek_key')", [])?;

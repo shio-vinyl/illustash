@@ -19,6 +19,7 @@ pub fn support() -> Result<PathBuf> {
 fn keychain() -> bool {
     cfg!(target_os = "macos") && std::env::var("ILLUSTASH_NO_KEYCHAIN").as_deref() != Ok("1")
 }
+/// 读取旧账号凭据，沿用其缺失及空白处理规则。
 pub fn read(kind: &str) -> Result<Option<String>> {
     let value = if keychain() {
         #[cfg(target_os = "macos")]
@@ -55,6 +56,7 @@ pub fn read_strict(kind: &str) -> Result<Option<String>> {
         Err(e) => Err(e.into()),
     }
 }
+/// 写入平台凭据。Windows 先保存密文，再替换现有条目。
 pub fn write(kind: &str, value: &str) -> Result<()> {
     if keychain() {
         #[cfg(target_os = "macos")]
@@ -76,6 +78,7 @@ pub fn write(kind: &str, value: &str) -> Result<()> {
     }
     Ok(())
 }
+/// 删除旧账号凭据，沿用其钥匙串错误处理规则。
 pub fn remove(kind: &str) -> Result<()> {
     if keychain() {
         #[cfg(target_os = "macos")]

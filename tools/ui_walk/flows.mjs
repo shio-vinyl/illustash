@@ -85,6 +85,28 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
 export const FLOWS = [
   {
+    name: 'catalog',
+    title: '资料库：全部作品弹层 → 作品页 → 返回回到资料库（#711）',
+    async run(w, page) {
+      await w.step('打开资料库', () => goto(page, '#/characters'));
+      await w.step('点「全部作品」', () => page.click('#castAll'));
+      const rows = await page.waitFor(`document.querySelectorAll('#castPop .cast-wrow').length > 0`, 4000);
+      w.check('全部作品：弹层里有作品', !!rows, '');
+      const width = await page.eval(`document.getElementById('castPop')?.getBoundingClientRect().width || 0`);
+      w.check('全部作品：弹层够宽（三列放得下）', width >= 320, `width=${width}`);
+      await w.step('点一部作品', () => page.click('#castPop .cast-wrow'));
+      const opened = await page.waitFor(`location.hash.startsWith('#/w/') && !!document.querySelector('.cat-hero-title')?.innerText`, 4000);
+      w.check('作品页：横幅上有作品名', !!opened, await page.eval('location.hash'));
+      const posters = await page.eval(`document.querySelectorAll('.cat-workpage .cat-poster').length`);
+      w.check('作品页：有角色海报', posters > 0, `posters=${posters}`);
+      const back = await page.eval(`document.querySelector('.cat-back')?.innerText.trim() || ''`);
+      w.check('作品页：返回写回到资料库', back === '资料库' || back === 'Catalog', back);
+      await w.step('点返回', () => page.click('.cat-back'));
+      const returned = await page.waitFor(`location.hash === '#/characters' && document.querySelectorAll('#charIndex .cat-poster').length > 0`, 4000);
+      w.check('返回：回到资料库的角色页签，海报还在', !!returned, await page.eval('location.hash'));
+    },
+  },
+  {
     name: 'pages',
     title: '主要页面逐个打开，截图并检查控制台和空页',
     async run(w, page) {
@@ -92,7 +114,8 @@ export const FLOWS = [
       const pages = [
         ['图库 · 按天', '#/days', 'home'], ['图库 · 网格', '#/library', 'grid'], ['图库 · 日历', '#/calendar', 'panel'], ['资料库', '#/characters', 'panel'],
         ['角色页', `#/library?char=${encodeURIComponent(f.charIds[f.chars[0].name])}`, 'grid'],
-        ['资料库 · 作品', '#/characters/works', 'panel'],
+        ['资料库 · 作品', '#/characters/works', 'panel'], ['资料库 · 画师', '#/characters/artists', 'panel'],
+        ['作品页（未归作品）', '#/w/other', 'work'], ['画廊', '#/galleries', 'panel'],
         ['未识别 · 按组整理', '#/groups', 'panel'], ['未识别 · 第 1 组', `#/g/${f.groups[0]?.id}`, 'grid'],
         ['全部未识别', '#/unmatched', 'grid'], ['已跳过', '#/skipped', 'grid'], ['重复', '#/duplicates', 'grid'],
         ['相似的图', '#/similar', 'panel'], ['相似的图 · 第 1 组', `#/s/${f.similar[0]?.id}`, 'grid'], ['已排除', '#/excluded', 'grid'],
@@ -101,7 +124,9 @@ export const FLOWS = [
       ];
       for (const [label, hash, kind] of pages) {
         const snap = await w.step(`打开${label}`, () => goto(page, hash), {shot: true});
-        w.check(`${label}：标题不空`, !!snap.heading, snap.heading);
+        // 作品页的作品名写在横幅上，页头标题按设计是空的（#711）。
+        const title = kind === 'work' ? await page.eval(`document.querySelector('.cat-hero-title')?.innerText || ''`) : snap.heading;
+        w.check(`${label}：标题不空`, !!title, title);
         if (kind === 'grid') w.check(`${label}：网格有图`, snap.total > 0, `total=${snap.total}`);
         if (kind !== 'grid') {
           const filled = await page.eval(`(() => { const v = document.getElementById('viewport'); return [...v.children].some(el => !el.hidden && el.id !== 'grid' && el.id !== 'marquee' && el.id !== 'empty' && (el.innerText || '').trim().length > 20); })()`);

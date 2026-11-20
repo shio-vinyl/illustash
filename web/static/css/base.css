@@ -127,12 +127,12 @@ a.poster:hover>img,button.poster:hover>img{transform:scale(1.04)}
 /* 系统要求降低透明度时不用模糊、用不透明底（规则 16 只许在玻璃表面上写模糊）。WebKit 17 不认这个媒体查询，桌面外壳在 <html> 上
    写 data-reduce-transparency（#755）：两条并列，哪条成立都退。 */
 @media (prefers-reduced-transparency:reduce){
-  .glass{background:var(--glass-solid);-webkit-backdrop-filter:none;backdrop-filter:none}
-  .glass-bar{background:var(--glass-solid);-webkit-backdrop-filter:none;backdrop-filter:none}
+  .glass{background:var(--sheet);-webkit-backdrop-filter:none;backdrop-filter:none}
+  .glass-bar{background:var(--sheet);-webkit-backdrop-filter:none;backdrop-filter:none}
   .glass-scrim::backdrop{-webkit-backdrop-filter:none;backdrop-filter:none}
 }
-:root[data-reduce-transparency] .glass{background:var(--glass-solid);-webkit-backdrop-filter:none;backdrop-filter:none}
-:root[data-reduce-transparency] .glass-bar{background:var(--glass-solid);-webkit-backdrop-filter:none;backdrop-filter:none}
+:root[data-reduce-transparency] .glass{background:var(--sheet);-webkit-backdrop-filter:none;backdrop-filter:none}
+:root[data-reduce-transparency] .glass-bar{background:var(--sheet);-webkit-backdrop-filter:none;backdrop-filter:none}
 :root[data-reduce-transparency] .glass-scrim::backdrop{-webkit-backdrop-filter:none;backdrop-filter:none}
 .glass-bar>button{display:grid;place-items:center;width:28px;height:var(--h-28);margin:0;padding:0;border:0;border-radius:var(--radius-pill);background:transparent;color:inherit;
   font:inherit;box-shadow:none;cursor:pointer;transition:background-color var(--dur-1) var(--ease),color var(--dur-1) var(--ease)}

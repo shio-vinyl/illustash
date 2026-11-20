@@ -16,7 +16,7 @@ export function parseHash() {
     has: parseList(q.get('has')), not: parseList(q.get('not')), from: q.get('from') || '', to: q.get('to') || '',
     // 按天、日历看哪一天（#706）：按天滚到那一天，日历显示它所在的月。不是筛选，切视图时不带过去。
     at: q.get('at') || ''};
-  // 打开 App 落在首页；只有查询的地址（#/?artist=… 和其他旧链接）仍表示图库；#/c/id/skin 是旧的角色页，现在是按这个角色
+  // 打开 App 落在按天视图；只有查询的地址（#/?artist=… 和其他旧链接）仍表示图库；#/c/id/skin 是旧的角色页，现在是按这个角色
   // 筛选的图库；资料库和设置有各自地址的子视图。哪个路径对应哪个页面由 core/pages.js 登记。
   Object.assign(route, matchPath(parts, !!query));
   // 角色和检查筛选只属于有图库工具栏的页面（网格、画廊）；画师和组合条件另外属于按天、日历（注册表的 filters，#706）。

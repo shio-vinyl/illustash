@@ -19,7 +19,8 @@ export const state = {
   learning: false,
 
   // ---- 后台任务最近一次的回应：core/jobs.js（index、names 别处要换时用 setIndex、setNames、mergeNames） ----
-  sync: {status: 'off'}, syncHistory: [], syncDamaged: null, provenance: null, importTask: null, index: null, names: null,
+  // syncLost：同步状态读不到了（轮询失败，正在按间隔重试），界面别把上一次读到的进度当成现在的。
+  sync: {status: 'off'}, syncLost: false, syncHistory: [], syncDamaged: null, provenance: null, importTask: null, index: null, names: null,
 
   // ---- 设置页读写的数据：core/settings.js（settings 别处要换时用 setSettings） ----
   settings: null, about: null, accounts: null, fold: null, libraries: null, pixivWaiting: null, updates: null,
@@ -42,7 +43,7 @@ export const state = {
   // ---- 上手引导的进度：ui/guide.js ----
   guide: null,
 
-  // ---- 网格的列表：ui/grid.js（首页借用它放自己的图，用 showList；写入后作废读取用 listChanged） ----
+  // ---- 网格的列表：ui/grid.js（按天视图借用它放自己的图，用 showList；写入后作废读取用 listChanged） ----
   items: [], total: 0, totalReady: false, readEpoch: 0, countDirty: false, countReload: null,
   pages: new Set(), pending: new Set(), generation: 0, dataVersion: 0, gridKey: '',
   // 角色页「可能也是 TA」「可能认错」两个胶囊的张数。
@@ -58,8 +59,14 @@ export const state = {
   // ---- 选择与键盘光标：ui/grid.js（cursor 用 setCursor；换页复位用 resetForRoute） ----
   selecting: false, sel: {all: false, ids: new Set(), exclude: new Set()}, anchor: -1, cursor: -1, armed: null,
 
-  // ---- 详情栏与大图：ui/detail.js ----
-  focused: null, detail: null, viewer: -1, viewerItem: null, question: null,
+  // ---- 详情栏开着的那张：ui/detail.js ----
+  focused: null,
+
+  // ---- 详情卡片、大图底栏读到的详情和正显示的提问：core/detail.js（setDetail、setQuestion） ----
+  detail: null, question: null,
+
+  // ---- 大图：ui/viewer.js（序号和那张图） ----
+  viewer: -1, viewerItem: null,
 
   // ---- 「第 N 组」页标题用的近似组信息和各组的先后（空了时「下一组」用）：ui/review.js（进入该页前读取） ----
   groupNear: null, groupNearId: null, groupTraits: null, groupOrder: [],

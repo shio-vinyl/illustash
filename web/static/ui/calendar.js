@@ -57,6 +57,8 @@ const DOW = tpl`<span></span>`;
 const TILE_GAP = 2.5;
 // 月份标题旁最多几个头像。
 const FACES = 8;
+// 帧任务的键带上部件自己的编号（#751）：同时有两个日历时各排各的。
+let views = 0;
 
 const imageUrl = (uuid, size) => `/image?id=${encodeURIComponent(uuid)}&size=${size}`;
 const monthTitle = (year, month) => I18N.language === 'zh-CN' ? t('{m} 月', {m: month})
@@ -77,7 +79,7 @@ function dayCell(s) {
     text(refs.num, cell.day);
     text(refs.count, n ? number(n) : '');
     show(refs.count, n > 0);
-    cls(el, 'is-out', !cell.inMonth); cls(el, 'has', tiles.length > 0);
+    cls(el, 'is-out', !cell.inMonth); cls(el, 'has-images', tiles.length > 0);
     attr(el, 'aria-current', cell.inMonth && cell.date === today ? 'date' : null);
     attr(el, 'href', tiles.length ? href : null);
     attr(el, 'aria-label', tiles.length ? t('{date}，{n} 张', {date: dayLabel(cell.date), n: number(n)}) : null);
@@ -121,7 +123,7 @@ function face(s) {
  * @returns {{el: HTMLElement, update: (props: {month: string, data: object|null}) => void, dispose: () => void}}
  */
 export function calendarView({scope: parent, dayHref, onMonth, empty, weekStart = 1}) {
-  const s = parent.child('calendar'), {el, refs} = VIEW();
+  const s = parent.child('calendar'), {el, refs} = VIEW(), id = `calendar:${views++}`;
   let props = {month: '', data: null}, width = 0, shown = '';
   // keyed 只给复用的部件调 update，新建的在这里先画一次。
   const made = make => item => { const comp = make(); comp.update(item); return comp; };
@@ -129,10 +131,10 @@ export function calendarView({scope: parent, dayHref, onMonth, empty, weekStart 
   const faces = keyed(refs.people, {key: p => p.id, create: made(() => face(s.child('face'))), scope: s});
   for (const name of weekdays(weekStart)) { const d = DOW(); text(d.el, name); refs.dow.append(d.el); }
 
-  const go = month => { if (month && month !== props.month) onMonth(month); };
-  s.on(refs.prev, 'click', () => go(props.data?.prev));
-  s.on(refs.next, 'click', () => go(props.data?.next));
-  s.on(refs.now, 'click', () => go(monthOf(localDay())));
+  const flipTo = month => { if (month && month !== props.month) onMonth(month); };
+  s.on(refs.prev, 'click', () => flipTo(props.data?.prev));
+  s.on(refs.next, 'click', () => flipTo(props.data?.next));
+  s.on(refs.now, 'click', () => flipTo(monthOf(localDay())));
   s.on(refs.grid, 'keydown', e => {
     if (composing(e)) return;
     const step = {ArrowLeft: -1, ArrowRight: 1, ArrowUp: -7, ArrowDown: 7}[e.key];
@@ -147,9 +149,9 @@ export function calendarView({scope: parent, dayHref, onMonth, empty, weekStart 
   // 格宽决定缩略图的档位：量一次，变了再画。
   const measure = () => {
     const w = refs.grid.clientWidth / 7;
-    if (Math.abs(w - width) >= 1) { width = w; s.write(draw, 'calendar:draw'); }
+    if (Math.abs(w - width) >= 1) { width = w; s.write(draw, `${id}:draw`); }
   };
-  if (typeof ResizeObserver === 'function') s.observe(new ResizeObserver(() => s.read(measure, 'calendar:measure'))).observe(refs.grid);
+  if (typeof ResizeObserver === 'function') s.observe(new ResizeObserver(() => s.read(measure, `${id}:measure`))).observe(refs.grid);
 
   function draw() {
     const {month, data} = props, p = parseMonth(month);
@@ -214,7 +216,7 @@ let page = null;
 implement({calendar: {
   // 刚进这一页（或作用域已经释放）才建，内容淡入；同一页又画一次（翻月、筛选变了）只按新地址重读、更新格子。
   render: ({samePage, scope}) => {
-    if (!samePage || !page?.scope.alive) { page = calendarPage(scope); enter(page.el, {from: 'fade'}); }
+    if (!samePage || !page?.scope.alive) page = calendarPage(scope);
     return page.load(state.route);
   },
   // 同步、写入、撤销、NSFW 设置变了：重读这个月。

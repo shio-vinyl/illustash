@@ -1,6 +1,6 @@
 // 图片列表的取数（#706、#708）：页面样板里 ui/ 不直接发请求（tools/check_frontend.py 规则 22），要读图片列表的地方经这里。
 // 网格（ui/grid.js）的查询参数、分页读取、计数和按筛选取 id 都在这里；相似组页「判断关系」要的前几张图的 id 也是。
-import {MARKS} from './favorites.js';
+import {GRID_MARKS} from './favorites.js';
 import {pageOf} from './pages.js';
 import {defaultSort} from './route.js';
 import {api} from './session.js';
@@ -22,7 +22,7 @@ export function gridFilters(r = state.route) {
 // 网格的一页：从第 offset 张起 PAGE 张。count 为假时后端不重新数总数（翻页时用）。卡片要收藏标记和主色（主色是图读完之前的
 // 占位、悬停时的投影，#717）。
 export const readPage = (offset, {count = true, signal} = {}) =>
-  api('/api/assets?' + new URLSearchParams({...gridFilters(), offset, limit: PAGE, marks: `${MARKS.marks},color`, ...(count ? {} : {count: 0})}), {signal});
+  api('/api/assets?' + new URLSearchParams({...gridFilters(), offset, limit: PAGE, ...GRID_MARKS, ...(count ? {} : {count: 0})}), {signal});
 // 符合这组查询参数（/api/assets 的筛选和 pool）的图有几张。
 export const countAssets = params => api('/api/assets/count?' + new URLSearchParams(params)).then(x => x.total);
 // 符合这组查询参数的前 limit 张图的 id（params 里可以带 offset）。

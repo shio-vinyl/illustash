@@ -38,6 +38,10 @@ button.chip:hover,a.chip:hover{background:var(--chip-hover);color:var(--ink)}
 .chip:has(> .avatar:first-child){padding-left:var(--space-4)}
 .chip>.avatar{width:20px;height:20px}
 .chip>.chip-count{color:var(--muted);font-size:var(--fs-11)}
+/* 带一个小 × 的芯片（造型、我的标签：名字可以是链接，× 在右边，右内边距收窄）；「＋ 加一个」的芯片是描边、没有底色 */
+.chip.is-variant{gap:var(--space-2);padding-right:var(--space-4)}
+.chip.is-variant>a{color:inherit;text-decoration:none}
+.chip.is-add{background:transparent;box-shadow:inset 0 0 0 1px var(--line);color:var(--muted)}
 /* 选中的芯片底色换成强调色浅底，计数跟着文字色走（--muted 在 --accent-soft 上暗色只有 4.0:1） */
 .chip[aria-pressed=true]>.chip-count,.chip[aria-selected=true]>.chip-count,.chip[aria-current]>.chip-count{color:inherit}
 .seg{display:inline-flex;align-items:center;gap:var(--space-2);padding:var(--space-4);border-radius:var(--radius-pill);background:var(--soft)}
@@ -98,6 +102,17 @@ a.poster:hover>img,button.poster:hover>img{transform:scale(1.04)}
 .avatar-ring>em{position:absolute;right:-4px;bottom:-2px;padding:var(--space-1) var(--space-6);border-radius:var(--radius-pill);background:var(--accent-fill);color:var(--on-accent);
   font-size:var(--fs-11);font-style:normal;font-weight:var(--fw-750);line-height:1.2;box-shadow:0 0 0 2px var(--sheet)}
 
+/* ---- 心形（收藏）：图上的心形按钮（ui/favorites.js 的 HEART_ICON）。这里只写样子；位置和「悬停才出现」由各处自己写
+   （网格在 css/library.css）。收藏过的一直在，still 是只显示、不能点的 ---- */
+.fav-mark{display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;margin:0;padding:0;border:0;background:transparent;color:var(--on-image);
+  opacity:0;cursor:pointer;transition:opacity var(--dur-1) var(--ease),transform var(--dur-1) var(--ease)}
+.fav-mark svg{width:19px;height:19px;fill:transparent;stroke:currentColor;stroke-width:1.7;stroke-linejoin:round;filter:drop-shadow(0 0 1.5px rgba(var(--sh),.55))}
+.fav-mark:hover{transform:scale(1.1)}
+.fav-mark.on{color:var(--fav);opacity:1}
+.fav-mark.on svg{fill:currentColor;stroke:var(--on-image);stroke-width:1.4}
+.fav-mark.still{pointer-events:none}
+.fav-mark.still:not(.on){display:none}
+
 /* ---- 玻璃表面（只给浮层），和浮在图上的玻璃按钮组（翻页、收藏、放大、关闭） ----
    backdrop-filter 只写在这里（tools/check_frontend.py 规则 16）：每张卡片上的模糊各占一块显存（#683）。
    不支持模糊时是几乎不透明的底，文字照样看得清。Safari 17 只认带 -webkit- 前缀的写法。 */
@@ -121,5 +136,8 @@ a.poster:hover>img,button.poster:hover>img{transform:scale(1.04)}
 /* 增强：View Transitions（Safari 18.0）。退路：没有 document.startViewTransition 时 ui/motion.js 的 share() 用 Web Animations 做 FLIP，这块不生效。 */
 @supports (view-transition-name:none){
   ::view-transition-group(*){animation-duration:var(--dur-3);animation-timing-function:var(--ease)}
+  /* 共享元素（ui/motion.js 的 share，带 view-transition-class: share）：新旧快照宽高比不同（方形缩略图和竖图），按 cover 裁，不拉伸。
+     不认 view-transition-class 的版本（Chromium 124 及以前）整条选择器无效，退回默认的拉伸交叉淡化。 */
+  ::view-transition-old(*.share),::view-transition-new(*.share){width:100%;height:100%;object-fit:cover}
 }
 }

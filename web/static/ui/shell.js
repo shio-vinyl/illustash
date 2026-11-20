@@ -1,7 +1,7 @@
 // 页面的框架（桌面布局，#199、#706）：按地址切到对应页面、换页时的页面作用域、活页条的选中、每个页面的页头和工具栏。
 // 页面在哪由 core/route.js 负责；计数的数据由 core/meta.js 负责；活页条在 ui/rail.js。各页的标题、说明、空状态的去处
 // 由各页自己的模块登记（core/pages.js 的 implement），这里只画框架。一页怎么写见 docs/WEB_V2.md「页面样板」。
-import {esc, isMac, localDate, number, shortcut} from '../core/format.js';
+import {esc, isMac, localDate, number, short, shortcut} from '../core/format.js';
 import {nameTip} from '../core/labels.js';
 import {t} from '../core/i18n.js';
 import {onTyped} from '../core/keys.js';
@@ -16,9 +16,10 @@ import {cast, createWork, drawCast, drawShelf, openTagged, searchIndex, shelf} f
 import {dirDrawn, dirToolbar, onDir, wireDirToolbar} from './artist_dir.js';
 import {$, error, helpTip, searchIcon, showArea, wireHelpTip, workSmall} from './dom.js';
 import {attr, make, show, text, tpl} from './el.js';
-import {closeInspector, closeViewer} from './detail.js';
+import {closeInspector} from './detail.js';
+import {closeViewer} from './viewer.js';
 import {fixedLayout} from './grid_rows.js';
-import {markSelectButton, placeFor, rememberPlace, reload, resetForRoute, selectAll, setNsfw, short, sweep, toggleFit, toggleSelecting} from './grid.js';
+import {markSelectButton, placeFor, rememberPlace, reload, resetForRoute, selectAll, setNsfw, sweep, toggleFit, toggleSelecting} from './grid.js';
 import {guideTick} from './guide.js';
 import {filterBar, wireFilterBar} from './filters.js';
 import {saveButton, wireGalleries, wireSaveButton} from './gallery_save.js';
@@ -70,7 +71,7 @@ export async function applyRoute() {
   if (page.guideTick) guideTick(page.guideTick);
   renderChrome();
   // 自己渲染的页面（按天、资料库、设置、按组整理……）换到时从顶部开始，不沿用上一页的滚动位置；后退、前进回到记过
-  // 位置的那一条时，画完再滚回去（restore 让按天视图按上次读到的天数读，见 ui/home.js）。同一页换子视图、刷新时由页面自己
+  // 位置的那一条时，画完再滚回去（restore 让按天视图按上次读到的天数读，见 ui/days.js）。同一页换子视图、刷新时由页面自己
   // 决定留在哪里。网格页由 reload 定位（回到记过的地址时恢复，否则回顶部）。
   const saved = traversed ? panelScroll.get(historyEntry()) : undefined;
   if (page.render && !samePage) $('viewport').scrollTop = 0;

@@ -16,12 +16,12 @@
 //
 // 节点：根节点是 .card，带 data-id（图的 uuid）、data-index（第几张）；位置写 transform 和宽高（只动合成层）。
 // 缩略图在 ui/motion.js 的登记表里标上 uuid（看图器从这里展开、关掉时回到这里，#709）；摘掉时放掉解码后的位图（#683）。
-import {number, thumbSize} from '../core/format.js';
+import {number, short, thumbSize} from '../core/format.js';
 import {t} from '../core/i18n.js';
 import {REASONS, nameWithWork} from '../core/labels.js';
 import {clampRatio, aspect} from '../core/layout.js';
 import {attr, cls, css, make, show, text, tpl} from './el.js';
-import {HEART_ICON, heartTip} from './favorites.js';
+import {heartIcon, heartTip} from './favorites.js';
 import {flip, thumbs} from './motion.js';
 import {setTint} from './tint.js';
 import {releaseImages} from './virtual.js';
@@ -32,10 +32,9 @@ const CARD = tpl`<div class="card" role="button"><div class="card-stage" data-re
   data-t-attr="title"></span><span class="card-missing" data-t>图片暂不可读</span><button type="button" class="fav-mark" data-ref="fav"></button><span class="check" aria-hidden="true"></span></div></div>`;
 const SKELETON = tpl`<div class="card skeleton" aria-hidden="true"></div>`;
 
-// 角上这些东西各自要多宽的格子才出现（px，和原来的卡片相同）。
+// 角上这些东西各自要多宽才出现（px）：芯片（CHIPS_MIN）、抽查标签（SMALL）按格宽 ctx.cellW；悬停时写不写名字（INFO_MIN）、写名字
+// 还是只写「N 位」（NAMES_MIN）按这张卡片自己的宽 box.w（原始比例里各张不一样宽）。
 const CHIPS_MIN = 120, SMALL = 70, INFO_MIN = 72, NAMES_MIN = 130;
-// 太长的名字截短（芯片上）。
-export const short = name => name.length > 28 ? name.slice(0, 26) + '…' : name;
 
 /**
  * 这一轮所有卡片共用的上下文：页面、视图选项和格子大小。网格每次画之前算一次，传给每张卡片的 update。
@@ -114,11 +113,11 @@ const chipsKey = (item, ctx) => JSON.stringify([ctx.char, ctx.maybe, ctx.reason,
 
 /**
  * 一张卡片。scope 是这张卡片自己的作用域（网格给每张卡片建一个子作用域，摘掉时释放）。
- * @returns {{el: HTMLElement, update: Function, mark: Function, dispose: Function}}
+ * @returns {{el: HTMLElement, update: Function, mark: Function, flip: Function, leave: (on: boolean) => void, park: Function, dispose: Function}}
  */
 export function gridCard(scope) {
   const {el, refs} = CARD();
-  refs.fav.append(HEART_ICON().el);
+  refs.fav.append(heartIcon());
   let item = null, key = '', tint, thumb;   // 上一次写的芯片内容、主色、登记的图：没变就不再写
   // 图读坏了：记在根节点上，样式藏起图、露出「图片暂不可读」。换了别的图再去掉。
   scope.on(refs.img, 'error', () => attr(el, 'data-broken', true));
@@ -179,6 +178,10 @@ export function gridCard(scope) {
     },
     // 缩放时从旧的框滑到新的框（屏幕坐标）：动里面的 .card-stage，根节点的 transform 是网格写的位置。
     flip(from, to) { return flip(refs.stage, from, to); },
+    // 写入后要离开本页：先淡出（写入失败时 leave(false) 收回）。
+    leave(on) { cls(el, 'leaving', on); },
+    // 滚出视野、留着下次复用（ui/grid.js 的备用卡片）：去掉图片地址（放掉解码后的位图），下一次 update 当作新的一张来画。
+    park() { attr(refs.img, 'src', null); item = null; cls(el, 'leaving', false); },
     dispose() { releaseImages(el); scope.dispose(); },
   };
 }
@@ -191,5 +194,5 @@ export function skeletonCard() {
     css(el, 'transform', `translate(${box.x}px, ${box.y}px)`);
     css(el, 'width', `${box.w}px`);
     css(el, 'height', `${box.h}px`);
-  }, mark() {}, dispose() {}};
+  }, mark() {}, leave() {}, park() {}, dispose() {}};
 }

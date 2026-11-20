@@ -59,6 +59,10 @@ const rolesOf = (w, page, name) => inPage(page, `const r = await fetch('/api/det
 const post = (page, path, body) => inPage(page, `const {api} = await import('/core/session.js');
   return api(${JSON.stringify(path)}, {method: 'POST', body: JSON.stringify(${JSON.stringify(body)})});`);
 
+// 这张图（按 uuid）上的人工结论：[{id, name, status}]，按角色 id 排（读 /api/detail 的 assertions，中英文一样）。
+const assertionsOf = (page, uuid) => inPage(page, `const r = await fetch('/api/detail?id=' + encodeURIComponent(${JSON.stringify(uuid)}));
+  if (!r.ok) return null; const d = await r.json();
+  return (d.assertions || []).map(a => ({id: a.id, name: a.name, status: a.status})).sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0);`);
 // 命令面板里搜一个角色名，等结果出来；回车前底栏那句话说明会做什么。
 async function pickerFind(page, name) {
   // 面板没开时不打字：网格里的字母都是快捷键。
@@ -109,6 +113,66 @@ export const FLOWS = [
   },
 
   {
+    name: 'days',
+    title: '图库按天视图：两张卡、各天和到底的说明；认一认点掉一张再「点掉的是…」；点图开详情；深色；at= 滚到那一天；去网格看这一天',
+    covers: ['#707', '#675'],
+    async run(w, page) {
+      const ready = () => page.waitFor(`document.querySelector('#homePage .day-tile img')`, 8000);
+      let snap = await w.step('打开图库（按天）', async p => { await goto(p, '#/days'); await ready(); }, {shot: true});
+      w.check('标题是图库', /图库|Library/.test(snap.heading), snap.heading);
+      const days = await page.eval(`[...document.querySelectorAll('#homePage .day')].map(d => d.dataset.day).sort().reverse()`);
+      w.check('合成图库的几天都画出来了', days.length >= 3, days);
+      await w.step('滚到底（接着读更早的几天，读完写到底的说明）', async p => {
+        await p.eval(`(async () => { const v = document.getElementById('viewport'); for (let i = 0; i < 20; i++) { v.scrollTop = v.scrollHeight;
+          await new Promise(r => setTimeout(r, 250)); const e = document.querySelector('#homePage .day-end'); if (e && !e.hidden) return; } })()`);
+      }, {shot: true});
+      w.check('读到底：写着最早的一张和总张数', await page.eval(`(() => { const e = document.querySelector('#homePage .day-end'); return !!e && !e.hidden && /\\d/.test(e.textContent); })()`), '');
+      await w.step('回到顶上', p => p.eval(`document.getElementById('viewport').scrollTop = 0`));
+      w.check('同步卡在', await page.eval(`!document.querySelector('#homePage .day-sync').hidden`), '');
+      const asking = await page.eval(`!document.querySelector('#homePage .day-ask').hidden`);
+      w.check('认一认卡在（合成图库有可问的）', asking, '');
+      if (asking) {
+        await w.step('认一认：点「不全是」展开', p => p.click('#homePage .day-ask button[data-ref="open"]'));
+        snap = await w.step('点掉第一张', p => p.click('#homePage .day-ask .day-ask-tile'), {shot: true});
+        w.check('第一张标成「不是 TA」', await page.eval(`document.querySelector('#homePage .day-ask .day-ask-tile').getAttribute('aria-pressed') === 'true'`), '');
+        w.check('有了「点掉的是…」', await page.eval(`!document.querySelector('#homePage .day-ask button[data-ref="other"]').hidden`), '');
+        // #675 第二步：选另一个角色，点掉的那张一步记成「不是原角色、是选中的角色」（两条人工结论），其余几张留在卡上；撤销一步全撤。
+        const tiles = `#homePage .day-ask .day-ask-tile:not([inert])`;
+        const offId = await page.eval(`document.querySelector('#homePage .day-ask .day-ask-tile').dataset.peek`);
+        const askedId = await page.eval(`new URLSearchParams((document.querySelector('#homePage .day-ask [id] a')?.getAttribute('href') || '').split('?')[1] || '').get('char') || ''`);
+        const asked = await page.eval(`document.querySelector('#homePage .day-ask [id] a')?.textContent || ''`);
+        const left = await page.eval(`[...document.querySelectorAll(${JSON.stringify(tiles)})].map(t => t.dataset.peek).filter(u => u !== ${JSON.stringify(offId)})`);
+        const pick = w.config.fixture.chars.map(c => c.name).find(n => n !== asked);
+        const before = await assertionsOf(page, offId);
+        await w.step('点「点掉的是…」', p => p.click('#homePage .day-ask button[data-ref="other"]'));
+        w.check('角色选择器打开了', await page.waitFor(`document.getElementById('picker').open`, 3000), '');
+        await w.step(`选 ${pick}，回车`, async p => { await pickerFind(p, pick); await p.key('Enter'); await feedbackEnd(p); }, {shot: true});
+        const after = await assertionsOf(page, offId);
+        w.check('点掉的那张：原角色记成 rejected、选中的角色记成 confirmed',
+          !!askedId && after.some(a => a.id === askedId && a.status === 'rejected') && after.some(a => a.name === pick && a.status === 'confirmed'), {before, after, askedId, pick});
+        w.check('其余几张原样留在卡上（按 UUID 比）', same(await page.eval(`[...document.querySelectorAll(${JSON.stringify(tiles)})].map(t => t.dataset.peek)`), left), {left});
+        await w.step('撤销', async p => { await p.click('#undoButton'); await feedbackEnd(p); });
+        const undone = await assertionsOf(page, offId);
+        w.check('撤销一步，两条人工结论都还原（和提交前逐项相同）', same(undone, before), {before, undone});
+      }
+      snap = await w.step('点第一天的大图（开详情）', p => p.click('#homePage .day .day-tile'), {shot: true});
+      w.check('详情打开在点的那张', !!snap.focused, snap.focused);
+      const focusedId = await stateOf(page, 'S.focused');
+      w.check('那张图标成当前（只有它一张）', await page.eval(`(() => { const on = [...document.querySelectorAll('#homePage .day-tile[aria-current="true"]')];
+        return on.length === 1 && on[0].dataset.id === ${JSON.stringify(focusedId || '')}; })()`), focusedId);
+      await w.step('Esc 关详情', p => p.key('Escape'));
+      await w.step('深色', p => p.eval(`document.documentElement.dataset.theme = 'dark'`), {shot: true});
+      await w.step('换回浅色', p => p.eval(`document.documentElement.dataset.theme = 'light'`));
+      const last = days.at(-1);
+      await w.step('地址带 at= 最早那天', async p => { await p.eval(`location.hash = '#/days?at=${last}'`); await p.settle({quiet: 500}); });
+      w.check('滚到了最早那天', await page.eval(`(() => { const v = document.getElementById('viewport'), d = document.querySelector('#homePage .day[data-day="${last}"]');
+        if (!d) return false; const top = d.getBoundingClientRect().top - v.getBoundingClientRect().top; return v.scrollTop > 0 && top > -40 && top < v.clientHeight / 2; })()`), '');
+      snap = await w.step('点「在网格里看」', async p => { await p.click('#homePage .day .day-grid'); await gridReady(p); }, {shot: true});
+      w.check('进了网格，按那一天筛选', /#\/library\?.*day=\d{4}-\d{2}-\d{2}/.test(decodeURIComponent(snap.hash || '')) && snap.total > 0, {hash: snap.hash, total: snap.total});
+    },
+  },
+
+  {
     name: 'viewer-detail',
     title: '图库点图开详情栏 → Space 进大图翻几张 → 关大图：详情栏、光标和 Space 指向同一张',
     covers: ['#386 1-4'],
@@ -130,6 +194,61 @@ export const FLOWS = [
       await w.step('Esc 关大图', p => p.key('Escape'));
       snap = await w.step('Esc 关详情栏', p => p.key('Escape'));
       w.check('详情栏关了', !snap.overlays.includes('inspector'), snap.overlays);
+    },
+  },
+
+  {
+    name: 'viewer-info',
+    title: '大图里翻几张后按 I 换成详情卡片 → 详情里翻页：详情是大图里最后看的那张，翻页时卡片不重建（#709）',
+    covers: ['#424 2-7', '#709'],
+    async run(w, page) {
+      await w.step('打开图库', () => goto(page, '#/library'));
+      await w.step('点第 3 张（开详情卡片）', p => p.click(cardAt(2)));
+      await w.step('Space 进大图', p => p.key('Space'));
+      let snap;
+      for (let i = 1; i <= 2; i++) snap = await w.step(`大图里按 → 第 ${i} 次`, p => p.key('ArrowRight'));
+      const seen = snap.viewer;
+      snap = await w.step('按 I 换成详情', p => p.key('i'), {shot: true});
+      w.check('大图关了', !snap.overlays.includes('viewer'), snap.overlays);
+      w.check('详情卡片开着，是大图里最后看的那张', snap.overlays.includes('inspector') && snap.focused === seen, {focused: snap.focused, viewer: seen});
+      // 翻页只换变了的部分：卡片和图片节点还是原来那些（#709 完成标准）。
+      await page.eval(`window.__card = document.querySelector('#inspector .dc'); window.__img = document.getElementById('detailImg')`);
+      snap = await w.step('详情里按 ←', p => p.key('ArrowLeft'));
+      w.check('翻到上一张，光标跟着', snap.focused !== seen && snap.cursor === snap.focused, {focused: snap.focused, cursor: snap.cursor});
+      const kept = await page.eval(`document.querySelector('#inspector .dc') === window.__card && document.getElementById('detailImg') === window.__img`);
+      w.check('翻页没有重建卡片', kept, kept);
+      snap = await w.step('Esc 关详情', p => p.key('Escape'));
+      w.check('详情卡片关了', !snap.overlays.includes('inspector'), snap.overlays);
+    },
+  },
+
+  {
+    name: 'panel-peek',
+    title: '按组整理里长按一张看大图 → 翻一张 → Esc：大图里只翻这一组、没有「信息」，关掉后分组和详情都不动（#424 的 2-2）',
+    covers: ['#424 2-2', '#709'],
+    async run(w, page) {
+      await w.step('打开未识别 › 按组整理', () => goto(page, '#/groups'));
+      const before = await inPage(page, `return document.querySelectorAll('#groupsPage .gsec').length;`);
+      const at = await page.center('#groupsPage .gsec [data-peek]');
+      w.check('组里有能看大图的图', !!at, at);
+      if (!at) return;
+      let snap = await w.step('长按第一张', async p => {
+        await p.send('Input.dispatchMouseEvent', {type: 'mouseMoved', x: at.x, y: at.y});
+        await p.send('Input.dispatchMouseEvent', {type: 'mousePressed', x: at.x, y: at.y, button: 'left', clickCount: 1});
+        await sleep(600);
+        await p.send('Input.dispatchMouseEvent', {type: 'mouseReleased', x: at.x, y: at.y, button: 'left', clickCount: 1});
+      }, {shot: true});
+      w.check('大图开了', snap.overlays.includes('viewer'), snap.overlays);
+      const info = await page.eval(`!!document.querySelector('#viewerBar [data-act="info"]')`);
+      w.check('借来的列表开的大图没有「信息」', !info, info);
+      const first = snap.viewer;
+      snap = await w.step('大图里按 →', p => p.key('ArrowRight'));
+      w.check('翻到这一组的下一张', snap.viewer && snap.viewer !== first, {first, now: snap.viewer});
+      snap = await w.step('Esc 关大图', p => p.key('Escape'));
+      w.check('大图关了', !snap.overlays.includes('viewer'), snap.overlays);
+      w.check('没有开详情卡片', !snap.overlays.includes('inspector'), snap.overlays);
+      const after = await inPage(page, `return document.querySelectorAll('#groupsPage .gsec').length;`);
+      w.check('分组原样', after === before, {before, after});
     },
   },
 
@@ -162,7 +281,8 @@ export const FLOWS = [
         w.check(`${where}：撤销后回到 ${a.name}`, same(await rolesOf(w, page, target), [a.name]), await rolesOf(w, page, target));
       }
       // 详情栏上标着 C 的按钮做的也是同一件事。
-      await w.step('点详情栏的「更正角色 C」', async p => { await goto(p, '#/library'); await openCard(w, p, target); await p.click('#fixChar'); });
+      // 详情卡片角色身份块里的「换一个… C」（#709；原来是底部的「更正角色 C」，#748）。等卡片读完这张再点，和人看到内容再点一样。
+      await w.step('点详情卡片的「换一个… C」', async p => { await goto(p, '#/library'); await openCard(w, p, target); await p.click('#inspector .dc[aria-busy="false"] [data-act="swap"]'); });
       await w.step(`搜「${b.name}」并回车`, async p => { await pickerFind(p, b.name); await p.key('Enter'); });
       await page.settle({quiet: 400});
       w.check('按钮也是换成', same(await rolesOf(w, page, target), [b.name]), await rolesOf(w, page, target));
@@ -326,6 +446,32 @@ export const FLOWS = [
       await w.step('点活页条的资料库', p => goto(p, '#/characters'));
       snap = await w.step('再点活页条的图库', p => goto(p, '#/library'));
       w.check('从活页条回来也回到原位置', Math.abs(snap.scroll - before.scroll) < 60, {before: before.scroll, now: snap.scroll});
+    },
+  },
+
+  {
+    name: 'card-chips',
+    title: '卡片上的芯片有样式：随机抽查的角色标签（✓ / ✗ 悬停才出现，正在抽查的着色）、未识别图上的「+ 名字」（#708 审核第 1 条）',
+    async run(w, page) {
+      // 走查图库里没有抽查和「可能是」的数据：在网格里放一张和 ui/grid_card.js 同样结构的样例卡，读真实浏览器算出来的样式，
+      // 查的是 css/ 里这些类名有规则（审核第 1 条：样式还挂在旧的 .chips 下，新卡片上全丢了）。
+      await w.step('打开网格', () => goto(page, '#/library'));
+      const looks = await page.eval(`(() => {
+        const card = document.createElement('div'); card.className = 'card'; card.style.cssText = 'transform:translate(0,0);width:240px;height:240px';
+        card.innerHTML = '<div class="card-stage"><span class="card-chips"><span class="atag checked open"><b>A</b><button type="button" data-tagact="yes">✓</button></span>'
+          + '<span class="atag checked no"><b>B</b></span><button class="hint-add" type="button">+ C</button></span></div>';
+        document.getElementById('grid').append(card);
+        const s = sel => { const st = getComputedStyle(card.querySelector(sel)); return {display: st.display, bg: st.backgroundColor, radius: st.borderTopLeftRadius,
+          border: st.borderTopStyle, deco: st.textDecorationLine}; };
+        const out = {open: s('.atag.open'), button: s('.atag.open button'), no: s('.atag.no b'), hint: s('.hint-add')};
+        card.remove();
+        return out;
+      })()`);
+      const filled = x => x.bg !== 'rgba(0, 0, 0, 0)' && x.radius !== '0px';
+      w.check('在抽查的标签有底色和圆角', filled(looks.open), looks.open);
+      w.check('标签上的 ✓ / ✗ 不悬停时藏着', looks.button.display === 'none', looks.button);
+      w.check('答了「不是」的标签划掉名字', looks.no.deco.includes('line-through'), looks.no);
+      w.check('「+ 名字」有自己的底色、没有默认边框', filled(looks.hint) && looks.hint.border === 'none', looks.hint);
     },
   },
 
@@ -525,7 +671,7 @@ export const FLOWS = [
 
       await w.step('打开图库', () => goto(page, '#/library'));
       snap = await w.step('点一张开详情栏', p => p.click(cardAt(0)), {shot: true});
-      const hit = await page.eval(`(() => { const b = [...document.querySelectorAll('#inspector .inspector-actions button')].pop(); if (!b) return 'no-button';
+      const hit = await page.eval(`(() => { const b = [...document.querySelectorAll('#inspector .dc-foot button')].pop(); if (!b) return 'no-button';
         const r = b.getBoundingClientRect(); const top = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
         return top && (top === b || b.contains(top)) ? 'button' : (top?.closest('#checklist') ? 'checklist' : (top?.id || top?.className || 'other')); })()`);
       w.check('详情栏底部的按钮点得到（不被上手清单盖住）', hit === 'button', hit);

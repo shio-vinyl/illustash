@@ -16,14 +16,16 @@
 import {chooseWork, confirmAction} from '../../web/static/ui/dialog.js';
 import {castPop, openIndexAdd, openTagged, workDialog} from '../../web/static/ui/catalog.js';
 import {editProfile, openLocalLinks, openPicker, openRelate, splitOc, stage} from '../../web/static/ui/palette.js';
-import {renderHelpKeys, renderSelection, renderViewPop} from '../../web/static/ui/grid.js';
+import {renderHelpKeys, renderSelection} from '../../web/static/ui/grid.js';
+import '../../web/static/ui/grid_bar.js';
+import {renderViewPop} from '../../web/static/ui/grid_view.js';
 import {renderTasks, taskPanel} from '../../web/static/ui/tasks.js';
 import {toast, toastMore} from '../../web/static/ui/dom.js';
-import {askHTML} from '../../web/static/ui/detail.js';
+import {askBar, detailCard, identities} from '../../web/static/ui/detail_card.js';
 import {state} from '../../web/static/core/state.js';
 
 // 从应用页面取来的外壳。
-const SHELLS = ['toast', 'selectionBar', 'grid', 'picker', 'relateDialog', 'ocSplitDialog', 'help', 'taskButton', 'taskPanel', 'viewPopover'];
+const SHELLS = ['toast', 'selectionBar', 'grid', 'picker', 'relateDialog', 'ocSplitDialog', 'help', 'taskButton', 'taskPanel', 'viewPopover', 'inspector'];
 
 // ---- 合成数据 ----
 const CHARS = [
@@ -156,7 +158,7 @@ sample('dialog-help', async () => { renderHelpKeys(); return [snapshot($('help')
 // ---- 浮层菜单 ----
 sample('pop-view', async () => {
   const out = [];
-  for (const [page, label] of [['library', '图库页'], ['home', '首页']]) {
+  for (const [page, label] of [['library', '图库页'], ['days', '按天视图']]) {
     state.route = {page}; renderViewPop(); out.push(pair(snapshot($('viewPopover')), `renderViewPop()：${label}`));
   }
   state.route = {page: 'library'};
@@ -190,11 +192,59 @@ sample('selection', async () => {
   return out;
 });
 
-// ---- 提问条 ----
+// ---- 详情卡片与看图器（#709） ----
+// 卡片和大图底栏是部件（ui/detail_card.js）：建一次，update 换数据。图片地址是 /image?…，这页没有宿主，换成占位图。
+const DETAIL = {uuid: 'u1', width: 2000, height: 2500, added_at: '2026-11-12T10:21:00', filename: 'IMG_0001.jpg', src_kind: 'orig', color: '#7a8fd6', fav: true,
+  memberships: [{id: 'c1', name: 'Karen', status: 'machine', origin: 'machine', evidence: {sources: ['WD'], max_score: 0.91}, variants: [{id: 'v1', name: '夏日'}]},
+    {id: 'c2', name: 'Rio', status: 'machine', origin: 'machine', evidence: {sources: ['WD_EXT'], max_score: 0.93}, variants: []}],
+  alternatives: [{id: 'c3', name: 'Aijou', weak: false, evidence: {sources: ['CCIP'], wd: null, ccip: 0.412}},
+    {id: 'c4', name: 'Newer', weak: true, evidence: {sources: ['CCIP'], wd: null, ccip: 0.1}}],
+  tag_identities: [], user_tags: ['夏日'], duplicates: [{uuid: 'u2', pos: 1, size: 2, added_at: '2026-11-10', names: ['Karen']}],
+  tags: [{value: 'white_hair', conf: 0.91}, {value: 'long_hair', conf: 0.88}],
+  artists: [{id: 'a1', name: '合成画师', count: 5, confirmed: false, homes: [{url: 'https://example.com/a1', label: 'example', site: 'Example'}]}], maybe: [], posts: [],
+  question: {entity: 'c1', name: 'Karen', kind: 'hint', current_name: 'Rio'}};
+const STATS = {count: 312, first: '2023-04', recent: ['u3', 'u4', 'u5', 'u6'],
+  months: ['2026-06', '2026-07', '2026-08', '2026-09', '2026-10', '2026-11'].map((month, i) => ({month, count: [8, 14, 6, 20, 11, 12][i]}))};
+const OPTS = {ask: true, chart: true, same: true, meta: true, skip: false, resumeKey: false};
+const QUIET = {act() {}, artist: {verdict() {}, find() {}, findMore() {}}};
+function placeholders(el) {
+  let n = 0;
+  for (const img of el.querySelectorAll('img')) if (img.getAttribute('src')?.startsWith('/image')) img.src = window.sgPlaceholder(n++ % 6);
+  return el;
+}
+// 卡片摆在一个 #inspector 那样的框里（宽 340，高度由舞台给）。
+function inspectorBox(el) { const box = document.createElement('div'); box.className = 'inspector'; box.style.height = '780px'; box.append(el); return placeholders(box); }
+sample('detail', async () => {
+  const known = detailCard(QUIET);
+  known.update(DETAIL, OPTS); known.stats(STATS, OPTS, 'u1', 'c1');
+  const none = detailCard(QUIET);
+  none.update({...DETAIL, uuid: 'u7', color: null, fav: false, memberships: [], alternatives: [], question: null, artists: [], duplicates: [], user_tags: [], pending: true},
+    {...OPTS, ask: false});
+  return [pair(inspectorBox(known.el), 'detailCard(on).update(d, opts)：机器识别的主角色，带提问、角色卡、画师、副本'),
+    pair(inspectorBox(none.el), '还没认出、待确认（底部是排除和保留）')];
+});
+// 提问条：卡片里和大图底栏里（深底）各一个。
 sample('ask', async () => {
-  const dark = document.createElement('div'); dark.className = 'sg-dark';
-  dark.append(fromHTML(askHTML({name: 'Karen', entity: 'c1', kind: 'audit'}, true)));
-  return [pair(fromHTML(askHTML({name: 'Karen', entity: 'c1', kind: 'hint', current_name: 'Rio'})), "askHTML(q)"), pair(dark, "askHTML(q, true)：查看器底部")];
+  const light = askBar(), dark = askBar(), stage = document.createElement('div');
+  light.update({name: 'Karen', entity: 'c1', kind: 'hint', current_name: 'Rio'});
+  dark.update({name: 'Karen', entity: 'c1', kind: 'ambiguous', rival: 'c2', rival_name: 'Rio'});
+  stage.className = 'viewer-bar sg-dark'; stage.append(dark.el);
+  return [pair(light.el, 'askBar().update(q)：详情卡片顶上'), pair(stage, '大图底栏（.viewer-bar 里）：和对手分不清时多一个「是 对手」')];
+});
+// 大图底栏的角色条：每个角色一行，没有大头像和按钮组。
+sample('viewer-bar', async () => {
+  const who = identities({compact: true}), none = identities({compact: true});
+  who.update(DETAIL); none.update({...DETAIL, memberships: [], alternatives: []});
+  const bar = (el, extra) => {
+    const b = document.createElement('div'), inner = document.createElement('div');
+    b.className = 'viewer-bar sg-dark'; inner.className = 'vw-bar-in'; inner.append(el, ...extra); b.append(inner);
+    return placeholders(b);
+  };
+  const acts = document.createElement('div'); acts.className = 'vw-acts';
+  for (const [key, label] of [['X', '排除'], ['F', '已收藏'], ['I', '信息']]) {
+    const c = document.createElement('button'); c.className = 'chip'; const k = document.createElement('kbd'); k.textContent = key; c.append(k, label); acts.append(c);
+  }
+  return [pair(bar(who.el, [acts]), 'identities({compact: true})：大图底栏，右边是 ui/viewer.js 画的动作（chip + kbd）'), pair(bar(none.el, []), '还没有角色')];
 });
 
 // ---- 画 ----

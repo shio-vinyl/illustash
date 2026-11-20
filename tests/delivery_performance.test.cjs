@@ -88,8 +88,8 @@ test('section updates preserve unaffected nodes and support reorder/removal', ()
   assert.deepEqual(root.children, [cc,b]);
 });
 // 网格在 ui/grid.js，放在假页面上；它的定时器和读取由测试掌控。
-let grid;
-test.before(async () => { grid = await web.load('ui/grid.js'); });
+let grid, rows;
+test.before(async () => { grid = await web.load('ui/grid.js'); rows = await web.load('ui/grid_rows.js'); });
 function gridPage({items = [], total = items.length, scrollTop = 0} = {}) {
   const page = web.fakePage(), {state} = web.core();
   Object.assign(page.el('viewport'), {scrollTop, clientHeight: 200, clientWidth: 202});
@@ -111,7 +111,7 @@ test('virtual grid keeps overlapping cards, updates changed items in place and r
       route: {page: 'library'}, dataVersion: 2e6 + Math.random(), gridKey: '', pages: new Set(), pending: new Set(), generation: 1, readEpoch: 0, countDirty: false,
       sel: {all: false, ids: new Set(), exclude: new Set()}});
     const cards = () => els.grid.children.filter(c => c !== els.gridHead);
-    const shown = top => grid.rowStart(Math.min(grid.rowCount(), grid.rowAt(top + 200) + 2)) - grid.rowStart(Math.max(0, grid.rowAt(top) - 2));
+    const shown = top => rows.rowStart(Math.min(rows.rowCount(), rows.rowAt(top + 200) + 2)) - rows.rowStart(Math.max(0, rows.rowAt(top) - 2));
     grid.renderGrid(); const originals = cards(); assert.equal(originals.length, shown(0));
     assert.equal(els.grid.children[0], els.gridHead, '头部留在最前');
     els.viewport.scrollTop = 100; grid.renderGrid();
@@ -120,7 +120,7 @@ test('virtual grid keeps overlapping cards, updates changed items in place and r
     state.items[5] = {...state.items[5], memberships: [{id: 'c1', name: '合成甲', status: 'confirmed'}]}; state.dataVersion++; grid.renderGrid();
     assert.equal(cards()[5], originals[5]); assert.match(cards()[5].getAttribute('aria-label'), /合成甲/);
     els.viewport.scrollTop = 400; grid.renderGrid();
-    const first = grid.rowStart(Math.max(0, grid.rowAt(400) - 2));
+    const first = rows.rowStart(Math.max(0, rows.rowAt(400) - 2));
     assert.equal(Number(cards()[0].getAttribute('data-index')), first); assert.equal(cards()[0], originals[first]);
     state.size = 60; grid.renderGrid();
     assert.match(cards()[0].style.getPropertyValue('transform'), /^translate\(0px, /);

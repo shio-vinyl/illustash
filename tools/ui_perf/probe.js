@@ -8,7 +8,9 @@
 //   帧        requestAnimationFrame 的间隔。两个内核都有；长帧是间隔超过 50ms 的帧。
 //   长任务    PerformanceObserver('longtask')，只有 Chromium 有（WebKit 没有这个 API，结果里写 null）。
 //   DOM       测量窗口里新增、删掉的元素数；删掉的已显示图片（<img> 已解码完）数，以及删的时候它在视野里的数——
-//             同步导入时「可见的那一天整块重建」就是后者不为零。
+//             同步导入时「可见的那一天整块重建」就是后者不为零。「在视野里」只数内容区（#viewport 里的图）：活页条（#706：
+//             同步完成时二级层顶上挤进新的一天，最早那天收进按月的一摞，它的封面节点照设计会摘掉）和浮层不算，预算第 2、3 条
+//             管的是内容区（#683 评论；2026-11-20 C1 #757 单跑定位到同步时拆掉的那一张是活页条的时间轴封面）。
 //   快照      元素总数、<img> 数和已加载的数、滚动位置和总高度；Chromium 另有 JS 堆（performance.memory）。
 (() => {
   if (window.__perf) return;
@@ -16,9 +18,11 @@
   const viewport = () => $('viewport');
   const PAGES = {
     // 应用启动完、能接受跳转的标志。
-    // 0.4 起导航是活页条（#706）；改版前的侧栏是 .nav[data-page]，量改前的数字时两种都认。
-    booted: () => !!viewport() && !$('splash') && !!document.querySelector('#rail [data-entry], .nav[data-page]'),
-    home: {hash: '#/home', ready: () => !!document.querySelector('#homePage .home-day img'), scroller: viewport,
+    // 新前端认活页条，改前的前端（main dfbabc62）认旧侧栏，同一份探针量两边。
+    booted: () => !!viewport() && !$('splash') && !!document.querySelector('#rail .rail-entry[data-entry], .nav[data-page]'),
+    // 图库的按天视图（#707，原来的首页）。场景名仍叫 home，和改前的数字对照：地址写 #/，新前端落在按天视图、改前（main
+    // dfbabc62）的前端落在首页，就绪标志两种都认，所以改前改后用同一份探针量。
+    home: {hash: '#/', ready: () => !!document.querySelector('#homePage .day-tile img, #homePage .home-day img'), scroller: viewport,
       // 同步导入时盯着的「最上面那一天」：新图都进这一块。
       watch: () => $('homePage')},
     library: {hash: '#/library', ready: () => !!document.querySelector('#grid .card[data-id] img'), scroller: viewport, watch: () => $('grid')},
@@ -32,11 +36,15 @@
       watch: () => $('charIndex')},
     viewer: {
       hash: '#/library', ready: () => !!document.querySelector('#grid .card[data-id] img'), scroller: viewport, watch: () => $('viewer'),
-      // 双击网格里的第一张打开大图，点「下一张」翻页；image 是大图的 <img>，换图时它的 src 会变。
+      // 双击网格里的第一张打开大图，点「下一张」翻页。看图器三张轮换（#709）：image 给一个固定的对象，src、complete、
+      // naturalWidth 读当前那一张的预览图，换图时 src 会变。
       open: () => document.querySelector('#grid .card[data-id]').dispatchEvent(new MouseEvent('dblclick', {bubbles: true, cancelable: true})),
       opened: () => !$('viewer').hidden,
       next: () => $('viewerNext').click(),
-      image: () => $('viewerImg'),
+      image: () => {
+        const shown = () => document.querySelector('#viewer .vw-slot.is-current .vw-low') || {};
+        return {get src() { return shown().src; }, get complete() { return shown().complete; }, get naturalWidth() { return shown().naturalWidth; }};
+      },
     },
     // 页面自己的同步入口：和上手指引里「同步」按钮一样，先 startSync 再 pollSync（同步进行中每 2 秒读一次，有新图就重画）。
     // 上一次还没结束时不发新的。返回这次有没有发出。
@@ -94,7 +102,8 @@
         const imgs = n.tagName === 'IMG' ? [n] : [...n.getElementsByTagName('img')];
         if (current) {
           current.removed += 1 + n.getElementsByTagName('*').length;
-          for (const img of imgs) { if (loaded(img)) { current.removedImages++; if (visible.has(img)) current.removedVisible++; } }
+          const inContent = viewport()?.contains(r.target);   // 从内容区里摘下来的（见开头「DOM」）
+          for (const img of imgs) { if (loaded(img)) { current.removedImages++; if (inContent && visible.has(img)) current.removedVisible++; } }
         }
         for (const img of imgs) { seen.unobserve(img); visible.delete(img); }
       }

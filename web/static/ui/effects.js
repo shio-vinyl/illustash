@@ -43,7 +43,7 @@ export async function afterJob(job, change) {
     if (change.arrived) {
       listChanged();
       await refreshMeta().catch(e => error(readError(e)));
-      // 面板页自己重画（首页的按天分组和计数来自它自己的读取，同步落定后重画一次）。
+      // 面板页自己重画（按天视图的分组和计数来自它自己的读取，同步落定后重画一次）。
       if (!pageOf(state.route).panel && !selCount()) reload();
       else if (!SYNC_ACTIVE.includes(state.sync.status)) pageOf(state.route).refresh?.('sync');
     }

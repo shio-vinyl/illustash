@@ -19,11 +19,15 @@ export const dayLabel = day => { const [y, m, d] = day.split('-').map(Number); c
   return diff === 0 ? t('今天') : diff === 1 ? t('昨天') : dateText(y, m, d, y !== now.getFullYear()); };
 export const monthText = (y, m) => I18N.language === 'zh-CN' ? `${y} 年 ${m} 月` : new Intl.DateTimeFormat(I18N.locale, {year: 'numeric', month: 'short'}).format(new Date(+y, m - 1, 1));
 export const work = w => (w || '').replaceAll('_', ' ');
+// 太长的名字截短（卡片上的芯片、页头的角色筛选、选择栏的按钮）。
+export const short = name => name.length > 28 ? name.slice(0, 26) + '…' : name;
 // 缩略图档位（#452）：原生端 thumb 长边 400、medium 长边 800。cssPx 是调用处估的显示尺寸（CSS 像素），乘屏幕倍率
 // 换成物理像素，超过 260 用 medium。倍率按 1 封底，1 倍屏的结果和只看 CSS 像素时一样。倍率每次画的时候读：窗口
 // 拖到倍率不同的屏幕后，下次重画换档。
 export const screenScale = (dpr = globalThis.devicePixelRatio) => Math.max(1, Number(dpr) || 1);
 export const thumbSize = (cssPx, dpr) => cssPx * screenScale(dpr) > 260 ? 'medium' : 'thumb';
+/** 一张图的地址：size 是 thumb、medium、preview 或 full。 */
+export const imageUrl = (uuid, size = 'thumb') => `/image?id=${encodeURIComponent(uuid)}&size=${size}`;
 // 大小按十进制（1 MB = 10⁶ 字节，和 macOS 的访达一致）。bytes 带单位；megabytes 只给数字，接在写好「MB」的文案里，
 // 10 MB 以下留一位小数。
 export const bytes = n => n >= 1e9 ? (n / 1e9).toFixed(1) + ' GB' : n >= 1e6 ? (n / 1e6).toFixed(1) + ' MB' : Math.round(n / 1e3) + ' KB';

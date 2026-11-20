@@ -7,6 +7,7 @@
 //   justifiedRows / justified  等高行：图库网格的原始比例模式（规则见 docs/WEB_V2.md「浏览界面」），按天、画廊也用
 //   masonry                    瀑布：固定列宽，每张放进当前最矮的一列
 //   dayMosaic                  按天的马赛克：左边一张大图，右边两行小图，放不下的收成最后一格上的「+N」
+//   strip                      一行：等高、按宽高比从前往后放到放不下，不拉满（活页条的悬停预览，#706）
 //   monthGrid / cellTiles      日历：某月的格子（含前后月补齐的日子），以及格内 1 / 2 / 4 张图的拼法
 //
 // 宽高比：尺寸还不知道的图，调用方先用 estimateRatio 估（照网格的做法），再交进来。瀑布和马赛克另外兜底：0、负数、
@@ -130,6 +131,20 @@ export function dayMosaic(input, {width, rowHeight, gap = 0}) {
   }
   if (i < n) boxes[boxes.length - 1].more = n - i + 1;
   return {boxes, height: bigH, shown: boxes.length};
+}
+
+// ---------- 一行 ----------
+// 一样高的一行，宽度按宽高比（截上下限，未知的按 3:4），从前往后放，再放一张会超出 max 时停下：放几张由排得下多少
+// 决定。不拉满，图宽取整。第一张自己就超出 max 时限成 max（总有一张）。返回 {boxes, width}，width 是这一行实际的宽。
+export function strip(ratios, {height, max, gap = 0}) {
+  const boxes = [];
+  let x = 0;
+  for (let i = 0; i < ratios.length; i++) {
+    const w = Math.min(max, Math.round(clampRatio(usable(ratios[i])) * height)), at = boxes.length ? x + gap : 0;
+    if (boxes.length && at + w > max) break;
+    boxes.push({i, x: at, y: 0, w, h: height}); x = at + w;
+  }
+  return {boxes, width: x};
 }
 
 // ---------- 日历 ----------

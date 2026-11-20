@@ -10,12 +10,12 @@ window.CENSUS = {
   "css/galleries.css": "f446c432133be7ce4e2c04c29933f3a849f227b4b15ff09a8a187b1c52b52959",
   "css/library.css": "bd927b63d0d0e7c358debc37e1d8df580695c70ba717a2f95e6cc00e07eb53f0",
   "css/overlays.css": "3e18fddd6cbc8c59478a35b978d51868e4c93aeb4a075a98139d54696dd2601a",
-  "css/rail.css": "e8339d17b9e6fd37141bcd6e921e06e826af94ed25a2aff9c3d121729865f47d",
+  "css/rail.css": "a475eff836627de4e7bbab82ed1864e7cba7c7e5aec530043c15e53882577d7a",
   "css/settings.css": "f4308d031d40a2d389ce6477ebdd14cbd1d5292358f311fe56406034ffd475f6",
   "css/tidy.css": "0dae765ffbd6e5e96298c7b5ad97a2d9a64c085d13ae8bd0ad0d82c49e536bec",
   "css/tokens.css": "ab5cbeb02f1a7698ba0942dbb02c7b11addb0b63812b8e85bbb49d0400646214"
  },
- "sha256": "ae14335183cce81555398a051808bc74aa1dd67aadb9a3cba98c77832a548280",
+ "sha256": "a97c2226fb334347fee8acb2656076c095a89de2ad4422ada39c46270eff6494",
  "lines": 1720,
  "rules": 1378,
  "themeVars": {

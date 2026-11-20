@@ -146,24 +146,30 @@ test('时间轴的一项点了去哪：日历里去那个月，按天、网格�
   assert.deepEqual(rail.viewRoute({...r, at: '2026-10-02'}, 'grid'), {page: 'library', q: 'miku', day: '2026-11-01', has: ['fav']});
 });
 
-// 悬停预览（#706 补）：一样高的一行，按原图宽高比排、放得下几张放几张；只有一张时高一些；圆头像是正圆；不知道宽高的先按方的。
-test('预览的一行：按宽高比排，放到一行放不下为止', () => {
+// 悬停预览（#706 补）：从项里挑图、定行高，排法交给 core/layout.js 的 strip（那边的测试管放几张、上下限）。
+test('预览的一行：挑哪些图、行高；记下的比例当作已知的', () => {
   const {PEEK, peekRow} = rail;
-  const tall = id => ({id, w: 700, h: 1000}), wide = id => ({id, w: 1200, h: 900});
-  const portraits = peekRow(['a', 'b', 'c', 'd'].map(tall));
-  assert.equal(portraits.h, PEEK.h);
-  assert.deepEqual(portraits.pics.map(p => p.w), [59, 59, 59, 59]);
-  assert.equal(portraits.width, 59 * 4 + PEEK.gap * 3);
-  const landscapes = peekRow(['a', 'b', 'c', 'd'].map(wide));
-  assert.deepEqual(landscapes.pics.map(p => p.id), ['a', 'b']);   // 第三张放不下就不放
-  assert.ok(landscapes.width <= PEEK.max);
-  assert.deepEqual(peekRow([{id: 'x', w: 100, h: 1000}, {id: 'y', w: 5000, h: 100}]).pics.map(p => p.w), [50, 168]);   // 太窄、太宽的限在 0.6–2
-  const solo = peekRow([{id: 'c'}]);
-  assert.deepEqual([solo.h, solo.pics[0].w, solo.pics[0].known], [PEEK.solo, PEEK.solo, false]);   // 不知道宽高：先按方的
-  const faces = peekRow(['a', 'b'].map(id => ({id})), {round: true});
+  const tall = id => ({id, w: 700, h: 1000});
+  const day = peekRow({peek: ['a', 'b', 'c', 'd'].map(tall)});
+  assert.deepEqual([day.h, day.pics.map(p => p.id), day.pics.map(p => p.w)], [PEEK.h, ['a', 'b', 'c', 'd'], [59, 59, 59, 59]]);
+  assert.equal(day.width, 59 * 4 + PEEK.gap * 3);
+  // 没给 peek：只放封面，排高一些；宽高未知时问 ratioOf，再没有按 3:4
+  assert.deepEqual(peekRow({cover: 'c'}).pics, [{id: 'c', x: 0, w: 96}]);
+  assert.equal(peekRow({cover: 'c'}).h, PEEK.solo);
+  assert.deepEqual(peekRow({cover: 'c'}, id => id === 'c' ? .6 : 0).pics[0].w, 77);
+  // 作品的角色：圆头像，正圆、小一些
+  const faces = peekRow({peek: [{id: 'a'}, {id: 'b'}], peekRound: true});
   assert.deepEqual([faces.h, ...faces.pics.map(p => p.w)], [PEEK.face, PEEK.face, PEEK.face]);
-  assert.deepEqual(peekRow([]).pics, []);
-  assert.deepEqual(peekRow([{id: ''}, null]).pics, []);
+  assert.deepEqual(peekRow({}).pics, []);
+  assert.deepEqual(peekRow({peek: [{id: ''}, null]}).pics, []);
+});
+
+// PEEK.gap 要和 css/rail.css 里 .rail-peek-pics 的 gap（--space-4）一致：脚本按它算一行多宽。
+test('预览图之间的缝和样式一致', () => {
+  const fs = require('node:fs'), path = require('node:path'), root = path.join(__dirname, '..', 'web', 'static');
+  const rule = fs.readFileSync(path.join(root, 'css', 'rail.css'), 'utf8').match(/\.rail-peek-pics\{[^}]*gap:var\((--space-\d+)\)/);
+  const token = fs.readFileSync(path.join(root, 'css', 'tokens.css'), 'utf8').match(new RegExp(rule[1] + ':(\\d+)px'));
+  assert.equal(Number(token[1]), rail.PEEK.gap);
 });
 
 test('时间轴的预览：日期是这一天的样图，月、年是每天的头一张；都带主色', () => {

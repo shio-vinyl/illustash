@@ -69,7 +69,7 @@
   font-size:var(--fs-11);font-style:normal;font-weight:var(--fw-750);line-height:17px;text-align:center;box-shadow:0 0 0 2px var(--canvas)}
 .rail-heart{position:absolute;top:-5px;right:-5px;display:grid;place-items:center;width:18px;height:18px;border-radius:var(--radius-round);background:var(--fav);box-shadow:0 0 0 2px var(--canvas)}
 .rail-heart>svg{width:10px;height:10px;fill:var(--on-image);stroke:var(--on-image)}
-/* 悬停：像从一叠卡里抽出来，相邻的项微微探出（ui/rail.js 给它们加 .is-hover / .is-near） */
+/* 悬停：像从一叠卡里抽出来，相邻的项微微探出（ui/rail_peek.js 给它们加 .is-hover / .is-near） */
 .rail-item.is-hover{transform:translateX(8px)}
 .rail-item.is-near{transform:translateX(3px)}
 .rail-item.is-hover .rail-cover{box-shadow:var(--shadow-hover)}
@@ -82,10 +82,10 @@
 .rail-ind{position:absolute;top:0;left:0;width:4px;height:26px;border-radius:0 var(--radius-4) var(--radius-4) 0;background:var(--accent);opacity:0;pointer-events:none;
   transition:transform var(--dur-3) var(--ease-spring),opacity var(--dur-1) var(--ease)}
 .rail-ind.is-on{opacity:1}
-/* 悬停预览：一张玻璃卡，画在二级层外面（position: fixed），不被滚动区裁掉。位置由 ui/rail.js 写进 translate（进出场的动画用
-   transform，两个不打架），已经开着时换到别的项沿 translate 滑过去。上面一行图按真实宽高比排（宽高由 ui/rail.js 写，一行最宽 288），
+/* 悬停预览：一张玻璃卡，画在二级层外面（position: fixed），不被滚动区裁掉。位置由 ui/rail_peek.js 写进 translate（进出场的动画用
+   transform，两个不打架），已经开着时换到别的项沿 translate 滑过去。上面一行图按真实宽高比排（宽高由 ui/rail_peek.js 写，一行最宽 288），
    卡片随内容变宽；标题一栏不撑宽卡片（width: 0 + min-width: 100%），只跟着图的宽度折行。只有文字时（整理的队列）标题一栏自己定宽。
-   圆角嵌套：卡片 12、内边距 8，里面的图 4。 */
+   圆角嵌套：卡片 12、内边距 8，里面的图 4。左边压进二级层 6px（像从这一叠后面抽出来）；窄窗口的抽屉层级比卡片高，那时贴着抽屉的右边放。 */
 .rail-peek{position:fixed;top:0;left:0;z-index:var(--z-popover);display:grid;width:max-content;padding:var(--space-8);pointer-events:none;transform-origin:0 50%;
   box-shadow:var(--shadow-pop),var(--shadow-hover)}
 .rail-peek.is-glide{transition:translate var(--dur-2) var(--ease)}
@@ -123,7 +123,7 @@
 /* ---- 标志上的图库切换（ui/library_pop.js） ---- */
 .library-pop{position:fixed;top:var(--space-12);left:80px;z-index:var(--z-menu);width:280px;padding:var(--space-12)}
 .library-pop-in{display:grid;gap:var(--space-12)}
-.library-now,.library-list{display:grid;gap:var(--space-2)}
+.library-now,.library-list,.library-rows{display:grid;gap:var(--space-2)}
 .library-now>small,.library-list>small{color:var(--muted);font-size:var(--fs-11)}
 .library-now>b{color:var(--ink);font-size:var(--fs-13);font-weight:var(--fw-750)}
 .library-now>span,.library-row>span{overflow:hidden;color:var(--muted);font-size:var(--fs-11);white-space:nowrap;text-overflow:ellipsis}

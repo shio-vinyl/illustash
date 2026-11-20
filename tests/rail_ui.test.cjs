@@ -174,3 +174,87 @@ test('悬停预览：延后的量和写到时悬停的已经不是这一项，�
   assert.equal(peek.hidden, true);
   delete peek.animate; delete globalThis.innerHeight;
 });
+
+// 可维护性另审（PR #762 review 5986175714）指出的三处，以及离开后的计时器顺延。
+const fakeAnimate = el => {
+  const calls = [];
+  el.animate = frames => { calls.push(frames); let reject; const finished = new Promise((_, r) => { reject = r; }); finished.catch(() => {}); return {finished, cancel: () => reject(new Error('取消')), finish() {}}; };
+  return calls;
+};
+const frames = () => new Promise(r => setTimeout(r, 60));
+const dayItems = () => [...$('railItems').children].filter(g => !g.hidden).flatMap(g => g.children).filter(x => x.dataset.kind === 'day' && !x.inert);
+
+test('换入口时预览收起：指针停在一项上按 ⌘2，旧项的预览不留在新那组上', async () => {
+  rail.railRoute({page: 'days', q: '', has: [], not: []});
+  for (let i = 0; i < 3; i++) await tick();
+  globalThis.innerHeight = 800;
+  const peek = $('railPeek');
+  $('railItems').dispatchEvent({type: 'pointerover', target: {closest: () => dayItems()[0]}});
+  await frames();
+  assert.equal(peek.hidden, false);
+  rail.railRoute({page: 'characters'});
+  await new Promise(r => setTimeout(r, 400));
+  assert.equal(peek.hidden, true);
+  delete globalThis.innerHeight;
+});
+
+test('焦点进项、同一帧又滚动：卡片照常放进场，不从旧位置滑过来', async () => {
+  rail.railRoute({page: 'days', q: '', has: [], not: []});
+  for (let i = 0; i < 5; i++) await tick();
+  globalThis.innerHeight = 800;
+  const peek = $('railPeek'), calls = fakeAnimate(peek), el = dayItems()[1];
+  el.focus();
+  $('railItems').dispatchEvent({type: 'focusin', target: {closest: () => el}});
+  $('railLayer').dispatchEvent({type: 'scroll'});
+  await frames();
+  assert.equal(calls.length, 1);   // 进场放了
+  assert.equal(peek.classList.contains('is-glide'), false);
+  $('railItems').dispatchEvent({type: 'focusout'});
+  await new Promise(r => setTimeout(r, 500));
+  delete peek.animate; delete globalThis.innerHeight;
+});
+
+test('宽高未知的图读到尺寸后记下比例：第二次悬停同一项还是按它的比例', async () => {
+  const core = await web.load('core/rail.js');
+  rail.railRoute({page: 'days', q: '', has: [], not: []});
+  for (let i = 0; i < 3; i++) await tick();
+  core.timeline.items = core.groupTimeline([{day: '2026-11-18', count: 1, cover: 'solo'}]);   // 老数据：只有封面、没有宽高
+  await core.timeline.changed.emit();
+  globalThis.innerHeight = 800;
+  const peek = $('railPeek'), first = () => peek.querySelectorAll('img')[0];
+  const over = () => $('railItems').dispatchEvent({type: 'pointerover', target: {closest: () => dayItems()[0]}});
+  over();
+  assert.equal(first().style.width, '96px');   // 先按 3:4
+  Object.assign(first(), {naturalWidth: 600, naturalHeight: 1000});
+  first().dispatchEvent({type: 'load'});
+  assert.equal(first().style.width, '77px');   // 读到 0.6
+  rail.railRoute({page: 'characters'});   // 收起
+  await new Promise(r => setTimeout(r, 300));
+  rail.railRoute({page: 'days', q: '', has: [], not: []});
+  for (let i = 0; i < 3; i++) await tick();
+  over();
+  assert.equal(first().style.width, '77px');   // src 没变、不再来 load，也还是 0.6
+  delete globalThis.innerHeight;
+});
+
+test('离开的计时器顺延：离开、回到另一项、又离开，从最后一次离开起再等满才收', async () => {
+  rail.railRoute({page: 'days', q: '', has: [], not: []});
+  for (let i = 0; i < 3; i++) await tick();
+  const core = await web.load('core/rail.js');
+  core.timeline.items = core.groupTimeline(['2026-11-18', '2026-11-17'].map(day => ({day, count: 1, cover: 'u'})));
+  await core.timeline.changed.emit();
+  globalThis.innerHeight = 800;
+  const peek = $('railPeek'), [a, b] = dayItems(), wait = ms => new Promise(r => setTimeout(r, ms));
+  $('railItems').dispatchEvent({type: 'pointerover', target: {closest: () => a}});
+  await frames();
+  $('railItems').dispatchEvent({type: 'pointerleave'});
+  await wait(50);
+  $('railItems').dispatchEvent({type: 'pointerover', target: {closest: () => b}});
+  await wait(50);
+  $('railItems').dispatchEvent({type: 'pointerleave'});
+  await wait(60);   // 第一次离开已过 160ms，最后一次才 60ms
+  assert.equal(peek.hidden, false);
+  await wait(150);
+  assert.equal(peek.hidden, true);
+  delete globalThis.innerHeight;
+});

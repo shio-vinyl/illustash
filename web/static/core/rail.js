@@ -10,6 +10,7 @@
 //          不给时预览只放封面（有的话）；peekRound 为真时画成圆头像（作品的角色）
 //   color  这一项的主色（十六进制），悬停预览拿它做很淡的环境光和彩色投影；没有时用中性色
 import {castWorks} from './catalog.js';
+import {aspect, strip} from './layout.js';
 import {listeners} from './events.js';
 import {favoritesOnly} from './favorites.js';
 import {t} from './i18n.js';
@@ -105,6 +106,8 @@ export function galleryItems(covers = {}) {
 // 最近 RECENT 天各是一项（日期封面）；更早的、和最新那天同一年的按月（叠成一摞的封面，写月份）；再早的按年。
 // 用户 2026-11-19 看概念稿时定（#706）。days 是按日期从新到旧的 [{day: 'YYYY-MM-DD', count, cover}]。
 export const RECENT = 5;
+// 一项的预览最多带几张图：一行最宽 PEEK.max，竖图大约放得下五六张，再多也排不下。
+export const PEEK_POOL = 8;
 export function groupTimeline(days) {
   if (!days.length) return [];
   const year = days[0].day.slice(0, 4), items = [], buckets = new Map();
@@ -125,31 +128,25 @@ export function groupTimeline(days) {
   });
   return items;
 }
-// 一项的预览最多带几张图：一行最宽 PEEK.max，竖图大约放得下五六张，再多也排不下。
-export const PEEK_POOL = 8;
-
-// ---------- 悬停预览：一行图按真实宽高比排 ----------
-// 预览里的图排成一行、一样高，宽度按原图的宽高比（太窄、太宽的限在 PEEK.ratio 之间，裁掉一点），从前往后放，放到一行
-// 放不下为止：放几张由排得下多少决定，不写死。只有一张时排得高一些（角色、画廊的封面）。圆头像（作品的角色）是正圆，小一些。
-// 尺寸和 css/rail.css 的 .rail-peek 一致：gap 是 --space-4。返回 {h, width, pics: [{id, w}]}，没有图时 pics 是空的。
-export const PEEK = {h: 84, solo: 128, face: 56, max: 288, gap: 4, ratio: [0.6, 2]};
-export function peekRow(pics = [], {round = false} = {}) {
-  const list = pics.filter(p => p?.id), h = round ? PEEK.face : list.length === 1 ? PEEK.solo : PEEK.h, out = [];
-  let width = 0;
-  for (const p of list) {
-    const r = round ? 1 : p.w > 0 && p.h > 0 ? Math.min(PEEK.ratio[1], Math.max(PEEK.ratio[0], p.w / p.h)) : 1;
-    const w = Math.min(PEEK.max, Math.round(r * h)), next = width + (out.length ? PEEK.gap : 0) + w;
-    if (out.length && next > PEEK.max) break;
-    out.push({id: p.id, w, known: round || (p.w > 0 && p.h > 0)}); width = next;
-  }
-  return {h, width, pics: out};
-}
-
 // 按天视图滚到某一天时选中哪一项（C1 调 ui/rail.js 的 selectDay）：那一天在时间轴里就是它，否则是它所在的月，再否则是年。
 export function itemForDay(items, day) {
   if (!day) return '';
   for (const key of ['d:' + day, 'm:' + day.slice(0, 7), 'y:' + day.slice(0, 4)]) if (items.some(x => x.key === key)) return key;
   return '';
+}
+
+// ---------- 悬停预览：从项里挑图、定行高 ----------
+// 预览里的图排成一样高的一行（core/layout.js 的 strip：按宽高比从前往后放到放不下，不写死几张）。这里定行高：只有一张时
+// 排得高一些（角色、画廊的封面），圆头像（作品的角色）是正圆、小一些，其余 84。宽高比：项里带了原图宽高就用它，
+// 否则问 ratioOf(id)（ui/rail_peek.js 记着读到过的图的比例），都没有时按 3:4。项没给 peek 时只放封面（有的话）。
+// 尺寸和 css/rail.css 一致：gap 是 .rail-peek-pics 的 --space-4（tests/rail.test.cjs 对过）；edge 是卡片离窗口上下边至少
+// 留的距离，tuck 是卡片左边压进二级层的距离（像从这一叠卡后面抽出来）。返回 {h, width, pics: [{id, x, w}]}。
+export const PEEK = {h: 84, solo: 128, face: 56, max: 288, gap: 4, edge: 8, tuck: 6};
+export function peekRow(item, ratioOf = () => 0) {
+  const round = !!item?.peekRound, list = (item?.peek?.length ? item.peek : item?.cover ? [{id: item.cover}] : []).filter(p => p?.id);
+  const h = round ? PEEK.face : list.length === 1 ? PEEK.solo : PEEK.h;
+  const {boxes, width} = strip(list.map(p => round ? 1 : aspect({width: p.w, height: p.h}) || ratioOf(p.id)), {height: h, max: PEEK.max, gap: PEEK.gap});
+  return {h, width, pics: boxes.map(b => ({id: list[b.i].id, x: b.x, w: b.w}))};
 }
 
 // 读时间轴：从这个月起按 /api/calendar 的 prev 一个月一个月往前读（#718：每天的张数和最多四张样图；没有按月汇总的接口，

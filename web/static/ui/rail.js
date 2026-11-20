@@ -16,10 +16,10 @@
 //   railRoute(route)       换页时（ui/shell.js applyRoute）：点亮入口和项，收起窄窗口的抽屉，需要时重读时间轴
 //
 // 动效（都经 ui/motion.js，「减少动态效果」时直接到终态）：切一级时标签带回弹滑过去（CSS 过渡，--dur-3、--ease-spring），
-// 旧的二级项依次退场、新的依次进场；悬停二级项时它探出来，相邻的项微微探出，旁边浮出预览（画在二级层外面，不被滚动区裁掉）；
-// 指示条跟着选中项滑；时间轴、钉住的项增减时其余平滑让位。
+// 旧的二级项依次退场、新的依次进场；悬停二级项时它探出来，相邻的项微微探出，旁边滑出预览卡（ui/rail_peek.js）；
+// 指示条跟着选中项滑；时间轴、钉住的项增减时其余平滑让位；二级层滚动时上下边缘渐隐（下面的「滚动与渐隐」）。
 import {ENTRIES, entryHref, forgetTimeline, galleryItems, itemForDay, loadPins, loadTimeline, movePin, noteLibraryView, pinItems, pins, queues, railAt,
-  tidyWaiting, timeline, timelineHref} from '../core/rail.js';
+  railEdges, railReveal, tidyWaiting, timeline, timelineHref} from '../core/rail.js';
 import {FAV, coversFor, favGallery, previewOf} from '../core/galleries.js';
 import {number} from '../core/format.js';
 import {I18N, t} from '../core/i18n.js';
@@ -32,6 +32,7 @@ import {attr, cls, css, make, show, text, tpl} from './el.js';
 import {keyed} from './keyed.js';
 import {app} from './scope.js';
 import {animate, countTo, enter, exit, reduced} from './motion.js';
+import {buildPeek, followScroll, hover, hoveredItem} from './rail_peek.js';
 import {createLayer} from './overlay.js';
 import {$} from './dom.js';
 
@@ -51,7 +52,6 @@ const ICONS = {
   gallery: tpl`<svg viewBox="0 0 20 20" aria-hidden="true"><rect x="3" y="4.5" width="14" height="11" rx="2"/><path d="m3.5 13.5 4-4 3 3 2-2 4 4"/></svg>`,
 };
 const iconOf = x => x.kind === 'queue' ? x.key : x.kind === 'gallery' && !x.cover ? (x.key === 'fav' ? 'fav' : 'gallery') : '';
-const PEEK = tpl`<div class="rail-peek-in"><b data-ref="title"></b><small data-ref="meta"></small><span class="rail-peek-pics" data-ref="pics"></span></div>`;
 
 const s = app.child('rail');
 const providers = new Map(), pickers = new Map(), lists = new Map();
@@ -60,6 +60,8 @@ const monthName = new Intl.DateTimeFormat(I18N.locale, {month: 'short'});
 const thumb = id => id ? `/image?id=${encodeURIComponent(id)}&size=thumb` : '';
 const itemsOf = box => box ? [...box.children].filter(x => !x.inert) : [];
 const itemAt = (box, key) => itemsOf(box).find(x => x.dataset.key === key) || null;
+// 二级层可见的内容变了（换入口、换模式、收起抽屉）或悬停的项被摘掉：预览立刻收起，不留在新的那组上。
+const dropHover = el => { if (!el || el === hoveredItem()) hover(null, {now: true}); };
 
 // ---------- 一项 ----------
 function mark(item) {
@@ -115,6 +117,7 @@ function listFor(entry) {
       if (!box.hidden && !list.leaving && pitch) animate(el, [{transform: `translateY(${(from - to) * pitch}px)`}, {transform: 'none'}], {dur: 3, ease: 'spring'});
     },
     exit: async el => {
+      dropHover(el);
       if (box.hidden) return;
       list.leaving++;
       await exit(el, {to: [{opacity: 1, transform: 'none'}, {opacity: 0, transform: 'translateX(-14px) scale(.6)'}], remove: false});
@@ -142,6 +145,7 @@ function measure() {
   if (all.length > 1) pitch = all[1].offsetTop - all[0].offsetTop;
   const y = el ? el.offsetTop + el.offsetHeight / 2 - 13 : null;
   s.write(() => { css($('railInd'), 'transform', y === null ? null : `translateY(${y}px)`); cls($('railInd'), 'is-on', y !== null); }, 'rail:ind');
+  edges();
 }
 const visibleBox = () => temp?.list.box || lists.get(current)?.box;
 export function select(key) {
@@ -151,8 +155,7 @@ export function select(key) {
   }
   s.read(measure, 'rail:measure');
   const el = itemAt(visibleBox(), selected);
-  if (el) s.read(() => { const box = $('railLayer'), top = el.offsetTop, h = el.offsetHeight;
-    if (top < box.scrollTop || top + h > box.scrollTop + box.clientHeight) s.write(() => { box.scrollTop = Math.max(0, top - box.clientHeight / 2); }, 'rail:scroll'); }, 'rail:reveal');
+  if (el) s.read(() => reveal(el, true), 'rail:reveal');
 }
 export function selectDay(day) { if (current === 'library') select(itemForDay(timeline.items, day)); }
 // 队列的数字滚到新值（带千位分隔）；滚完经 ui/el.js 的 text() 写一次终值，好让写入缓存和屏幕上的一致，之后元数据带回的值照常能写进去。
@@ -183,6 +186,7 @@ function settle(toBox) {
 }
 let wanted = null;   // 最近一次切换要显示的那组
 async function swap(fromBox, toBox) {
+  dropHover();
   const gen = ++swapping;
   wanted = toBox;
   const quick = reduced() || !fromBox || fromBox.hidden || fromBox === toBox;
@@ -222,7 +226,7 @@ export function mode(name, items = [], hint = '') {
   }
   if (!temp) {
     const box = group('mode:' + name);
-    temp = {name, list: {box, leaving: 0, keyed: keyed(box, {key: x => x.key, create: itemWidget, scope: s})}};
+    temp = {name, list: {box, leaving: 0, keyed: keyed(box, {key: x => x.key, create: itemWidget, scope: s, exit: dropHover})}};
     temp.list.keyed.set(items);
     swap(lists.get(current)?.box, box).catch(() => {});
   } else temp.list.keyed.set(items);
@@ -242,25 +246,21 @@ export function railRoute(route) {
   setDrawer(false, 'silent');
 }
 
-// ---------- 悬停：抽卡和预览 ----------
-let hovered = null;
-function hover(el) {
-  if (hovered === el) return;
-  if (hovered) for (const x of [hovered, hovered.previousElementSibling, hovered.nextElementSibling]) x?.classList.remove('is-hover', 'is-near');
-  hovered = el;
-  const peek = $('railPeek');
-  if (!el || el.inert) { peek.hidden = true; return; }
-  el.classList.add('is-hover');
-  el.previousElementSibling?.classList.add('is-near'); el.nextElementSibling?.classList.add('is-near');
-  const x = el.railItem, {el: body, refs} = PEEK();
-  text(refs.title, x.label); text(refs.meta, x.meta || ''); show(refs.meta, !!x.meta);
-  for (const id of (x.peek || []).slice(0, 3)) { const img = make('img'); img.alt = ''; img.src = thumb(id); refs.pics.append(img); }
-  show(refs.pics, !!x.peek?.length);
-  peek.replaceChildren(body);
-  s.read(() => {
-    const r = el.getBoundingClientRect();
-    s.write(() => { css(peek, 'transform', `translate(${Math.round(r.right + 14)}px,${Math.round(r.top + r.height / 2)}px) translateY(-50%)`); peek.hidden = false; }, 'rail:peek');
-  }, 'rail:peek-read');
+// ---------- 滚动与渐隐 ----------
+// 二级层（#railScroll）比窗口长时自己滚动，上下边缘渐隐（遮罩在 css/rail.css 的 .rail-scroll）：已经往下滚过才有上边、下面还有内容
+// 才有下边，由这里写 is-fade-top / is-fade-bottom（core/rail.js 的 railEdges）。滚动、尺寸变了都只排一个读（'rail:edges'），在读里量、
+// 在写里改，同一帧只跑一次。外层的 #railLayer 不滚：窄窗口里它是抽屉，底色和投影画在它上面，不跟着遮罩淡掉。
+const scroller = () => $('railScroll');
+function edges() {
+  const box = scroller(), e = railEdges({scroll: box.scrollTop, view: box.clientHeight, total: box.scrollHeight});
+  s.write(() => { cls(box, 'is-fade-top', e.top); cls(box, 'is-fade-bottom', e.bottom); }, 'rail:edges');
+}
+// 让一项完整露出来，不被渐隐盖住（core/rail.js 的 railReveal）：选中时放到中间，键盘焦点到了边缘附近时只滚到刚好露出。
+// 读阶段里调；滚动写进 'rail:scroll'，同一帧里选中和焦点都要滚时以后排的为准。
+function reveal(el, center) {
+  const box = scroller();
+  const to = railReveal({top: el.offsetTop, h: el.offsetHeight, scroll: box.scrollTop, view: box.clientHeight, total: box.scrollHeight}, center);
+  if (to !== null) s.write(() => { box.scrollTop = to; }, 'rail:scroll');
 }
 
 // ---------- 钉住的项拖动排序（#684） ----------
@@ -273,7 +273,7 @@ function moveDrag(e) {
   if (!drag || e.pointerId !== drag.id) return;
   const dy = e.clientY - drag.y;
   if (!drag.moved && Math.abs(dy) < 5) return;
-  if (!drag.moved) { drag.moved = true; drag.el.setPointerCapture?.(e.pointerId); cls(drag.el, 'is-dragging', true); hover(null); }
+  if (!drag.moved) { drag.moved = true; drag.el.setPointerCapture?.(e.pointerId); cls(drag.el, 'is-dragging', true); hover(null, {now: true}); }
   css(drag.el, 'transform', `translateY(${dy}px)`);
 }
 function endDrag(e) {
@@ -294,8 +294,9 @@ function endDrag(e) {
 const drawer = createLayer({kind: 'popover', id: 'rail-drawer', el: () => $('railLayer'), anchor: () => $('sidebarToggle'), focusIn: 'first',
   onDismiss: reason => setDrawer(false, reason)});
 function setDrawer(open, reason) {
+  const was = $('rail').classList.contains('is-drawer');
   cls($('rail'), 'is-drawer', open); attr($('sidebarToggle'), 'aria-expanded', String(open));
-  if (open) { drawer.open(); s.read(measure, 'rail:measure'); } else drawer.close(reason);
+  if (open) { drawer.open(); s.read(measure, 'rail:measure'); } else { if (was) dropHover(); drawer.close(reason); }
 }
 
 // ---------- 键盘 ----------
@@ -336,6 +337,7 @@ function pick(el, e) {
 // ---------- 启动 ----------
 export function wireRail() {
   wired = true;
+  buildPeek(s);
   provide('tidy', () => queues());
   provide('galleries', () => galleryItems(galleryCovers));
   provide('catalog', () => pinItems());
@@ -357,20 +359,30 @@ export function wireRail() {
   s.add(onJob((job, change) => { if (job === 'sync' && change.arrived && current === 'library') loadTimeline(state.route, {newest: true}).catch(() => {}); }));
   const items = $('railItems');
   s.on(items, 'click', e => { const el = e.target.closest('.rail-item'); if (el && !el.inert) pick(el, e); });
-  s.on(items, 'pointerover', e => hover(e.target.closest('.rail-item')));
+  s.on(items, 'pointerover', e => hover(e.target.closest('.rail-item'), {dwell: true}));
   s.on(items, 'pointerleave', () => hover(null));
-  s.on(items, 'focusin', e => hover(e.target.closest('.rail-item')));
+  // 焦点到了一项：浏览器自己会把它滚进来（css/rail.css 的 scroll-padding 让开渐隐），这里再按渐隐核一次，补上不认 scroll-padding 的情况。
+  s.on(items, 'focusin', e => {
+    const el = e.target.closest('.rail-item');
+    hover(el);
+    if (el && !el.inert) s.read(() => reveal(el, false), 'rail:focus');
+  });
   s.on(items, 'focusout', () => hover(null));
   s.on(items, 'pointerdown', e => { const el = e.target.closest('.rail-item'); if (el) startDrag(e, el); });
   s.on(items, 'pointermove', moveDrag);
   s.on(items, 'pointerup', endDrag);
   s.on(items, 'pointercancel', endDrag);
-  s.on($('railLayer'), 'scroll', () => hover(null), {passive: true});
+  // 滚动：键盘焦点在悬停的那一项上（Tab 走到头时二级层跟着滚）就把预览挪到它的新位置，否则（指针悬停时滚轮）收起；边缘的渐隐跟着变。
+  s.on(scroller(), 'scroll', () => { followScroll(); s.read(edges, 'rail:edges'); }, {passive: true});
   s.on($('sidebarToggle'), 'click', () => setDrawer(!$('rail').classList.contains('is-drawer')));
   // 窗口拉宽到不再是抽屉时，开着的抽屉收起来（不然它一直留在浮层栈里，网格的方向键不响应）。
   const narrow = typeof matchMedia === 'function' ? matchMedia('(max-width: 760px)') : null;
   if (narrow) s.on(narrow, 'change', () => { if (!narrow.matches) setDrawer(false, 'silent'); });
-  if (typeof ResizeObserver === 'function') s.observe(new ResizeObserver(() => s.read(measure, 'rail:measure'))).observe($('railLayer'));
+  // 二级层的高（窗口、抽屉）和里面内容的高（项增减、换组、退场的项摘掉）变了：重放指示条，重算渐隐。
+  if (typeof ResizeObserver === 'function') {
+    const ro = s.observe(new ResizeObserver(() => s.read(measure, 'rail:measure')));
+    ro.observe(scroller()); ro.observe($('railItems'));
+  }
 }
 // 时间轴每一项悬停时写什么：哪天（或哪个月、哪一年）、几张。
 const dayTitle = new Intl.DateTimeFormat(I18N.locale, {month: 'long', day: 'numeric', weekday: 'short'});

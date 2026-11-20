@@ -6,7 +6,11 @@
 //          'w:<作品>'、'unmatched'……）
 //   kind   'day' | 'month' | 'year' | 'gallery' | 'char' | 'work' | 'queue'，决定画成什么样
 //   cover  封面图的 uuid（没有时画占位色）；count 是数字角标（整理的队列）；first 是月、年里最新的那一天（点它滚到那里）
+//   peek   悬停预览里排的图 [{id, w?, h?}]（w、h 是原图的宽高，用来按真实宽高比排；没有时按图读到以后的样子排）。
+//          不给时预览只放封面（有的话）；peekRound 为真时画成圆头像（作品的角色）
+//   color  这一项的主色（十六进制），悬停预览拿它做很淡的环境光和彩色投影；没有时用中性色
 import {castWorks} from './catalog.js';
+import {aspect, strip} from './layout.js';
 import {galleryHref, isFav, isManual, withFav} from './galleries.js';
 import {listeners} from './events.js';
 import {favoritesOnly} from './favorites.js';
@@ -105,20 +109,25 @@ export function galleryItems(covers = {}) {
 // 最近 RECENT 天各是一项（日期封面）；更早的、和最新那天同一年的按月（叠成一摞的封面，写月份）；再早的按年。
 // 用户 2026-11-19 看概念稿时定（#706）。days 是按日期从新到旧的 [{day: 'YYYY-MM-DD', count, cover}]。
 export const RECENT = 5;
+// 一项的预览最多带几张图：一行最宽 PEEK.max，竖图大约放得下五六张，再多也排不下。
+export const PEEK_POOL = 8;
 export function groupTimeline(days) {
   if (!days.length) return [];
   const year = days[0].day.slice(0, 4), items = [], buckets = new Map();
   days.forEach((d, i) => {
-    if (i < RECENT) { items.push({key: 'd:' + d.day, kind: 'day', day: d.day, first: d.day, count: d.count, cover: d.cover, peek: (d.samples || []).slice(1, 4), label: d.day}); return; }
+    const pics = d.samples?.length ? d.samples : d.cover ? [{id: d.cover}] : [];
+    if (i < RECENT) { items.push({key: 'd:' + d.day, kind: 'day', day: d.day, first: d.day, count: d.count, cover: d.cover, color: d.color || null, peek: pics, label: d.day}); return; }
     const sameYear = d.day.slice(0, 4) === year, key = sameYear ? 'm:' + d.day.slice(0, 7) : 'y:' + d.day.slice(0, 4);
     let b = buckets.get(key);
     if (!b) {
-      b = {key, kind: sameYear ? 'month' : 'year', first: d.day, last: d.day, days: 0, count: 0, cover: d.cover, cover2: null, peek: [], label: key.slice(2)};
+      b = {key, kind: sameYear ? 'month' : 'year', first: d.day, last: d.day, days: 0, count: 0, cover: d.cover, cover2: null, color: d.color || null, peek: [], label: key.slice(2)};
       buckets.set(key, b); items.push(b);
     }
     b.last = d.day; b.days++; b.count += d.count;
     if (!b.cover2 && d.cover && d.cover !== b.cover) b.cover2 = d.cover;
-    if (b.peek.length < 3 && d.cover && d.cover !== b.cover) b.peek.push(d.cover);
+    // 月、年的预览：每天的头一张，从新到旧，最多 PEEK_POOL 张（放几张由预览排得下多少决定，见 peekRow）
+    if (b.peek.length < PEEK_POOL && pics[0]) b.peek.push(pics[0]);
+    b.color ||= d.color || null;
   });
   return items;
 }
@@ -129,6 +138,39 @@ export function itemForDay(items, day) {
   return '';
 }
 
+// ---------- 悬停预览：从项里挑图、定行高 ----------
+// 预览里的图排成一样高的一行（core/layout.js 的 strip：按宽高比从前往后放到放不下，不写死几张）。这里定行高：只有一张时
+// 排得高一些（角色、画廊的封面），圆头像（作品的角色）是正圆、小一些，其余 84。宽高比：项里带了原图宽高就用它，
+// 否则问 ratioOf(id)（ui/rail_peek.js 记着读到过的图的比例），都没有时按 3:4。项没给 peek 时只放封面（有的话）。
+// 尺寸和 css/rail.css 一致：gap 是 .rail-peek-pics 的 --space-4（tests/rail.test.cjs 对过）；edge 是卡片离窗口上下边至少
+// 留的距离，tuck 是卡片左边压进二级层的距离（像从这一叠卡后面抽出来）。返回 {h, width, pics: [{id, x, w}]}。
+export const PEEK = {h: 84, solo: 128, face: 56, max: 288, gap: 4, edge: 8, tuck: 6};
+export function peekRow(item, ratioOf = () => 0) {
+  const round = !!item?.peekRound, list = (item?.peek?.length ? item.peek : item?.cover ? [{id: item.cover}] : []).filter(p => p?.id);
+  const h = round ? PEEK.face : list.length === 1 ? PEEK.solo : PEEK.h;
+  const {boxes, width} = strip(list.map(p => round ? 1 : aspect({width: p.w, height: p.h}) || ratioOf(p.id)), {height: h, max: PEEK.max, gap: PEEK.gap});
+  return {h, width, pics: boxes.map(b => ({id: list[b.i].id, x: b.x, w: b.w}))};
+}
+
+// ---------- 二级层滚动时上下边缘的渐隐 ----------
+// 二级层比窗口长时上下滚动，边缘那一段渐隐（css/rail.css 的 .rail-scroll）：上边只在已经往下滚过时有，下边只在下面还有内容时有。
+// FADE 是渐隐的高度，和 css/rail.css 里遮罩的 28px 一起改。量的都是滚动区的数（ui/rail.js 在帧任务的读里量）：
+// scroll 是 scrollTop，view 是 clientHeight，total 是 scrollHeight；top、h 是一项的 offsetTop、offsetHeight（相对滚动区）。
+export const FADE = 28;
+export function railEdges({scroll, view, total}) {
+  return {top: scroll > 1, bottom: scroll + view < total - 1};
+}
+// 一项被渐隐盖住（或在看得见的范围外）时，滚到哪里能让它完整露出来；不用滚时返回 null。
+// center：把它放到中间（选中某项时）；否则只滚到刚好露出（键盘焦点到了边缘附近的项）。滚到头的那一边没有渐隐，不用让。
+export function railReveal({top, h, scroll, view, total}, center = false) {
+  if (![top, h, scroll, view, total].every(Number.isFinite)) return null;
+  const edges = railEdges({scroll, view, total}), above = edges.top ? FADE : 0, below = edges.bottom ? FADE : 0;
+  if (top >= scroll + above && top + h <= scroll + view - below) return null;
+  const want = center ? top + h / 2 - view / 2 : top < scroll + above ? top - FADE : top + h - view + FADE;
+  const to = Math.round(Math.max(0, Math.min(Math.max(0, total - view), want)));
+  return to === Math.round(scroll) ? null : to;
+}
+
 // 读时间轴：从这个月起按 /api/calendar 的 prev 一个月一个月往前读（#718：每天的张数和最多四张样图；没有按月汇总的接口，
 // 几百天的图库要读十几次）。参数是图库的筛选（libraryFilters，三种视图共用）和 NSFW 设置。
 // - 参数没变、也没有写入时不重读（换页、改视图不会触发）；同步到了新图（newest）只重读最新的那个月，更早的沿用。
@@ -136,14 +178,14 @@ export function itemForDay(items, day) {
 // - 换了参数时边读边通知（先看到最近的几个月）；同一组参数重读时读完才换。读失败保留上一次的结果。新的一轮开始时取消上一轮。
 export const timeline = {items: [], params: '', months: new Map(), dirty: true, changed: listeners()};
 let timelineRun = null;
-const samples = list => (list || []).map(x => x?.uuid).filter(Boolean).slice(0, 4);
+const samples = list => (list || []).filter(x => x?.uuid).slice(0, 4).map(x => ({id: x.uuid, w: Number(x.width) || 0, h: Number(x.height) || 0}));
 const thisMonth = (now = new Date()) => `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 export function forgetTimeline() { timeline.dirty = true; }
 function daysOf(months) {
   const days = new Map();
   for (const page of months.values()) for (const d of page.days || []) {
     const pics = samples(d.samples);
-    days.set(d.day, {day: d.day, count: d.count, cover: pics[0] || null, samples: pics});
+    days.set(d.day, {day: d.day, count: d.count, cover: pics[0]?.id || null, samples: pics, color: d.color || null});
   }
   return groupTimeline([...days.values()].sort((a, b) => b.day.localeCompare(a.day)));
 }
@@ -212,10 +254,13 @@ export function pinItems(keys = pins.keys) {
     const id = key.slice(2);
     if (key.startsWith('c:')) {
       const c = state.charMap.get(id); if (!c) return null;
-      return {key, kind: 'char', label: c.name, round: true, cover: c.cover || null, href: hashFor({page: 'library', char: id}), meta: t('{n} 张', {n: number(c.count || 0)})};
+      return {key, kind: 'char', label: c.name, round: true, cover: c.cover || null, color: c.color || null, href: hashFor({page: 'library', char: id}),
+        meta: t('{n} 张', {n: number(c.count || 0)})};
     }
     const w = works.get(id); if (!w || w.pseudo) return null;
+    // 作品的预览是它的角色：一排圆头像（圆形是人）。
     return {key, kind: 'work', label: w.name, cover: w.chars?.[0]?.cover || null, href: hashFor({page: 'library', work: id}),
+      peek: (w.chars || []).filter(c => c.cover).slice(0, PEEK_POOL).map(c => ({id: c.cover})), peekRound: true,
       meta: t('{n} 位角色', {n: number(w.chars?.length || 0)})};
   }).filter(Boolean);
 }

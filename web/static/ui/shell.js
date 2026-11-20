@@ -69,7 +69,7 @@ export async function applyRoute() {
   if (page.guideTick) guideTick(page.guideTick);
   renderChrome();
   // 自己渲染的页面（按天、资料库、设置、按组整理……）换到时从顶部开始，不沿用上一页的滚动位置；后退、前进回到记过
-  // 位置的那一条时，画完再滚回去（restore 让按天视图按上次读到的天数读，见 ui/home.js）。同一页换子视图、刷新时由页面自己
+  // 位置的那一条时，画完再滚回去（restore 让按天视图按上次读到的天数读，见 ui/days.js）。同一页换子视图、刷新时由页面自己
   // 决定留在哪里。网格页由 reload 定位（回到记过的地址时恢复，否则回顶部）。
   const saved = traversed ? panelScroll.get(historyEntry()) : undefined;
   if (page.render && !samePage) $('viewport').scrollTop = 0;

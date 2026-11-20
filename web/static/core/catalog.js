@@ -1,11 +1,13 @@
-// 资料库（#199）：按作品分组的角色和各自最近进了多少张、搜索、作品树，以及外部索引的关注列表。不碰 DOM；书架、列表和
-// 对话框在 ui/catalog.js。tagged、workTree、localLinks 由这里写（字段声明在 core/state.js）；index 由 core/jobs.js 写，
+// 资料库（#199）：按作品分组的角色和各自最近进了多少张、搜索、作品树和作品的样图（#711 作品卡），以及外部索引的关注列表。
+// 不碰 DOM；三个页签在 ui/catalog_page.js 和它导入的几个文件，作品页在 ui/work_page.js，对话框在 ui/catalog.js。tagged、workTree、localLinks 由这里写（字段声明在 core/state.js）；index 由 core/jobs.js 写，
 // 这里经 setIndex 换上新的回应。
 import {t} from './i18n.js';
 import {work} from './format.js';
 import {api, post} from './session.js';
 import {state} from './state.js';
 import {setIndex} from './jobs.js';
+import {pageOf} from './pages.js';
+import {parseHash} from './route.js';
 // 每个角色的最近动态（{recent, last}），每种筛选、每个数据版本读一次。
 export const catalog = {activity: new Map(), activityKey: ''};
 export const recentOf = c => catalog.activity.get(c.id)?.recent || 0;
@@ -21,7 +23,12 @@ export async function loadActivity() {
 export function forgetActivity() { catalog.activityKey = ''; }
 export const searchCharacters = q => api('/api/characters?min=1&q=' + encodeURIComponent(q) + '&nsfw=' + state.nsfw);
 export async function loadTagged() { state.tagged = await api('/api/tagged?' + new URLSearchParams({nsfw: state.nsfw})); }
-export async function loadWorkTree() { state.workTree = await api('/api/works'); }
+// 作品树带每部作品最多四张最近加入的样图和它们的主色（#717 的 marks=color），作品卡和作品页的切片、配色用它；样图跟着 NSFW 设置。
+export async function loadWorkTree() { state.workTree = await api('/api/works?' + new URLSearchParams({marks: 'color', ...(state.nsfw ? {nsfw: state.nsfw} : {})})); }
+// 一部作品的样图 [{uuid, color}]（作品树还没读到、或这部作品没有可见的图时是空的）。
+export const workCovers = id => (state.workTree || []).find(w => w.id === id)?.covers || [];
+// 作品的配色：样图里第一个有主色的；都没有时是 null（界面退回中性色）。
+export const workColor = covers => covers.find(x => x?.color)?.color || null;
 // 名字是 Danbooru tag 的自有角色（只拿这些名字去问 Danbooru；没有就不发请求）。返回是否拿到了回应。
 export async function loadLocalLinks() {
   const found = await api('/api/local-links').catch(() => null);
@@ -31,6 +38,41 @@ export async function loadLocalLinks() {
 }
 // 自建角色的 Danbooru 关联变了：忘掉上一次读到的清单，下次用到时重读。
 export function forgetLocalLinks() { state.localLinks = null; }
+
+// ---------- 海报和作品页的图 ----------
+// 海报每次打开资料库显示随机抽到的一张这个角色的图（#293，先抽只有它一个人的图），连同同一次抽到的最多 12 张给海报的小查看器。
+// 读失败时只有封面。
+export function posterPictures(c) {
+  const offset = Math.floor(Math.random() * Math.max(1, c.count - 11));
+  return api('/api/assets?' + new URLSearchParams({entity: c.id, order: 'newest', offset, limit: 12, count: 0, ...(state.nsfw ? {nsfw: state.nsfw} : {})}))
+    .then(r => {
+      const items = r.items || [], alone = items.filter(x => x.memberships?.length === 1), pool = alone.length ? alone : items;
+      if (!pool.length) return [c.cover];
+      const pick = pool[Math.floor(Math.random() * pool.length)].uuid;
+      return [pick, ...items.map(x => x.uuid).filter(u => u !== pick)];
+    }, () => [c.cover]);
+}
+// 作品页的「最近加入」和横幅的切片：这部作品最近加入的图（带主色）。原创角色、未归作品不是图库的筛选条件，按各个角色读不划算，
+// 用角色的封面顶上。
+export async function workImages(key, signal) {
+  if (key === 'oc' || key === 'other') return castWorks().find(w => w.key === key)?.chars.filter(c => c.cover).slice(0, 24).map(c => ({uuid: c.cover, color: c.color || null})) || [];
+  const r = await api('/api/assets?' + new URLSearchParams({work: key, order: 'newest', limit: 24, count: 0, marks: 'color', ...(state.nsfw ? {nsfw: state.nsfw} : {})}), {signal});
+  return r?.items || [];
+}
+
+// ---------- 返回按来路走（#711） ----------
+// 作品页横幅左上的返回写「回到哪里」：上一条地址是作品页签写「作品」，资料库写「资料库」，另一部作品、某个角色写它的名字，
+// 别的页写活页条上那个入口的名字；没有上一条（刚打开）时去作品页签。
+const ENTRY_NAMES = {library: () => t('图库'), catalog: () => t('资料库'), galleries: () => t('画廊'), tidy: () => t('整理'), settings: () => t('设置')};
+export function backTo(hash) {
+  if (!hash) return {label: t('作品'), href: '#/characters/works', step: false};
+  const r = parseHash(hash);
+  const label = r.page === 'work' ? castWorks().find(w => String(w.key) === r.id)?.name || t('作品')
+    : r.char ? state.charMap.get(r.char)?.name || t('角色')
+    : r.page === 'characters' ? (r.section === 'works' ? t('作品') : r.section === 'artists' ? t('画师') : t('资料库'))
+    : ENTRY_NAMES[pageOf(r).entry]?.() || t('返回');
+  return {label, href: hash, step: true};
+}
 
 // ---------- 按作品分的角色 ----------
 export const workKey = c => c.kind === 'oc' ? 'oc' : c.work_id || 'other';

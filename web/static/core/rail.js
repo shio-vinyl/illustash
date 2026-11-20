@@ -37,7 +37,8 @@ export function railAt(route, char = route.char) {
   const view = viewOf(route, char);
   if (view.gallery) return {entry: 'galleries', item: 'g:' + route.id};
   if (view === CHARACTER) return {entry: 'catalog', item: 'c:' + route.char};
-  // 只按一部作品筛选的图库就是作品页（F #711 另做作品页之前），在资料库下，钉住了就选中它。
+  // 作品页（#711）在资料库下，钉住了就选中它；只按一部作品筛选的图库（作品页上的「在图库里看全部」）也算在那部作品下。
+  if (route.page === 'work') return {entry: 'catalog', item: 'w:' + route.id};
   if (workOnly(route)) return {entry: 'catalog', item: 'w:' + route.work};
   // 按天、日历带着 at（滚到哪一天、看哪个月）时，时间轴选中那一天（或它的月、年）。
   if (view.entry === 'library' && route.at) return {entry: 'library', item: itemForDay(timeline.items, route.at)};
@@ -256,7 +257,7 @@ export function pinItems(keys = pins.keys) {
     }
     const w = works.get(id); if (!w || w.pseudo) return null;
     // 作品的预览是它的角色：一排圆头像（圆形是人）。
-    return {key, kind: 'work', label: w.name, cover: w.chars?.[0]?.cover || null, href: hashFor({page: 'library', work: id}),
+    return {key, kind: 'work', label: w.name, cover: w.chars?.[0]?.cover || null, href: hashFor({page: 'work', id}),
       peek: (w.chars || []).filter(c => c.cover).slice(0, PEEK_POOL).map(c => ({id: c.cover})), peekRound: true,
       meta: t('{n} 位角色', {n: number(w.chars?.length || 0)})};
   }).filter(Boolean);

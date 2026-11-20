@@ -27,6 +27,7 @@ const ROWS = {
   '资料库 · 角色': {hash: '#/characters', page: 'characters', doc: '`#/characters`'},
   '资料库 · 作品': {hash: '#/characters/works', page: 'characters', doc: '`#/characters/works`'},
   '资料库 · 画师': {hash: '#/characters/artists', page: 'characters', doc: '`#/characters/artists`'},
+  '作品页': {hash: '#/w/w1', page: 'work', doc: '`#/w/<作品>`'},
   '设置': {hash: '#/settings/data', page: 'settings', doc: '`#/settings/'},
   '未识别 · 全部': {hash: '#/unmatched', page: 'unmatched', doc: '`#/unmatched`'},
   '未识别 · 已跳过': {hash: '#/skipped', page: 'skipped', doc: '`#/skipped`'},
@@ -103,7 +104,7 @@ test('注册表里的每个页面都在总表里有一行，反过来也是', ()
 const OLD = {
   cleanup: ['unmatched', 'skipped', 'excluded', 'pending', 'group', 'audit', 'sgroup'],
   browsing: ['library', 'duplicates', 'gallery'],
-  panel: ['days', 'calendar', 'characters', 'settings', 'groups', 'similar', 'identity', 'artist-audit', 'galleries'],
+  panel: ['days', 'calendar', 'characters', 'work', 'settings', 'groups', 'similar', 'identity', 'artist-audit', 'galleries'],
   lead: ['unmatched', 'skipped', 'group'],
   // 原来侧栏的高亮：整理一类各页亮的那一项，现在是活页条整理里的那个队列（#706）
   nav: page => ({skipped: 'unmatched', groups: 'unmatched', group: 'unmatched', pending: 'excluded', similar: 'duplicates', sgroup: 'duplicates'})[page] || page,

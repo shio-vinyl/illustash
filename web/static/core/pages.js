@@ -80,6 +80,9 @@ const list = [
   {name: 'galleries', area: 'groupsPage', panel: true, click: 'own', entry: 'galleries', toolbar: 'none', emptyIcon: 'gallery'},
   {name: 'gallery', prefix: 'gallery', ...libraryBase, view: '', click: 'browse', entry: 'galleries', sortPref: 'sortLibrary', gallery: true},
   {name: 'characters', sections: true, area: 'charIndex', panel: true, click: 'own', entry: 'catalog', toolbar: 'index', directory: true, guideTick: 'look', emptyIcon: 'person'},
+  // 作品页（#711）：#/w/<作品键>，从资料库的作品卡、活页条钉住的作品进来；和资料库共用主区。原创角色、未归作品（oc、other）也有这一页，
+  // 只是没有关注、钉住和编辑。
+  {name: 'work', prefix: 'w', area: 'charIndex', panel: true, click: 'own', entry: 'catalog', toolbar: 'none', directory: true, emptyIcon: 'person'},
   {name: 'settings', sections: true, area: 'settingsPage', panel: true, click: 'own', entry: 'settings', toolbar: 'none'},
   // 整理（#706）：未识别、重复、已排除三个页签（tabs 是页签组），随机抽查、身份整理有题时出现在二级层。各页签原来的子页保留。
   {name: 'unmatched', sortPref: 'sortUnmatched', area: 'grid', panel: false, click: 'cleanup', entry: 'tidy', item: 'unmatched', lead: true, tabs: 'unmatched', tab: 'all',

@@ -80,7 +80,7 @@ const FIELD = tpl`<label class="row"><span class="row-text"><span class="row-tit
   <small class="row-hint" data-ref="hint"></small><a class="row-link" data-ref="link" target="_blank" rel="noreferrer noopener" hidden></a>
   <em class="row-warn" data-ref="warn" hidden></em><span class="row-bar" data-ref="bar" hidden><span data-ref="fill"></span></span></span>
   <span class="row-ctrl"><input class="row-input" data-ref="input"><span class="row-unit" data-ref="unit" hidden></span></span></label>`;
-const LIST = tpl`<div class="row-list"><div class="row is-head"><span class="row-text"><span class="row-title"><span class="row-dot" data-ref="dot" hidden></span><b data-ref="label"></b></span>
+const LIST = tpl`<div class="row-list"><div class="row is-head" data-ref="head"><span class="row-text"><span class="row-title"><span class="row-dot" data-ref="dot" hidden></span><b data-ref="label"></b></span>
   <small class="row-hint" data-ref="hint"></small><a class="row-link" data-ref="link" target="_blank" rel="noreferrer noopener" hidden></a>
   <em class="row-warn" data-ref="warn" hidden></em><span class="row-bar" data-ref="bar" hidden><span data-ref="fill"></span></span></span></div>
   <div class="row-items" data-ref="items"></div></div>`;
@@ -252,7 +252,7 @@ export function rows(container, table, {scope: parent = null} = {}) {
       } else if (settled(row, v)) value(refs.input, v);
     }
     if (spec.kind === 'field') { const v = spec.get?.(state); if (settled(row, v ?? '')) value(refs.input, v); }
-    if (spec.kind === 'list') row.list.set(read(spec.items, state) || []);
+    if (spec.kind === 'list') { show(refs.head, read(row.label, state) || h); row.list.set(read(spec.items, state) || []); }
   }
 
   s.add(() => { for (const row of built) { row.list?.dispose(); row.buttons?.dispose(); row.el.remove(); } });

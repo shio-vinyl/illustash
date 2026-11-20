@@ -21,6 +21,9 @@ import {pageOf} from './core/pages.js';
 import {parseHash, stepHistory} from './core/route.js';
 import {applyRoute, wireShell} from './ui/shell.js';
 import {undo, wireGrid} from './ui/grid.js';
+// 选择栏载入时把自己登记进网格（ui/grid_bar.js 的 setBar）；视图选项浮层由 wireViewOptions 接上。
+import './ui/grid_bar.js';
+import {wireViewOptions} from './ui/grid_view.js';
 import {wirePalette} from './ui/palette.js';
 import {wireDetail} from './ui/detail.js';
 // 相似结果页（#449）只在载入时登记它的标题，没有 wire。
@@ -37,6 +40,7 @@ import {wireIntegrity} from './ui/integrity.js';
 import {wireRail} from './ui/rail.js';
 import {wireLibraryPop} from './ui/library_pop.js';
 import './ui/library.js';
+import './ui/calendar.js';
 import './ui/tidy.js';
 platformHints(document.body);
 wireDom();
@@ -54,6 +58,7 @@ window.illustashHistory = stepHistory;
 // 点系统通知时外壳调它：回到窗口并打开任务面板（desktop/src/background.rs，#451）。
 window.illustashOpenTasks = () => openTasks();
 wireGrid();
+wireViewOptions();
 wirePalette();
 wireDetail();
 wireDays();

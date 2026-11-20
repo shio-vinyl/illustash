@@ -78,7 +78,7 @@ test('还没读到时读一次；读取失败写在卡片里', async () => {
   state.index = {state: {status: 'idle'}, works: [], watch: {works: [], min_posts: 50}, check: null, history: [], mb_per_character: 2};
   const calls = [];
   globalThis.fetch = async path => { calls.push(path); return {status: 404, ok: false, headers: {get: () => null}, json: async () => ({error: '没有这个接口'})}; };
-  await characters.load(false);
+  await characters.loadSection(false);
   assert.deepEqual(calls, ['/api/packs']);
   assert.match(card().text, /读取失败：没有这个接口/);
 });

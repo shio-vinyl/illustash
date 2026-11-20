@@ -16,7 +16,9 @@
 import {chooseWork, confirmAction} from '../../web/static/ui/dialog.js';
 import {castPop, openIndexAdd, openTagged, workDialog} from '../../web/static/ui/catalog.js';
 import {editProfile, openLocalLinks, openPicker, openRelate, splitOc, stage} from '../../web/static/ui/palette.js';
-import {renderHelpKeys, renderSelection, renderViewPop} from '../../web/static/ui/grid.js';
+import {renderHelpKeys, renderSelection} from '../../web/static/ui/grid.js';
+import '../../web/static/ui/grid_bar.js';
+import {renderViewPop} from '../../web/static/ui/grid_view.js';
 import {renderTasks, taskPanel} from '../../web/static/ui/tasks.js';
 import {toast, toastMore} from '../../web/static/ui/dom.js';
 import {askBar, detailCard, identities} from '../../web/static/ui/detail_card.js';

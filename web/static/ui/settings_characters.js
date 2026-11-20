@@ -179,7 +179,7 @@ export function build(main, scope) {
 }
 // 进这一节：资料包、检查新角色和角色名称各读一次（还没读到的先显示「正在读取…」）。
 let packError = null;
-export function load(fresh) {
+export function loadSection(fresh) {
   packError = null;
   return Promise.all([loadPack().catch(e => { packError = e; refreshSection(); }), loadRest(fresh)]);
 }

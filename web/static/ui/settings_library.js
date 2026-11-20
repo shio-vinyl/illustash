@@ -51,6 +51,6 @@ export function build(main, scope) {
     ]},
   ], {scope});
 }
-export const load = () => loadLibraries();
+export const loadSection = () => loadLibraries();
 // 页面启动时调用一次：读图库列表（顶栏的图库名要用），接着看有没有在跑的导入。
 export function wireLibrary() { loadLibraries(); pollImports(); }

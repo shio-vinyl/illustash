@@ -1,7 +1,7 @@
 // 设置页的外壳（#199，0.4 第 I 步 #714 改成配置表）：页面登记、七节导航、节的切换和这一页的作用域，以及读取或更改了
 // 设置数据之后重画当前这一节。每节的分组和行写在 ui/settings_<节>.js（配置表，行在 ui/rows.js、分组在
 // ui/settings_group.js）；它们读取和更改的内容在 core/settings.js（任务自己的状态在 core/jobs.js）。
-// 每节导出 {build(main, scope) → {update(state)}, load?(fresh)}：进这一节时建一次，之后数据变了只 update。
+// 每节导出 {build(main, scope) → {update(state)}, loadSection?(fresh)}：进这一节时建一次，之后数据变了只 update。
 import {t} from '../core/i18n.js';
 import {implement, onPage} from '../core/pages.js';
 import {state} from '../core/state.js';
@@ -80,7 +80,7 @@ function render({samePage, scope}) {
   // 进这一页时整页重读；同一页里换节只补还没有的。
   loadSettingsData(!samePage);
   if (id === 'network' || id === 'about') updatesTick();
-  if (entered || !samePage) mod.load?.(!samePage);
+  if (entered || !samePage) mod.loadSection?.(!samePage);
   refreshSettings();
 }
 

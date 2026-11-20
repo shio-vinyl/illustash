@@ -55,8 +55,8 @@ const SNAPSHOT = `(async () => {
     detail: nameOf(S.detail?.uuid ?? S.detail?.asset?.uuid ?? null),
     viewer: S.viewer >= 0 ? nameOf(S.viewerItem?.uuid) ?? ('#' + S.viewer) : null,
     // 网格上画着高亮的卡片：同时有两张「当前」的样子就是指向不一致（#386 的 1-4）。
-    marked: {focused: [...document.querySelectorAll('#grid .card.focused')].map(c => nameOf(c.dataset.id)),
-      cursor: [...document.querySelectorAll('#grid .card.cursor')].map(c => nameOf(c.dataset.id))},
+    marked: {focused: [...document.querySelectorAll('#grid .card[aria-current=true]')].map(c => nameOf(c.dataset.id)),
+      cursor: [...document.querySelectorAll('#grid .card.is-cursor')].map(c => nameOf(c.dataset.id))},
     total: S.total ?? null,
     items: (S.items || []).slice(0, 12).map(x => nameOf(x?.uuid)),
     search: search ? search.value : null,

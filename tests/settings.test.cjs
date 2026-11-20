@@ -139,7 +139,7 @@ test('the names and new-characters cards read their data when they open', async 
     ? {state: {status: 'idle'}, counts: {characters: {total: 2, zh: 1}}}
     : path === '/api/packs' ? null
     : {state: {status: 'idle'}, works: [], watch: {works: [], min_posts: 50}, history: [], mb_per_character: 2}}; };
-  const {load} = await web.load('ui/settings_characters.js'), open = await view('characters');
+  const {loadSection: load} = await web.load('ui/settings_characters.js'), open = await view('characters');
   await load(true);
   await new Promise(resolve => setImmediate(resolve));
   assert.deepEqual(calls.filter(p => p === '/api/names' || p === '/api/index').sort(), ['/api/index', '/api/names']);

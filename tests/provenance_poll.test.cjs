@@ -32,7 +32,7 @@ test('a run is polled from any page and polling stops once it is over', async ()
   assert.deepEqual(h.timers, [1500]);
 });
 test('entering the settings page always reads again', () => {
-  // 「设置 › 画师」每次进来都读一次（ui/settings.js 进这一节时调它的 load）。
+  // 「设置 › 画师」每次进来都读一次（ui/settings.js 进这一节时调它的 loadSection）。
   const artists = fs.readFileSync(require('node:path').join(__dirname, '../web/static/ui/settings_artists.js'), 'utf8');
-  assert.match(artists, /export function load\(\) \{ loadProvenance\(\); loadAccounts\(\); \}/);
+  assert.match(artists, /export function loadSection\(\) \{ loadProvenance\(\); loadAccounts\(\); \}/);
 });

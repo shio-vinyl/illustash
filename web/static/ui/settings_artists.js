@@ -140,4 +140,4 @@ export function build(main, scope) {
   ], {scope});
 }
 // 进这一节：找回画师的状态和账号各读一次（先立即显示缓存的状态）。
-export function load() { loadProvenance(); loadAccounts(); }
+export function loadSection() { loadProvenance(); loadAccounts(); }

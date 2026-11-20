@@ -340,3 +340,34 @@ test('搜索时先发的请求后回来，它的结果不画（页面样板第 5
   assert.deepEqual(drawn, [['全部'], ['ab 的结果']]);
   assert.equal(state.route.q, 'ab');
 });
+
+// NSFW 切换同样换一个新的路由对象（ui/grid.js 的 setNsfw）：按天、日历这类页面在切换前发出的读取晚回来，结果不画。
+test('切换 NSFW 前发出的请求后回来，它的结果不画', async () => {
+  web.fakePage();
+  globalThis.history = {state: null, replaceState() {}};
+  globalThis.window = {addEventListener() {}};
+  globalThis.requestAnimationFrame = () => 0;
+  globalThis.fetch = async () => ({status: 200, ok: true, json: async () => ({})});
+  const {applyRoute} = await web.load('ui/shell.js'), {setNsfw} = await web.load('ui/grid.js');
+  const pending = new Map(), drawn = [];
+  let view = null;
+  const notesView = scope => ({scope, async load(route) {
+    const notes = await new Promise(resolve => pending.set(state.nsfw, resolve));
+    if (!scope.alive || state.route !== route) return;
+    drawn.push(notes);
+  }});
+  const render = ({samePage, scope}) => { if (!samePage || !view?.scope.alive) view = notesView(scope); return view.load(state.route); };
+  pages.implement({calendar: {render, refresh: () => view.load(state.route)}});
+  state.nsfw = '';
+  globalThis.location.hash = '#/calendar';
+  const entered = applyRoute();
+  await new Promise(r => setTimeout(r, 0));
+  const before = state.route;
+  setNsfw('hide');
+  assert.notEqual(state.route, before, '换了新的路由对象');
+  assert.equal(state.route.page, 'calendar');
+  pending.get('hide')(['隐藏 NSFW 的结果']); await new Promise(r => setTimeout(r, 0));
+  pending.get('')(['全部的结果']); await entered;
+  assert.deepEqual(drawn, [['隐藏 NSFW 的结果']]);
+  setNsfw('');
+});

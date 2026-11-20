@@ -77,4 +77,4 @@ export function build(main, scope) {
   ], {scope});
 }
 // 进这一节：找回画师和账号的状态各读一次（名称、模型、更新由外壳和启动时读）。
-export function load() { loadProvenance(); loadAccounts(); }
+export function loadSection() { loadProvenance(); loadAccounts(); }

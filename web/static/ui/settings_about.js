@@ -93,7 +93,7 @@ export function build(main, scope) {
   ], {scope});
 }
 // 进这一节：版本信息（读过就不再读）和诊断记录。
-export function load() {
+export function loadSection() {
   if (!state.about) loadAbout().then(refreshSection, e => toast(e.message));
   diagnosticReport().catch(() => ({available: false, records: []})).then(r => { report = r; refreshSection(); });
 }

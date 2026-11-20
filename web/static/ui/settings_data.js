@@ -88,4 +88,4 @@ export function build(main, scope) {
   ], {scope});
 }
 // 进这一节：人工结论快照读一次（数据库检查、模型状态由各自的模块在启动时读）。
-export function load() { loadHuman(); if (!state.integrity) pollIntegrity(); }
+export function loadSection() { loadHuman(); if (!state.integrity) pollIntegrity(); }

@@ -5,10 +5,12 @@
 // 接住图的地方：活页条上换出来的那组项（键 'fav'、'g:<id>'、'new'），以及页面里带 data-drop 的元素（全部画廊的卡片写画廊 id，
 // 「新建」写 new）。用指针事件自己做，不用 HTML5 拖放：后者在桌面 App 里会和拖到别的应用的系统拖放打架。
 //
-// 给各视图的接口：
-//   wireLift(el, pick, scope)  el 里按住拖动超过 6px 时拿起 pick(按下的元素) 给的那组图（uuid 数组；null 不拖），之后吞掉那次点击。
-//                              展示页（ui/gallery_stage.js）、按天视图用它
-//   lift(ids, e)               已经判断好要拖的（网格里按住已选中的图拖动）：从指针事件 e 的位置拿起
+// 给各视图的接口（和 ui/files.js 的 wireDragOut 同一个写法）：
+//   wireLift(el, ids, when)  el 里按住拖动超过 6px 时拿起 ids(down) 给的那组图（uuid 数组，空的不拖），之后吞掉那次点击。down 是按下时的
+//                            pointerdown 事件：在容器上委托时用 down.target.closest(…) 找按的是哪张；when(down) 为假时不拖。返回 off()，
+//                            交给作用域（scope.add(wireLift(…))）。展示页（ui/gallery_stage.js）、按天视图、详情卡片的预览图用它
+//   lift(ids, e)             已经判断好要拖的（网格里按住已选中的图拖动）：从指针事件 e 的位置拿起
+// 看图器里不拿起（它盖住活页条，没处放），照旧只拖到别的应用（ui/viewer.js 的 wireDragOut）。
 import {number} from '../core/format.js';
 import {t} from '../core/i18n.js';
 import {droppable, galleryOf} from '../core/galleries.js';
@@ -26,21 +28,25 @@ import {mode, railCovers} from './rail.js';
 const SLOP = 6, GHOST = 64, OFFSET = 14;
 let live = null;   // 正在拖：{ids, ghost, x, y, from, target}
 
-export function wireLift(el, pick, scope) {
-  let start = null, dragged = false;
-  const on = (type, fn, options) => scope ? scope.on(el, type, fn, options) : el.addEventListener(type, fn, options);
-  on('pointerdown', e => {
-    dragged = false;
-    const ids = e.button === 0 && e.pointerType !== 'touch' ? pick(e.target) : null;
-    start = ids?.length ? {x: e.clientX, y: e.clientY, ids} : null;
-  });
-  on('pointermove', e => {
-    if (!start || !(e.buttons & 1) || Math.hypot(e.clientX - start.x, e.clientY - start.y) < SLOP) return;
-    const ids = start.ids; start = null; dragged = true;
-    lift(ids, e);
-  });
-  for (const type of ['pointerup', 'pointercancel']) on(type, () => { start = null; });
-  on('click', e => { if (dragged) { e.preventDefault(); e.stopImmediatePropagation(); } dragged = false; }, true);
+export function wireLift(el, ids, when = () => true) {
+  let down = null, dragged = false;
+  const on = {
+    pointerdown: e => { dragged = false; down = e.button === 0 && e.pointerType !== 'touch' && when(e) ? e : null; },
+    pointermove: e => {
+      if (!down || !(e.buttons & 1) || Math.hypot(e.clientX - down.clientX, e.clientY - down.clientY) < SLOP) return;
+      const got = ids(down); down = null;
+      if (got?.length) { dragged = true; lift(got, e); }
+    },
+    pointerup: () => { down = null; },
+    pointercancel: () => { down = null; },
+  };
+  const swallow = e => { if (dragged) { e.preventDefault(); e.stopImmediatePropagation(); } dragged = false; };
+  for (const [type, fn] of Object.entries(on)) el.addEventListener(type, fn);
+  el.addEventListener('click', swallow, true);
+  return () => {
+    for (const [type, fn] of Object.entries(on)) el.removeEventListener(type, fn);
+    el.removeEventListener('click', swallow, true);
+  };
 }
 
 // 拿起：缩略图跟着指针，活页条换成画廊封面。拖着的时候一直在窗口上监听指针，松手、取消或拖出窗口时结束。

@@ -632,6 +632,32 @@ export const FLOWS = [
       w.check('撤销以后拿出来了（网格）', await count('Summer') === before, {before, after: await count('Summer')});
       await w.step('Esc', p => p.key('Escape'));
 
+      // 按天视图、详情卡片的预览图：按住拖到 Summer。
+      const dayBefore = await count('Summer');
+      await w.step('按天视图里按住一张图拖到活页条上的 Summer', async p => {
+        await goto(p, '#/days'); await p.waitFor(`!!document.querySelector('.day-tile[data-id]:not([data-more]) img')`, 15000);
+        await dragOnto(p, '.day-tile[data-id]:not([data-more]) img', 'Summer');
+      }, {shot: true});
+      w.check('按天视图里拖的也放进去了', await count('Summer') === dayBefore + 1, {before: dayBefore, after: await count('Summer')});
+      w.check('拖过以后没打开详情卡片', !await page.eval(`!!document.querySelector('#inspector:not([hidden])')`), '');
+      await w.step('⌘Z 撤销', p => p.key('z', {modifiers: ['Meta']}));
+      await sleep(600);
+      w.check('撤销以后拿出来了（按天）', await count('Summer') === dayBefore, {before: dayBefore, after: await count('Summer')});
+
+      // 详情卡片：点开一张，按住预览图拖到 Summer；拖过以后不开大图。
+      await w.step('图库里点开一张的详情卡片', async p => {
+        await goto(p, '#/library'); await gridReady(p); await p.click('#grid .card[data-index="0"] img');
+        await p.waitFor(`!document.getElementById('inspector').hidden && !!document.querySelector('#inspector .dc-preview img')`, 5000); await sleep(400);
+      });
+      const cardBefore = await count('Summer');
+      await w.step('按住详情卡片的预览图拖到活页条上的 Summer', p => dragOnto(p, '#inspector .dc-preview', 'Summer'), {shot: true});
+      w.check('详情卡片拖的也放进去了', await count('Summer') === cardBefore + 1, {before: cardBefore, after: await count('Summer')});
+      w.check('拖过以后没开大图', await page.eval(`document.getElementById('viewer')?.hidden !== false`), '');
+      await w.step('⌘Z 撤销', p => p.key('z', {modifiers: ['Meta']}));
+      await sleep(600);
+      w.check('撤销以后拿出来了（详情卡片）', await count('Summer') === cardBefore, {before: cardBefore, after: await count('Summer')});
+      await w.step('Esc', p => p.key('Escape'));
+
       // #646：「更多像这张的」页上有条件也没有「保存为画廊」；普通图库上有。
       snap = await w.step('打开「更多像这张的」并加一个条件', async p => {
         await p.eval(`location.hash = '#/library?like=' + encodeURIComponent(JSON.stringify([${JSON.stringify(ids[0])}])) + '&has=' + encodeURIComponent('["fav"]')`);

@@ -88,7 +88,7 @@ function stageView(scope) {
   // 点图开详情，双击看大图；按住拖动是拖进画廊（拖过以后吞掉那次点击）。
   scope.on(refs.stage, 'click', e => { const p = e.target.closest('.piece'); if (p) inspect(p.dataset.id); });
   scope.on(refs.stage, 'dblclick', e => { const p = e.target.closest('.piece'); if (p) openViewer(indexOf(p.dataset.id)); });
-  wireLift(refs.stage, target => { const p = target.closest?.('.piece'); return p ? [p.dataset.id] : null; }, scope);
+  scope.add(wireLift(refs.stage, down => { const p = down.target.closest?.('.piece'); return p ? [p.dataset.id] : []; }));
   scope.on(refs.empty, 'click', e => { if (e.target.closest('[data-empty="nsfw"]')) setNsfw(''); });
   refs.all.onclick = () => { if (!g) return; chooseShow(g.id, ALL_SHOW); location.hash = galleryHref(g.id, ALL_SHOW); };
   return {scope, total: () => data && !data.error ? data.total : null, async load(route) {

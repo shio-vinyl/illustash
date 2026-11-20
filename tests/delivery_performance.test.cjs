@@ -1,5 +1,6 @@
 const test = require('node:test');
 const web = require('./web.cjs');   // core/ 下的模块（#199）
+const dom = require('./dom.cjs');
 test.before(web.ready);
 const assert = require('node:assert/strict');
 const tick = () => new Promise(resolve => setImmediate(resolve));
@@ -87,8 +88,8 @@ test('section updates preserve unaffected nodes and support reorder/removal', ()
   assert.deepEqual(root.children, [cc,b]);
 });
 // 网格在 ui/grid.js，放在假页面上；它的定时器和读取由测试掌控。
-let grid;
-test.before(async () => { grid = await web.load('ui/grid.js'); });
+let grid, rows;
+test.before(async () => { grid = await web.load('ui/grid.js'); rows = await web.load('ui/grid_rows.js'); });
 function gridPage({items = [], total = items.length, scrollTop = 0} = {}) {
   const page = web.fakePage(), {state} = web.core();
   Object.assign(page.el('viewport'), {scrollTop, clientHeight: 200, clientWidth: 202});
@@ -97,32 +98,43 @@ function gridPage({items = [], total = items.length, scrollTop = 0} = {}) {
   return {page, state};
 }
 const quietTimers = () => { const saved = [globalThis.setTimeout, globalThis.requestAnimationFrame]; globalThis.setTimeout = () => 0; return () => { [globalThis.setTimeout, globalThis.requestAnimationFrame] = saved; }; };
-test('virtual grid keeps overlapping cards, updates changed items and relayouts columns', () => {
-  const restore = quietTimers();
+// 网格的卡片是 ui/grid_card.js 的部件（#708，用 ui/el.js 的模板），这一项放在有真节点树的假 DOM（tests/dom.cjs）上。
+test('virtual grid keeps overlapping cards, updates changed items in place and relayouts columns', () => {
+  const restore = quietTimers(), document = dom.install();
   try {
-    const {page, state} = gridPage({items: Array.from({length: 30}, (_, i) => ({uuid: String(i), memberships: [], width: 100, height: 100}))});
-    const el = page.el('grid'), viewport = page.el('viewport'), shown = top => grid.rowStart(Math.min(grid.rowCount(), state.fit ? grid.rowAt(top + 200) + 2 : Math.ceil((top + 200) / state.rowH) + 2)) - grid.rowStart(Math.max(0, grid.rowAt(top) - 2));
-    grid.renderGrid(); const originals = [...el.children]; assert.equal(originals.length, shown(0));
-    viewport.scrollTop = 100; grid.renderGrid();
-    assert.equal(el.children.length, shown(100)); originals.forEach((card, i) => assert.equal(el.children[i], card));
-    state.items[5] = {...state.items[5]}; state.dataVersion++; grid.renderGrid();
-    assert.notEqual(el.children[5], originals[5]); assert.equal(el.children[4], originals[4]);
-    viewport.scrollTop = 400; grid.renderGrid();
-    const first = grid.rowStart(Math.max(0, grid.rowAt(400) - 2));
-    assert.equal(Number(el.children[0].dataset.index), first); assert.equal(el.children[0], originals[first]);
+    const els = {viewport: document.createElement('div'), grid: document.createElement('div'), gridHead: document.createElement('div')};
+    document.getElementById = id => els[id] || null;
+    els.grid.append(els.gridHead); els.viewport.append(els.grid);
+    Object.assign(els.viewport, {scrollTop: 0, clientHeight: 200, clientWidth: 202});
+    const {state} = web.core();
+    Object.assign(state, {size: 100, fit: false, total: 30, items: Array.from({length: 30}, (_, i) => ({uuid: String(i), memberships: [], width: 100, height: 100})),
+      route: {page: 'library'}, dataVersion: 2e6 + Math.random(), gridKey: '', pages: new Set(), pending: new Set(), generation: 1, readEpoch: 0, countDirty: false,
+      sel: {all: false, ids: new Set(), exclude: new Set()}});
+    const cards = () => els.grid.children.filter(c => c !== els.gridHead);
+    const shown = top => rows.rowStart(Math.min(rows.rowCount(), rows.rowAt(top + 200) + 2)) - rows.rowStart(Math.max(0, rows.rowAt(top) - 2));
+    grid.renderGrid(); const originals = cards(); assert.equal(originals.length, shown(0));
+    assert.equal(els.grid.children[0], els.gridHead, '头部留在最前');
+    els.viewport.scrollTop = 100; grid.renderGrid();
+    assert.equal(cards().length, shown(100)); originals.forEach((card, i) => assert.equal(cards()[i], card));
+    // 同一张图的数据变了：节点不换，只改变了的地方
+    state.items[5] = {...state.items[5], memberships: [{id: 'c1', name: '合成甲', status: 'confirmed'}]}; state.dataVersion++; grid.renderGrid();
+    assert.equal(cards()[5], originals[5]); assert.match(cards()[5].getAttribute('aria-label'), /合成甲/);
+    els.viewport.scrollTop = 400; grid.renderGrid();
+    const first = rows.rowStart(Math.max(0, rows.rowAt(400) - 2));
+    assert.equal(Number(cards()[0].getAttribute('data-index')), first); assert.equal(cards()[0], originals[first]);
     state.size = 60; grid.renderGrid();
-    assert.equal(el.children[0].style.left, '0px');
-  } finally { restore(); }
+    assert.match(cards()[0].style.getPropertyValue('transform'), /^translate\(0px, /);
+  } finally { restore(); dom.uninstall(); }
 });
-test('scroll bursts schedule a single render per frame', () => {
-  const callbacks = [], saved = globalThis.requestAnimationFrame;
-  globalThis.requestAnimationFrame = f => { callbacks.push(f); return callbacks.length; };
+test('scroll bursts schedule a single render per frame', async () => {
+  const frame = await web.load('ui/frame.js'), callbacks = [];
+  frame.setScheduler(f => { callbacks.push(f); });
   try {
     const {page} = gridPage(); page.el('grid').hidden = true;
     for (let i = 0; i < 50; i++) grid.scheduleGrid();
     assert.equal(callbacks.length, 1); callbacks.shift()();
     grid.scheduleGrid(); assert.equal(callbacks.length, 1);
-  } finally { globalThis.requestAnimationFrame = saved; }
+  } finally { frame.setScheduler(() => 0); }
 });
 test('pagination skips recount and obsolete completion cannot clear a newer pending page', async () => {
   let finish; const calls = [], restore = quietTimers();

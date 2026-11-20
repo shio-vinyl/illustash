@@ -5,7 +5,7 @@
 const {test, before, beforeEach} = require('node:test');
 const assert = require('node:assert/strict');
 const web = require('./web.cjs');
-let page, pages, route, like, grid, detail, state;
+let page, pages, route, like, grid, detail, state, assets;
 const store = new Map();
 before(async () => {
   await web.ready();
@@ -17,7 +17,7 @@ before(async () => {
   globalThis.innerWidth = 1000; globalThis.innerHeight = 800;
   globalThis.localStorage = {getItem: k => store.has(k) ? store.get(k) : null, setItem: (k, v) => store.set(k, v), removeItem: k => store.delete(k)};
   globalThis.history = {state: null, replaceState() {}};
-  grid = await web.load('ui/grid.js'); grid.wireGrid();
+  grid = await web.load('ui/grid.js'); assets = await web.load('core/assets.js'); grid.wireGrid(); await web.load('ui/grid_bar.js');
   detail = await web.load('ui/detail.js');
   await web.load('ui/like.js');
   pages = await web.load('core/pages.js');
@@ -52,7 +52,7 @@ test('查询带上 like、like_by，叠加图库的筛选；默认排序是「�
   r.sort = r.sort || route.defaultSort(r);
   state.route = r;
   assert.equal(r.sort, 'similar');
-  assert.deepEqual(grid.filters(), {order: 'similar', tag: 'x', q: 'y', like: '["a","b"]', like_by: 'ccip'});
+  assert.deepEqual(assets.gridFilters(), {order: 'similar', tag: 'x', q: 'y', like: '["a","b"]', like_by: 'ccip'});
   assert.deepEqual(pages.LIKE.sorts, ['similar', 'newest', 'oldest']);
   // 默认排序不写进地址；改了的记在相似结果自己的键里，不动图库的默认排序
   assert.equal(route.hashFor(r), `#/library?like=${examples('a', 'b', 'a')}&by=ccip&q=y&tag=x`);
@@ -65,7 +65,7 @@ test('查询带上 like、like_by，叠加图库的筛选；默认排序是「�
   store.clear();
   // 没有例图的图库照旧
   const plain = at('#/library?tag=x'); plain.sort = route.defaultSort(plain); state.route = plain;
-  assert.deepEqual(grid.filters(), {order: 'newest', tag: 'x'});
+  assert.deepEqual(assets.gridFilters(), {order: 'newest', tag: 'x'});
   assert.equal(at('#/library?sort=similar').sort, '', '离开例图「最相似」不再有效');
   state.route = {page: 'library'};
 });
@@ -84,13 +84,13 @@ test('换一组例图：去重、最多 20 张；去掉最后一张回到同样�
 
 test('选择栏：选了 1–20 张时有「更多像这张的／这些的」，全选和超过 20 张时没有', () => {
   const items = Array.from({length: 21}, (_, i) => ({uuid: 'p' + i, memberships: []}));
-  const bar = sel => { Object.assign(state, {route: {page: 'library'}, items, total: items.length, selecting: true, sel}); grid.renderSelection(); return page.el('selectionBar').innerHTML; };
+  const bar = sel => { Object.assign(state, {route: {page: 'library'}, items, total: items.length, selecting: true, sel}); grid.renderSelection(); return web.barButton(page.el('selectionBar'), 'like'); };
   const pick = (...ids) => ({all: false, ids: new Set(ids), exclude: new Set()});
-  assert.match(bar(pick('p0')), /<button class="quiet" data-act="like">更多像这张的<\/button>/);
-  assert.match(bar(pick('p0', 'p1')), /data-act="like">更多像这些的</);
-  assert.match(bar(pick(...items.slice(0, 20).map(x => x.uuid))), /data-act="like"/);
-  assert.doesNotMatch(bar(pick(...items.map(x => x.uuid))), /data-act="like"/);
-  assert.doesNotMatch(bar({all: true, ids: new Set(), exclude: new Set()}), /data-act="like"/);
+  assert.equal(bar(pick('p0'))?.label, '更多像这张的');
+  assert.equal(bar(pick('p0', 'p1'))?.label, '更多像这些的');
+  assert.ok(bar(pick(...items.slice(0, 20).map(x => x.uuid))));
+  assert.equal(bar(pick(...items.map(x => x.uuid))), null);
+  assert.equal(bar({all: true, ids: new Set(), exclude: new Set()}), null);
   state.sel = pick(); state.selecting = false; grid.renderSelection();
 });
 

@@ -72,36 +72,6 @@ p{margin:0;font-size:var(--fs-12);line-height:1.6}
    横向滚动条）或被裁掉。这些页面的宽度不变；按视口决定自身尺寸的图片网格不受影响。 */
 .viewport:has(>.home-page:not([hidden])),.viewport:has(>.char-index:not([hidden])){margin:0 calc(-1 * var(--gutter));padding-left:var(--gutter);padding-right:var(--gutter)}
 .grid{position:relative;width:100%;min-height:1px;user-select:none;-webkit-user-select:none}
-.card{position:absolute;overflow:hidden;display:flex;flex-direction:column;cursor:default;contain:layout style}
-.card.skeleton{animation:shimmer 1.4s linear infinite}
-@keyframes shimmer{to{background-position:-200% 0}}
-.image-stage{position:relative;flex:1;min-height:0;display:flex;align-items:center;justify-content:center}
-.card img{height:100%;width:100%;object-fit:contain;display:block;pointer-events:none}
-.card.square img{object-fit:cover}
-.card.selected img{opacity:.92}
-.card.leaving{opacity:0;transform:scale(.86)}
-.check{position:absolute;z-index:var(--z-page-2);top:7px;left:7px;width:21px;height:21px;border-radius:var(--radius-round);border:1.5px solid #fff;box-shadow:0 0 0 .5px #0003;opacity:0;transition:opacity .12s ease,background .12s ease;cursor:pointer}
-.card:hover .check,.selecting .check{opacity:1}
-.check:hover{background:#00000055;transform:scale(1.08)}
-.card.selected .check{opacity:1;border-color:#fff}
-.card.selected .check::after{content:"";position:absolute;left:6px;top:2.5px;width:5px;height:10px;border:solid #fff;border-width:0 2px 2px 0;transform:rotate(45deg)}
-.machine-dot{position:absolute;right:7px;bottom:7px;width:8px;height:8px;border-radius:var(--radius-round);border:1.5px solid var(--line);box-shadow:0 0 0 .5px #0004;background:transparent}
-/* 收藏的心形（#447）：卡片右下角，收藏过的一直显示实心，没收藏的悬停时出现空心；.still 只显示、不能点（小格子、首页） */
-.fav-mark{position:absolute;z-index:var(--z-page-2);right:4px;bottom:4px;width:26px;height:26px;display:inline-flex;align-items:center;justify-content:center;padding:0;border:0;background:transparent;color:var(--on-image);opacity:0;cursor:pointer;transition:opacity .12s ease,transform .12s ease}
-.fav-mark svg{width:19px;height:19px;fill:transparent;stroke:currentColor;stroke-width:1.7;stroke-linejoin:round;filter:drop-shadow(0 0 1.5px rgba(var(--sh),.55))}
-.card:hover .fav-mark,.fav-mark.on{opacity:1}
-.fav-mark:hover{transform:scale(1.1)}
-.fav-mark.on{color:var(--fav)}
-.fav-mark.on svg{fill:currentColor;stroke:var(--on-image);stroke-width:1.4}
-.fav-mark.still{pointer-events:none}
-.fav-mark.still:not(.on){display:none}
-.machine-dot~.fav-mark{right:18px}
-.chips{position:absolute;left:6px;bottom:6px;display:flex;gap:var(--space-4);flex-wrap:wrap;max-width:calc(100% - 24px)}
-.chips span{font-size:var(--fs-10);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px)}
-.caption{height:28px;display:flex;align-items:center;padding:0 var(--space-8);gap:var(--space-4);flex-shrink:0;overflow:hidden;white-space:nowrap}
-.caption span{overflow:hidden;text-overflow:ellipsis}
-.caption .none{color:var(--muted);font-family:-apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif}
-.caption i{color:var(--faint);font-style:normal}
 .missing{font-size:var(--fs-11);color:var(--muted);display:flex;align-items:center;justify-content:center;height:100%;width:100%;background:var(--soft);text-align:center;padding:var(--space-8)}
 .marquee{position:absolute;z-index:var(--z-page-4);border:1px solid #7d7d95;pointer-events:none}
 .footer{height:36px;display:flex;justify-content:space-between;align-items:center;font-size:var(--fs-11);flex-shrink:0;gap:var(--space-10)}
@@ -164,7 +134,6 @@ dialog.palette{width:520px;padding:0;margin-top:14vh;overflow:hidden}
 }
 @media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 /* 重复 */
-.dup-badge{position:absolute;top:7px;right:7px;padding:var(--space-1) var(--space-8);font-size:var(--fs-11);font-weight:600;font-variant-numeric:tabular-nums;color:#fff;background:hsl(var(--dup-hue) 45% 42%)}
 /* 「更多像这张的」的标题（#449，ui/like.js）：标题、例图、「按画面｜按角色」直接排在 #heading 里。位置不够时先裁例图那一段
    （flex-shrink 大、宽度由页面给 --w），再截短标题和副标题，比较方式不缩。例图点一张看详情，两张以上时悬停出 × 去掉它，
    没有特征、没算进去的变淡，放不下的写「+N」 */
@@ -180,17 +149,6 @@ dialog.palette{width:520px;padding:0;margin-top:14vh;overflow:hidden}
 .like-example.off img{opacity:.35}
 .like-example>.like-drop{position:absolute;top:2px;right:2px;width:16px;height:16px;border-radius:var(--radius-round);background:var(--ink);color:var(--sheet);font-size:var(--fs-10);line-height:16px;opacity:0}
 .like-example:hover>.like-drop,.like-example>.like-drop:focus-visible{opacity:1}
-.dup-badge.folded{background:#0000008a;box-shadow:none;font-weight:500}
-/* 按宽高比的网格：图片自己的方框带着圆环、勾选和角标 */
-.card.fit{background:transparent;overflow:visible}
-.card.fit .image-stage{background:transparent}
-.fit-box{position:relative;overflow:hidden;transition:box-shadow .12s ease}
-.card.fit img{object-fit:cover}
-.card.fit:hover,.card.fit.cursor,.card.fit.focused,.card.fit.selected{box-shadow:none}
-.card.fit .caption{background:transparent}
-.card.fit .fit-box{width:100%;height:100%}
-.card.fit .fit-box.whole img{object-fit:contain}
-.caption small{flex-shrink:0;color:var(--muted);font-size:var(--fs-10);font-weight:600}
 /* 同步状态与设置 */
 .local-dot.busy{background:#c28a2c;animation:pulse 1.2s ease-in-out infinite}
 .local-dot.warn{background:var(--err)}
@@ -340,8 +298,6 @@ dialog.relate{width:min(980px,calc(100vw - 32px));max-height:88vh;overflow:auto}
 .pair-actions .quiet{border:1px solid var(--line)}
 .pair-more{margin:14px 0}
 @media (max-width:700px){.pair-body{grid-template-columns:1fr}.pair-actions .spacer{display:none}}
-.chips .hint-add{font-size:var(--fs-10);background:var(--hint-bg);color:var(--hint-ink);border:0;border-radius:var(--radius-4);padding:var(--space-1) var(--space-6);box-shadow:0 0 0 .5px var(--hint-ring);cursor:pointer;font-family:inherit;overflow:hidden}
-.chips .hint-add:hover{background:var(--hint-bg-hover);color:#fff}
 .picker-staged{display:flex;flex-wrap:wrap;align-items:center;gap:var(--space-6);padding:var(--space-6) var(--space-10);border-bottom:1px solid var(--line)}
 .staged-chip{border:0;border-radius:var(--radius-pill);color:#fff;font-size:var(--fs-12);padding:var(--space-4) var(--space-10);cursor:pointer}
 .staged-chip:hover{opacity:.8}
@@ -466,28 +422,9 @@ select:hover{background-color:rgba(var(--sh),.08)}
 .menu-item:hover,.menu-item.on{background:var(--soft)}
 /* 网格 */
 .viewport{scrollbar-color:var(--scroll-thumb) transparent}
-.card{background:var(--soft);border-radius:var(--radius-10);transition:opacity .18s var(--ease),transform .2s var(--ease),box-shadow .2s var(--ease)}
-.image-stage{background:var(--soft)}
-.card:hover{box-shadow:0 12px 24px -14px rgba(var(--sh),.5)}
-.card.cursor{box-shadow:0 0 0 2px var(--sheet),0 0 0 4px var(--accent-soft)}
-.card.focused{box-shadow:0 0 0 2px var(--sheet),0 0 0 4px var(--accent)}
-.card.selected{transform:scale(.95);box-shadow:0 0 0 2px var(--sheet),0 0 0 4.5px var(--accent)}
-.card.selected .check{background:var(--accent-btn)}
-.check{border-width:1.5px;background:rgba(0,0,0,.18)}
-.caption{background:transparent;font-family:inherit;font-size:var(--fs-11);color:var(--ink2);letter-spacing:0}
-.caption .machine{color:var(--muted)}
-.chips span{background:var(--glass-chip);color:var(--ink2);border-radius:var(--radius-pill);padding:var(--space-1) var(--space-8);box-shadow:none}
-.fit-box{border-radius:var(--radius-8);background:var(--soft)}
-.card.fit:hover .fit-box{box-shadow:0 12px 24px -14px rgba(var(--sh),.5)}
-.card.fit.cursor .fit-box{box-shadow:0 0 0 2px var(--sheet),0 0 0 4px var(--accent-soft)}
-.card.fit.focused .fit-box{box-shadow:0 0 0 2px var(--sheet),0 0 0 4px var(--accent)}
-.card.fit.selected .fit-box{box-shadow:0 0 0 2px var(--sheet),0 0 0 4.5px var(--accent)}
-/* 两端对齐的卡片就是图片本身：图片自己的圆角就是卡片的圆角，它的圆环画在外面，不被裁切。 */
-.card.fit{border-radius:var(--radius-8)}
 .marquee{border-color:var(--accent);background:rgba(124,128,216,.14);border-radius:var(--radius-6)}
 .footer{color:var(--muted)}
 #errorBanner,#damageBanner{border:0;background:var(--tone-warn-bg);color:var(--tone-warn-ink);border-radius:var(--radius-12)}
-.dup-badge{border-radius:var(--radius-pill);box-shadow:none}
 .variant-chip{background:var(--sheet);color:var(--ink2);border-radius:var(--radius-pill);box-shadow:0 0 0 1px var(--hair)}
 /* 选择栏与 toast */
 .selection-bar,.toast{left:calc(50% + 42px)}
@@ -528,7 +465,6 @@ dialog::backdrop{background:rgba(20,20,30,.22);backdrop-filter:blur(3px)}
 }
 input,textarea{color:inherit}
 #pickerSearch{background:transparent}
-.card.skeleton{background:linear-gradient(90deg,var(--soft),var(--line),var(--soft));background-size:200% 100%}
 
 
 /* 视图选项弹出层 */
@@ -553,7 +489,6 @@ input,textarea{color:inherit}
 .view-foot{display:flex;justify-content:space-between;align-items:center;margin:12px 6px 0;font-size:var(--fs-11);color:var(--muted)}
 .view-foot .link-button.strong{color:var(--accent-ink)}
 /* 弹出层控制的开关 */
-.hide-marks .chips>span,.hide-marks .dup-badge.folded,.hide-marks .machine-dot{display:none}
 .hide-footer .footer{display:none}
 .hide-footer .viewport{padding-bottom:var(--space-14)}
 
@@ -800,21 +735,6 @@ body:has(#settingsPage:not([hidden])) .nudge,body:has(#selectionBar:not([hidden]
 .tagged-list>.muted-note{padding:var(--space-10) var(--space-2)}
 
 /* 随机抽查：图的角色标签浮在底部；悬停在标签上显示 ✓ / ✗ */
-.chips .hint-add{max-width:100%;text-overflow:ellipsis;white-space:nowrap}
-.chips.atags{right:6px;max-width:none;gap:var(--space-4)}
-.chips .atag{display:inline-flex;align-items:center;gap:var(--space-2);max-width:100%;padding:var(--space-1) var(--space-4) var(--space-1) var(--space-8)}
-.chips .atag b{font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
-.chips .atag b i{font-style:normal;margin-right:3px}
-.chips .atag button{display:none;border:0;background:transparent;font:inherit;font-size:var(--fs-11);line-height:1;padding:var(--space-2) var(--space-4);border-radius:var(--radius-pill);cursor:pointer;color:var(--ink2)}
-.chips .atag:hover{padding-right:var(--space-2)}
-.chips .atag:hover button{display:inline-block}
-.chips .atag button[data-tagact=yes]:hover{background:#2f8f5b;color:#fff}
-.chips .atag button[data-tagact=no]:hover{background:#c2463d;color:#fff}
-.chips span.atag.checked.open{background:var(--atag-open-bg);color:var(--atag-open-ink);box-shadow:0 0 0 1px var(--atag-open-ring)}
-.chips span.atag.checked.yes{background:var(--atag-yes-bg);color:var(--atag-yes-ink)}
-.chips span.atag.checked.no{background:var(--atag-no-bg);color:var(--atag-no-ink)}
-.chips span.atag.checked.no b{text-decoration:line-through}
-.hide-marks .chips.atags>span{display:inline-flex}
 
 /* 未识别 · 按组整理：每个相似分组一节，在它的标题栏里回答 */
 .gsecs{display:flex;flex-direction:column;gap:var(--space-14)}

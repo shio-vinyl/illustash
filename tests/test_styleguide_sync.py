@@ -158,8 +158,8 @@ class StyleguideSyncTest(unittest.TestCase):
     def test_live_import_without_export_is_reported(self):
         # 模拟产品代码把只为清单页导出的函数改回内部函数（或改了名）。
         with Tree() as tree:
-            tree.replace(STATIC / 'ui/grid.js', 'export function renderViewPop() {', 'function renderViewPop() {')
-            error = self.assertOne(tree.errors(), '[样式清单 · live]', 'renderViewPop', 'web/static/ui/grid.js', '没有导出')
+            tree.replace(STATIC / 'ui/grid_view.js', 'export function renderViewPop() {', 'function renderViewPop() {')
+            error = self.assertOne(tree.errors(), '[样式清单 · live]', 'renderViewPop', 'web/static/ui/grid_view.js', '没有导出')
             self.assertRegex(error, r'live\.js 第 \d+ 行')
 
     def test_live_import_of_missing_module_is_reported(self):

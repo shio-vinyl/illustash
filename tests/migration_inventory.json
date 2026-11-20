@@ -233,7 +233,7 @@
 
  "native/terms/src/app_commands.rs":"039c843feb0c0c9eb7aba20a3aafc4d43481a560d4b6f20abc13dfb417089c8f",
 
- "native/terms/src/app_create.rs":"5e03c8700917c3721be392d1dc38f1352f8ac16b8509574ddcd8e54a149bff1a",
+ "native/terms/src/app_create.rs":"2aef717d28a0848a50396c75309436a232223ae37f883e47d71462362c15fc44",
 
  "native/terms/src/app_create_names.sql":"29fb8b712603ad5bfd49a20b82162ead37a45e781f949d5e1c9678bd42fa8f7f",
 
@@ -397,7 +397,7 @@
 
  "native/terms/src/http_browse.rs":"64d1354f17df1a8ed3eeedaec7ea7f5899ea9c847b6d9bcd6b04579533c71315",
 
- "native/terms/src/http_characters.rs":"03e4c82c04a2708b576a26a6c8dbbd49834f7bf4126240f06e17da4827478f9e",
+ "native/terms/src/http_characters.rs":"950b68d3b80befe3eb53ace5ceb2f9f61757100b75c3a22450905b5452c3e5c5",
 
  "native/terms/src/http_example_search.rs":"1b479b900eac347f73924504558a886153a06eaeb74c0b2d5e5cb28a1a758994",
 
@@ -409,7 +409,7 @@
 
  "native/terms/src/http_local.rs":"ca8ecfa9bae02238143782e8064510e0b2820eeb76c94fcc1626409f7e34714e",
 
- "native/terms/src/http_read.rs":"45cbebcd5532fef02f9b8252fa80ed85a1d2602fcc6b3f247fcef237a946a9ed",
+ "native/terms/src/http_read.rs":"baa9149eaa81dbe31ec4828c5f7ea8ad4373e4d277e31c5ca7d71b78ec97a7f6",
 
  "native/terms/src/image_samples/mod.rs":"3322652e6cd2806e1c739a67ecca850060eb2d4d2c9fd49d74d1ade3bafbefd6",
 
@@ -639,7 +639,7 @@
  "desktop/src/server.rs":{"entrypoint":[[4,3]]},
  "crates/core/src/character_sql/lead_assets.sql":{"database-write":["INSERT INTO:lead_assets"]},
  "native/terms/src/wd_pending.rs":{"database-write":[[0,2]]},
- "native/terms/src/http_characters.rs":{"http-branch":[[85,4],[240,2],[16,2],[82,2],[84,3],[91,3],[93,4]],"database-write":[187,202]},
+ "native/terms/src/http_characters.rs":{"http-branch":[[85,4],[240,2],[16,2],[82,2],[84,3],[91,3],[93,4],"/api/character/together"],"database-write":[187,202]},
  "crates/core/src/character_graph.rs":{"database-write":{"INSERT OR IGNORE INTO:term_identity_baseline":1,"dynamic-or-wrapper":7,"ATTACH":3,"DELETE FROM:reprojected":1,"INSERT INTO:reprojected":1,"INSERT OR REPLACE INTO:identity_suspended":1,"DELETE FROM:graph_projection":1,"INSERT INTO:graph_projection":1,"DELETE FROM:identity_canonical":1,"INSERT INTO:identity_canonical":1,"UPDATE:set":1,"UPDATE:term_tree":1,"UPDATE:terms":1,"INSERT OR REPLACE INTO:meta":1}},
  "native/terms/src/app_source_empty.sql":{"database-write":["CREATE TABLE:assets","CREATE TABLE:labels","CREATE INDEX:idx_labels_dim_val","CREATE INDEX:idx_labels_uuid","CREATE TABLE:decisions","CREATE TABLE:runs","CREATE TABLE:embeddings","CREATE TABLE:characters","CREATE TABLE:character_aliases"]},
  "native/terms/src/app_settings.rs":{"database-write":[[0,3],27,5,[1,2],34]},

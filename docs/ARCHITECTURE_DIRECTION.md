@@ -210,6 +210,8 @@ Tauri 桌面外壳（`desktop/`）只负责启动核心 HTTP 命令、管理窗�
 - **R3（7 个）**：`/api/assets`、`/api/assets/count`、`/api/ids`、`/api/detail`、`/api/home`、`/api/fold`、`/api/review-pools`。包括现有筛选、排序、分页、可见性、NSFW、作品树、画师和 `pool=cluster|similar` 的持久化分组查询；详情组装包括源库标签和来源库帖子。
 - **R4（8 个）**：`/api/characters`、`/api/tagged`、`/api/character/profile`、`/api/character/activity`、`/api/character/stats`、`/api/identity/count`、`/api/identity/queue`、`/api/bootstrap`。保留未设置/hybrid 策略、summary、封面分配、首次命中、去重、分页、历史重渲染和会话字段；其他读取见下节。
 
+`GET /api/character/together?id=<角色>&nsfw=<筛选>&limit=<数量>` 返回指定角色的同框次数。结果为 `[{id, count}]`，按次数降序、同数按角色 ID 升序排列。`limit` 为正整数，默认 6。`nsfw` 与角色统计共用分级和可见性条件。双方均须在同一张图上有正式归属（人工确认或机器认定），并排除自身及只当标签的角色。
+
 ### 本地、外部与任务读取
 
 `/api/ask`、静态/图片、设置、图库、宿主信息、同步、名称、索引、账号和溯源状态均由原生实现处理。本地分组和已有特征/缓存可以在 worker 缺席时读取；按需研究计算走显式可选 worker，不启动旧 HTTP 宿主。未知接口或缺失研究能力明确返回 unavailable；Host/Origin/会话校验失败直接拒绝。远程名字/作品查询、网络授权及各任务具体协议见本篇对应章节。全部人工 POST、统一历史与撤销由原生业务模块提交。

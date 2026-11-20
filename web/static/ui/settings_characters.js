@@ -8,6 +8,7 @@ import {state} from '../core/state.js';
 import {workName} from '../core/catalog.js';
 import {charHash} from '../core/route.js';
 import {loadPack} from '../core/packs.js';
+import {readError} from '../core/session.js';
 import {INDEX_ACTIVE, NAMES_ACTIVE, indexLine, namesLine, indexAction, checkIndex, pollIndex, pollNamesSoon} from '../core/jobs.js';
 import {loadIndex, loadNames, loadCoverage, indexCoverage, saveModelApi, testModelApi} from '../core/settings.js';
 import {confirmAction} from './dialog.js';
@@ -114,7 +115,7 @@ export function build(main, scope) {
   let keyInput = null;
   const view = groups(main, [
     {key: 'pack', title: packName(), scope: 'library', note: s => s.pack ? packNote(s.pack) : '', parts: [
-      {kind: 'info', key: 'packReading', label: t('正在读取…'), hidden: s => !!s.pack},
+      {kind: 'info', key: 'packReading', label: () => packError ? readError(packError) : t('正在读取…'), hidden: s => !!s.pack},
       {kind: 'action', key: 'packStatus', hidden: s => !s.pack, label: s => packLine(s.pack), hint: s => packHintText(s.pack), link: s => packManual(s.pack),
        dot: s => packDot(s.pack) || '', progress: s => packProgress(s.pack),
        buttons: s => [...packButtons(s.pack), ...(packHasTask(s.pack) ? [{act: 'tasks', label: t('在任务面板查看')}] : [])],
@@ -177,8 +178,12 @@ export function build(main, scope) {
   }};
 }
 // 进这一节：资料包、检查新角色和角色名称各读一次（还没读到的先显示「正在读取…」）。
+let packError = null;
 export function load(fresh) {
-  loadPack().catch(e => toast(e.message));
+  packError = null;
+  return Promise.all([loadPack().catch(e => { packError = e; refreshSection(); }), loadRest(fresh)]);
+}
+function loadRest(fresh) {
   if (fresh || !state.index) loadIndex().then(refreshSection, e => toast(e.message));
   if (fresh || !state.names) loadNames().then(() => { refreshSection(); if (NAMES_ACTIVE.includes(state.names?.state?.status)) pollNamesSoon(); }, e => toast(e.message));
 }

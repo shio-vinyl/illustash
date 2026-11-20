@@ -15,7 +15,7 @@ import {$, toast, error} from './dom.js';
 import {attr, make} from './el.js';
 import {closeInspector} from './detail.js';
 import {undo} from './grid.js';
-import {drawNudge} from './guide.js';
+import {drawGuide, drawNudge} from './guide.js';
 import {onHumanClick, wireHuman} from './human.js';
 import {onRefresh} from './settings_group.js';
 import {drawUpdateButton, selfUpdate, setTasksBusy, updateAct} from './updates.js';
@@ -89,7 +89,7 @@ function onNamesClick(e) {
   const allow = e.target.closest('[data-names-allow]'); if (!allow) return false;
   e.preventDefault();
   const input = allow.closest('dialog, .combo, .watch-add, #picker')?.querySelector('input');
-  setNamesNetwork(true).then(ok => { if (ok) { input?.focus(); input?.dispatchEvent(new Event('input', {bubbles: true})); } });
+  setNamesNetwork(true).then(ok => { if (ok) { drawGuide(); input?.focus(); input?.dispatchEvent(new Event('input', {bubbles: true})); } });
   return true;
 }
 // 导览里更新提示的按钮（data-updates）。

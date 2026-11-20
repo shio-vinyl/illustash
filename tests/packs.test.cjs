@@ -29,6 +29,11 @@ const READY = {status: 'ready', have: 2214393};
 const ENABLED = {enabled: true, version: '0.1', wd: true, ccip: true, images: 7, assigned: 3, checked_at: '2026-11-16 08:00:00'};
 const buttons = html => [...html.matchAll(/<button class="([^"]+)" data-pack="([^"]+)"([^>]*)>([^<]*)</g)].map(m => ({cls: m[1], act: m[2], attrs: m[3], label: m[4]}));
 const labels = html => buttons(html).map(b => b.label);
+// 设置卡片上的按钮是数据（packButtons、packOfferInfo，#714）：换成和上面一样的形状来比。
+const B = list => (list || []).map(b => ({act: b.act, label: b.label, cls: `${b.primary ? 'primary' : 'quiet'} small`, attrs: b.disabled ? ` disabled title="${b.title}"` : ''}));
+const offer = x => B(c.packOfferInfo(x)?.buttons);
+const info = x => c.packInfoItems(x).map(i => `${i.text}: ${i.hint}`).join('\n');
+const results = x => c.packResultItems(x).map(i => i.hint ? `${i.text} · ${i.hint}` : i.text).join('\n');
 beforeEach(() => { c.state.pack = null; c.session.token = 'library-a'; c.session.stale = false; });
 
 test('没下载：主按钮写明两个文件合起来的大小，可以从文件导入，有手动下载说明', () => {
@@ -39,10 +44,10 @@ test('没下载：主按钮写明两个文件合起来的大小，可以从文�
   assert.deepEqual(b.map(x => [x.act, x.label]), [['download', '下载角色资料包（约 2.2 MB）'], ['import', '从文件导入…']]);
   assert.match(b[0].cls, /primary/);
   assert.match(c.packHint(x), /手动下载说明/);
-  assert.doesNotMatch(c.packStatus(x), /data-open-tasks/);
+  assert.equal(c.packHasTask(x), false);
   assert.equal(c.packBar(x), '');
   assert.deepEqual(labels(c.packActions(x, true)), ['下载角色资料包（约 2.2 MB）'], '任务面板只放主按钮');
-  assert.doesNotMatch(c.packInfo(x), /data-pack="delete"/);
+  assert.deepEqual(c.packDeleteButtons(x), []);
   assert.equal(c.packNote(x), '多认 282 个 WD 词表和角色索引里没有的角色。');
 });
 
@@ -71,7 +76,7 @@ test('下载中：进度、速度、来源、代理和取消；失败时写原�
   const failed = pack({download: {kind: 'download', status: 'failed', message: '连接被重置', failures: [{source: 'github.com', why: '超时'}]}});
   assert.equal(c.packLine(failed), '角色资料包没能下载：连接被重置');
   assert.equal(c.packDot(failed), 'warn');
-  assert.match(c.packFailures(failed), /github.com：超时/);
+  assert.match(results(failed), /github.com：超时/);
   assert.equal(labels(c.packActions(failed))[0], '重试');
   assert.equal(c.packLine(pack({download: {kind: 'download', status: 'cancelled'}})), '已取消');
 });
@@ -82,7 +87,7 @@ test('坏 ZIP 导入后，卡片和任务都写出文件名和原因', () => {
   for (const current of [{}, READY]) {
     const x = pack({current, download});
     assert.equal(c.packDot(x), 'warn');
-    assert.match(c.packStatus(x), /角色资料包没能导入：bad\.zip 不是有效的 ZIP 文件/);
+    assert.equal(c.packLine(x), message);
     assert.equal(c.packTask(x).line, message);
     assert.equal(c.packTask(x).warn, true);
     assert.equal(c.downloadText(download, pack(), x), message);
@@ -165,53 +170,54 @@ test('失败和取消：图库没有改动；CCIP 部分在 WD 部分提交以�
 });
 
 test('折叠区：存放位置、两个组成部分的文件、版本和许可；就位时可以删除', () => {
-  const html = c.packInfo(pack({current: READY}));
-  assert.match(html, /Illustash\/Shared\/extensions · 所有图库共用/);
-  assert.match(html, /WD 扩展头<\/td><td class="mono" title="SHA-256 (ab)+"><bdi>wd-extension-v1.bin<\/bdi> · 941 KB · abababababab… · 228 个角色/);
-  assert.match(html, /CCIP 长尾锚点<\/td>.*<bdi>A-longtail-p75.zip<\/bdi> · 1.3 MB · d3d3d3d3d3d3… · 54 个角色/);
-  assert.match(html, /<td>0\.1（测试版） · 282 个角色<\/td>/);
-  assert.match(c.packInfo(pack({current: {...READY, version: '1.0', stage: 'release'}})), /<td>1\.0 · 282 个角色<\/td>/);
-  assert.match(html, /data-pack="delete"/);
-  assert.match(c.packInfo(pack({current: READY, task: {id: 't', kind: 'enable', status: 'running', phase: 'scan'}})), /data-pack="delete" disabled/);
-  assert.equal(c.packInfo({}), '');
+  const text = info(pack({current: READY}));
+  assert.match(text, /存放位置: .*Illustash\/Shared\/extensions · 所有图库共用/);
+  assert.match(text, /WD 扩展头: wd-extension-v1.bin · 941 KB · abababababab… · 228 个角色/);
+  assert.match(text, /CCIP 长尾锚点: A-longtail-p75.zip · 1.3 MB · d3d3d3d3d3d3… · 54 个角色/);
+  assert.match(text, /版本: 0\.1（测试版） · 282 个角色/);
+  assert.match(info(pack({current: {...READY, version: '1.0', stage: 'release'}})), /版本: 1\.0 · 282 个角色/);
+  assert.deepEqual(B(c.packDeleteButtons(pack({current: READY}))).map(b => [b.act, b.attrs]), [['delete', '']]);
+  assert.deepEqual(B(c.packDeleteButtons(pack({current: READY, task: {id: 't', kind: 'enable', status: 'running', phase: 'scan'}}))).map(b => b.attrs),
+    [' disabled title="正在下载或检查，等它结束再删除"']);
+  assert.deepEqual(c.packInfoItems({}), []);
 });
 
 const OFFER = (fields = {}) => ({version: '0.2', stage: 'preview', revision: 2, heads: 311, candidate_only: 0, license: 'Apache-2.0 AND MIT',
   builtin: false, note: {'zh-CN': '比第一版多认 29 个角色', en: '29 more characters than the first version'}, size: 2338740,
   status: 'missing', have: 0, downloading: false, ...fields});
 
-test('卡片正文：还没读到时只有省略号；新版本一行在按钮之后、折叠区之前', () => {
-  assert.equal(c.packCardBody(null), '<p class="muted-note">…</p>');
-  const body = c.packCardBody(pack({current: READY, library: ENABLED, offer: OFFER()}));
-  assert.ok(body.indexOf('有新版本') > body.indexOf('data-pack="withdraw"') && body.indexOf('有新版本') < body.indexOf('角色资料包</summary>'));
+test('卡片：还没读到时没有按钮；已启用时有撤回，新版本单独一行', () => {
+  assert.deepEqual(c.packButtons(null), []);
+  const x = pack({current: READY, library: ENABLED, offer: OFFER()});
+  assert.ok(c.packButtons(x).some(b => b.act === 'withdraw'));
+  assert.match(c.packOfferInfo(x).what, /有新版本/);
 });
 
 test('有新版本：没下载时下载，下了一部分接着下，正在下载时进度在状态行，下好后已启用的图库可以换', () => {
   const enabled = fields => pack({current: READY, library: ENABLED, offer: OFFER(fields)});
-  const html = c.packOfferLine(enabled());
-  assert.match(html, /^<div class="setting-line"><span>有新版本 0\.2（测试版）：311 个角色<small class="line-hint"><bdi>比第一版多认 29 个角色<\/bdi><\/small><\/span><\/div>/);
-  assert.deepEqual(buttons(html).map(b => [b.act, b.label, b.cls]), [['offer-download', '下载新版本（约 2.3 MB）', 'quiet small']]);
-  assert.match(buttons(c.packOfferLine(pack({current: READY, offer: OFFER()})))[0].cls, /primary/, '没启用的图库下载是主按钮');
-  assert.deepEqual(labels(c.packOfferLine(enabled({status: 'partial', have: 338740}))), ['继续下载新版本（还差 2.0 MB）']);
+  const o = c.packOfferInfo(enabled());
+  assert.deepEqual([o.what, o.hint], ['有新版本 0.2（测试版）：311 个角色', '比第一版多认 29 个角色']);
+  assert.deepEqual(offer(enabled()).map(b => [b.act, b.label, b.cls]), [['offer-download', '下载新版本（约 2.3 MB）', 'quiet small']]);
+  assert.match(offer((pack({current: READY, offer: OFFER()})))[0].cls, /primary/, '没启用的图库下载是主按钮');
+  assert.deepEqual(offer(enabled({status: 'partial', have: 338740})).map(b => b.label), ['继续下载新版本（还差 2.0 MB）']);
   // 新版本只换了 WD 部分：CCIP 文件已经在本机，按钮写还要下的大小，不说「继续」。
-  assert.deepEqual(labels(c.packOfferLine(enabled({status: 'missing', have: 1273692}))), ['下载新版本（约 1.1 MB）']);
+  assert.deepEqual(offer(enabled({status: 'missing', have: 1273692})).map(b => b.label), ['下载新版本（约 1.1 MB）']);
   const downloading = pack({current: READY, library: ENABLED, offer: OFFER({downloading: true}), download: {kind: 'download', status: 'running', done: 1, total: 9}});
-  assert.deepEqual(labels(c.packOfferLine(downloading)), []);
-  assert.match(buttons(c.packOfferLine(pack({current: READY, library: ENABLED, offer: OFFER(), task: {id: 't', kind: 'enable', status: 'running', phase: 'scan'}})))[0].attrs, /disabled/);
-  assert.deepEqual(buttons(c.packOfferLine(enabled({status: 'ready'}))).map(b => [b.act, b.label, b.cls]), [['offer-switch', '换成新版本…', 'primary small']]);
-  assert.match(buttons(c.packOfferLine(pack({current: READY, library: {...ENABLED, blocked: 'busy'}, offer: OFFER({status: 'ready'})})))[0].attrs, /disabled title="图库正在导入或导出"/);
-  assert.match(c.packOfferLine(enabled({version: '1.0', stage: 'release', heads: 2100, candidate_only: 1872, note: null})),
-    /<span>有新版本 1\.0：2,100 个角色，其中 1,872 个只给候选<\/span>/);
-  assert.equal(c.packOfferLine(pack({current: READY})), '');
-  assert.equal(c.packOfferLine(null), '');
+  assert.deepEqual(offer(downloading), []);
+  assert.match(offer((pack({current: READY, library: ENABLED, offer: OFFER(), task: {id: 't', kind: 'enable', status: 'running', phase: 'scan'}})))[0].attrs, /disabled/);
+  assert.deepEqual(offer((enabled({status: 'ready'}))).map(b => [b.act, b.label, b.cls]), [['offer-switch', '换成新版本…', 'primary small']]);
+  assert.match(offer((pack({current: READY, library: {...ENABLED, blocked: 'busy'}, offer: OFFER({status: 'ready'})})))[0].attrs, /disabled title="图库正在导入或导出"/);
+  assert.equal(c.packOfferInfo(enabled({version: '1.0', stage: 'release', heads: 2100, candidate_only: 1872, note: null})).what,
+    '有新版本 1.0：2,100 个角色，其中 1,872 个只给候选');
+  assert.equal(c.packOfferInfo(pack({current: READY})), null);
+  assert.equal(c.packOfferInfo(null), null);
 });
 
 test('有新版本：下载失败写原因、可以重试；提示说新版本', () => {
   const before = pack({current: READY, library: ENABLED, offer: OFFER({downloading: true}), download: {kind: 'download', status: 'running'}});
   const failed = pack({current: READY, library: ENABLED, offer: OFFER({downloading: true}), download: {kind: 'download', status: 'failed', message: '连接被重置'}});
-  const html = c.packOfferLine(failed);
-  assert.match(html, /新版本没能下载：连接被重置 · <bdi>比第一版多认 29 个角色<\/bdi>/);
-  assert.deepEqual(buttons(html).map(b => [b.act, b.label]), [['offer-download', '重试']]);
+  assert.equal(c.packOfferInfo(failed).hint, '新版本没能下载：连接被重置 · 比第一版多认 29 个角色');
+  assert.deepEqual(offer(failed).map(b => [b.act, b.label]), [['offer-download', '重试']]);
   // 卡片上的版本（v1）已经就位，状态行照常写已启用。
   assert.equal(c.packLine(failed), '已启用 · 7 张图有扩展候选，其中 3 张由它补上归属');
   assert.equal(c.downloadText(failed.download, before, failed), '新版本没能下载：连接被重置');
@@ -394,26 +400,26 @@ test('这个页面导入以后逐个列出所选文件的结果，包括离线�
     await new Promise(resolve => setTimeout(resolve, 10));
   };
   await click('enable');
-  assert.equal(c.packImportSummary(imported), '', '别的动作以后不列');
+  assert.equal(results(imported), '', '别的动作以后不列');
   await click('import');
-  assert.equal(c.packImportSummary(imported), '', '关掉选择框不算导入');
+  assert.equal(results(imported), '', '关掉选择框不算导入');
   await click('import');
-  const html = c.packImportSummary(imported);
-  assert.match(html, /character-pack-0.2-offline.zip\/packs.json<\/bdi> · 包目录，已读取/);
-  assert.match(html, /old-offline.zip\/packs.json<\/bdi> · 包目录比本机的旧，没有采用/);
-  assert.match(html, /bad-offline.zip\/packs.json<\/bdi> · 包目录签名不对，已拒绝/);
-  assert.match(html, /wd-extension-v2.bin<\/bdi> · 已接收/);
-  assert.match(html, /edited.bin<\/bdi> · SHA-256 不符，已拒绝/);
-  assert.match(html, /notes.txt<\/bdi> · 不是角色资料包/);
-  assert.match(html, /again.bin<\/bdi> · 已经有了/);
+  const html = results(imported);
+  assert.match(html, /character-pack-0.2-offline.zip\/packs.json · 包目录，已读取/);
+  assert.match(html, /old-offline.zip\/packs.json · 包目录比本机的旧，没有采用/);
+  assert.match(html, /bad-offline.zip\/packs.json · 包目录签名不对，已拒绝/);
+  assert.match(html, /wd-extension-v2.bin · 已接收/);
+  assert.match(html, /edited.bin · SHA-256 不符，已拒绝/);
+  assert.match(html, /notes.txt · 不是角色资料包/);
+  assert.match(html, /again.bin · 已经有了/);
   assert.doesNotMatch(html, /NOTICE/, '离线包随附的许可和说明不列（#643）');
-  assert.equal(c.packImportSummary(pack({current: READY, download: {...download, results: download.results.filter(r => r.result === 'extra')}})), '');
-  assert.equal(c.packImportSummary(pack({download: {kind: 'download', status: 'done', results: []}})), '');
+  assert.equal(results(pack({current: READY, download: {...download, results: download.results.filter(r => r.result === 'extra')}})), '');
+  assert.equal(results(pack({download: {kind: 'download', status: 'done', results: []}})), '');
   // 切到别的页面再回来（每次换页都是新的 route）：不再列（#643）。
   c.state.route = {page: 'settings', section: 'about'};
-  assert.equal(c.packImportSummary(imported), '');
+  assert.equal(results(imported), '');
   c.state.route = {page: 'settings', section: 'characters'};
-  assert.equal(c.packImportSummary(imported), '');
+  assert.equal(results(imported), '');
 });
 
 test('任务面板的一项：有下载或任务时才列出，失败时打警告', () => {

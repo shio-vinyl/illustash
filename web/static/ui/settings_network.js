@@ -22,7 +22,6 @@ export async function setNamesNetwork(allow) {
     await allowNames(allow);
   } catch (err) { toast(err.message); return false; }
   toast(allow ? t('已允许这个图库联网查询名称') : t('已撤销名称联网查询'));
-  drawGuide();
   return true;
 }
 
@@ -48,7 +47,7 @@ export function build(main, scope) {
           + (s.settings?.startup?.names ? ' · ' + t('启动时自动（只查新角色）') : ''),
         warn: s => !net(s)?.granted_at && net(s)?.this_run ? t('本次启动已允许（命令行）') : '',
         get: s => !!net(s)?.granted_at,
-        set: async on => { await setNamesNetwork(on); refreshSection(); }},
+        set: async on => { if (await setNamesNetwork(on)) drawGuide(); refreshSection(); }},
        line('model', 'characters', t('名称翻译'), s => via(s.names?.model_api?.configured ? modelHost(s.names.model_api) : t('你配置的模型接口'), t('tag、日文名、作品名')),
          s => s.names?.model_api?.configured ? t('已配置') : t('未配置，不使用')),
        line('provenance', 'artists', t('找回画师'), via(t('Danbooru（含 IQDB）'), t('像素哈希和 IQDB 签名（一串文本，不是图片）、画师名和账号')),

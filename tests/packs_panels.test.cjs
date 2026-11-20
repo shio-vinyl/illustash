@@ -4,18 +4,31 @@
 const {test, before} = require('node:test');
 const assert = require('node:assert/strict');
 const web = require('./web.cjs');
-let page, settings, tasks, state;
+const dom = require('./dom.cjs');
+const {view} = require('./settings_view.cjs');
+let tasks, state, open, characters;
 before(async () => {
   await web.ready();
-  page = web.fakePage();
+  web.fakePage();
   globalThis.window = {addEventListener() {}};
   globalThis.requestAnimationFrame = () => 0;
   const store = new Map();
   globalThis.localStorage = {getItem: k => store.has(k) ? store.get(k) : null, setItem: (k, v) => store.set(k, v), removeItem: k => store.delete(k)};
-  settings = await web.load('ui/settings.js');
   tasks = await web.load('ui/tasks.js');
+  characters = await web.load('ui/settings_characters.js');
+  open = await view('characters');
   state = web.core().state;
 });
+// 「设置 › 角色资料」这一节画出来，返回资料包那一组的文字和几样东西。
+function card() {
+  dom.install();
+  const v = open(), group = v.box.querySelector('[data-group="pack"]');
+  const out = {text: require('./settings_view.cjs').visible(group), scope: group.querySelector('.set-scope'),
+    buttons: v.buttons('packStatus').map(b => b.textContent), missing: v.row('packMissing')};
+  out.missingText = out.missing.hidden ? '' : require('./settings_view.cjs').visible(out.missing);
+  v.dispose(); dom.uninstall();
+  return out;
+}
 const part = (path, heads) => ({format: 'x', heads, candidate_only: 0, license: 'MIT', file: {path, size: 1000, sha256: 'ab'.repeat(32)}});
 const READY = {catalog: {configured: true, serial: null, checked_at: null, error: null},
   current: {version: '0.1', stage: 'preview', revision: 1, heads: 282, candidate_only: 0, license: 'Apache-2.0 AND MIT', size: 2214393,
@@ -24,54 +37,50 @@ const READY = {catalog: {configured: true, serial: null, checked_at: null, error
   library: {enabled: false, version: null, wd: false, ccip: false, prompt: 'declined', images: 0, assigned: 0, vectors: 12, checked_at: null, blocked: null},
   location: '/synthetic/Shared/extensions', wd: {package: {}}, ccip: {library: {}}};
 
-test('一张卡片在「角色资料」里，范围标「本图库」，状态和按钮来自 ui/packs.js', async () => {
+test('一张卡片在「角色资料」里，范围标「本图库」，状态和按钮来自 ui/packs.js', () => {
   state.route = {page: 'settings', section: 'characters'};
-  state.pack = READY;
-  await settings.renderPackCard();
-  const html = page.el('packCard').innerHTML;
-  assert.match(html, /^<h2>角色资料包<span class="set-scope" data-scope="library" title="每个图库各自保存">本图库<\/span><\/h2>/);
-  assert.match(html, /<p class="settings-note">多认 282 个 WD 词表和角色索引里没有的角色。<\/p>/);
-  assert.match(html, /本图库未启用/);
-  assert.match(html, /data-pack="enable-confirm">启用…/);
-  assert.equal(settings.settingsSection()[2], '角色资料包、新角色检查、角色名称与翻译');
-  assert.deepEqual(settings.settingsSection()[3], ['packCard', 'indexCard', 'namesCard', 'modelCard']);
+  state.pack = READY; state.index = null; state.names = null;
+  const c = card();
+  assert.match(c.text, /^角色资料包 \| 本图库 \| 多认 282 个 WD 词表和角色索引里没有的角色。/);
+  assert.deepEqual([c.scope.getAttribute('data-scope'), c.scope.getAttribute('title')], ['library', '每个图库各自保存']);
+  assert.match(c.text, /本图库未启用/);
+  assert.deepEqual(c.buttons, ['启用…']);
 });
 
 test('等着默认启用（#630）的卡片底部照样写还缺几个角色（#606）', async () => {
   state.route = {page: 'settings', section: 'characters'};
-  state.pack = null;
   const index = {state: {status: 'idle'}, works: [], watch: {works: ['work_a'], min_posts: 50}, check: {checked_at: 't', missing: []},
     history: [], mb_per_character: 2};
   const coverage = {checked_at: 't', coverage: {work_a: {packs: 3, own: 0, missing: 2}}};
-  globalThis.fetch = async path => ({status: 200, ok: true, headers: {get: () => null},
-    json: async () => path === '/api/index/coverage' ? coverage : index});
-  await settings.renderIndexCard();
-  await new Promise(resolve => setImmediate(resolve));
+  globalThis.fetch = async () => ({status: 200, ok: true, headers: {get: () => null}, json: async () => coverage});
+  state.index = index;
+  await web.core().loadCoverage(index, true);
   state.pack = {...READY, current: {...READY.current, status: 'missing', have: 0},
     download: {kind: 'download', status: 'failed', message: '连接失败'},
     library: {...READY.library, prompt: 'pending', vectors: 12}};
-  await settings.renderPackCard();
-  const html = page.el('packCard').innerHTML;
-  assert.match(html, /角色资料包没能下载：连接失败/);
-  assert.match(html, /下载完成后启用/);
-  assert.match(html, /data-pack="download">重试/);
-  assert.doesNotMatch(html, /data-pack="decline"/);
-  assert.match(html, /关注的作品还缺 2 个角色/);
-  assert.match(html, /data-index-go/);
+  const c = card();
+  assert.match(c.text, /角色资料包没能下载：连接失败/);
+  assert.match(c.text, /下载完成后启用/);
+  assert.equal(c.buttons[0], '重试');
+  assert.ok(!c.buttons.includes('不用'));
+  assert.match(c.missingText, /关注的作品还缺 2 个角色/);
+  assert.match(c.missingText, /检查新角色…/);
   // 包到了、等后台任务结束时同样。
   state.pack = {...READY, library: {...READY.library, prompt: 'pending', vectors: 12}};
-  await settings.renderPackCard();
-  assert.match(page.el('packCard').innerHTML, /等后台任务结束后启用[\s\S]*关注的作品还缺 2 个角色/);
+  const after = card();
+  assert.match(after.text, /等后台任务结束后启用/);
+  assert.match(after.missingText, /关注的作品还缺 2 个角色/);
 });
 
 test('还没读到时读一次；读取失败写在卡片里', async () => {
   state.route = {page: 'settings', section: 'characters'};
-  state.pack = null;
+  state.pack = null; state.names = {state: {status: 'idle'}};
+  state.index = {state: {status: 'idle'}, works: [], watch: {works: [], min_posts: 50}, check: null, history: [], mb_per_character: 2};
   const calls = [];
   globalThis.fetch = async path => { calls.push(path); return {status: 404, ok: false, headers: {get: () => null}, json: async () => ({error: '没有这个接口'})}; };
-  await settings.renderPackCard();
+  await characters.load(false);
   assert.deepEqual(calls, ['/api/packs']);
-  assert.match(page.el('packCard').innerHTML, /读取失败：没有这个接口/);
+  assert.match(card().text, /读取失败：没有这个接口/);
 });
 
 test('任务面板：有下载或任务时才列出，失败时打警告', () => {

@@ -29,4 +29,9 @@ function visible(node) {
   if (node.hidden) return '';
   return node.childNodes.map(visible).filter(Boolean).join(' | ');
 }
-module.exports = {view, visible};
+// 假 DOM 里放上提示条的几个节点（ui/dom.js 的 toast 往里写），返回放文字的那个。
+function toastNodes() {
+  const nodes = ['toast', 'toastText', 'toastUndo', 'toastAct'].map(id => { const n = document.createElement('div'); n.setAttribute('id', id); document.body.appendChild(n); return n; });
+  return nodes[1];
+}
+module.exports = {view, visible, toastNodes};

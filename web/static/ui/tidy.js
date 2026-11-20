@@ -1,5 +1,5 @@
 // 整理（#706）：未识别、重复、已排除三个页签各自的标题、说明、子页签和空了时的去处，以及随机抽查、身份整理、画师抽查的标题。
-// 三个页签之间的分段切换画在页头上（ui/shell.js）；各页的主区照旧在 ui/review.js 和网格里。整理页那一步（H #713）重做这一页。
+// 三个页签之间的分段切换画在页头上（ui/shell.js）；各页的主区在 ui/groups.js、ui/similar.js、ui/identity.js、ui/artist_audit.js 和网格里。
 import {esc, number} from '../core/format.js';
 import {t} from '../core/i18n.js';
 import {REASONS} from '../core/labels.js';
@@ -12,7 +12,9 @@ import {markOc} from './palette.js';
 // 同一个页签下的子页签（未识别：按组整理、全部、已跳过；重复：全部、角色不一致、相似的图；已排除：全部、各原因、待确认）。
 // 张数和组数写在子页签上，标题下面不再写一遍（#426）。
 function subTabs(r) {
-  const tab = (href, label, n, on, title = '') => `<a class="chip-filter${on ? ' on' : ''}" href="${href}"${title ? ` title="${esc(title)}"` : ''}>${label}${n ? ` <span>${n}</span>` : ''}</a>`;
+  // 字符串：网格页的工具栏把它和别的控件拼在一起（ui/shell.js renderChrome）。文字都是译文和数字，标题经 esc。
+  const tab = (href, label, n, on, title = '') => `<a class="chip" href="${href}"${on ? ' aria-current="page"' : ''}${title ? ` title="${esc(title)}"` : ''}>` +
+    `${esc(label)}${n ? ` <span class="chip-count">${n}</span>` : ''}</a>`;
   const p = state.pools, row = tabs => `<div class="chips-row">${tabs.join('')}</div>`;
   // 页签组和本页对应的页签由页面登记（core/pages.js 的 tabs、tab）。
   const at = viewOf(r).tab, all = at === 'all';

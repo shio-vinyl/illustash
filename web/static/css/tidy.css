@@ -1,4 +1,82 @@
-/* 整理页：未识别、重复、已排除。归 0.4 第 H 步（整理页，#713）；A2（#705）只建了文件和层，规则由那一步写。
-   只用 css/tokens.css 的令牌和 css/base.css 的公共部件；重写一块，就删掉 app.css 里对应的旧规则。 */
+/* 整理页（#713）：按组整理、相似的图、身份整理、画师抽查。分组用 css/base.css 的 .group（浅底，不描边），组头一行、下面一排方图
+   （ui/tidy_group.js）；只用 css/tokens.css 的令牌和 css/base.css 的公共部件。子页签是 .chip（ui/tidy.js）。 */
 @layer pages{
+.tidy-page{display:flex;flex-direction:column;gap:var(--space-16);max-width:1240px;padding-bottom:var(--space-24)}
+.tidy-bar{display:flex;flex-wrap:wrap;align-items:center;gap:var(--space-8)}
+.tidy-status{display:inline-flex;align-items:center;gap:var(--space-8);margin-right:auto;color:var(--muted);font-size:var(--fs-12);font-variant-numeric:tabular-nums}
+.tidy-list{display:flex;flex-direction:column;gap:var(--space-12)}
+.tidy-more{display:flex;justify-content:center}
+.tidy-meta{color:var(--muted);font-size:var(--fs-12);font-variant-numeric:tabular-nums}
+
+/* 一组：组头左边是标题、张数、问题，右边是操作。 */
+.tidy-group{display:flex;flex-direction:column;gap:var(--space-12);min-width:0}
+.tidy-head{display:flex;flex-wrap:wrap;align-items:center;gap:var(--space-8) var(--space-16)}
+.tidy-title{display:flex;flex-wrap:wrap;align-items:baseline;gap:var(--space-4) var(--space-10);flex:1 1 320px;min-width:0}
+.tidy-name{font-size:var(--fs-13);font-weight:var(--fw-750);color:var(--ink)}
+.tidy-meta:empty{display:none}
+.tidy-q{color:var(--ink2);font-size:var(--fs-13)}
+.tidy-q a{color:var(--ink);font-weight:var(--fw-600)}
+.tidy-q small{margin-left:var(--space-6);color:var(--muted);font-size:var(--fs-11)}
+.tidy-unknown{color:var(--muted)}
+.tidy-acts,.tidy-acts-in{display:flex;flex-wrap:wrap;align-items:center;gap:var(--space-6)}
+.tidy-note{margin:0;color:var(--muted);font-size:var(--fs-12)}
+
+/* 一排方图：占满一行宽，窄窗口少放几张。.tidy-thumbs 只是 keyed 的容器，不占格子。 */
+.tidy-strip{display:grid;grid-template-columns:repeat(auto-fill,minmax(88px,1fr));gap:var(--space-6)}
+.tidy-thumbs{display:contents}
+.tidy-thumb{position:relative;display:block;aspect-ratio:1;margin:0;padding:0;border:0;border-radius:var(--radius-8);overflow:hidden;background:var(--line);cursor:pointer}
+.tidy-thumb img{display:block;width:100%;height:100%;object-fit:cover;transition:opacity var(--dur-1) var(--ease)}
+.tidy-thumb i{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;opacity:0;color:var(--on-image);font-size:var(--fs-display-28);font-style:normal;
+  text-shadow:var(--image-text-shadow);transition:opacity var(--dur-1) var(--ease)}
+.tidy-thumb[data-gimg]:hover i{opacity:.6}
+.tidy-thumb.is-off img{opacity:.3}
+.tidy-thumb.is-off i{opacity:1;color:var(--err);text-shadow:none}
+.tidy-thumb:not([data-gimg]){cursor:zoom-in}
+.tidy-thumb:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.tidy-thumb.is-more{display:flex;align-items:center;justify-content:center;color:var(--ink2);font-size:var(--fs-13);font-weight:var(--fw-600);text-decoration:none}
+.tidy-thumb.is-more:hover{color:var(--ink)}
+
+/* 身份整理：两边各一排样图。 */
+.tidy-pair{display:grid;grid-template-columns:1fr 1fr;gap:var(--space-16)}
+.tidy-side{display:flex;flex-direction:column;gap:var(--space-8);min-width:0}
+.tidy-side-name{display:flex;align-items:baseline;gap:var(--space-8);min-width:0;margin:0}
+.tidy-side-name b{flex:none;color:var(--muted);font-size:var(--fs-11);font-weight:var(--fw-600)}
+.tidy-side-name a{overflow:hidden;color:var(--ink);font-size:var(--fs-13);font-weight:var(--fw-600);text-overflow:ellipsis;white-space:nowrap}
+.tidy-side .tidy-strip{grid-template-columns:repeat(auto-fill,minmax(72px,1fr))}
+@media (max-width:760px){.tidy-pair{grid-template-columns:1fr}}
+
+/* 相似的图：卡片一屏多行，封面按张数拼 1、2、4 张填满。 */
+.tidy-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:var(--space-16)}
+.tidy-card{display:flex;flex-direction:column;gap:var(--space-8);color:inherit;text-decoration:none}
+.tidy-covers{position:relative;display:block;aspect-ratio:1;border-radius:var(--radius-12);overflow:hidden;background:var(--soft);transition:transform var(--dur-2) var(--ease),box-shadow var(--dur-2) var(--ease)}
+.tidy-covers img{position:absolute;object-fit:cover;border-radius:var(--radius-4)}
+.tidy-card:hover .tidy-covers{transform:translateY(-2px);box-shadow:var(--shadow-hover)}
+.tidy-card:focus-visible{outline:none}
+.tidy-card:focus-visible .tidy-covers{outline:2px solid var(--accent);outline-offset:2px}
+.tidy-card-meta{display:flex;align-items:baseline;gap:var(--space-8)}
+.tidy-card-meta b{font-size:var(--fs-13);font-weight:var(--fw-600)}
+.tidy-kinds{display:flex;flex-wrap:wrap;gap:var(--space-4)}
+.tidy-kinds .chip{height:auto;padding:var(--space-2) var(--space-8);font-size:var(--fs-11)}
+
+/* 画师抽查：统计一行；每张图一组，图在左，画师在右。 */
+.tidy-stats{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:var(--space-8)}
+.tidy-stat{display:grid;grid-template-columns:auto 1fr;align-items:baseline;gap:var(--space-2) var(--space-10);padding:var(--space-12);border-radius:var(--radius-12);background:var(--soft)}
+.tidy-stat b{grid-row:span 2;font-size:var(--fs-20);font-weight:var(--fw-750);font-variant-numeric:tabular-nums}
+.tidy-stat span{font-size:var(--fs-12)}
+.tidy-audit{flex-direction:row;align-items:flex-start;gap:var(--space-16)}
+.tidy-audit.is-yes{box-shadow:inset 3px 0 0 var(--ok)}
+.tidy-audit.is-no{box-shadow:inset 3px 0 0 var(--err)}
+.tidy-audit-img{position:relative;flex:none;display:block;width:200px;aspect-ratio:1;border-radius:var(--radius-8);overflow:hidden;background:var(--line);cursor:zoom-in}
+.tidy-audit-img img{display:block;width:100%;height:100%;object-fit:contain}
+.tidy-audit-no{position:absolute;top:var(--space-6);left:var(--space-6);padding:var(--space-2) var(--space-6);border-radius:var(--radius-pill);background:var(--scrim);
+  color:var(--on-image);font-size:var(--fs-11);font-weight:var(--fw-600)}
+.tidy-audit-body{display:flex;flex-direction:column;gap:var(--space-12);flex:1;min-width:0}
+.tidy-audit-body p{margin:0}
+.tidy-artist{display:flex;flex-direction:column;gap:var(--space-4)}
+.tidy-artist-top{display:flex;align-items:baseline;gap:var(--space-8);margin:0}
+.tidy-artist .artist-name{font-size:var(--fs-13);font-weight:var(--fw-600)}
+.tidy-verdict{font-size:var(--fs-12);font-weight:var(--fw-600)}
+.tidy-verdict.is-yes{color:var(--ok)}
+.tidy-verdict.is-no{color:var(--err)}
+@media (max-width:600px){.tidy-audit{flex-direction:column}.tidy-audit-img{width:100%}}
 }

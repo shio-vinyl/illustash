@@ -212,6 +212,7 @@ export function detailCard(on) {
   refs.askSlot.replaceWith(ask.el); refs.whoSlot.replaceWith(who.el); refs.artistSlot.replaceWith(artists.el);
   s.add(ask); s.add(who); s.add(artists);
   let cur = null, pending = null, wanted = '', shown = '', tint;
+  const samePics = [];   // 「同一角色的几张」的四格，见 stats()
   // 点击统一在根上接：按钮写 data-act，其余数据在 data-* 上。
   // 换成另一张、它的详情还没读回来时（cur 为空），只认只要知道是哪张图的按钮；角色、标签这些要等数据到了，
   // 免得按着上一张的数据改这一张。
@@ -313,11 +314,18 @@ export function detailCard(on) {
       }));
       const recent = (st.recent || []).filter(u => u !== ident).slice(0, 4);
       show(refs.same, opts.same && recent.length > 0); attr(refs.sameAll, 'href', charHash(charId));
-      refill(refs.sameRow, JSON.stringify(recent), () => recent.map(u => {
-        const b = button('dc-same-pic', '', {act: 'copy', id: u}, t('查看这张')), pic = make('img');
-        pic.src = img(u, thumbSize(85)); pic.alt = ''; pic.loading = 'lazy';
-        b.append(pic); return b;
-      }));
+      // 固定四格，建一次以后只换 src：翻图时不删、不重建已经显示着的缩略图。
+      if (!samePics.length) {
+        for (let i = 0; i < 4; i++) {
+          const b = button('dc-same-pic', '', {act: 'copy'}, t('查看这张')), pic = make('img');
+          pic.alt = ''; pic.loading = 'lazy'; b.append(pic); samePics.push({b, pic});
+        }
+        refs.sameRow.replaceChildren(...samePics.map(x => x.b));
+      }
+      samePics.forEach(({b, pic}, i) => {
+        const u = recent[i]; show(b, !!u); if (!u) return;
+        attr(b, 'data-id', u); attr(pic, 'src', img(u, thumbSize(85)));
+      });
     },
   };
 }

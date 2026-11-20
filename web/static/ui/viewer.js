@@ -111,6 +111,8 @@ function prepare() {
     }
     for (const d of [-2, 2]) { const x = state.items[i + d]; if (x && typeof Image === 'function') new Image().src = img(x.uuid, 'preview'); }
   }
+  // 原图只留当前那张：翻走的槽放掉原图，免得三张原图的解码结果一直占着图形内存（#683 量到 Chromium GPU 进程多出约 150 MiB）。
+  for (const x of slots) if (x !== current && x.high.getAttribute('src')) { show(x.high, false); attr(x.high, 'src', null); }
   if (!current.high.getAttribute('src')) attr(current.high, 'src', img(item.uuid, 'full'));
 }
 

@@ -116,4 +116,10 @@ function headingText(el) {
   const kids = el.children || [];
   return kids.length ? kids.map(c => c.textContent ?? '').join(' ') : String(el.innerHTML || '').replace(/<[^>]+>/g, '');
 }
-module.exports = {load, language, ready, core, fakePage, FakeElement, emptyState, headingText};
+// 选择栏（ui/grid_bar.js 画在 #selectionBar 里）上的按钮：{act, label, key, disabled, title}，按 act 取用 barButton(bar, act)。
+function barButtons(bar) {
+  return (bar.children || []).filter(b => b.dataset?.act).map(b => ({act: b.dataset.act, label: String(b.textContent).trim(),
+    key: b.children?.[0]?.textContent || '', disabled: !!b.disabled, title: b.title || ''}));
+}
+const barButton = (bar, act) => barButtons(bar).find(b => b.act === act) || null;
+module.exports = {load, language, ready, core, fakePage, FakeElement, emptyState, headingText, barButtons, barButton};

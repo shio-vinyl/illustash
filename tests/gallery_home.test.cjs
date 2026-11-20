@@ -1,7 +1,7 @@
 const {test, before} = require('node:test');
 const web = require('./web.cjs');   // core/ 下的模块、ui/grid.js（#199）
 let gridModule, rowsModule, homeModule;
-before(async () => { await web.ready(); gridModule = await web.load('ui/grid.js'); rowsModule = await web.load('ui/grid_rows.js'); homeModule = await web.load('ui/home.js'); });
+before(async () => { await web.ready(); gridModule = await web.load('ui/grid.js'); await web.load('ui/grid_bar.js'); rowsModule = await web.load('ui/grid_rows.js'); homeModule = await web.load('ui/home.js'); });
 const assert = require('node:assert/strict');
 // 网格的几何计算在 ui/grid_rows.js（卡片的框是 {x, y, w, h}，卡片下面没有标题条，#708）；网格元素隐藏时 renderGrid() 不绘制。
 let layouts = 0;
@@ -154,7 +154,7 @@ test('home rows: full rows fill the width; a day with few pictures and a short l
 test('认一认「都不是」常驻在底栏，一次把整批记成不是 TA；全部点掉以后只剩主按钮的「都不是」（#675）', async () => {
   const {home, wireHome} = homeModule, {state, edits} = web.core(), page = web.fakePage(), posts = [];
   globalThis.ResizeObserver ||= class { observe() {} };
-  gridModule.viewOpts.ask = true;
+  (await web.load('core/view_opts.js')).viewOpts.ask = true;
   Object.assign(state, {route: {page: 'days'}, nsfw: '', focused: null, viewer: -1});
   const items = ['a', 'b', 'c'].map(uuid => ({uuid, width: 100, height: 100}));
   const batch = () => ({entity: 'e1', kind: 'hint', name: 'A', items});

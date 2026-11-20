@@ -4,7 +4,7 @@
 const {test, before, beforeEach} = require('node:test');
 const assert = require('node:assert/strict');
 const web = require('./web.cjs');
-let fav, ui, grid, modes, pages, state, edits;
+let fav, ui, grid, modes, pages, state, edits, assets;
 before(async () => {
   await web.ready();
   fav = await web.load('core/favorites.js');
@@ -16,7 +16,7 @@ before(async () => {
   const store = new Map();
   globalThis.localStorage = {getItem: k => store.has(k) ? store.get(k) : null, setItem: (k, v) => store.set(k, v), removeItem: k => store.delete(k)};
   web.fakePage();
-  grid = await web.load('ui/grid.js');
+  grid = await web.load('ui/grid.js'); assets = await web.load('core/assets.js'); await web.load('ui/grid_bar.js');
   ui = await web.load('ui/favorites.js');
   ({state, edits} = web.core());
 });
@@ -147,8 +147,8 @@ test('全选时先问后端选区里还有没有没收藏的：都收藏了就�
   state.items[3].fav = true;
   state.sel = {all: true, ids: new Set(), exclude: new Set(['d'])};
   grid.renderSelection();
-  assert.match(document.getElementById('selectionBar').innerHTML, /data-act="fav">收藏 <kbd>F<\/kbd>/);
-  await grid.favoriteSelection({filter: grid.filters(), exclude: ['d'], confirm: false});
+  assert.deepEqual(web.barButton(document.getElementById('selectionBar'), 'fav'), {act: 'fav', label: '收藏', key: 'F', disabled: false, title: ''});
+  await grid.favoriteSelection({filter: assets.gridFilters(), exclude: ['d'], confirm: false});
   const count = requests.find(r => r.path.startsWith('/api/assets/count'));
   assert.deepEqual(JSON.parse(new URLSearchParams(count.path.split('?')[1]).get('not')), ['fav']);
   const write = requests.find(r => r.path === '/api/favorite');
@@ -162,10 +162,10 @@ test('全选时先问后端选区里还有没有没收藏的：都收藏了就�
 test('选择栏的按钮：选中的都已收藏时是「取消收藏」，超过 500 张要再点一次', () => {
   state.sel = {all: false, ids: new Set(['c']), exclude: new Set()};
   grid.renderSelection();
-  assert.match(document.getElementById('selectionBar').innerHTML, /data-act="fav">取消收藏 <kbd>F<\/kbd>/);
+  assert.deepEqual(web.barButton(document.getElementById('selectionBar'), 'fav'), {act: 'fav', label: '取消收藏', key: 'F', disabled: false, title: ''});
   state.sel = {all: false, ids: new Set(['a', 'c']), exclude: new Set()};
   grid.renderSelection();
-  assert.match(document.getElementById('selectionBar').innerHTML, /data-act="fav">收藏 <kbd>F<\/kbd>/);
+  assert.deepEqual(web.barButton(document.getElementById('selectionBar'), 'fav'), {act: 'fav', label: '收藏', key: 'F', disabled: false, title: ''});
 });
 
 // 网格卡片上的心形是 ui/grid_card.js 的部件，在 tests/grid_card.test.cjs 里测。

@@ -19,6 +19,8 @@ export const dayLabel = day => { const [y, m, d] = day.split('-').map(Number); c
   return diff === 0 ? t('今天') : diff === 1 ? t('昨天') : dateText(y, m, d, y !== now.getFullYear()); };
 export const monthText = (y, m) => I18N.language === 'zh-CN' ? `${y} 年 ${m} 月` : new Intl.DateTimeFormat(I18N.locale, {year: 'numeric', month: 'short'}).format(new Date(+y, m - 1, 1));
 export const work = w => (w || '').replaceAll('_', ' ');
+// 太长的名字截短（卡片上的芯片、页头的角色筛选、选择栏的按钮）。
+export const short = name => name.length > 28 ? name.slice(0, 26) + '…' : name;
 // 缩略图档位（#452）：原生端 thumb 长边 400、medium 长边 800。cssPx 是调用处估的显示尺寸（CSS 像素），乘屏幕倍率
 // 换成物理像素，超过 260 用 medium。倍率按 1 封底，1 倍屏的结果和只看 CSS 像素时一样。倍率每次画的时候读：窗口
 // 拖到倍率不同的屏幕后，下次重画换档。

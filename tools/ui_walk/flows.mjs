@@ -329,6 +329,26 @@ export const FLOWS = [
   },
 
   {
+    name: 'card-chips',
+    title: '卡片上的芯片有样式：随机抽查的角色标签（✓ / ✗ 悬停才出现，正在抽查的着色）、未识别图上的「+ 名字」（#708 审核第 1 条）',
+    async run(w, page) {
+      // 读计算样式：不悬停时按钮藏着；在抽查的那个标签有自己的底色，不是浏览器默认的按钮样子。
+      const look = sel => page.eval(`(() => { const el = document.querySelector(${JSON.stringify(sel)}); if (!el) return null; const s = getComputedStyle(el);
+        return {display: s.display, bg: s.backgroundColor, radius: s.borderTopLeftRadius, border: s.borderTopStyle, font: s.fontSize}; })()`);
+      const snap = await w.step('打开随机抽查', () => goto(page, '#/audit'), {shot: true});
+      w.check('抽查页有图', snap.total > 0, `total=${snap.total}`);
+      const open = await look('#grid .card-chips .atag.checked'), button = await look('#grid .card-chips .atag button');
+      w.check('卡片上有抽查的角色标签', !!open, open);
+      w.check('在抽查的标签有底色和圆角', !!open && open.bg !== 'rgba(0, 0, 0, 0)' && open.radius !== '0px', open);
+      w.check('标签上的 ✓ / ✗ 不悬停时藏着', !!button && button.display === 'none', button);
+      await w.step('打开全部未识别', () => goto(page, '#/unmatched'), {shot: true});
+      const hint = await look('#grid .card-chips .hint-add');
+      // 「可能是」要识别组件给出线索才有；有的话检查它不是浏览器默认的按钮。
+      if (hint) w.check('「+ 名字」有自己的底色、没有默认边框', hint.border === 'none' && hint.bg !== 'rgba(0, 0, 0, 0)', hint);
+    },
+  },
+
+  {
     name: 'calendar',
     title: '图库的日历：每天的格子按张数拼图，翻月，点一天去按天视图的那一天；三种视图之间切换，搜索词跟着走（#708）',
     async run(w, page) {

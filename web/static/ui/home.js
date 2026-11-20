@@ -9,7 +9,8 @@ import {api, post, readError} from '../core/session.js';
 import {state} from '../core/state.js';
 import {INSP_ICONS, indexOf, inspect, openViewer, wirePeek} from './detail.js';
 import {$, reconcileSections, showArea, toast, workSmall} from './dom.js';
-import {mutate, showList, viewOpts} from './grid.js';
+import {mutate, showList} from './grid.js';
+import {viewOpts} from '../core/view_opts.js';
 import {MARKS} from '../core/favorites.js';
 import {homeHeart} from './favorites.js';
 

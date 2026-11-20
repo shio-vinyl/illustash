@@ -29,8 +29,8 @@
 .grid .card.leaving .card-stage{transform:scale(.86);opacity:0}
 .grid .card.skeleton{background:var(--soft);animation:none}
 
-/* 悬停、键盘光标在上面时：底部压暗一条，写角色名 */
-.card-info{position:absolute;right:0;bottom:0;left:0;display:flex;align-items:baseline;gap:var(--space-6);min-width:0;padding:var(--space-24) 32px var(--space-8) var(--space-10);
+/* 悬停、键盘光标在上面时：底部压暗一条，写角色名。右边让出心形（css/base.css 的 .fav-mark，26px 宽，离右边 --space-4） */
+.card-info{position:absolute;right:0;bottom:0;left:0;display:flex;align-items:baseline;gap:var(--space-6);min-width:0;padding:var(--space-24) calc(26px + var(--space-6)) var(--space-8) var(--space-10);
   background:var(--scrim);color:var(--on-image);text-shadow:var(--image-text-shadow);opacity:0;transition:opacity var(--dur-1) var(--ease)}
 .grid .card:hover .card-info,.grid .card.is-cursor .card-info{opacity:1}
 .card-info>b{min-width:0;overflow:hidden;font-size:var(--fs-12);font-weight:var(--fw-600);white-space:nowrap;text-overflow:ellipsis}
@@ -39,6 +39,24 @@
 /* 左下一排芯片：造型、「现为 TA」、排除原因、「可能是」、随机抽查的角色标签 */
 .card-chips{position:absolute;bottom:var(--space-6);left:var(--space-6);z-index:var(--z-page-1);display:flex;flex-wrap:wrap;gap:var(--space-4);max-width:calc(100% - 36px)}
 .card-chip{padding:var(--space-1) var(--space-6);border-radius:var(--radius-pill);background:var(--glass-chip);color:var(--ink);font-size:var(--fs-11);line-height:1.4}
+/* 未识别图上的「+ 名字」（可能是 TA，点一下设为 TA） */
+.card-chips .hint-add{max-width:100%;overflow:hidden;padding:var(--space-1) var(--space-6);border:0;border-radius:var(--radius-4);background:var(--hint-bg);color:var(--hint-ink);
+  box-shadow:0 0 0 .5px var(--hint-ring);font:inherit;font-size:var(--fs-11);white-space:nowrap;text-overflow:ellipsis;cursor:pointer}
+.card-chips .hint-add:hover{background:var(--hint-bg-hover);color:var(--on-accent)}
+/* 随机抽查的角色标签：正在抽查的那个着色排最前，已答的标是 / 不是；悬停在标签上才出现 ✓ / ✗ */
+.card-chips .atag{display:inline-flex;align-items:center;gap:var(--space-2);max-width:100%;padding:var(--space-1) var(--space-4) var(--space-1) var(--space-8);border-radius:var(--radius-pill);
+  background:var(--glass-chip);color:var(--ink);font-size:var(--fs-11);line-height:1.4}
+.card-chips .atag b{min-width:0;overflow:hidden;font-weight:var(--fw-600);white-space:nowrap;text-overflow:ellipsis}
+.card-chips .atag b i{margin-right:var(--space-2);font-style:normal}
+.card-chips .atag button{display:none;padding:var(--space-2) var(--space-4);border:0;border-radius:var(--radius-pill);background:transparent;color:var(--ink2);font:inherit;font-size:var(--fs-11);line-height:1;cursor:pointer}
+.card-chips .atag:hover{padding-right:var(--space-2)}
+.card-chips .atag:hover button{display:inline-block}
+.card-chips .atag button[data-tagact=yes]:hover{background:var(--ok);color:var(--on-accent)}
+.card-chips .atag button[data-tagact=no]:hover{background:var(--bad);color:var(--on-accent)}
+.card-chips .atag.checked.open{background:var(--atag-open-bg);color:var(--atag-open-ink);box-shadow:0 0 0 1px var(--atag-open-ring)}
+.card-chips .atag.checked.yes{background:var(--atag-yes-bg);color:var(--atag-yes-ink)}
+.card-chips .atag.checked.no{background:var(--atag-no-bg);color:var(--atag-no-ink)}
+.card-chips .atag.checked.no b{text-decoration:line-through}
 
 /* 左上的勾：悬停或在选择模式里出现；选中时是强调色底加白勾 */
 .grid .check{position:absolute;top:var(--space-6);left:var(--space-6);z-index:var(--z-page-2);width:22px;height:22px;border:1.5px solid var(--on-image);border-radius:var(--radius-round);
@@ -53,15 +71,9 @@
   background:hsl(var(--dup-hue) 45% 42%);color:var(--on-image);font-size:var(--fs-11);font-weight:var(--fw-600);font-variant-numeric:tabular-nums;box-shadow:none}
 .grid .dup-badge.folded{background:rgba(var(--sh),.55);font-weight:var(--fw-400)}
 
-/* 右下：心形（收藏过的一直在，没收藏的悬停时出现），角色页上机器识别、没人看过的点 */
-.grid .fav-mark{position:absolute;right:var(--space-4);bottom:var(--space-4);z-index:var(--z-page-2);display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;
-  margin:0;padding:0;border:0;background:transparent;color:var(--on-image);opacity:0;cursor:pointer;transition:opacity var(--dur-1) var(--ease),transform var(--dur-1) var(--ease)}
-.grid .fav-mark svg{width:19px;height:19px;fill:transparent;stroke:currentColor;stroke-width:1.7;stroke-linejoin:round;filter:drop-shadow(0 0 1.5px rgba(var(--sh),.55))}
-.grid .card:hover .fav-mark,.grid .fav-mark.on{opacity:1}
-.grid .fav-mark:hover{transform:scale(1.1)}
-.grid .fav-mark.on{color:var(--fav)}
-.grid .fav-mark.on svg{fill:currentColor;stroke:var(--on-image);stroke-width:1.4}
-.grid .fav-mark.still{pointer-events:none}
+/* 右下：心形（样子在 css/base.css；收藏过的一直在，没收藏的悬停时出现），角色页上机器识别、没人看过的点 */
+.grid .fav-mark{position:absolute;right:var(--space-4);bottom:var(--space-4);z-index:var(--z-page-2)}
+.grid .card:hover .fav-mark{opacity:1}
 .grid .machine-dot{position:absolute;right:var(--space-8);bottom:var(--space-8);z-index:var(--z-page-1);width:8px;height:8px;border:1.5px solid var(--line);border-radius:var(--radius-round);
   background:transparent;box-shadow:0 0 0 .5px rgba(var(--sh),.25)}
 .grid .machine-dot:not([hidden])~.fav-mark{right:18px}
@@ -90,20 +102,20 @@
 .cal-dow>span{padding:0 var(--space-2);color:var(--muted);font-size:var(--fs-11);font-weight:var(--fw-600)}
 .cal-day{position:relative;display:block;overflow:hidden;aspect-ratio:1/.9;border-radius:var(--radius-8);background:var(--soft);color:var(--ink2);text-decoration:none;
   transition:transform var(--dur-1) var(--ease),box-shadow var(--dur-1) var(--ease)}
-.cal-day.has{background:var(--tint-wash)}
+.cal-day.has-images{background:var(--tint-wash)}
 .cal-day.is-out{background:transparent;box-shadow:inset 0 0 0 1px var(--line);opacity:.5}
 .cal-day[href]:hover{transform:translateY(-2px);box-shadow:var(--shadow-hover)}
 .cal-day:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 /* 今天：强调色环，日期写成强调色 */
 .cal-day[aria-current=date]{box-shadow:0 0 0 2px var(--sheet),0 0 0 4px var(--accent)}
-.cal-day[aria-current=date]:not(.has)>.cal-num{color:var(--accent-ink)}
+.cal-day[aria-current=date]:not(.has-images)>.cal-num{color:var(--accent-ink)}
 .cal-tiles{position:absolute;inset:0}
 .cal-tiles>img{position:absolute;display:block;object-fit:cover;border-radius:var(--radius-4);background:var(--tint-soft)}
 .cal-tiles>img[data-broken]{visibility:hidden}
 /* 有图的格子：上沿压暗一点，日期写白字 */
-.cal-day.has::after{content:"";position:absolute;inset:0;z-index:var(--z-page-1);background:linear-gradient(180deg,rgba(var(--sh),.4),transparent 40%);pointer-events:none}
+.cal-day.has-images::after{content:"";position:absolute;inset:0;z-index:var(--z-page-1);background:linear-gradient(180deg,rgba(var(--sh),.4),transparent 40%);pointer-events:none}
 .cal-num{position:absolute;top:var(--space-6);left:var(--space-8);z-index:var(--z-page-2);font-size:var(--fs-13);font-weight:var(--fw-750);line-height:1.2}
-.cal-day.has>.cal-num{color:var(--on-image);text-shadow:var(--image-text-shadow)}
+.cal-day.has-images>.cal-num{color:var(--on-image);text-shadow:var(--image-text-shadow)}
 .cal-count{position:absolute;right:var(--space-6);bottom:var(--space-6);z-index:var(--z-page-2);padding:var(--space-1) var(--space-6);border-radius:var(--radius-pill);
   background:rgba(var(--sh),.55);color:var(--on-image);font-size:var(--fs-11);font-weight:var(--fw-600);font-variant-numeric:tabular-nums}
 .cal-empty{padding:var(--space-24) 0}

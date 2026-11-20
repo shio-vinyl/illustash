@@ -15,8 +15,8 @@
 .set-group{display:flex;flex-direction:column;min-width:0}
 .set-group-title{display:flex;flex-wrap:wrap;align-items:center;gap:var(--space-8);margin:0;font-size:var(--fs-13);font-weight:var(--fw-750)}
 .set-scope{height:auto;padding:var(--space-1) var(--space-8);background:var(--sheet);color:var(--muted);font-size:var(--fs-11);font-weight:var(--fw-400);cursor:help}
-.set-group-note,.set-group-foot,.set-sub-note{margin:var(--space-4) 0 0;color:var(--muted);font-size:var(--fs-12);line-height:1.55}
-.set-group-foot{margin-top:var(--space-10);font-size:var(--fs-11)}
+.set-group-note,.set-group-foot,.set-foot,.set-sub-note{margin:var(--space-4) 0 0;color:var(--muted);font-size:var(--fs-12);line-height:1.55}
+.set-group-foot,.set-foot{margin-top:var(--space-10);font-size:var(--fs-11)}
 .set-more{margin-left:var(--space-4);color:var(--accent-ink);border-bottom:1px dotted currentColor;cursor:help}
 .set-sub{margin:var(--space-16) 0 0;color:var(--ink2);font-size:var(--fs-12);font-weight:var(--fw-600)}
 .set-body{display:flex;flex-direction:column;min-width:0;margin-top:var(--space-8)}

@@ -112,14 +112,14 @@ export function artistsView(s, {onDraw} = {}) {
   s.add(() => { if (drawn === update) drawn = null; });
   return {el, tools: tools.el, update,
     // 进入本页签：后退、前进回来且条件没变时沿用读过的列表，否则从头读第一页。
-    async enter({restore = false} = {}) {
+    start: async ({restore = false} = {}) => {
       drawn = update;
       if (!restore || dir.key !== keyOf() || dir.failed || dir.total === null) reset();
       update();
       await more();
     },
     // 数据变了（同步、撤销、改动、NSFW 切换）之后从头重读。
-    refresh(why) {
+    reload: why => {
       if (!['sync', 'undo', 'edit', 'nsfw'].includes(why) || !onDir(state.route)) return;
       reset(); update(); more();
     }};

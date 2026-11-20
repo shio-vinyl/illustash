@@ -93,7 +93,7 @@ function indexView(s) {
   function open(route, opts) {
     showTab();
     const tab = section();
-    if (tab === 'artists') return artists.enter(opts);
+    if (tab === 'artists') return artists.start(opts);
     if (tab === 'works') return enterWorks(route);
     return enterCast(route);
   }
@@ -138,7 +138,7 @@ implement({characters: {head,
   onMeta: ({directory}) => { if (directory && view?.scope.alive && !state.route.section) { view.drawCast(); } },
   refresh: async why => {
     const v = view; if (!v?.scope.alive) return;
-    if (state.route.section === 'artists') { v.artists.refresh(why); return; }
+    if (state.route.section === 'artists') { v.artists.reload(why); return; }
     if (why === 'nsfw') { forgetActivity(); await loadWorkTree().catch(() => {}); }
     if (why === 'undo' && state.route.section === 'works') { await loadIndex().catch(e => error(readError(e))); }
     if (why === 'undo') await loadTagged().catch(e => error(readError(e)));

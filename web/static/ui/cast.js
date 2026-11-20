@@ -39,7 +39,8 @@ const CHIP = tpl`<a class="chip cat-chip"><img class="avatar" data-ref="img" alt
 const ROW = tpl`<tr><td><a class="cat-who" data-ref="who"><img class="avatar" data-ref="img" alt="" loading="lazy" decoding="async"><span><b data-ref="name"></b><small
   data-ref="orig"></small></span></a></td><td data-ref="work"></td><td><span class="cat-bar"><i data-ref="bar"></i><span data-ref="count"></span></span></td><td data-ref="recent"></td><td
   class="cat-mono" data-ref="last"></td><td data-ref="skins"></td></tr>`;
-const COLUMNS = [['name', '角色'], ['work', '作品'], ['count', '张数'], ['recent', '近 30 天'], ['last', '最后加入'], ['skins', '造型']];
+const COLUMNS = [['name', () => t('角色')], ['work', () => t('作品')], ['count', () => t('张数')], ['recent', () => t('近 30 天')], ['last', () => t('最后加入')],
+  ['skins', () => t('造型')]];
 
 const workOf = c => c.kind === 'oc' ? t('原创角色') : c.work_name || '';
 const skinsOf = c => (c.variants || []).filter(v => v.count).length;
@@ -138,7 +139,7 @@ export function castView(s) {
       return b;
     }));
     refs.heads.replaceChildren(...COLUMNS.map(([k, label]) => {
-      const th = make('th', '', t(label) + (cast.sort === k ? (cast.dir < 0 ? ' ↓' : ' ↑') : '')); th.dataset.sort = k;
+      const th = make('th', '', label() + (cast.sort === k ? (cast.dir < 0 ? ' ↓' : ' ↑') : '')); th.dataset.sort = k;
       th.setAttribute('aria-sort', cast.sort === k ? (cast.dir < 0 ? 'descending' : 'ascending') : 'none');
       return th;
     }));

@@ -20,6 +20,7 @@ async function wired() {
   globalThis.localStorage = {getItem: k => store.has(k) ? store.get(k) : null, setItem: (k, v) => store.set(k, v), removeItem: k => store.delete(k)};
   ({state} = web.core());
   shell = await web.load('ui/shell.js'); grid = await web.load('ui/grid.js');
+  await web.load('ui/catalog_page.js');
   globalThis.fetch = path => {
     const q = new URLSearchParams(path.split('?')[1] || '');
     let body = [];

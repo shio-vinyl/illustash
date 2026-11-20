@@ -1,9 +1,9 @@
 const {test, before} = require('node:test');
 const web = require('./web.cjs');   // core/ 下的模块、ui/grid.js（#199）
-let gridModule, homeModule;
-before(async () => { await web.ready(); gridModule = await web.load('ui/grid.js'); homeModule = await web.load('ui/home.js'); });
+let gridModule, rowsModule, homeModule;
+before(async () => { await web.ready(); gridModule = await web.load('ui/grid.js'); rowsModule = await web.load('ui/grid_rows.js'); homeModule = await web.load('ui/home.js'); });
 const assert = require('node:assert/strict');
-// 网格的几何计算在 ui/grid.js；网格元素隐藏时 renderGrid() 不绘制。
+// 网格的几何计算在 ui/grid_rows.js（卡片的框是 {x, y, w, h}，卡片下面没有标题条，#708）；网格元素隐藏时 renderGrid() 不绘制。
 let layouts = 0;
 function grid(total = 103, fit = true) {
   const {state} = web.core(), page = web.fakePage();
@@ -11,22 +11,21 @@ function grid(total = 103, fit = true) {
   Object.assign(page.el('grid'), {hidden: true, getBoundingClientRect: () => ({left: 10, top: 20})});
   // 每个网格用新的数据版本，布局就不会是前面测试缓存下来的。
   Object.assign(state, {size: 185, total, fit, dataVersion: 1e6 + ++layouts, items: Array.from({length: total}, (_, i) => ({width: [300, 800, 400, 1200][i % 4], height: 600})), route: {page: 'library'}});
-  gridModule.viewOpts.captions = true;
-  const c = {...gridModule, state, $: page.el}; c.layout(); return c;
+  const c = {...gridModule, ...rowsModule, state, $: page.el}; c.layout(); return c;
 }
 const rowsOf=c=>Array.from({length:c.rowCount()},(_,r)=>{const out=[];for(let i=c.rowStart(r);i<c.rowStart(r+1);i++)out.push(c.cardRect(i));return out;});
 test('justified rows pack around the target height, fill the width and keep each ratio; the last row stays target-sized and left-aligned',()=>{
   const c=grid(), target=c.state.cellW*4/3, rows=rowsOf(c);
   assert.equal(c.rowStart(c.rowCount()),c.state.total);
   rows.forEach((row,r)=>{
-    const h=row[0].height-28; let left=0;
+    const h=row[0].h; let left=0;
     for(const [k,b] of row.entries()){
       const i=c.rowStart(r)+k, item=c.state.items[i];
-      assert.equal(b.height,row[0].height); assert.ok(Math.abs(b.width/h-item.width/item.height)<1e-9);
-      assert.ok(Math.abs(b.left-left)<1e-8); left=b.left+b.width+c.state.gap;
-      assert.equal(c.rowOf(i),r); assert.equal(c.indexAt(b.left+b.width/2+10,b.top+b.height/2+20),i);
+      assert.equal(b.h,row[0].h); assert.ok(Math.abs(b.w/h-item.width/item.height)<1e-9);
+      assert.ok(Math.abs(b.x-left)<1e-8); left=b.x+b.w+c.state.gap;
+      assert.equal(c.rowOf(i),r); assert.equal(c.indexAt(b.x+b.w/2+10,b.y+b.h/2+20),i);
     }
-    const end=row.at(-1).left+row.at(-1).width;
+    const end=row.at(-1).x+row.at(-1).w;
     if(r<rows.length-1){ assert.ok(Math.abs(end-1000)<1e-8); assert.ok(h>target*.6 && h<target*1.6,`row ${r} height ${h} vs ${target}`); }
     else { assert.ok(Math.abs(h-target)<1e-8); assert.ok(end<1000); }
   });
@@ -34,10 +33,10 @@ test('justified rows pack around the target height, fill the width and keep each
 });
 test('a tiny result keeps normal size instead of one giant image; extreme ratios are clamped and shown whole',()=>{
   const c=grid(1); c.state.items=[{width:600,height:800}]; c.state.dataVersion++; c.layout();
-  const b=c.cardRect(0); assert.ok(Math.abs(b.height-28-c.state.cellW*4/3)<1e-8); assert.ok(b.width<300);
+  const b=c.cardRect(0); assert.ok(Math.abs(b.h-c.state.cellW*4/3)<1e-8); assert.ok(b.w<300);
   c.state.total=3; c.state.items=[{width:4000,height:300},{width:100,height:2000},{width:600,height:800}]; c.state.dataVersion++; c.layout();
   const [wide,tall]=[c.cardRect(0),c.cardRect(1)];
-  assert.ok(Math.abs(wide.width/(wide.height-28)-2.4)<1e-9); assert.ok(Math.abs(tall.width/(tall.height-28)-.5)<1e-9);
+  assert.ok(Math.abs(wide.w/(wide.h)-2.4)<1e-9); assert.ok(Math.abs(tall.w/(tall.h)-.5)<1e-9);
 });
 test('sparse pagination estimates unloaded images from loaded ones; row lookup stays consistent after dimensions arrive',()=>{
   const c=grid(10000); c.state.items=new Array(10000); c.state.dataVersion++; c.layout();
@@ -50,13 +49,13 @@ test('sparse pagination estimates unloaded images from loaded ones; row lookup s
 });
 test('arrow keys move to the nearest image in the neighbouring justified row',()=>{
   const c=grid(), r1=c.rowStart(1), b=c.cardRect(r1);
-  const up=c.verticalStep(r1,-1), u=c.cardRect(up), x=b.left+b.width/2;
-  for(let i=0;i<c.rowStart(1);i++){ const o=c.cardRect(i); assert.ok(Math.abs(u.left+u.width/2-x)<=Math.abs(o.left+o.width/2-x)); }
+  const up=c.verticalStep(r1,-1), u=c.cardRect(up), x=b.x+b.w/2;
+  for(let i=0;i<c.rowStart(1);i++){ const o=c.cardRect(i); assert.ok(Math.abs(u.x+u.w/2-x)<=Math.abs(o.x+o.w/2-x)); }
   assert.equal(c.rowOf(c.verticalStep(r1,1)),2); assert.equal(c.verticalStep(0,-1),0);
 });
 test('square mode and zoom keep predictable geometry; toggling fit anchors the same image row',()=>{
   const c=grid(103,false); const cols=c.state.cols;
-  assert.equal(c.cardRect(cols).top,c.state.rowH); assert.equal(c.verticalStep(0,1),cols);
+  assert.equal(c.cardRect(cols).y,c.state.rowH); assert.equal(c.verticalStep(0,1),cols);
   c.state.size=300;c.layout();assert.ok(c.state.cols<cols);
   const anchor=c.state.cols*3;c.$('viewport').scrollTop=c.rowTop(3);c.toggleFit();
   const row=c.rowAt(c.$('viewport').scrollTop); assert.ok(c.rowStart(row)<=anchor && anchor<c.rowStart(row+1));

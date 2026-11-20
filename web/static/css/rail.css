@@ -41,9 +41,20 @@
 .rail-tab::after{bottom:-18px;border-top-right-radius:var(--radius-18);box-shadow:9px -9px 0 9px var(--sheet)}
 .rail-sep{flex:none;width:28px;height:2px;margin:var(--space-16) 0 var(--space-14);border-radius:var(--radius-4);background:var(--line)}
 
-/* ---- 二级层：比活页条长时自己滚动；滚动条不占位 ---- */
-.rail-l2{position:relative;flex:1 1 auto;width:100%;min-height:0;padding:var(--space-4) 0 var(--space-8);overflow-x:hidden;overflow-y:auto;scrollbar-width:none}
-.rail-l2::-webkit-scrollbar{display:none}
+/* ---- 二级层：外层 .rail-l2 不滚（窄窗口里是抽屉），里面的 .rail-scroll 比活页条长时自己滚动；滚动条不占位 ----
+   上下边缘渐隐：遮罩是一条两头透明、中间不透明的竖向渐变，比滚动区高出两段渐隐（各 28px，和 core/rail.js 的 FADE 一起改），
+   平时上下各藏一段在框外、整块都不透明；ui/rail.js 写 is-fade-top / is-fade-bottom 时，改遮罩的高和位置把那一头的渐隐挪进框里。
+   这样两头各自出现、消失，过渡的是 mask-size、mask-position（--dur-1；减少动态效果时 app.css 的总开关让它直接切换）。
+   遮罩只管透明度，渐隐的颜色就是后面的底色（画布、抽屉），浅色深色都跟着走。Safari 15.4 起认不带前缀的 mask-*。
+   scroll-padding 让键盘焦点滚进来的项停在渐隐以外（ui/rail.js 另外按渐隐核一次）。 */
+.rail-l2{position:relative;display:flex;flex:1 1 auto;flex-direction:column;width:100%;min-height:0}
+.rail-scroll{position:relative;flex:1 1 auto;min-height:0;padding:var(--space-4) 0 var(--space-8);overflow-x:hidden;overflow-y:auto;scrollbar-width:none;scroll-padding-block:28px;
+  mask-image:linear-gradient(transparent,black 28px,black calc(100% - 28px),transparent);mask-repeat:no-repeat;mask-size:100% calc(100% + 56px);mask-position:0 -28px;
+  transition:mask-size var(--dur-1) var(--ease),mask-position var(--dur-1) var(--ease)}
+.rail-scroll.is-fade-top{mask-size:100% calc(100% + 28px);mask-position:0 0}
+.rail-scroll.is-fade-bottom{mask-size:100% calc(100% + 28px)}
+.rail-scroll.is-fade-top.is-fade-bottom{mask-size:100% 100%}
+.rail-scroll::-webkit-scrollbar{display:none}
 .rail.is-empty .rail-l2{visibility:hidden}
 .rail-hint{height:0;overflow:hidden;color:var(--muted);font-size:var(--fs-11);text-align:center;opacity:0;transition:opacity var(--dur-1) var(--ease)}
 .rail-hint.is-on{height:auto;margin-bottom:var(--space-8);opacity:1}
@@ -69,7 +80,7 @@
   font-size:var(--fs-11);font-style:normal;font-weight:var(--fw-750);line-height:17px;text-align:center;box-shadow:0 0 0 2px var(--canvas)}
 .rail-heart{position:absolute;top:-5px;right:-5px;display:grid;place-items:center;width:18px;height:18px;border-radius:var(--radius-round);background:var(--fav);box-shadow:0 0 0 2px var(--canvas)}
 .rail-heart>svg{width:10px;height:10px;fill:var(--on-image);stroke:var(--on-image)}
-/* 悬停：像从一叠卡里抽出来，相邻的项微微探出（ui/rail.js 给它们加 .is-hover / .is-near） */
+/* 悬停：像从一叠卡里抽出来，相邻的项微微探出（ui/rail_peek.js 给它们加 .is-hover / .is-near） */
 .rail-item.is-hover{transform:translateX(8px)}
 .rail-item.is-near{transform:translateX(3px)}
 .rail-item.is-hover .rail-cover{box-shadow:var(--shadow-hover)}
@@ -82,13 +93,23 @@
 .rail-ind{position:absolute;top:0;left:0;width:4px;height:26px;border-radius:0 var(--radius-4) var(--radius-4) 0;background:var(--accent);opacity:0;pointer-events:none;
   transition:transform var(--dur-3) var(--ease-spring),opacity var(--dur-1) var(--ease)}
 .rail-ind.is-on{opacity:1}
-/* 悬停预览：画在二级层外面（position: fixed），不被滚动区裁掉。位置由 ui/rail.js 写进 transform */
-.rail-peek{position:fixed;top:0;left:0;z-index:var(--z-popover);display:grid;width:214px;padding:var(--space-12);pointer-events:none}
-.rail-peek-in{display:grid;gap:var(--space-2)}
-.rail-peek-in>b{color:var(--ink);font-size:var(--fs-13);font-weight:var(--fw-750)}
-.rail-peek-in>small{color:var(--muted);font-size:var(--fs-11)}
-.rail-peek-pics{display:flex;gap:var(--space-4);margin-top:var(--space-8)}
-.rail-peek-pics>img{flex:1;min-width:0;height:56px;border-radius:var(--radius-8);object-fit:cover}
+/* 悬停预览：一张玻璃卡，画在二级层外面（position: fixed），不被滚动区裁掉。位置由 ui/rail_peek.js 写进 translate（进出场的动画用
+   transform，两个不打架），已经开着时换到别的项沿 translate 滑过去。上面一行图按真实宽高比排（宽高由 ui/rail_peek.js 写，一行最宽 288），
+   卡片随内容变宽；标题一栏不撑宽卡片（width: 0 + min-width: 100%），只跟着图的宽度折行。只有文字时（整理的队列）标题一栏自己定宽。
+   圆角嵌套：卡片 12、内边距 8，里面的图 4。左边压进二级层 6px（像从这一叠后面抽出来）；窄窗口的抽屉层级比卡片高，那时贴着抽屉的右边放。 */
+.rail-peek{position:fixed;top:0;left:0;z-index:var(--z-popover);display:grid;width:max-content;padding:var(--space-8);pointer-events:none;transform-origin:0 50%;
+  box-shadow:var(--shadow-pop),var(--shadow-hover)}
+.rail-peek.is-glide{transition:translate var(--dur-2) var(--ease)}
+/* 环境光：这一项的主色（.tint，ui/tint.js 写）从靠活页条的那边淡淡地透出来；没有主色时不画 */
+.rail-peek.tint{background-image:radial-gradient(130% 100% at 0% 50%,color-mix(in srgb,var(--tint-glow) 40%,transparent),transparent 72%)}
+.rail-peek-in{display:grid}
+.rail-peek-pics{display:flex;justify-content:center;gap:var(--space-4);min-width:136px}
+.rail-peek-pics>img{display:block;flex:none;border-radius:var(--radius-4);background:var(--tint-soft);object-fit:cover;object-position:50% 20%}
+.rail-peek-pics.is-round>img{border-radius:var(--radius-round)}
+.rail-peek-cap{display:grid;gap:var(--space-2);width:0;min-width:100%;padding:var(--space-8) var(--space-4) var(--space-2)}
+.rail-peek-pics[hidden]+.rail-peek-cap{width:auto;max-width:240px;padding:var(--space-4)}
+.rail-peek-cap>b{color:var(--ink);font-size:var(--fs-13);font-weight:var(--fw-750);overflow-wrap:anywhere}
+.rail-peek-cap>small{color:var(--muted);font-size:var(--fs-11)}
 
 /* ---- 底部：更新、同步圆环（任务按钮）、设置 ---- */
 .rail-foot{display:grid;flex:none;gap:var(--space-4);justify-items:center;margin-top:auto;padding-top:var(--space-8)}
@@ -113,7 +134,7 @@
 /* ---- 标志上的图库切换（ui/library_pop.js） ---- */
 .library-pop{position:fixed;top:var(--space-12);left:80px;z-index:var(--z-menu);width:280px;padding:var(--space-12)}
 .library-pop-in{display:grid;gap:var(--space-12)}
-.library-now,.library-list{display:grid;gap:var(--space-2)}
+.library-now,.library-list,.library-rows{display:grid;gap:var(--space-2)}
 .library-now>small,.library-list>small{color:var(--muted);font-size:var(--fs-11)}
 .library-now>b{color:var(--ink);font-size:var(--fs-13);font-weight:var(--fw-750)}
 .library-now>span,.library-row>span{overflow:hidden;color:var(--muted);font-size:var(--fs-11);white-space:nowrap;text-overflow:ellipsis}
@@ -127,17 +148,19 @@
 
 /* ---- 窄窗口（≤760px）：活页条只留一级入口和底部，二级层收进抽屉（页头左边的按钮打开） ---- */
 @media (max-width:760px){
-  .rail{width:64px;padding-top:var(--space-12)}
+  /* 抽屉（.rail-l2 的 fixed）的层级只在 .rail 的层叠上下文里算：.rail 自己要高过内容页里的吸顶行（按天视图的日期行 --z-page-3） */
+  .rail{z-index:var(--z-drawer);width:64px;padding-top:var(--space-12)}
   .rail-l1{padding-left:var(--space-8)}
   .rail-entry{width:48px}
   .rail-tab{left:var(--space-8)}
   .rail-name{left:52px}
   .rail-sep{display:none}
-  .rail-l2{position:fixed;top:var(--space-8);bottom:var(--space-8);left:64px;z-index:var(--z-drawer);width:84px;flex:none;padding:var(--space-12) 0;border-radius:var(--radius-18);
+  .rail-l2{position:fixed;top:var(--space-8);bottom:var(--space-8);left:64px;z-index:var(--z-drawer);width:84px;flex:none;border-radius:var(--radius-18);
     background:var(--canvas);box-shadow:var(--shadow-pop);visibility:hidden;opacity:0;transform:translateX(-12px);
     transition:opacity var(--dur-1) var(--ease),transform var(--dur-2) var(--ease),visibility 0s var(--ease) var(--dur-2)}
   .rail.is-drawer .rail-l2{visibility:visible;opacity:1;transform:none;transition:opacity var(--dur-2) var(--ease),transform var(--dur-2) var(--ease)}
   .rail.is-drawer.is-empty .rail-l2{visibility:hidden}
+  .rail-scroll{padding:var(--space-12) 0}
   #sidebarToggle{display:inline-flex}
   .library-pop{left:60px}
 }

@@ -16,7 +16,8 @@
   const viewport = () => $('viewport');
   const PAGES = {
     // 应用启动完、能接受跳转的标志。
-    booted: () => !!viewport() && !$('splash') && !!document.querySelector('.nav[data-page]'),
+    // 0.4 起导航是活页条（#706）；改版前的侧栏是 .nav[data-page]，量改前的数字时两种都认。
+    booted: () => !!viewport() && !$('splash') && !!document.querySelector('#rail [data-entry], .nav[data-page]'),
     home: {hash: '#/home', ready: () => !!document.querySelector('#homePage .home-day img'), scroller: viewport,
       // 同步导入时盯着的「最上面那一天」：新图都进这一块。
       watch: () => $('homePage')},
@@ -129,7 +130,13 @@
   // ---------- 场景的每一步 ----------
   let syncLoop = null;
   const ops = {
-    async boot() { await until(PAGES.booted, 60000, '应用启动'); watch(); return {dpr: devicePixelRatio, width: innerWidth, height: innerHeight, ua: navigator.userAgent}; },
+    // 启动后先查样式表都加载上了：宿主不发某个样式表（例如 0.4 之前的宿主不发 /css/，#683）时量出来的不是这个前端，直接报错。
+    async boot() {
+      await until(PAGES.booted, 60000, '应用启动'); watch();
+      const links = [...document.querySelectorAll('link[rel=stylesheet]')], missing = links.filter(l => !l.sheet).map(l => l.getAttribute('href'));
+      if (missing.length) throw new Error('样式表没有加载上：' + missing.join(', '));
+      return {dpr: devicePixelRatio, width: innerWidth, height: innerHeight, ua: navigator.userAgent, sheets: links.length};
+    },
     // 跳到一页，等它的第一批图显示出来，再等 settle 毫秒让后续的读取和解码落定。
     async go({page, settle = 1500}) {
       const p = PAGES[page];

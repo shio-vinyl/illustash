@@ -229,3 +229,13 @@ test('展厅：一排画框，高按档位轮换、宽按比例，中心在视�
   assert.equal(width, boxes[2].x + boxes[2].w + 64);
   assert.deepEqual(L.hall([], {height: 500}), {boxes: [], width: 0});
 });
+
+test('一行（strip）：等高、按宽高比放到放不下为止，不拉满；未知按 3:4，超宽的截上限', () => {
+  const four = L.strip([.7, .7, .7, .7], {height: 84, max: 288, gap: 4});
+  assert.deepEqual(four.boxes.map(b => [b.i, b.x, b.w, b.h]), [[0, 0, 59, 84], [1, 63, 59, 84], [2, 126, 59, 84], [3, 189, 59, 84]]);
+  assert.equal(four.width, 248);
+  assert.deepEqual(L.strip([4 / 3, 4 / 3, 4 / 3], {height: 84, max: 288, gap: 4}).boxes.map(b => b.w), [112, 112]);   // 第三张放不下
+  assert.deepEqual(L.strip([0, NaN, 10, .1], {height: 100, max: 1000}).boxes.map(b => b.w), [75, 75, 240, 50]);     // 未知 3:4；截在 0.5–2.4
+  assert.deepEqual(L.strip([3], {height: 128, max: 288}).boxes, [{i: 0, x: 0, y: 0, w: 288, h: 128}]);             // 一张也超出：限成 max
+  assert.deepEqual(L.strip([], {height: 84, max: 288}), {boxes: [], width: 0});
+});

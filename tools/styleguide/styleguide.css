@@ -120,7 +120,8 @@ body { margin: 0; background: var(--canvas); color: var(--ink); }
 .sg-img.c { background: linear-gradient(135deg, #d0b5ec, #a9c6f0); }
 .sg-cardbox { position: relative; width: 120px; height: 150px; }
 .sg-cardbox .card { position: relative; width: 100%; height: 100%; }
-.sg-cardbox .image-stage > .sg-img { width: 100%; height: 100%; }
+/* 网格卡片（#708）在网格里绝对定位，这里摆成普通的块 */
+.sg-cardbox .card { transform: none; }
 
 /* 0.4 新部件的样例（#705）：只摆位置和尺寸，部件本身的样子来自 web/static/css/base.css */
 .sg-tint { display: grid; gap: 6px; width: 150px; font-size: 11px; color: var(--muted); }

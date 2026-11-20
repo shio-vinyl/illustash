@@ -5,8 +5,19 @@
   "按天": "By day",
   "网格": "Grid",
   "日历": "Calendar",
-  "日历视图还没做好。": "The calendar view is not ready yet.",
-  "按天看": "View by day",
+  "{m} 月": "{m}",
+  "{n} 天有新图": {
+    "one": "{n} day with new pictures",
+    "other": "{n} days with new pictures"
+  },
+  "{date}，{n} 张": "{date}, {n} pictures",
+  "翻月": "Months",
+  "本月": "This month",
+  "上一个有图的月份": "Previous month with pictures",
+  "下一个有图的月份": "Next month with pictures",
+  "这个月没有图片。": "No pictures this month.",
+  "图库里还没有图片。": "The library has no pictures yet.",
+  "每天一格，格子里是那天加入的图。点一天去按天看那一天。": "One cell per day, showing the pictures added that day. Click a day to see it in By day.",
   "{n} 天": {
     "one": "{n} day",
     "other": "{n} days"
@@ -48,8 +59,6 @@
   "图上显示副本数": "Show copy counts on pictures",
   "图片网格": "Picture grid",
   "缩略图大小": "Thumbnail size",
-  "图片下方显示角色名": "Character names under pictures",
-  "浏览页、格子够大时": "On browsing pages, when cells are large enough",
   "图上显示副本数与造型": "Show copy counts and forms on pictures",
   "未识别的图上显示「可能是」": "Show “Might be” on unidentified pictures",
   "点一下就设为该角色": "One click assigns that character",
@@ -373,6 +382,10 @@
   "、": ", ",
   "{names}，第 {n} 张": "{names}, picture {n}",
   "未识别图片": "Unidentified picture",
+  "{n} 位": {
+    "one": "{n} character",
+    "other": "{n} characters"
+  },
   "图片暂不可读": "Picture unreadable for now",
   "一次最多连选 5,000 张；需要更多请用 {key}": "Range selection is limited to 5,000 pictures; use {key} for more",
   "取消选择（Esc）": "Clear selection (Esc)",

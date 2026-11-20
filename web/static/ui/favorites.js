@@ -6,18 +6,18 @@ import {esc} from '../core/format.js';
 import {t} from '../core/i18n.js';
 import {post} from '../core/session.js';
 import {toast, written} from './dom.js';
+import {tpl} from './el.js';
 
 export const HEART = '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 16.4S3.4 12.5 3.4 7.9A3.3 3.3 0 0 1 10 6.3a3.3 3.3 0 0 1 6.6 1.6c0 4.6-6.6 8.5-6.6 8.5Z"/></svg>';
-const tip = on => on ? t('取消收藏（F）') : t('收藏（F）');
+// 同一个心形的模板，给部件写法的界面克隆用：网格卡片（ui/grid_card.js）的心形用它，收藏过的一直显示，没收藏的悬停时出现。
+export const HEART_ICON = tpl`<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 16.4S3.4 12.5 3.4 7.9A3.3 3.3 0 0 1 10 6.3a3.3 3.3 0 0 1 6.6 1.6c0 4.6-6.6 8.5-6.6 8.5Z"/></svg>`;
+// 心形的提示：按下去会做什么。
+export const heartTip = on => on ? t('取消收藏（F）') : t('收藏（F）');
+const tip = heartTip;
 const pressed = (on, label) => `aria-pressed="${on}" title="${tip(on)}" aria-label="${label}"`;
 
 // 只显示、不能点的实心心形；取消收藏后就地藏起来（app.css 的 .fav-mark.still）。
 const still = x => `<span class="fav-mark on still" data-fav="${esc(x.uuid)}" aria-hidden="true">${HEART}</span>`;
-// 卡片右下角：收藏过的一直显示实心，没收藏的悬停时出现空心，点一下切换。格子太小时只显示实心，不能点。
-export function cardHeart(item, small) {
-  if (small) return item.fav ? still(item) : '';
-  return `<button class="fav-mark${item.fav ? ' on' : ''}" data-fav="${esc(item.uuid)}" ${pressed(!!item.fav, t('收藏', {context: 'verb'}))}>${HEART}</button>`;
-}
 // 首页缩略图：只显示收藏过的，不能点（首页点图是打开详情）。
 export const homeHeart = x => x.fav ? still(x) : '';
 // 详情栏顶部按钮行里的切换按钮。

@@ -134,13 +134,13 @@ test('详情栏、大图里那张也跟着改', async () => {
   assert.equal(state.viewerItem.fav, true);
 });
 
-test('只看收藏里取消：照其他写入重读列表，读列表时带 marks=fav', async () => {
+test('只看收藏里取消：照其他写入重读列表，读列表时带收藏标记（marks=fav,color，主色给卡片，#708）', async () => {
   state.route = {page: 'library', has: '["fav"]'};
   await grid.favoriteOne('c');
   assert.deepEqual(requests[0], {path: '/api/favorite', body: {ids: ['c'], add: false}});
   const list = requests.find(r => r.path.startsWith('/api/assets?'));
   assert.ok(list, '取消收藏后应重读列表');
-  assert.equal(new URLSearchParams(list.path.split('?')[1]).get('marks'), 'fav');
+  assert.equal(new URLSearchParams(list.path.split('?')[1]).get('marks'), 'fav,color');
 });
 
 test('全选时先问后端选区里还有没有没收藏的：都收藏了就全部取消', async () => {
@@ -168,11 +168,8 @@ test('选择栏的按钮：选中的都已收藏时是「取消收藏」，超�
   assert.match(document.getElementById('selectionBar').innerHTML, /data-act="fav">收藏 <kbd>F<\/kbd>/);
 });
 
-test('心形：收藏过的是按下态，小格子只画不能点的实心，没收藏的小格子不画', () => {
-  assert.match(ui.cardHeart({uuid: 'a', fav: true}, false), /class="fav-mark on" data-fav="a" aria-pressed="true" title="取消收藏（F）"/);
-  assert.match(ui.cardHeart({uuid: 'a', fav: false}, false), /aria-pressed="false" title="收藏（F）"/);
-  assert.match(ui.cardHeart({uuid: 'a', fav: true}, true), /<span class="fav-mark on still" data-fav="a" aria-hidden="true">/);
-  assert.equal(ui.cardHeart({uuid: 'a', fav: false}, true), '');
+// 网格卡片上的心形是 ui/grid_card.js 的部件，在 tests/grid_card.test.cjs 里测。
+test('心形：首页只画收藏过的；大图底栏和详情栏的按钮', () => {
   assert.equal(ui.homeHeart({uuid: 'a'}), '');
   assert.match(ui.viewerHeart('a', true), /data-vact="fav".*<kbd>F<\/kbd><span class="fav-label">已收藏<\/span>/);
   assert.match(ui.detailHeart('a<', false), /data-fav="a&lt;"/);

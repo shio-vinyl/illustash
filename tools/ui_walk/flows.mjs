@@ -535,15 +535,16 @@ export const FLOWS = [
     covers: ['#710', '#646'],
     async run(w, page) {
       const ids = Object.keys(w.config.names).slice(0, 12);
-      await w.step('（准备）收藏 6 张，建一个手选画廊（放进 4 张）和一个空的手选画廊', async p => {
+      await w.step('（准备）收藏 6 张，建一个手选画廊（放进 4 张）、一个空的手选画廊和一个按条件的画廊', async p => {
         await post(p, '/api/favorite', {ids: ids.slice(0, 6)});
         await post(p, '/api/galleries', {action: 'create', kind: 'manual', name: 'Summer', ids: ids.slice(6, 10)});
         await post(p, '/api/galleries', {action: 'create', kind: 'manual', name: 'Empty'});
+        await post(p, '/api/galleries', {action: 'create', name: 'Faved', params: {has: '["fav"]'}});
         await p.send('Page.reload');   // 接口直接写的，页面不知道：重新载入，和用户换了个时候打开一样
         await p.waitFor(`document.getElementById('rail') && !document.getElementById('splash')`, 15000);
       });
       let snap = await w.step('点活页条的画廊', () => goto(page, '#/galleries'), {shot: true});
-      const cards = () => page.eval(`[...document.querySelectorAll('.gcard')].map(c => c.dataset.kind || (c.dataset.drop === 'new' ? 'new' : '?'))`);
+      const cards = () => page.eval(`[...document.querySelectorAll('.gcard')].map(c => c.dataset.kind || (c.classList.contains('gcard-new') ? 'new' : '?'))`);
       const kinds = await cards();
       w.check('收藏在最前，最后一张是「新建」', kinds[0] === 'fav' && kinds.at(-1) === 'new', kinds);
       w.check('手选画廊的卡片标成手选', kinds.filter(k => k === 'manual').length === 2, kinds);

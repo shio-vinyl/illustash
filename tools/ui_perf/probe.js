@@ -22,6 +22,12 @@
       // 同步导入时盯着的「最上面那一天」：新图都进这一块。
       watch: () => $('homePage')},
     library: {hash: '#/library', ready: () => !!document.querySelector('#grid .card[data-id] img'), scroller: viewport, watch: () => $('grid')},
+    // 画廊（#710）的瀑布、色彩：一个放进全部图的手选画廊，网格和图库同一套，只换排法和排序。prepare 在跳过去之前建好
+    // 画廊（每次运行的图库都是新恢复的）、记好展示方式，返回要去的地址。
+    galleryMasonry: {prepare: () => perfGallery('masonry'), ready: () => !!document.querySelector('#grid .card[data-id] img'), scroller: viewport,
+      watch: () => $('grid')},
+    galleryColor: {prepare: () => perfGallery('color'), ready: () => !!document.querySelector('#grid .card[data-id] img'), scroller: viewport,
+      watch: () => $('grid')},
     characters: {hash: '#/characters', ready: () => !!document.querySelector('#charIndex .cast-poster img'), scroller: viewport,
       watch: () => $('charIndex')},
     viewer: {
@@ -127,6 +133,17 @@
       jsHeap: performance.memory ? Math.round(performance.memory.usedJSHeapSize / 1048576) : null};
   }
 
+  async function perfGallery(show) {
+    const galleries = await import('/core/galleries.js'), shows = await import('/core/gallery_shows.js');
+    let g = (await galleries.loadGalleries()).find(x => x.name === '性能测量');
+    if (!g) {
+      await galleries.createManual('性能测量', {filter: {order: 'newest'}, confirm: true});
+      g = (await galleries.loadGalleries()).find(x => x.name === '性能测量');
+    }
+    shows.chooseShow(g.id, show);
+    return galleries.galleryHref(g.id, show);
+  }
+
   // ---------- 场景的每一步 ----------
   let syncLoop = null;
   const ops = {
@@ -139,8 +156,8 @@
     },
     // 跳到一页，等它的第一批图显示出来，再等 settle 毫秒让后续的读取和解码落定。
     async go({page, settle = 1500}) {
-      const p = PAGES[page];
-      if (location.hash !== p.hash) location.hash = p.hash;
+      const p = PAGES[page], hash = p.prepare ? await p.prepare() : p.hash;
+      if (location.hash !== hash) location.hash = hash;
       await until(p.ready, 60000, page + ' 就绪');
       await sleep(settle);
       return snapshot(page);

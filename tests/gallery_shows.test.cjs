@@ -132,3 +132,39 @@ test('#646：「更多像这张的」页上有条件也没有「保存为画廊�
   assert.match(save.saveButton({page: 'library', has: ['tag:beach']}), /id="saveGallery"/);
   assert.equal(save.saveButton({page: 'gallery', id: '1', has: ['tag:beach', 'tag:sea']}), '', '画廊页上换成页头的「更新画廊」');
 });
+
+test('网格的瀑布（ui/grid_rows.js）：框和 masonry 一样，行顶不减；↑↓ 走同一列，到头去两端；点哪张命中哪张；不看「原始比例」开关', async () => {
+  const {el} = web.fakePage();
+  el('viewport').clientWidth = 652;
+  el('grid').getBoundingClientRect = () => ({left: 0, top: 0});
+  const rows = await web.load('ui/grid_rows.js'), layout = await web.load('core/layout.js');
+  shows.chooseShow(5, 'masonry');
+  const sizes = [[3, 4], [1, 2], [2, 1], [1, 1], [3, 4], [1, 3], [4, 3], [1, 1], [2, 3]];
+  const items = sizes.map(([width, height], i) => ({uuid: 'u' + i, width, height}));
+  Object.assign(state, {route: {page: 'gallery', id: '5', has: ['gallery:5']}, items, total: items.length, size: 120, fit: false, dataVersion: 1});
+  assert.equal(rows.fixedLayout().kind, 'masonry');
+  rows.layout();
+  assert.ok(rows.flowing());
+  const plain = layout.masonry(items.map(rows.imageRatio), {width: 650, column: state.cellW, gap: state.gap});
+  plain.boxes.forEach(b => assert.deepEqual(rows.cardRect(b.i), {x: b.x, y: b.y, w: b.w, h: b.h}));
+  assert.equal(state.cols, plain.columns);
+  for (let r = 1; r < rows.rowCount(); r++) assert.ok(rows.rowTop(r) >= rows.rowTop(r - 1));
+  assert.equal(rows.rowTop(rows.rowCount()), plain.height);
+  assert.equal(rows.rowReach(), Math.max(...plain.boxes.map(b => b.h)));
+  const col = i => plain.boxes[i].col;
+  for (let i = 0; i < items.length; i++) {
+    const down = rows.verticalStep(i, 1), up = rows.verticalStep(i, -1);
+    assert.ok(down === items.length - 1 || (col(down) === col(i) && down > i), `↓ ${i} → ${down}`);
+    assert.ok(up === 0 || (col(up) === col(i) && up < i), `↑ ${i} → ${up}`);
+    const b = rows.cardRect(i);
+    assert.equal(rows.indexAt(b.x + b.w / 2, b.y + b.h / 2), i);
+    assert.equal(rows.indexAt(b.x + 1, b.y + 1, false), i);
+  }
+  assert.equal(rows.indexAt(-5, 5, false), -1);
+  // 「方格 / 原始比例」开关对定了排法的页面不起作用；换成色彩是等高行。
+  state.fit = true; rows.layout();
+  assert.deepEqual(rows.cardRect(1), {x: plain.boxes[1].x, y: plain.boxes[1].y, w: plain.boxes[1].w, h: plain.boxes[1].h});
+  shows.chooseShow(5, 'color'); rows.layout();
+  assert.equal(rows.rowReach(), 0);
+  assert.equal(rows.cardRect(0).y, rows.cardRect(1).y);
+});

@@ -21,8 +21,10 @@ import {drawEmpty} from './empty.js';
 import {railKey, railNsfw} from './rail.js';
 import {renderChrome, renderHeading} from './shell.js';
 import {findArtists} from './artists.js';
-import {openExport, startDrag} from './files.js';
-import {canDrag, exportActive} from '../core/files.js';
+import {openExport} from './files.js';
+import {exportActive} from '../core/files.js';
+import {lift} from './drag.js';
+import {addGalleryButtons} from './gallery_bar.js';
 import {answerAsk, closeInspector, closeViewer, ensureVisible, indexOf, inspect, noteFavorite, openViewer, peek, pickAlternative, showViewer, singleAction, step, zoomView} from './detail.js';
 import {jumpToCharacter, markOc, newIds, openPicker, openRelate, targets} from './palette.js';
 import {createLayer, inPopover, popoverOpen} from './overlay.js';
@@ -30,7 +32,7 @@ import {FAV, favLeaves, isFav, markLocal, wantsAdd, withCondition} from '../core
 import {paintHearts, writeFavorite} from './favorites.js';
 import {write as frameWrite} from './frame.js';
 import {dupHue, gridCard, gridContext, skeletonCard} from './grid_card.js';
-import {cardRect, indexAt, layout, layoutKey, rowAt, rowCount, rowHeight, rowOf, rowStart, rowTop, setHead, verticalStep} from './grid_rows.js';
+import {cardRect, fixedLayout, flowing, indexAt, layout, layoutKey, rowAt, rowCount, rowHeight, rowOf, rowReach, rowStart, rowTop, setHead, verticalStep} from './grid_rows.js';
 import {enter} from './motion.js';
 import {app} from './scope.js';
 // 行坐标原来写在这里，别的模块（ui/detail.js、ui/shell.js）照旧从这里取。
@@ -170,6 +172,7 @@ function updateCount() {
 // 方格／原比例：设置页的选项和 R 键都经这里改，并记进偏好。
 export function setFit(on) { if (state.fit === on) return; state.fit = on; prefs.set('fit', on); }
 export function toggleFit() {
+  if (fixedLayout()) return;   // 页面定了排法（画廊的瀑布、色彩）：开关不起作用
   const v = $('viewport'), anchor = rowStart(rowAt(v.scrollTop));
   setFit(!state.fit); layout();
   v.scrollTop = rowTop(rowOf(anchor)); renderGrid(true);
@@ -197,13 +200,13 @@ export function renderGrid(relayout = false) {
   const anchorRow = rowAt(v.scrollTop), anchor = rowStart(anchorRow), within = v.scrollTop - rowTop(anchorRow);
   const oldLayout = layoutKey();
   const before = [state.cols, state.rowH]; layout();
-  if (state.fit && oldLayout !== layoutKey() && anchor < state.total) {
+  if (flowing() && oldLayout !== layoutKey() && anchor < state.total) {
     const row = rowOf(anchor), top = rowTop(row) + Math.min(within, rowHeight(row) - 1);
     if (Math.abs(top - v.scrollTop) > .5) v.scrollTop = top;
   }
   if (relayout || before[0] !== state.cols || before[1] !== state.rowH) state.gridKey = '';
   const rows = rowCount(); grid.style.height = `${rowTop(rows)}px`;
-  const first = Math.max(0, rowAt(v.scrollTop) - (state.fit ? 1 : 2)), last = Math.min(rows, rowAt(v.scrollTop + v.clientHeight) + 2);
+  const first = Math.max(0, rowAt(v.scrollTop - rowReach()) - (state.fit ? 1 : 2)), last = Math.min(rows, rowAt(v.scrollTop + v.clientHeight) + 2);
   // 屏幕倍率也算进键：窗口拖到倍率不同的屏幕后，下一次重画（滚动、改窗口大小）就按新倍率换缩略图档位（#452）。
   const scale = screenScale(), key = `${first}:${last}:${state.dataVersion}:${layoutKey()}:${scale}`;
   if (key !== state.gridKey) { state.gridKey = key; placeCards(rowStart(first), rowStart(last), scale); }
@@ -222,7 +225,7 @@ export function renderGrid(relayout = false) {
 function placeCards(from, to, scale) {
   const grid = $('grid'), view = viewOf(state.route), dup = !!view.card?.dup;
   // 这一轮共用的上下文（页面、视图选项、格宽）：内容没变就沿用上一份，卡片据此判断要不要重画。
-  const next = gridContext({route: state.route, view, fit: state.fit, cellW: state.cellW, hints: viewOpts.hints, hue: hueAt});
+  const next = gridContext({route: state.route, view, fit: flowing(), cellW: state.cellW, hints: viewOpts.hints, hue: hueAt});
   const k = JSON.stringify({...next, hue: 0, scale});
   if (k !== ctxKey) { ctxKey = k; ctx = next; }
   cards ||= app.child('grid-cards');
@@ -340,9 +343,6 @@ function handleCardClick(index, e, onCheck = false) {
   setSelected(item.uuid, !isSelected(item.uuid)); state.anchor = index; renderSelection();
 }
 
-// 按住选中的图拖动：把选中的图拖到别的应用（#450 的方案 ①）。画廊（E #710）把这里换成先「拿起」（拖进画廊），拖出窗口边缘
-// 再交给 startDrag。
-function liftSelection() { startDrag([...state.sel.ids]); }
 // 指针：点击、在卡片上拖动选择（像「照片」那样）、从空白处拉框选择、到边缘时自动滚动。
 let drag = null;
 function applyDrag() {
@@ -356,7 +356,7 @@ function applyDrag() {
     const gr = $('grid').getBoundingClientRect(), x2 = drag.lastX - gr.left, y2 = drag.lastY - gr.top;
     const [l, r, t, b] = [Math.min(drag.gx, x2), Math.max(drag.gx, x2), Math.min(drag.gy, y2), Math.max(drag.gy, y2)];
     Object.assign($('marquee').style, {left: `${l}px`, top: `${t}px`, width: `${r - l}px`, height: `${b - t}px`}); $('marquee').hidden = false;
-    const r0 = rowAt(t), r1 = rowAt(b);
+    const r0 = rowAt(t - rowReach()), r1 = rowAt(b);
     for (let row = r0; row <= r1; row++) for (let i = rowStart(row); i < rowStart(row + 1); i++) {
       const box = cardRect(i);
       if (box.x <= r && box.x + box.w >= l && box.y <= b && box.y + box.h >= t) indices.push(i);
@@ -393,9 +393,9 @@ export function renderSelection() {
   bar.innerHTML = count + buttons + (big ? `<span class="bar-note">${note}</span>` : dupNote ? `<span class="bar-note">${dupNote}</span>` : '');
   $('clearSel').onclick = quitSelecting;
   for (const b of bar.querySelectorAll('[data-act]')) b.onclick = () => runBarAction(b.dataset.act);
+  if (kind === 'default') addGalleryButtons(bar, r, n, {payload: () => ({...selectionPayload(), confirm: n > 500}), mutate, openPicker});   // #710
 }
-// 选择栏的按钮：先是这一页（注册表的 bar）自己的几个，后面是各页都有的。点了以后由 runBarAction 按 data-act 分发。
-// 画廊（E #710）在默认选择栏的末尾加「放进画廊…」「从画廊拿出」，加在这里；它们的动作加在 runBarAction 开头。
+// 选择栏的按钮：先是这一页（注册表的 bar）自己的几个，后面是各页都有的，点了由 runBarAction 按 data-act 分发；画廊的两个由 gallery_bar.js 另加。
 function barButtons(kind, n, arm) {
   const r = state.route;
   let buttons = '';
@@ -828,9 +828,9 @@ export function wireGrid() {
     drag.lastX = e.clientX; drag.lastY = e.clientY;
     if (!drag.moved && Math.hypot(e.clientX - drag.x, e.clientY - drag.y) < 6) return;
     if (!drag.moved) {
-      // 按住一张已选中的图拖动：把选中的图拖到别的应用（#450 的方案 ①），不再是拖动选择。全选时没有展开的 ID，不拖。
+      // 按住一张已选中的图拖动：拿起选中的图（ui/drag.js，#710），放进画廊或拖出窗口到别的应用（#450 ①）。全选时没有展开的 ID，不拖。
       const held = drag.start !== null ? state.items[drag.start] : null;
-      if (held && canDrag() && !state.sel.all && isSelected(held.uuid)) { drag = null; liftSelection(); return; }
+      if (held && !state.sel.all && isSelected(held.uuid)) { drag = null; lift([...state.sel.ids], e); return; }
       drag.moved = true; state.selecting = state.selecting || browsing();
       drag.base = {all: state.sel.all, ids: new Set(state.sel.ids), exclude: new Set(state.sel.exclude)};
       const startItem = drag.start !== null ? state.items[drag.start] : null;

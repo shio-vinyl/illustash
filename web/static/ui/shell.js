@@ -17,6 +17,7 @@ import {dirDrawn, dirToolbar, onDir, wireDirToolbar} from './artist_dir.js';
 import {$, error, helpTip, searchIcon, showArea, wireHelpTip, workSmall} from './dom.js';
 import {attr, make, show, text, tpl} from './el.js';
 import {closeInspector, closeViewer} from './detail.js';
+import {fixedLayout} from './grid_rows.js';
 import {markSelectButton, placeFor, rememberPlace, reload, resetForRoute, selectAll, setNsfw, short, sweep, toggleFit, toggleSelecting} from './grid.js';
 import {guideTick} from './guide.js';
 import {filterBar, wireFilterBar} from './filters.js';
@@ -201,7 +202,7 @@ export function renderChrome() {
   bar.innerHTML = filtersOnly ? filtersHTML : filtersHTML +
     `<div class="spacer"></div><select id="sort" aria-label="${t('排序')}">${sorts.map(([v, label]) => `<option value="${v}"${r.sort === v ? ' selected' : ''}>${label}</option>`).join('')}</select>` +
     `<button class="quiet" id="selectButton" title="${cleanup() ? t('选中全部符合条件的图片') : t('进入选择模式')}">${cleanup() ? `${t('全选')} <kbd>${shortcut('A')}</kbd>` : t('选择')}</button>` +
-    `<div class="icon-seg" id="fitToggle" role="group" aria-label="${t('显示方式')}"><button data-fit="0" class="${state.fit ? '' : 'on'}" title="${t('方格：裁成正方形（R）')}" aria-label="${t('方格')}">${FIT_ICONS.square}</button><button data-fit="1" class="${state.fit ? 'on' : ''}" title="${t('原始比例：完整显示整张图（R）')}" aria-label="${t('原始比例')}">${FIT_ICONS.fit}</button></div>`;
+    `<div class="icon-seg" id="fitToggle" role="group" aria-label="${t('显示方式')}"${fixedLayout(r) ? ' hidden' : ''}><button data-fit="0" class="${state.fit ? '' : 'on'}" title="${t('方格：裁成正方形（R）')}" aria-label="${t('方格')}">${FIT_ICONS.square}</button><button data-fit="1" class="${state.fit ? 'on' : ''}" title="${t('原始比例：完整显示整张图（R）')}" aria-label="${t('原始比例')}">${FIT_ICONS.fit}</button></div>`;
   if (filtersOnly) { wireSearch(r); wireFilterBar(r); wireSaveButton(r); return; }
   // 改了排序就记成这一类页面的默认值，离开再回来还是它（#386 的 2-26）；记在哪个键由 core/route.js 的 sortKey 定。
   $('sort').onchange = e => { prefs.set(sortKey(r), e.target.value); replaceRoute({sort: e.target.value}); reload(true); };

@@ -12,6 +12,7 @@ mod notify;
 mod picker;
 mod pixiv;
 mod server;
+mod transparency;
 mod updater;
 mod webview;
 mod welcome;
@@ -121,11 +122,15 @@ fn main() {
                 }
                 app.set_menu(menu)?;
             }
+            let reduced_transparency = transparency::initial();
+            let mut main = WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
+                .title("Illustash")
+                .initialization_script(i18n::page_script());
+            if let Some(script) = reduced_transparency.map(transparency::script) {
+                main = main.initialization_script(script);
+            }
             let main = webview::build(
-                WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
-                    .title("Illustash")
-                    .initialization_script(i18n::page_script())
-                    .inner_size(1280.0, 840.0)
+                main.inner_size(1280.0, 840.0)
                     .min_inner_size(MIN_SIZE.0, MIN_SIZE.1)
                     // 先不显示：放回记下的位置和大小以后再显示，免得窗口先在默认位置闪一下（#451）。
                     .visible(false)
@@ -140,6 +145,7 @@ fn main() {
                         tauri::webview::NewWindowResponse::Deny
                     }),
             )?;
+            transparency::observe(&handle, reduced_transparency);
             window_state::restore(&main, MIN_SIZE);
             main.show()?;
             if let Err(error) = &computation {

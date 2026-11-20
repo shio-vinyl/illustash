@@ -33,13 +33,15 @@ export const loadIndex = async () => { const token = session.token, value = awai
 export const loadNames = async () => { const token = session.token, value = await shared('/api/names'); if (token === session.token) setNames(value); return value; };
 // 上次检查新角色时每个关注作品的情况（#561，GET /api/index/coverage）：本图库启用的数据包已经覆盖几个、自己补过几个、
 // 还缺几个。/api/index 的回复冻结，所以另读一次；检查或添加角色之后（检查时间或最近一条历史变了）重新读。返回是否读了新的。
-let coverage = null, coverageKey = '';
+// 读成功了才记下键：读失败的同一次检查，下次进这一节或检查结束时还会再读；正在读的键不重复发。
+let coverage = null, coverageKey = '', coverageLoading = '';
 export const indexCoverage = () => coverage;
 export async function loadCoverage(x = state.index, fresh = false) {
   const key = JSON.stringify([x?.check?.checked_at, x?.history?.[0]?.at]);
-  if (!fresh && key === coverageKey) return false;
-  coverageKey = key;
-  try { coverage = await shared('/api/index/coverage'); } catch { coverage = null; }
+  if ((!fresh && key === coverageKey) || key === coverageLoading) return false;
+  coverageLoading = key;
+  try { coverage = await shared('/api/index/coverage'); coverageKey = key; } catch { coverage = null; coverageKey = ''; }
+  finally { if (coverageLoading === key) coverageLoading = ''; }
   return true;
 }
 // /api/settings 的最新回应；任务面板读到新的也经这里换上。

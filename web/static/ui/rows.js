@@ -33,17 +33,22 @@
 //                         modelsButtons、ui/packs.js 的 packButtons 就是这个形状。
 //   dot                   state => '' | 'busy' | 'warn' | 'off' | null：标题前的状态圆点（null 不画）。
 //   progress              state => {done, total} | null：说明下面的进度条，随 update 走（焦点在别处的输入框上也动）。
-//   href                  文字或 state => 地址：标题是链接（链到资料库、别的设置节）。
+//   href                  文字或 state => 地址：标题是链接（链到资料库、别的设置节）。info 行带 href 时整行是链接，右边的
+//                         value 写「3 部 ›」这类；只有链接的行用 info，action 必须有 button 或 buttons（配置校验拦住）。
 //   link                  state => {href, label} | null：说明后面的一个小链接（「手动下载说明」），在新窗口打开。
 //   warn                  state => 文字：说明下面一行醒目的小字（「这次启动已用命令行参数关闭」）。
 //   value（action 也有）   右边按钮之前的一段文字（「3 部 ›」）。
-//   field 的 min / max / step / unit / wide   数字框的范围和后面的单位（「张」），wide 是长输入框（地址）。
-//   list 的 itemHref      item => 地址 | null：这一项的文字是链接；actions 的 label 可以是 (item, state) => 文字。
+//   field 的 min / max / step / unit / wide / plain   数字框的范围和后面的单位（「张」），wide 是长输入框（地址），plain
+//                         关掉拼写检查和自动填充；placeholder 也可以是 state => 文字；enter(state) 是在框里按回车时做的事
+//                         （先把框里的值交给 set，输入法组字时不算）。
+//   list 的 itemHref      item => 地址 | null：这一项的文字是链接；itemTitle 是这一项的悬停提示（完整路径、SHA-256）；
+//                         actions 的 label、title 可以是 (item, state) => 文字，primary 是主按钮。
+// action 带 buttons 时，行级的 disabled 不起作用，每个按钮自己带 disabled。
 //
 // 改了还没存好的值（#469）：开关、下拉框、输入框改动时，这一行记下「待提交的值」，再调 set。set 返回 promise 时，
 // 等它落定再清掉；不返回 promise 时当作已经同步存好，立刻清掉。待提交的值还在、而 state 里的值还是旧的，update 不覆盖
-// 控件（离开输入框以后、新状态回来之前来一次轮询，打的字不会被冲回旧值）；state 里的值等于它时提前清掉。保存失败时
-// promise 落定后，下一次 update 照 state 写回原值，界面和实际一致。
+// 控件（离开输入框以后、新状态回来之前来一次轮询，打的字不会被冲回旧值）；state 里的值等于它时提前清掉。清掉的同时
+// 按最新的 state 重画这一行：保存失败、确认框取消时控件立刻回到原值，各节的 set 不用自己重画。
 // 焦点在输入框、下拉框上时 update 也不覆盖它们的值（ui/el.js 的 value），下拉框的选项在焦点上时也不换，免得展开着的
 // 列表被换掉。这一条的前提是点开下拉框时它拿到焦点：Chromium 是这样；macOS 的 Safari 点按钮、复选框不给焦点，点
 // <select> 给焦点（Safari 17.0 也是）。
@@ -51,6 +56,7 @@
 // 按钮的 label 是文字。文字都由调用方用 t('…') 翻译好再传进来（键要写成字面量，tests/i18n.test.cjs 才收集得到）。
 //
 // 行的样式在 css/settings.css（.row 一组）。
+import {composing} from '../core/keys.js';
 import {attr, cls, css, make, prop, show, text, tpl, value} from './el.js';
 import {keyed} from './keyed.js';
 import {scope} from './scope.js';
@@ -108,7 +114,11 @@ function press(b, run) {
 const setOff = (b, off) => { if (off) b.dataset.off = '1'; else delete b.dataset.off; prop(b, 'disabled', off || Boolean(b.dataset.busy)); };
 
 export function rows(container, table, {scope: parent = null} = {}) {
-  for (const spec of table) if (!KINDS[spec.kind]) throw new Error(`ui/rows.js: 没有 ${spec.kind} 这种行`);
+  for (const spec of table) {
+    if (!KINDS[spec.kind]) throw new Error(`ui/rows.js: 没有 ${spec.kind} 这种行`);
+    // 只有链接、没有按钮的行用 info（带 href），action 必须有按钮。
+    if (spec.kind === 'action' && !spec.button && !spec.buttons) throw new Error(`ui/rows.js: action 行 ${spec.key} 既没有 button 也没有 buttons`);
+  }
   const s = parent ? parent.child('rows') : scope('rows');
   let state = null;
   const built = table.map(spec => build(spec));
@@ -116,14 +126,19 @@ export function rows(container, table, {scope: parent = null} = {}) {
   function build(spec) {
     const make_ = spec.kind === 'select' && spec.seg ? SEG : KINDS[spec.kind];
     const {el, refs} = make_(), label = spec.label, hint = spec.hint ?? '';
-    el.dataset.row = spec.key;
     const row = {spec, el, refs, label, hint, list: null, options: '', pending: null, buttons: null, to: null};
-    if (spec.href) {
+    if (spec.href && spec.kind === 'info') {
+      // 链接行：整行是一个 <a>（右边的值写「3 部 ›」这类），点哪里都跳。
+      const a = make('a', 'row is-link');
+      a.append(...el.childNodes);
+      row.el = a; row.to = a;
+    } else if (spec.href) {
       // 标题是链接：把 <b> 包进 <a>。
       const a = make('a', 'row-to');
       refs.label.replaceWith(a); a.append(refs.label);
       row.to = a;
     }
+    row.el.dataset.row = spec.key;
     if (spec.kind === 'switch') s.on(refs.input, 'change', () => submit(row, refs.input.checked));
     if (spec.kind === 'action' && spec.buttons) {
       refs.input.remove(); refs.input = null;
@@ -134,14 +149,21 @@ export function rows(container, table, {scope: parent = null} = {}) {
     }
     if (spec.kind === 'select' && !spec.seg || spec.kind === 'field') s.on(refs.input, 'change', () => submit(row, refs.input.value));
     if (spec.kind === 'field') {
-      attr(refs.input, 'type', spec.type || 'text'); attr(refs.input, 'placeholder', spec.placeholder || null);
+      attr(refs.input, 'type', spec.type || 'text');
       for (const k of ['min', 'max', 'step']) attr(refs.input, k, spec[k] ?? null);
       if (spec.wide) cls(refs.input, 'is-wide', true);
       if (spec.unit) { text(refs.unit, spec.unit); show(refs.unit, true); }
+      // 回车：先把框里的值交给 set，再调 enter（名称翻译的三个框回车保存）；输入法组字时的回车不算。
+      if (spec.enter) s.on(refs.input, 'keydown', e => {
+        if (e.key !== 'Enter' || composing(e)) return;
+        e.preventDefault?.();
+        submit(row, refs.input.value);
+        spec.enter(state);
+      });
       if (spec.type === 'password' || spec.plain) { attr(refs.input, 'spellcheck', 'false'); attr(refs.input, 'autocomplete', 'off'); }
     }
     if (spec.kind === 'list') row.list = keyed(refs.items, {key: spec.itemKey, create: item => listItem(spec, item), scope: s});
-    container.append(el);
+    container.append(row.el);
     return row;
   }
 
@@ -166,7 +188,9 @@ export function rows(container, table, {scope: parent = null} = {}) {
     const pending = {value: v};
     row.pending = pending;
     const result = row.spec.set?.(v, state);
-    const clear = () => { if (row.pending === pending) row.pending = null; };
+    // 落定以后（保存成功、失败或取消）按最新的 state 重画这一行：失败或取消时控件回到原值，不用等别处来一次 update。
+    // 这期间又改过（row.pending 换了）或者这张表已经释放，就不动。
+    const clear = () => { if (row.pending !== pending) return; row.pending = null; if (s.alive && state) paint(row); };
     if (result && typeof result.then === 'function') result.then(clear, clear); else clear();
   }
   // 控件该不该照 state 写：没有待提交的值，或者 state 已经是它了。
@@ -194,6 +218,7 @@ export function rows(container, table, {scope: parent = null} = {}) {
       attr(refs.to, 'target', away ? '_blank' : null); attr(refs.to, 'rel', away ? 'noreferrer noopener' : null);
       text(refs.text, href ? '' : words); show(refs.text, !href);
       const h = spec.itemHint?.(next) ?? ''; text(refs.hint, h); show(refs.hint, h);
+      attr(el, 'title', spec.itemTitle?.(next) || null);
       for (const {b, action} of buttons) {
         if (typeof action.label === 'function') text(b, action.label(next, state));
         show(b, !action.hidden?.(next, state)); setOff(b, Boolean(action.disabled?.(next, state)));
@@ -205,7 +230,7 @@ export function rows(container, table, {scope: parent = null} = {}) {
   }
 
   function paint(row) {
-    const {spec, el, refs} = row;
+    const {spec, refs} = row, el = row.el;
     // 藏起来的行不再取别的值：它要的数据这时可能还没有。
     const hidden = Boolean(spec.hidden?.(state));
     show(el, !hidden);
@@ -258,6 +283,7 @@ export function rows(container, table, {scope: parent = null} = {}) {
         for (const b of refs.input.children) { attr(b, 'aria-pressed', String(String(b.dataset.value) === String(shown))); prop(b, 'disabled', off); }
       } else if (settled(row, v)) value(refs.input, v);
     }
+    if (spec.kind === 'field') attr(refs.input, 'placeholder', read(spec.placeholder, state) || null);
     if (spec.kind === 'field') { const v = spec.get?.(state); if (settled(row, v ?? '')) value(refs.input, v); }
     if (spec.kind === 'list') { show(refs.head, read(row.label, state) || h); row.list.set(read(spec.items, state) || []); }
   }

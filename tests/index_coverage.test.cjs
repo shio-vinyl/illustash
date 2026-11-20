@@ -55,8 +55,9 @@ test('资料包卡片底部：还缺时写数字，有待添加的链到「作�
     globalThis.fetch = async () => ({status: 200, ok: true, json: async () => coverage});
     Object.assign(core.state, {route: {page: 'settings', section: 'characters'}, pack: {current: {}, library: {}}, index, names: null});
     await core.loadCoverage(index, true);
-    const v = open(), row = v.row('packMissing'), out = {hidden: row.hidden, text: v.text, link: row.querySelector('a')?.getAttribute('href'),
-      check: row.hidden ? null : v.button('packMissing', '检查新角色…')};
+    const v = open(), row = v.row('packMissing'), link = v.row('packMissingLink');
+    const out = {hidden: row.hidden && link.hidden, text: v.text, link: link.hidden ? null : link.getAttribute('href'),
+      check: row.hidden ? undefined : v.button('packMissing', '检查新角色…')};
     v.dispose();
     return out;
   };

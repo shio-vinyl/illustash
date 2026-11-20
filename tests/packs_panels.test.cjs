@@ -6,7 +6,7 @@ const assert = require('node:assert/strict');
 const web = require('./web.cjs');
 const dom = require('./dom.cjs');
 const {view} = require('./settings_view.cjs');
-let tasks, state, open, characters;
+let tasks, state, open;
 before(async () => {
   await web.ready();
   web.fakePage();
@@ -15,7 +15,6 @@ before(async () => {
   const store = new Map();
   globalThis.localStorage = {getItem: k => store.has(k) ? store.get(k) : null, setItem: (k, v) => store.set(k, v), removeItem: k => store.delete(k)};
   tasks = await web.load('ui/tasks.js');
-  characters = await web.load('ui/settings_characters.js');
   open = await view('characters');
   state = web.core().state;
 });
@@ -24,8 +23,9 @@ function card() {
   dom.install();
   const v = open(), group = v.box.querySelector('[data-group="pack"]');
   const out = {text: require('./settings_view.cjs').visible(group), scope: group.querySelector('.set-scope'),
-    buttons: v.buttons('packStatus').map(b => b.textContent), missing: v.row('packMissing')};
-  out.missingText = out.missing.hidden ? '' : require('./settings_view.cjs').visible(out.missing);
+    buttons: v.buttons('packStatus').map(b => b.textContent)};
+  const rows = [v.row('packMissing'), v.row('packMissingLink')].filter(r => !r.hidden);
+  out.missingText = rows.map(r => require('./settings_view.cjs').visible(r)).join(' | ');
   v.dispose(); dom.uninstall();
   return out;
 }
@@ -78,9 +78,13 @@ test('还没读到时读一次；读取失败写在卡片里', async () => {
   state.index = {state: {status: 'idle'}, works: [], watch: {works: [], min_posts: 50}, check: null, history: [], mb_per_character: 2};
   const calls = [];
   globalThis.fetch = async path => { calls.push(path); return {status: 404, ok: false, headers: {get: () => null}, json: async () => ({error: '没有这个接口'})}; };
-  await characters.loadSection(false);
-  assert.deepEqual(calls, ['/api/packs']);
-  assert.match(card().text, /读取失败：没有这个接口/);
+  dom.install();
+  const v = open();
+  await v.load(false);
+  assert.deepEqual(calls.filter(p => p !== '/api/index/coverage'), ['/api/packs'], 'index and names were already read');
+  v.update();
+  assert.match(require('./settings_view.cjs').visible(v.box), /读取失败：没有这个接口/);
+  v.dispose(); dom.uninstall();
 });
 
 test('任务面板：有下载或任务时才列出，失败时打警告', () => {

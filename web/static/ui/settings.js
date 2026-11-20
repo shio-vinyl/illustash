@@ -1,7 +1,8 @@
 // 设置页的外壳（#199，0.4 第 I 步 #714 改成配置表）：页面登记、七节导航、节的切换和这一页的作用域，以及读取或更改了
 // 设置数据之后重画当前这一节。每节的分组和行写在 ui/settings_<节>.js（配置表，行在 ui/rows.js、分组在
 // ui/settings_group.js）；它们读取和更改的内容在 core/settings.js（任务自己的状态在 core/jobs.js）。
-// 每节导出 {build(main, scope) → {update(state)}, loadSection?(fresh)}：进这一节时建一次，之后数据变了只 update。
+// 每节导出 build(main, scope) → {update(state), load?(fresh)}：进这一节时建一次并调 load 读这一节的数据（节自己的状态，
+// 如诊断记录、读取失败，留在这个实例里，随节的作用域释放），之后数据变了只 update。
 import {t} from '../core/i18n.js';
 import {implement, onPage} from '../core/pages.js';
 import {state} from '../core/state.js';
@@ -52,6 +53,8 @@ function buildPage(scope) {
   });
   page.append(nav, main);
   $('settingsPage').replaceChildren(page);
+  // 数据变了就更新当前这一节；订阅挂在页面作用域上，离开设置页时一起取消。
+  for (const on of [onSettings, onPack, onModels, onIntegrity, onJob]) scope.add(on(refreshSettings));
   return {scope, main, links, id: null, section: null, part: null};
 }
 function showSection(id) {
@@ -75,12 +78,12 @@ onRefresh(refreshSettings);
 function render({samePage, scope}) {
   closeInspector(); $('selectionBar').hidden = true; $('resultCount').textContent = ''; $('hint').textContent = '';
   if (!samePage || !view?.scope.alive) view = buildPage(scope);
-  const [id, , , mod] = settingsSection();
+  const [id] = settingsSection();
   const entered = showSection(id);
   // 进这一页时整页重读；同一页里换节只补还没有的。
   loadSettingsData(!samePage);
   if (id === 'network' || id === 'about') updatesTick();
-  if (entered || !samePage) mod.loadSection?.(!samePage);
+  if (entered || !samePage) view.part.load?.(!samePage);
   refreshSettings();
 }
 
@@ -126,12 +129,7 @@ export function wireSettings() {
       // 检查更新时后端顺带读了包目录（#602）：检查时间变了就重读一次角色资料包（读到过才读）。
       if (state.updates?.checked_at !== catalogChecked) { catalogChecked = state.updates?.checked_at; if (state.pack) loadPack().catch(() => {}); }
     }
-    refreshSettings();
   });
-  onPack(refreshSettings);
-  onModels(refreshSettings);
-  onIntegrity(refreshSettings);
-  onJob(refreshSettings);
   // 人工结论快照（ui/human.js 画进 #humanBlock）的按钮。
   $('settingsPage').addEventListener('click', onHumanClick);
   wireHuman({undo});

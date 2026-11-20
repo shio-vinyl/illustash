@@ -142,7 +142,7 @@ test('设置页的选项（#714）：分段、一行几个按钮、圆点、进�
      get: s => s.theme, set: v => { log.push(['theme', v]); return new Promise(() => {}); }},   // 还没存好
     {kind: 'action', key: 'models', label: s => s.line, dot: s => s.dot, progress: s => s.bar, link: s => s.manual,
      buttons: s => s.buttons, run: (s, act) => { log.push(['act', act]); return new Promise(r => { finish = r; }); }},
-    {kind: 'action', key: 'works', label: '关注的作品', href: '#/characters/works', value: s => `${s.works} 部 ›`},
+    {kind: 'info', key: 'works', label: '关注的作品', href: '#/characters/works', value: s => `${s.works} 部 ›`},
     {kind: 'field', key: 'min', label: '只提示图片较多的角色', type: 'number', min: 20, max: 5000, step: 10, unit: '张', get: s => s.min, set: v => log.push(['min', v])},
     {kind: 'list', key: 'history', label: '最近添加', items: s => s.history, itemKey: x => x.tag, itemText: x => x.name, itemHref: x => x.href || null,
      actions: [{label: (x, s) => s.armed === x.tag ? '再点一次确认移除' : '移除', run: x => log.push(['drop', x.tag])}]},
@@ -175,7 +175,7 @@ test('设置页的选项（#714）：分段、一行几个按钮、圆点、进�
   assert.equal(download.classList.contains('is-primary'), true);
   assert.deepEqual([imp.disabled, imp.getAttribute('title')], [true, '不行']);
   const works = panel.row('works');
-  assert.equal(works.querySelector('a').getAttribute('href'), '#/characters/works');
+  assert.deepEqual([works.localName, works.getAttribute('href')], ['a', '#/characters/works'], 'a link row is one <a>, the value included');
   assert.equal(works.querySelector('.row-value').textContent, '3 部 ›');
   const min = panel.row('min').querySelector('input');
   assert.deepEqual(['type', 'min', 'max', 'step'].map(k => min.getAttribute(k)), ['number', '20', '5000', '10']);
@@ -185,5 +185,29 @@ test('设置页的选项（#714）：分段、一行几个按钮、圆点、进�
   assert.equal(items[1].querySelector('a').hidden, true);
   panel.update({...s, armed: 'b'});
   assert.equal(items[1].querySelector('button').textContent, '再点一次确认移除');
+  panel.dispose();
+});
+
+test('保存失败或取消：set 落定以后，这一行按 state 回到原值，不用等别处再 update', async () => {
+  const box = document.createElement('div');
+  let fail;
+  const panel = R.rows(box, [
+    {kind: 'switch', key: 'net', label: '名称联网查询', get: s => s.on, set: () => new Promise(r => { fail = r; })},
+    {kind: 'select', seg: true, key: 'fit', label: '图片网格', options: [{value: '0', label: '方形'}, {value: '1', label: '原比例'}],
+     get: s => s.fit, set: () => Promise.reject(new Error('locked'))},
+    {kind: 'action', key: 'bad', label: 'x', run: () => {}},
+  ].slice(0, 2));
+  panel.update({on: false, fit: '0'});
+  const sw = panel.row('net').querySelector('input');
+  sw.checked = true; sw.dispatchEvent(dom.event('change'));
+  panel.update({on: false, fit: '0'});
+  assert.equal(sw.checked, true, 'still waiting: shows what was clicked');
+  fail(); await new Promise(r => setTimeout(r));
+  assert.equal(sw.checked, false, 'cancelled: back to the state at once');
+  const seg = panel.row('fit').querySelector('.seg');
+  seg.children[1].dispatchEvent(dom.event('click'));
+  await new Promise(r => setTimeout(r));
+  assert.equal(seg.children[0].getAttribute('aria-pressed'), 'true', 'failed save: the old segment is pressed again');
+  assert.throws(() => R.rows(box, [{kind: 'action', key: 'bad', label: 'x', run: () => {}}]), /既没有 button 也没有 buttons/);
   panel.dispose();
 });

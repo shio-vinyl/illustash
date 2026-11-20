@@ -37,7 +37,12 @@ function card(first, s, open) {
     text(refs.meta, [w.chars.length ? t('{n} 位角色', {n: number(w.chars.length)}) : '', t('{n} 张', {n: number(w.count || 0)})].filter(Boolean).join(' · '));
     const faces = w.chars.slice(0, FACES), more = w.chars.length - faces.length;
     refill(refs.faces, faces.map(c => c.id + c.cover).join('|') + '|' + more, () => [
-      ...faces.map(c => { const img = make('img', 'avatar is-small'); img.alt = ''; img.loading = 'lazy'; img.title = c.name; if (c.cover) img.src = imageUrl(c.cover); setTint(img, c.color); return img; }),
+      ...faces.map(c => {
+        const img = make('img', 'avatar is-small'); img.alt = ''; img.loading = 'lazy'; img.title = c.name;
+        if (c.cover) img.src = imageUrl(c.cover);
+        setTint(img, c.color);
+        return img;
+      }),
       ...(more > 0 ? [make('span', 'cat-faces-more', '+' + number(more))] : [])]);
     refill(refs.slices, w.covers.map(x => x.uuid).join('|'), () => w.covers.map(x => {
       const img = make('img'); img.alt = ''; img.loading = 'lazy'; img.decoding = 'async'; img.src = imageUrl(x.uuid); setTint(img, x.color); return img;

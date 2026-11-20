@@ -7,7 +7,7 @@ import {api, post} from './session.js';
 import {state} from './state.js';
 import {listeners} from './events.js';
 import {setIndex} from './jobs.js';
-import {pageOf} from './pages.js';
+import {onPage, pageOf} from './pages.js';
 import {parseHash} from './route.js';
 // 资料库的数据被对话框改过（关注、作品、只当标签、自建角色的关联）：资料库和作品页据此重画（ui/catalog.js 发，不导入页面）。
 export const catalogChanged = listeners();
@@ -70,9 +70,9 @@ const ENTRY_NAMES = {library: () => t('图库'), catalog: () => t('资料库'), 
 export function backTo(hash) {
   if (!hash) return {label: t('作品'), href: '#/characters/works', step: false};
   const r = parseHash(hash);
-  const label = r.page === 'work' ? castWorks().find(w => String(w.key) === r.id)?.name || t('作品')
+  const label = onPage(r, 'work') ? castWorks().find(w => String(w.key) === r.id)?.name || t('作品')
     : r.char ? state.charMap.get(r.char)?.name || t('角色')
-    : r.page === 'characters' ? (r.section === 'works' ? t('作品') : r.section === 'artists' ? t('画师') : t('资料库'))
+    : onPage(r, 'characters') ? (r.section === 'works' ? t('作品') : r.section === 'artists' ? t('画师') : t('资料库'))
     : ENTRY_NAMES[pageOf(r).entry]?.() || t('返回');
   return {label, href: hash, step: true};
 }
@@ -99,6 +99,11 @@ export function castRows(base, {bucket, sort, dir}) {
   const key = {name: c => c.name, work: c => c.work_name || '', count: c => c.count, recent: recentOf, last: c => catalog.activity.get(c.id)?.last || '', skins: c => (c.variants || []).filter(v => v.count).length}[sort];
   return base.filter(test).sort((a, b) => { const x = key(a), y = key(b); return (x > y ? 1 : x < y ? -1 : 0) * dir; });
 }
+
+// ---------- 画师目录（#448） ----------
+// 第 offset 位起的一页画师：搜索词、排序（count、recent、name），带上 NSFW 设置（docs/WEB_V2.md「画师目录」）。
+export const artistQuery = ({q, order, offset, limit}) => '/api/artist-directory?' + new URLSearchParams({...(q ? {q} : {}), order, ...(state.nsfw ? {nsfw: state.nsfw} : {}), offset, limit});
+export const readArtists = (query, signal) => api(query, {signal});
 
 // ---------- 作品与关注列表（#198） ----------
 // 某些 Danbooru tag 指的作品，供本地作品出现之前的关注列表使用。

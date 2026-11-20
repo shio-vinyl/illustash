@@ -24,7 +24,8 @@ const VIEW = tpl`<div class="cat-works-tab"><div class="cat-notice" data-ref="no
   class="btn is-small" data-ref="pendingShow" data-t>只看这些</button></p><details data-ref="todo"><summary data-ref="todoText"></summary><div data-ref="todoRows"></div></details><p
   data-ref="found"><span data-ref="foundText"></span><button type="button" class="btn is-primary is-small" data-ref="foundAdd" data-t>查看并添加…</button></p></div><p
   class="cat-loading" data-ref="loading" data-t>正在读取作品…</p><div class="cat-works" data-ref="cards"></div><div data-ref="empty" hidden></div></div>`;
-const TOOLS = tpl`<div class="cat-tools"><span class="cat-tools-group"><label class="search"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10" cy="10" r="6.5"/><path d="m15 15 5 5"/></svg><input
+const TOOLS = tpl`<div class="cat-tools"><span class="cat-tools-group"><label
+  class="search"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10" cy="10" r="6.5"/><path d="m15 15 5 5"/></svg><input
   type="search" data-ref="q" spellcheck="false" autocomplete="off" placeholder="搜索作品" aria-label="搜索作品" data-t-attr="placeholder aria-label"></label><span class="cat-filters"
   data-ref="filters"></span></span><span class="spacer"></span><span data-ref="watch"></span><button type="button" class="btn" data-ref="create" data-t>新建作品</button></div>`;
 

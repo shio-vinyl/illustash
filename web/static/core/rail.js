@@ -16,7 +16,7 @@ import {favoritesOnly} from './favorites.js';
 import {t} from './i18n.js';
 import {number} from './format.js';
 import {libraryPrefs} from './prefs.js';
-import {CHARACTER, libraryFilters, pageOf, viewOf} from './pages.js';
+import {CHARACTER, libraryFilters, onPage, pageOf, viewOf} from './pages.js';
 import {api} from './session.js';
 import {state} from './state.js';
 import {currentLibraryId} from './settings.js';
@@ -38,7 +38,7 @@ export function railAt(route, char = route.char) {
   if (view.gallery) return {entry: 'galleries', item: 'g:' + route.id};
   if (view === CHARACTER) return {entry: 'catalog', item: 'c:' + route.char};
   // 作品页（#711）在资料库下，钉住了就选中它；只按一部作品筛选的图库（作品页上的「在图库里看全部」）也算在那部作品下。
-  if (route.page === 'work') return {entry: 'catalog', item: 'w:' + route.id};
+  if (onPage(route, 'work')) return {entry: 'catalog', item: 'w:' + route.id};
   if (workOnly(route)) return {entry: 'catalog', item: 'w:' + route.work};
   // 按天、日历带着 at（滚到哪一天、看哪个月）时，时间轴选中那一天（或它的月、年）。
   if (view.entry === 'library' && route.at) return {entry: 'library', item: itemForDay(timeline.items, route.at)};

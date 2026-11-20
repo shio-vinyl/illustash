@@ -4,7 +4,9 @@
 //
 // 给 ui/rail.js 的接口：
 //   buildPeek(scope)        启动时调一次（活页条接上以后）
-//   hover(el, {now})        悬停或焦点到了一项（el 是 .rail-item，带 railItem）；null 是离开：稍等 PEEK_LINGER 再收，now 时立刻收。
+//   hover(el, {now, dwell}) 悬停或焦点到了一项（el 是 .rail-item，带 railItem）；null 是离开：稍等 PEEK_LINGER 再收，now 时立刻收。
+//                           dwell（指针悬停时传）：卡片还没出来时要在这一项上停够 PEEK_DWELL 才出，从活页条上划过去不出；
+//                           卡片已经出来（含离开后还没收起）时换到别的项直接滑过去，不再等。键盘焦点不传，立刻出
 //                           二级层可见的内容一变（换入口、换模式、收起抽屉、项被摘掉）也要 hover(null, {now: true})
 //   followScroll()          二级层滚动了：键盘焦点就在悬停的那一项上（Tab 走到头时二级层跟着滚）就把卡片挪到它的新位置，
 //                           这一项滚出了二级层或是指针悬停时（滚轮）收起
@@ -30,13 +32,16 @@ const OUT = [{opacity: 1, transform: 'none'}, {opacity: 0, transform: 'translate
 const DEAL = [{opacity: 0, transform: 'translateX(-10px) scale(.92)'}, {opacity: 1, transform: 'none'}];
 // 指针离开以后过多久收起（毫秒）：划过两项之间的空隙时不闪。
 export const PEEK_LINGER = 120;
+// 停留判定（毫秒）：指针在一项上停这么久才出第一张卡，只是从活页条上划过去不出（用户 2026-11-20 定）。
+export const PEEK_DWELL = 300;
 const thumb = id => `/image?id=${encodeURIComponent(id)}&size=thumb`;
 
 let s = null, card = null;
 let hovered = null;   // 悬停（或焦点所在）的项
 let on = false;       // 卡片该显示（收起时置假）
 let entered = false;  // 卡片已经放过进场、正显示着：再换项时滑过去，不重新弹出
-let hideAt = 0, timer = 0;
+let hideAt = 0, timer = 0;      // 离开以后：到 hideAt 收起
+let dwellAt = 0, dwellTimer = 0; // 停留判定：到 dwellAt 还停在同一项上就出卡片
 const ratios = new Map();   // 图片 id → 读到的宽高比
 
 export function buildPeek(scope) {
@@ -86,16 +91,36 @@ function measure(el) {
 }
 const place = (peek, at) => css(peek, 'translate', `${at.x}px ${at.y}px`);
 
-export function hover(el, {now = false} = {}) {
+export function hover(el, {now = false, dwell = false} = {}) {
   el = el && !el.inert && el.railItem ? el : null;
-  if (hovered === el) { if (!el && now) hide(true); return; }   // 已经离开、正等着收起时，要立刻收的照样立刻收
+  if (hovered === el) {
+    if (!el && now) hide(true);                   // 已经离开、正等着收起时，要立刻收的照样立刻收
+    else if (el && !dwell && dwellAt) { dwellAt = 0; showPeek(el); }   // 指针停着时焦点也到了这一项：不再等
+    return;
+  }
   if (hovered) for (const x of [hovered, hovered.previousElementSibling, hovered.nextElementSibling]) x?.classList.remove('is-hover', 'is-near');
   hovered = el;
-  if (!el) { hide(now); return; }
+  if (!el) { dwellAt = 0; hide(now); return; }
   hideAt = 0;
   el.classList.add('is-hover');
   el.previousElementSibling?.classList.add('is-near'); el.nextElementSibling?.classList.add('is-near');
+  if (dwell && !on) { waitDwell(); return; }   // 卡片还没出来：等停留判定
+  dwellAt = 0;
   showPeek(el);
+}
+// 停留判定：换到别的项就从那时起重新算。和离开的计时器一样只排一个，到点时没到期就再等剩下的。
+function waitDwell() {
+  dwellAt = Date.now() + PEEK_DWELL;
+  if (!dwellTimer) armDwell(PEEK_DWELL);
+}
+function armDwell(ms) {
+  dwellTimer = s.timeout(() => {
+    dwellTimer = 0;
+    if (!dwellAt || !hovered) return;
+    const left = dwellAt - Date.now();
+    if (left > 1) { armDwell(left); return; }
+    dwellAt = 0; showPeek(hovered);
+  }, ms);
 }
 function showPeek(el) {
   if (!card) return;

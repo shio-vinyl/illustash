@@ -337,7 +337,7 @@ export function wireRail() {
   s.add(onJob((job, change) => { if (job === 'sync' && change.arrived && current === 'library') loadTimeline(state.route, {newest: true}).catch(() => {}); }));
   const items = $('railItems');
   s.on(items, 'click', e => { const el = e.target.closest('.rail-item'); if (el && !el.inert) pick(el, e); });
-  s.on(items, 'pointerover', e => hover(e.target.closest('.rail-item')));
+  s.on(items, 'pointerover', e => hover(e.target.closest('.rail-item'), {dwell: true}));
   s.on(items, 'pointerleave', () => hover(null));
   s.on(items, 'focusin', e => hover(e.target.closest('.rail-item')));
   s.on(items, 'focusout', () => hover(null));

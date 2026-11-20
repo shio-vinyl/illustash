@@ -11,6 +11,7 @@ const SKELETON = `<aside id="rail"><nav id="railEntries"><span id="railTab"></sp
   <a data-entry="tidy" href="#/groups"><b class="rail-dot" hidden></b></a></nav><div id="railLayer"><div id="railHint"></div><div id="railItems"></div><span id="railInd"></span></div>
   <a id="settingsLink" href="#/settings"></a></aside><button id="sidebarToggle"></button><div id="railPeek" hidden></div>`;
 const tick = () => new Promise(r => setTimeout(r, 0));
+const dwell = () => new Promise(r => setTimeout(r, 360));   // 指针悬停要停够停留判定（PEEK_DWELL 300ms）才出卡片
 const visible = () => [...$('railItems').children].filter(x => !x.hidden).map(x => x.dataset.entry);
 const $ = id => document.getElementById(id);
 const keysOf = entry => [...$('railItems').children].find(x => x.dataset.entry === entry)?.children.filter(x => !x.inert).map(x => x.dataset.key) || [];
@@ -132,6 +133,7 @@ test('悬停预览：换内容不重建，放得下几张放几张；离开稍�
   const peek = $('railPeek'), shown = () => peek.querySelectorAll('img').filter(x => !x.hidden);
   const card = peek.children[0];
   over(item('d:2026-11-18'));
+  await dwell();
   assert.equal(peek.hidden, false);
   assert.equal(peek.children[0], card);   // 同一张卡
   assert.equal(shown().length, 4);   // 四张竖图放得下
@@ -190,7 +192,7 @@ test('换入口时预览收起：指针停在一项上按 ⌘2，旧项的预览
   globalThis.innerHeight = 800;
   const peek = $('railPeek');
   $('railItems').dispatchEvent({type: 'pointerover', target: {closest: () => dayItems()[0]}});
-  await frames();
+  await dwell(); await frames();
   assert.equal(peek.hidden, false);
   rail.railRoute({page: 'characters'});
   await new Promise(r => setTimeout(r, 400));
@@ -222,8 +224,8 @@ test('宽高未知的图读到尺寸后记下比例：第二次悬停同一项�
   await core.timeline.changed.emit();
   globalThis.innerHeight = 800;
   const peek = $('railPeek'), first = () => peek.querySelectorAll('img')[0];
-  const over = () => $('railItems').dispatchEvent({type: 'pointerover', target: {closest: () => dayItems()[0]}});
-  over();
+  const over = async () => { $('railItems').dispatchEvent({type: 'pointerover', target: {closest: () => dayItems()[0]}}); await dwell(); };
+  await over();
   assert.equal(first().style.width, '96px');   // 先按 3:4
   Object.assign(first(), {naturalWidth: 600, naturalHeight: 1000});
   first().dispatchEvent({type: 'load'});
@@ -232,7 +234,7 @@ test('宽高未知的图读到尺寸后记下比例：第二次悬停同一项�
   await new Promise(r => setTimeout(r, 300));
   rail.railRoute({page: 'days', q: '', has: [], not: []});
   for (let i = 0; i < 3; i++) await tick();
-  over();
+  await over();
   assert.equal(first().style.width, '77px');   // src 没变、不再来 load，也还是 0.6
   delete globalThis.innerHeight;
 });
@@ -246,7 +248,7 @@ test('离开的计时器顺延：离开、回到另一项、又离开，从最�
   globalThis.innerHeight = 800;
   const peek = $('railPeek'), [a, b] = dayItems(), wait = ms => new Promise(r => setTimeout(r, ms));
   $('railItems').dispatchEvent({type: 'pointerover', target: {closest: () => a}});
-  await frames();
+  await dwell(); await frames();
   $('railItems').dispatchEvent({type: 'pointerleave'});
   await wait(50);
   $('railItems').dispatchEvent({type: 'pointerover', target: {closest: () => b}});
@@ -256,5 +258,41 @@ test('离开的计时器顺延：离开、回到另一项、又离开，从最�
   assert.equal(peek.hidden, false);
   await wait(150);
   assert.equal(peek.hidden, true);
+  delete globalThis.innerHeight;
+});
+
+// 停留判定（用户 2026-11-20 定）：指针在一项上停够 PEEK_DWELL 才出第一张卡；出了以后换到相邻项不再等；键盘焦点立刻出。
+test('停留判定：路过不出、停够了出、出了以后移到相邻项不再等；焦点立刻出', async () => {
+  const core = await web.load('core/rail.js'), peekMod = await web.load('ui/rail_peek.js');
+  rail.railRoute({page: 'days', q: '', has: [], not: []});
+  for (let i = 0; i < 3; i++) await tick();
+  core.timeline.items = core.groupTimeline(['2026-11-18', '2026-11-17', '2026-11-15'].map(day => ({day, count: 1, cover: 'u'})));
+  await core.timeline.changed.emit();
+  globalThis.innerHeight = 800;
+  const peek = $('railPeek'), [a, b, c] = dayItems(), wait = ms => new Promise(r => setTimeout(r, ms));
+  const over = el => $('railItems').dispatchEvent({type: 'pointerover', target: {closest: () => el}});
+  const leave = () => $('railItems').dispatchEvent({type: 'pointerleave'});
+  assert.equal(peekMod.PEEK_DWELL, 300);
+  // 路过：每项停不到 300ms 就换下一项、最后离开，一直不出
+  over(a); await wait(120); over(b); await wait(120); over(c); await wait(120); leave();
+  await wait(400);
+  assert.equal(peek.hidden, true);
+  // 停够了出
+  over(a); await wait(150);
+  assert.equal(peek.hidden, true);
+  await wait(250); await frames();
+  assert.equal(peek.hidden, false);
+  assert.equal(peek.querySelector('b').textContent, a.railItem.label);
+  // 出了以后移到相邻项：不再等
+  over(b);
+  assert.equal(peek.querySelector('b').textContent, b.railItem.label);
+  leave(); await wait(300);
+  assert.equal(peek.hidden, true);
+  // 键盘焦点：立刻出
+  c.focus();
+  $('railItems').dispatchEvent({type: 'focusin', target: {closest: () => c}});
+  assert.equal(peek.hidden, false);
+  assert.equal(peek.querySelector('b').textContent, c.railItem.label);
+  $('railItems').dispatchEvent({type: 'focusout'}); await wait(300);
   delete globalThis.innerHeight;
 });

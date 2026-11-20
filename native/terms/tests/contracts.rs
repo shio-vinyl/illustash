@@ -30,6 +30,8 @@ mod wait;
 
 #[path = "contracts/calendar.rs"]
 mod calendar;
+#[path = "contracts/character_together.rs"]
+mod character_together;
 #[path = "contracts/library_50k.rs"]
 mod library_50k;
 #[path = "contracts/library_scale.rs"]

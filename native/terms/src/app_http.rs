@@ -479,15 +479,14 @@ fn startup_progress(stage: &str, done: f64) {
         return;
     }
     *last = Some((permille, stage.to_owned(), Instant::now()));
-    println!("启动进度：{permille} {stage}");
-    let _ = std::io::Write::flush(&mut std::io::stdout());
+    print_progress_line(permille, stage);
 }
 /// 最近一条启动进度行和它打印的时间。
 static LAST_PROGRESS: std::sync::Mutex<Option<(u32, String, Instant)>> = std::sync::Mutex::new(None);
 
-/// 存活期间，只要过了 `every` 还没有新的进度行，就再打印一次最近一条启动进度行（#267、#746）。外壳会停掉
-/// 30 秒不出声的服务；升级的预检、备份、迁移、空间回收和启动恢复在内部运行期间不报告进度，大图库或高负载下
-/// 可能耗时较久。按距上次输出的剩余时间等待，避免固定轮询跨步拉长间隔；守卫在打印就绪行之前结束。
+/// 存活期间，只要过了 `every` 还没有新的进度行，就再打印一次最近一条启动进度行（#267）。外壳会停掉
+/// 30 秒不出声的服务；升级的备份、迁移和空间回收在 SQLite 内部运行，不报告进度，大图库上可能要几分钟。
+/// 只为本进程里正在运行的步骤保活：守卫随这些步骤结束。
 struct Keepalive {
     stop: Option<std::sync::mpsc::Sender<()>>,
     thread: Option<thread::JoinHandle<()>>,
@@ -496,26 +495,13 @@ impl Keepalive {
     const EVERY: Duration = Duration::from_secs(5);
     fn start(every: Duration, print: fn(u32, &str)) -> Self {
         let (stop, stopped) = std::sync::mpsc::channel::<()>();
-        let thread = thread::spawn(move || loop {
-            let wait = {
+        let thread = thread::spawn(move || {
+            while let Err(std::sync::mpsc::RecvTimeoutError::Timeout) = stopped.recv_timeout(every / 5) {
                 let mut last = LAST_PROGRESS.lock().expect("startup progress lock poisoned");
-                match last.as_mut() {
-                    Some((permille, stage, at)) => {
-                        let elapsed = at.elapsed();
-                        if elapsed >= every {
-                            *at = Instant::now();
-                            print(*permille, stage);
-                            every
-                        } else {
-                            every.saturating_sub(elapsed)
-                        }
-                    }
-                    None => every,
+                if let Some((permille, stage, at)) = last.as_mut().filter(|(_, _, at)| at.elapsed() >= every) {
+                    *at = Instant::now();
+                    print(*permille, stage);
                 }
-            };
-            match stopped.recv_timeout(wait) {
-                Err(std::sync::mpsc::RecvTimeoutError::Timeout) => continue,
-                Ok(()) | Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
             }
         });
         Self { stop: Some(stop), thread: Some(thread) }
@@ -531,13 +517,30 @@ impl Drop for Keepalive {
 }
 fn print_progress_line(permille: u32, stage: &str) {
     println!("启动进度：{permille} {stage}");
-    let _ = std::io::Write::flush(&mut std::io::stdout());
+    if std::io::Write::flush(&mut std::io::stdout()).is_ok() {
+        trace_startup_output(format_args!("{permille} {stage}"));
+    }
 }
 
-/// 从桌面启动页发起的 `--upgrade`：把升级的各阶段作为启动进度（#267）；保活守卫由启动入口覆盖到就绪行之前（#746）。
+/// 仅供升级测试：记录宿主写出进度的单调时刻，避免把测试读线程的调度延迟算入间隔。
+fn trace_startup_output(event: std::fmt::Arguments<'_>) {
+    static START: std::sync::LazyLock<Option<Instant>> =
+        std::sync::LazyLock::new(|| std::env::var_os("ILLUSTASH_TEST_TRACE_STARTUP_OUTPUT").map(|_| Instant::now()));
+    if let Some(start) = *START {
+        let _ = std::io::Write::write_fmt(
+            &mut std::io::stderr().lock(),
+            format_args!("ILLUSTASH_TEST_STARTUP_OUTPUT_NS {} {event}\n", start.elapsed().as_nanos()),
+        );
+    }
+}
+
+/// 从桌面启动页发起的 `--upgrade`：把升级的各阶段作为启动进度，在无法报告的步骤中保活（#267）。
 fn upgrade_reporting(path: &Path) -> Result<crate::app_upgrade::UpgradeReport> {
     startup_progress("正在打开图库", 0.0);
     let prepared = crate::app_upgrade::prepare(path)?;
+    let _alive = std::env::var_os("ILLUSTASH_DESKTOP_STDIN")
+        .is_some()
+        .then(|| Keepalive::start(Keepalive::EVERY, print_progress_line));
     let progress: crate::app_upgrade::Progress = std::sync::Arc::new(startup_progress);
     crate::app_upgrade::run(&prepared, Some(progress)).map_err(|failure| Error::Schema(failure.to_string()))
 }
@@ -563,6 +566,9 @@ fn rescue_reporting(path: &Path, root: &Path) -> Result<crate::app_rescue::Repor
 
 pub(crate) fn run(args: &[String]) -> Result<u8> {
     use crate::diagnostics::{self, Operation, Publication, Stage};
+    if crate::desktop_shell::is_host_child() {
+        trace_startup_output(format_args!("<host start>"));
+    }
     diagnostics::initialize();
     let result = run_inner(args);
     if let Err(error) = &result {
@@ -704,14 +710,9 @@ fn run_inner(args: &[String]) -> Result<u8> {
     };
     let token = Session::token()?;
     let mut rescued = None;
-    // 桌面启动保活覆盖整个打开、预检、升级、会话初始化与后台恢复过程，直到就绪行之前结束（#267、#746）。
-    let keepalive = std::env::var_os("ILLUSTASH_DESKTOP_STDIN")
-        .is_some()
-        .then(|| Keepalive::start(Keepalive::EVERY, print_progress_line));
     // 显式升级在它的写锁下运行自己的完整检查，只运行一次（#212、#267）。
     // 已经是当前格式的图库包（例如之前一次尝试已提交了升级）照常打开。
     let (library, upgrade_backup) = if upgrade {
-        startup_progress("正在打开图库", 0.0);
         match Library::open_deferring_checks(&path) {
             Ok(_) => (open_reporting(&path)?, None),
             Err(_) => {
@@ -773,10 +774,12 @@ fn run_inner(args: &[String]) -> Result<u8> {
     // 恢复持久化的研究工作，或既有的无 learner 裁决通知。
     // 恢复期间持有这个会话；它的数据库里的事件不会重放进替换后的图库。
     host.start_reporting(|| startup_progress("正在恢复后台任务", 0.97))?;
-    drop(keepalive);
     let address = host.entry.address(&host.origin);
     println!("图库已启动：{address}");
     std::io::Write::flush(&mut std::io::stdout())?;
+    if desktop_child {
+        trace_startup_output(format_args!("<ready>"));
+    }
     // `start-web.command` 在默认浏览器里打开页面；其他情况下手动打开打印出的地址。
     #[cfg(target_os = "macos")]
     if open {
@@ -833,9 +836,6 @@ fn run_inner(args: &[String]) -> Result<u8> {
 
 #[cfg(test)]
 mod tests {
-    /// 串行化共用进程级 `LAST_PROGRESS` 的保活单元测试。
-    static KEEPALIVE_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
-
     #[test]
     fn keepalive_repeats_the_last_progress_line_only_while_it_lives() {
         use super::{Keepalive, LAST_PROGRESS};
@@ -843,12 +843,10 @@ mod tests {
             thread,
             time::{Duration, Instant},
         };
-        let _guard = KEEPALIVE_TEST_LOCK.lock().unwrap();
         static PRINTED: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
         fn print(permille: u32, stage: &str) {
             PRINTED.lock().unwrap().push(format!("{permille} {stage}"));
         }
-        PRINTED.lock().unwrap().clear();
         *LAST_PROGRESS.lock().unwrap() = Some((600, "正在备份图库".into(), Instant::now()));
         let alive = Keepalive::start(Duration::from_millis(40), print);
         // 等到至少两次心跳；只防挂死，不限定多快打出来（#508）。
@@ -863,38 +861,6 @@ mod tests {
         assert!(printed.iter().all(|line| line == "600 正在备份图库"), "{printed:?}");
         thread::sleep(Duration::from_millis(120));
         assert_eq!(PRINTED.lock().unwrap().len(), printed.len(), "nothing after the guard ends");
-        *LAST_PROGRESS.lock().unwrap() = None;
-    }
-
-    #[test]
-    fn keepalive_emits_immediately_when_overdue_and_follows_updated_stage() {
-        use super::{Keepalive, LAST_PROGRESS};
-        use std::{
-            thread,
-            time::{Duration, Instant},
-        };
-        let _guard = KEEPALIVE_TEST_LOCK.lock().unwrap();
-        static PRINTED: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
-        fn print(permille: u32, stage: &str) {
-            PRINTED.lock().unwrap().push(format!("{permille} {stage}"));
-        }
-        PRINTED.lock().unwrap().clear();
-        let overdue = Instant::now().checked_sub(Duration::from_secs(1)).unwrap_or_else(Instant::now);
-        *LAST_PROGRESS.lock().unwrap() = Some((0, "正在打开图库".into(), overdue));
-        let alive = Keepalive::start(Duration::from_millis(40), print);
-        let deadline = crate::test_wait::deadline();
-        while PRINTED.lock().unwrap().is_empty() {
-            assert!(Instant::now() < deadline, "keepalive did not emit overdue progress");
-            thread::sleep(Duration::from_millis(5));
-        }
-        assert_eq!(PRINTED.lock().unwrap()[0], "0 正在打开图库");
-        // 阶段推进后，保活跟随最新阶段并从新时间戳重新计时。
-        *LAST_PROGRESS.lock().unwrap() = Some((600, "正在备份图库".into(), Instant::now()));
-        while !PRINTED.lock().unwrap().iter().any(|line| line == "600 正在备份图库") {
-            assert!(Instant::now() < deadline, "keepalive did not follow updated progress");
-            thread::sleep(Duration::from_millis(5));
-        }
-        drop(alive);
         *LAST_PROGRESS.lock().unwrap() = None;
     }
     #[test]

@@ -2,22 +2,20 @@
 // favorite 决定（选区、F 键、要不要让图离开本页）；判断和本地改值在 core/favorites.js。
 // 每个心形都带 data-fav="uuid"，写入成功后 paintHearts 按 uuid 就地改掉，不重画卡片和详情栏。
 import {exclusive} from '../core/edits.js';
-import {esc} from '../core/format.js';
 import {t} from '../core/i18n.js';
 import {post} from '../core/session.js';
 import {toast, written} from './dom.js';
+import {attr, tpl} from './el.js';
 
-export const HEART = '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 16.4S3.4 12.5 3.4 7.9A3.3 3.3 0 0 1 10 6.3a3.3 3.3 0 0 1 6.6 1.6c0 4.6-6.6 8.5-6.6 8.5Z"/></svg>';
-const tip = on => on ? t('取消收藏（F）') : t('收藏（F）');
-const pressed = (on, label) => `aria-pressed="${on}" title="${tip(on)}" aria-label="${label}"`;
+// 心形的图形（路径）；部件写法的界面（网格卡片）用 heartIcon()。活页条、按天、详情卡片的模板里各有一份同样的路径，
+// 等各自那一步改到时换成 heartIcon()（#751）。
+const HEART_PATH = 'M10 16.4S3.4 12.5 3.4 7.9A3.3 3.3 0 0 1 10 6.3a3.3 3.3 0 0 1 6.6 1.6c0 4.6-6.6 8.5-6.6 8.5Z';
+const HEART_ICON = tpl`<svg viewBox="0 0 20 20" aria-hidden="true"><path data-ref="path"/></svg>`;
+/** 一个心形图标节点（克隆模板再写上路径）。 */
+export function heartIcon() { const {el, refs} = HEART_ICON(); attr(refs.path, 'd', HEART_PATH); return el; }
+// 心形的提示：按下去会做什么。
+export const heartTip = on => on ? t('取消收藏（F）') : t('收藏（F）');
 
-// 只显示、不能点的实心心形；取消收藏后就地藏起来（app.css 的 .fav-mark.still）。
-const still = x => `<span class="fav-mark on still" data-fav="${esc(x.uuid)}" aria-hidden="true">${HEART}</span>`;
-// 卡片右下角：收藏过的一直显示实心，没收藏的悬停时出现空心，点一下切换。格子太小时只显示实心，不能点。
-export function cardHeart(item, small) {
-  if (small) return item.fav ? still(item) : '';
-  return `<button class="fav-mark${item.fav ? ' on' : ''}" data-fav="${esc(item.uuid)}" ${pressed(!!item.fav, t('收藏', {context: 'verb'}))}>${HEART}</button>`;
-}
 // 大图底栏「收藏」按钮上的字（按钮在 ui/viewer.js 建）：已收藏时是「已收藏」。
 const actLabel = on => on ? t('已收藏') : t('收藏', {context: 'verb'});
 
@@ -25,7 +23,7 @@ const actLabel = on => on ? t('已收藏') : t('收藏', {context: 'verb'});
 export function paintHearts(uuids, on, root = document) {
   for (const el of root.querySelectorAll('[data-fav]')) {
     if (!uuids.has(el.dataset.fav)) continue;
-    el.classList.toggle('on', on); el.setAttribute('aria-pressed', on); el.title = tip(on);
+    el.classList.toggle('on', on); el.setAttribute('aria-pressed', on); el.title = heartTip(on);
     const label = el.querySelector('.fav-label'); if (label) label.textContent = actLabel(on);
   }
 }

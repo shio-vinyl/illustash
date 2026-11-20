@@ -5,6 +5,8 @@ import {state} from './state.js';
 
 // 读列表、详情时带上的参数（按天视图带 marks=fav,color，core/days.js）：回复里每张图多一个 fav。
 export const MARKS = {marks: 'fav'};
+// 网格卡片要的标记：收藏，再加上每张图的主色（读完之前的底色、悬停投影，#717）。首页、详情栏以后要主色时也用它。
+export const GRID_MARKS = {marks: 'fav,color'};
 export const FAV = 'fav';
 
 // 路由或查询参数里的 has / not：条件数组。地址和 /api/assets 的参数里是 JSON 字符串（#445），读成路由后可能已是数组。

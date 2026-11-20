@@ -22,7 +22,7 @@ import {state} from '../core/state.js';
 import {inspect} from './detail.js';
 import {$, toast, written} from './dom.js';
 import {askCard} from './day_cards.js';
-import {viewOpts} from './grid.js';
+import {viewOpts} from '../core/view_opts.js';
 import {openPicker} from './palette.js';
 
 // pick：打开角色选择器（默认 ui/palette.js 的 openPicker；测试换成自己的）。

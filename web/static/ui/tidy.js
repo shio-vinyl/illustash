@@ -6,7 +6,7 @@ import {REASONS} from '../core/labels.js';
 import {implement, viewOf} from '../core/pages.js';
 import {state} from '../core/state.js';
 import {make} from './el.js';
-import {filters} from './grid.js';
+import {gridFilters as filters} from '../core/assets.js';
 import {markOc} from './palette.js';
 
 // 同一个页签下的子页签（未识别：按组整理、全部、已跳过；重复：全部、角色不一致、相似的图；已排除：全部、各原因、待确认）。

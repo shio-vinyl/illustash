@@ -153,6 +153,14 @@ test('关大图时详情栏换到大图那张', () => {
 // ---------- 键盘处理与换页 ----------
 // 在假页面上挂上 ui/grid.js 的键盘处理，按一个键：返回事件（看 preventDefault）。
 let keydown, page;
+let gridModule;
+// 按 state.items 真的挂上卡片（ui/grid_card.js 的部件），写入时网格经部件的 leave() 标记要飞走的卡片。
+function mountCards() {
+  Object.assign(page.el('viewport'), {clientWidth: 602, clientHeight: 400, scrollTop: 0});
+  // 假页面的 #grid 和卡片节点不是同一套假 DOM，挪动不会从原处摘下：先清空（留下头部），再整排挂一次。
+  const grid = page.el('grid'); grid.children = grid.children.filter(c => c.id === 'gridHead');
+  gridModule.renderGrid(true);
+}
 async function wired() {
   if (keydown) return;
   page = web.fakePage();
@@ -164,8 +172,9 @@ async function wired() {
   globalThis.innerWidth = 1000; globalThis.innerHeight = 800;
   const store = new Map();
   globalThis.localStorage = {getItem: k => store.has(k) ? store.get(k) : null, setItem: (k, v) => store.set(k, v), removeItem: k => store.delete(k)};
-  const grid = await web.load('ui/grid.js');
-  grid.wireGrid();
+  gridModule = await web.load('ui/grid.js');
+  await web.load('ui/grid_bar.js');   // 选择栏载入时登记进网格
+  gridModule.wireGrid();
   keydown = (key, mods = {}) => {
     const e = {key, metaKey: false, ctrlKey: false, altKey: false, shiftKey: false, target: {closest: () => null}, prevented: false,
       preventDefault() { this.prevented = true; }, ...mods};
@@ -311,11 +320,13 @@ test('相似组页是整理页：↵ 在有光标时切换选中（#353）', asy
 
 test('⌘滚轮、捏合只在主区是网格的页面缩放网格，也不交给浏览器缩放整页', async () => {
   await wired();
+  // 缩放排到下一帧做（ui/frame.js）：数排了几次帧。每次先换一个新的调度器，清掉上一次没跑的任务。
+  const frame = await web.load('ui/frame.js');
   let frames = 0;
-  globalThis.requestAnimationFrame = () => { frames++; return 0; };
+  const counting = () => frame.setScheduler(() => { frames++; });
   const viewport = page.el('viewport');
-  const wheel = route => { reset({route}); frames = 0; const e = {ctrlKey: false, metaKey: true, deltaY: -50, clientX: 10, clientY: 10, prevented: false, preventDefault() { this.prevented = true; }}; for (const fn of viewport.listeners.wheel) fn(e); return e; };
-  const pinch = route => { reset({route}); frames = 0; const e = {scale: 2, clientX: 10, clientY: 10, prevented: false, preventDefault() { this.prevented = true; }}; for (const fn of viewport.listeners.gesturestart) fn(e); for (const fn of viewport.listeners.gesturechange) fn(e); return e; };
+  const wheel = route => { reset({route}); frames = 0; counting(); const e = {ctrlKey: false, metaKey: true, deltaY: -50, clientX: 10, clientY: 10, prevented: false, preventDefault() { this.prevented = true; }}; for (const fn of viewport.listeners.wheel) fn(e); return e; };
+  const pinch = route => { reset({route}); frames = 0; counting(); const e = {scale: 2, clientX: 10, clientY: 10, prevented: false, preventDefault() { this.prevented = true; }}; for (const fn of viewport.listeners.gesturestart) fn(e); for (const fn of viewport.listeners.gesturechange) fn(e); return e; };
   for (const r of [{page: 'settings', section: 'general'}, {page: 'days'}, {page: 'characters'}, {page: 'identity'}]) {
     assert.equal(wheel(r).prevented, true, r.page); assert.equal(frames, 0, r.page);
     assert.equal(pinch(r).prevented, true, r.page); assert.equal(frames, 0, r.page);
@@ -325,11 +336,11 @@ test('⌘滚轮、捏合只在主区是网格的页面缩放网格，也不交�
     pinch(r); assert.equal(frames, 1, r.page);
   }
   // 不按 ⌘ 的滚轮是普通滚动
-  reset({route: {page: 'library'}}); frames = 0;
+  reset({route: {page: 'library'}}); frames = 0; counting();
   const plain = {ctrlKey: false, metaKey: false, deltaY: 50, prevented: false, preventDefault() { this.prevented = true; }};
   for (const fn of viewport.listeners.wheel) fn(plain);
   assert.deepEqual([plain.prevented, frames], [false, 0]);
-  globalThis.requestAnimationFrame = () => 0;
+  frame.setScheduler(() => 0);
 });
 
 // 组页上不选图按 S：和「全部未识别」一样，当前图先飞走（卡片带 leaving），再发出「跳过」（#385）。
@@ -342,11 +353,10 @@ test('不选图按 S：全部未识别和组页跳过当前这张，已跳过页
     requests.push({path, body: init.body ? JSON.parse(init.body) : null, flying});
     return {status: 500, ok: false, text: async () => 'stop', json: async () => ({error: 'stop'})};
   };
-  const card = id => { const el = page.document.createElement('div'); el.dataset.id = id; return el; };
   const skipFrom = async (route, action) => {
-    requests.length = 0; grid.children.length = 0;
-    for (const id of ['a', 'b', 'c']) grid.append(card(id));
+    requests.length = 0;
     reset({route, cursor: 0});
+    mountCards();
     page.el('toast').hidden = true; page.el('toastText').textContent = '';
     keydown('s');
     await new Promise(done => setTimeout(done, 20));
@@ -371,9 +381,9 @@ test('详情栏设角色后图飞走：未识别一类三页都飞，图库不�
     return {status: 500, ok: false, text: async () => 'stop', json: async () => ({error: 'stop'})};
   };
   for (const [route, flies] of [[{page: 'unmatched'}, true], [{page: 'skipped'}, true], [{page: 'group', id: '3'}, true], [{page: 'library'}, false]]) {
-    seen.length = 0; grid.children.length = 0;
-    for (const id of ['a', 'b']) { const el = page.document.createElement('div'); el.dataset.id = id; grid.append(el); }
+    seen.length = 0;
     reset({route});
+    mountCards();
     detail.pickAlternative({memberships: [], alternatives: [{id: 'c9'}]}, 'a', 0);
     await new Promise(done => setTimeout(done, 20));
     const sent = seen.filter(r => r.path === '/api/change');
@@ -454,15 +464,15 @@ test('C 换成、A 追加：图库的选择栏（#399）', async () => {
   state.chars = [{id: 'c2', name: 'C2'}];
   page.el('grid').hidden = false;
   const grid = await web.load('ui/grid.js');
-  const bar = () => page.el('selectionBar').innerHTML;
+  const bar = act => web.barButton(page.el('selectionBar'), act);
   const toast = () => page.el('toast').hidden === false ? page.el('toastText').textContent : '';
   const c1 = {id: 'c1', name: 'C1'}, c3 = {id: 'c3', name: 'C3'};
   const many = [{uuid: 'a', memberships: []}, {uuid: 'b', memberships: [c1]}, {uuid: 'c', memberships: []}, {uuid: 'd', memberships: [c1, c3]}, {uuid: 'e', memberships: [c1, c3]}];
   // 都有同一个角色：C 换掉它，A 加角色
   reset({route: {page: 'library'}, items: many, total: many.length, sel: pick('b', 'd')});
   grid.renderSelection();
-  assert.match(bar(), /data-act="replace" >换成… <kbd>C<\/kbd>/);
-  assert.match(bar(), /data-act="assign">加角色… <kbd>A<\/kbd>/);
+  assert.deepEqual(bar('replace'), {act: 'replace', label: '换成…', key: 'C', disabled: false, title: ''});
+  assert.deepEqual(bar('assign'), {act: 'assign', label: '加角色…', key: 'A', disabled: false, title: ''});
   keydown('c'); await settle();
   assert.equal(pickerSays(), '↵ 把 2 张从 C1 换成 C2⇧↵ 多选');
   closePicker();
@@ -478,15 +488,15 @@ test('C 换成、A 追加：图库的选择栏（#399）', async () => {
   // 没有共同的角色：按钮不可用，按 C 说明原因
   reset({route: {page: 'library'}, items: many, total: many.length, sel: pick('a', 'b')});
   grid.renderSelection();
-  assert.match(bar(), /data-act="replace" disabled title="所选图片没有共同的角色"/);
+  assert.deepEqual(bar('replace'), {act: 'replace', label: '换成…', key: 'C', disabled: true, title: '所选图片没有共同的角色'});
   page.el('toast').hidden = true; keydown('c'); await settle();
   assert.equal(toast(), '所选图片没有共同的角色');
   assert.equal(page.el('picker').open, false);
   // 都还没有角色：只有「设为角色 C」，C 打开设为
   reset({route: {page: 'library'}, items: many, total: many.length, sel: pick('a', 'c')});
   grid.renderSelection();
-  assert.doesNotMatch(bar(), /data-act="replace"/);
-  assert.match(bar(), /data-act="assign">设为角色… <kbd>C<\/kbd>/);
+  assert.equal(bar('replace'), null);
+  assert.deepEqual(bar('assign'), {act: 'assign', label: '设为角色…', key: 'C', disabled: false, title: ''});
   keydown('c'); await settle();
   assert.equal(pickerSays(), '↵ 把 2 张设为 C2⇧↵ 多选');
   closePicker();

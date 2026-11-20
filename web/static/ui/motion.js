@@ -228,6 +228,7 @@ export function objectPosition(el) {
   const parts = text.trim().split(/\s+/).map(v => (/^-?[\d.]+%$/.test(v) ? parseFloat(v) / 100 : null));
   return parts.length === 2 && parts.every(v => v !== null) ? parts : [0.5, 0.5];
 }
+// 共享的两端都带 view-transition-class: share，css/base.css 让新旧两张快照按 cover 裁（方形缩略图到竖图时不拉伸、不重影）。
 // View Transitions 的名字每次不同：上一次过渡还没收尾时再来一次，名字也不会撞（撞了浏览器会跳过过渡）。
 let shares = 0;
 // 等 View Transitions 截好图、开始动画的上限：update 卡住时不一直等（只防挂死）。
@@ -245,20 +246,20 @@ export async function share({from, to, update, toBox, dur = 3, radius, position}
   if (node && typeof document !== 'undefined' && typeof document.startViewTransition === 'function' && !reduced()) {
     const name = `share-${++shares}`;
     let big = null;
-    node.style.viewTransitionName = name;
+    node.style.viewTransitionName = name; node.style.viewTransitionClass = 'share';
     const transition = document.startViewTransition(async () => {
-      node.style.viewTransitionName = '';
+      node.style.viewTransitionName = ''; node.style.viewTransitionClass = '';
       await update?.();
       big = target();
-      if (big?.style) big.style.viewTransitionName = name;
+      if (big?.style) { big.style.viewTransitionName = name; big.style.viewTransitionClass = 'share'; }
     });
     // 兜底从动画真正开始（截好图、update 画完）算起；ready 先到时清掉等它的计时器。
     let limit;
     await Promise.race([Promise.resolve(transition.ready).catch(() => {}), new Promise(r => { limit = setTimeout(r, READY_LIMIT_MS); })]);
     clearTimeout(limit);
     const ok = await settle(transition, duration(3));
-    node.style.viewTransitionName = '';
-    if (big?.style) big.style.viewTransitionName = '';
+    node.style.viewTransitionName = ''; node.style.viewTransitionClass = '';
+    if (big?.style) { big.style.viewTransitionName = ''; big.style.viewTransitionClass = ''; }
     return ok;
   }
   const start = node ? node.getBoundingClientRect() : from;

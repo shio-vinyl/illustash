@@ -151,7 +151,8 @@ export class Page {
     return false;
   }
 
-  // 等页面静下来：没有进行中的请求持续 quiet 毫秒，再等两帧让渲染跟上。最长 max 毫秒。
+  // 等页面静下来：没有进行中的请求持续 quiet 毫秒，再等进行中的有限时长动画走完（打开、关掉、滑入滑出这类，#709；
+  // 转圈这种无限循环的不等，最多等 1.5 秒），再等两帧让渲染跟上。最长 max 毫秒。
   async settle({quiet = 250, max = 6000} = {}) {
     const end = Date.now() + max;
     let calmSince = Date.now();
@@ -161,6 +162,10 @@ export class Page {
       else if (Date.now() - calmSince >= quiet) break;
       await sleep(40);
     }
+    try {
+      await this.eval(`Promise.race([Promise.all(document.getAnimations().filter(a => a.effect?.getComputedTiming().iterations !== Infinity)
+        .map(a => a.finished.catch(() => {}))), new Promise(r => setTimeout(r, 1500))])`, {timeout: 3000});
+    } catch { /* 页面在换 */ }
     try { await this.eval('new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))', {timeout: 2000}); } catch { /* 页面在换 */ }
   }
 

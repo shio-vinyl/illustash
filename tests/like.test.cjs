@@ -94,12 +94,16 @@ test('选择栏：选了 1–20 张时有「更多像这张的／这些的」，
   state.sel = pick(); state.selecting = false; grid.renderSelection();
 });
 
-test('详情栏预览图下面有「更多像这张的」', async () => {
+test('详情卡片的身份块里有「更多像这张的」', async () => {
   globalThis.fetch = async path => path.startsWith('/api/detail')
     ? reply(200, {uuid: 'a', memberships: [], alternatives: [], tags: [], user_tags: []}) : reply(404, {error: 'stop'});
   state.route = {page: 'library'}; state.items = [{uuid: 'a'}]; state.total = 1;
   await detail.inspect('a');
-  assert.match(page.el('inspector').innerHTML, /id="previewButton"[\s\S]*<button class="quiet small" id="likeOne">更多像这张的<\/button>[\s\S]*class="inspector-section cc-card"/);
+  // 卡片是 ui/detail_card.js 的部件（#709），挂在 #inspector 里。
+  const all = el => (el.children || []).flatMap(c => [c, ...all(c)]);
+  const button = all(page.el('inspector')).find(x => x.dataset?.act === 'like');
+  assert.equal(button.textContent, '更多像这张的');
+  assert.equal(button.parentNode.hidden, false, '还没有角色时也在');
   detail.closeInspector();
 });
 

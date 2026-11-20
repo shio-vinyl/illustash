@@ -20,7 +20,7 @@
 //   people()           页头写角色数（视图选项）
 // 点图、双击图、点「+N 张」由页面在外层统一接（data-id、data-more），这里不挂。
 import {dayCells, fitChips} from '../core/days.js';
-import {dayLabel, number, thumbSize} from '../core/format.js';
+import {dayLabel, imageUrl, number, thumbSize} from '../core/format.js';
 import {I18N, t} from '../core/i18n.js';
 import {nameWithWork, workLabel} from '../core/labels.js';
 import {attr, cls, css, show, text, tpl} from './el.js';
@@ -35,7 +35,7 @@ import {releaseImages} from './virtual.js';
 const ROWS = [130, 160, 200];
 export const daySizes = (level = 1) => ({head: 56, chips: 40, rowHeight: ROWS[level] ?? ROWS[1], gap: 6, after: 36});
 // 缩略图的地址（认一认卡也用）。
-export const thumbUrl = (uuid, size = 'thumb') => `/image?id=${encodeURIComponent(uuid)}&size=${size}`;
+export const thumbUrl = imageUrl;
 
 const DAY = tpl`<section class="day"><header class="day-head" data-ref="head"><h2 class="title-page day-title" data-ref="title"></h2><span class="day-meta"
   data-ref="meta"></span><a class="day-grid" data-ref="grid"></a></header><div class="day-chars" data-ref="chars"><div class="day-chips" data-ref="chips"></div><button

@@ -463,18 +463,18 @@ class FrontendArchitectureTest(unittest.TestCase):
         with Tree() as tree:
             path = tree.root / STATIC / state
             text = path.read_text(encoding='utf-8')
-            path.write_text(text.replace('// ---- 详情栏与大图：ui/detail.js ----', '// ---- 详情栏与大图：ui/detail.js、ui/days.js ----'), encoding='utf-8')
+            path.write_text(text.replace('// ---- 详情栏开着的那张：ui/detail.js ----', '// ---- 详情栏开着的那张：ui/detail.js、ui/days.js ----'), encoding='utf-8')
             self.assertViolation(tree, 'state-writer', '写了 2 个')
         with Tree() as tree:
             path = tree.root / STATIC / state
             text = path.read_text(encoding='utf-8')
-            path.write_text(text.replace('// ---- 详情栏与大图：ui/detail.js ----', '// ---- 详情栏与大图 ----'), encoding='utf-8')
+            path.write_text(text.replace('// ---- 详情栏开着的那张：ui/detail.js ----', '// ---- 详情栏开着的那张 ----'), encoding='utf-8')
             self.assertViolation(tree, 'state-writer', '写了 0 个')
         with Tree() as tree:
             # 换了写入者：原来的写入者再赋值就报错，新写入者不报
             path = tree.root / STATIC / state
             text = path.read_text(encoding='utf-8')
-            path.write_text(text.replace('// ---- 详情栏与大图：ui/detail.js ----', '// ---- 详情栏与大图：ui/days.js ----'), encoding='utf-8')
+            path.write_text(text.replace('// ---- 详情栏开着的那张：ui/detail.js ----', '// ---- 详情栏开着的那张：ui/days.js ----'), encoding='utf-8')
             message = self.assertViolation(tree, 'state-writer', 'ui/detail.js: state.focused（声明的写入者是 ui/days.js）')
             self.assertIn('setCursor', message)
 

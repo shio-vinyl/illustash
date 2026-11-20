@@ -32,10 +32,18 @@ test('requests name the language; a refusal is shown translated and kept as sent
 });
 
 test('a maybe artist renders in English too', async () => {
-  const {artistSection} = await web.load('ui/artists.js');
-  const maybe = {id: 'a1', name: '合成画师', reason: '合成理由', homes: [{url: 'https://example.com/a1', label: 'example', site: 'Example'}]};
-  const html = artistSection({artists: [], posts: [], maybe: [maybe]}, {});
-  assert.match(html, /Maybe <a class="artist-name" href="#\/library\?artist=a1" title="Show only their pictures in the library">合成画师<\/a>/);
+  // 画师一节是部件（ui/artists.js 的 artistBlock，#709）：在 tests/dom.cjs 的真树里画。
+  const dom = require('./dom.cjs');
+  dom.install();
+  try {
+    const {artistBlock} = await web.load('ui/artists.js');
+    const maybe = {id: 'a1', name: '合成画师', reason: '合成理由', homes: [{url: 'https://example.com/a1', label: 'example', site: 'Example'}]};
+    const b = artistBlock({verdict() {}, find() {}, findMore() {}});
+    b.update({artists: [], posts: [], maybe: [maybe]});
+    const all = el => el.children.flatMap(c => [c, ...all(c)]), link = all(b.el).find(x => x.classList.contains('artist-name'));
+    assert.equal(link.parentNode.textContent, 'Maybe 合成画师');
+    assert.equal(link.getAttribute('title'), 'Show only their pictures in the library');
+  } finally { dom.uninstall(); }
 });
 
 // #519：GPU 回退原因是后端的中文原话，按后端文字翻译；一张图时用单数；关于页没检查过更新时是完整的一句。

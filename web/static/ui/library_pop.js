@@ -6,13 +6,14 @@ import {t} from '../core/i18n.js';
 import {libraryRequest, loadLibraries} from '../core/settings.js';
 import {state} from '../core/state.js';
 import {attr, show, text, tpl} from './el.js';
+import {keyed} from './keyed.js';
 import {app} from './scope.js';
 import {createLayer} from './overlay.js';
 import {openLibrary} from './settings.js';
 import {$, toast} from './dom.js';
 
 const POP = tpl`<div class="library-pop-in"><div class="library-now"><small data-t>当前图库</small><b data-ref="name"></b><span data-ref="path"></span></div>
-  <div class="library-list" data-ref="list"><small data-t>其他图库</small></div>
+  <div class="library-list" data-ref="list"><small data-t>其他图库</small><div class="library-rows" data-ref="rows"></div></div>
   <div class="library-acts"><button class="btn is-small" data-ref="choose" data-t>打开其他图库…</button><a class="btn is-small is-quiet" href="#/settings/library" data-ref="settings"
   data-t>图库设置</a></div></div>`;
 const ROW = tpl`<button class="library-row"><b data-ref="name"></b><span data-ref="path"></span></button>`;
@@ -22,19 +23,22 @@ const layer = createLayer({kind: 'popover', id: 'library-pop', el: () => $('libr
   onDismiss: reason => setOpen(false, reason)});
 let body = null, rows = null;
 
+// 一行一个图库。打开时先按已有的列表画，/api/libraries 读回来再画一次：按路径复用（ui/keyed.js），有焦点的那一行
+// （打开时焦点进第一项）不会被删掉重建、把焦点丢到 body 上。点击时用 update 收到的最新那一项。
+function libraryRow(l) {
+  const {el, refs} = ROW(), rs = s.child('row');
+  let lib = l;
+  rs.on(el, 'click', () => { setOpen(false); openLibrary(lib.path, lib.name); });
+  const update = x => { lib = x; text(refs.name, x.name); text(refs.path, home(x.path)); attr(el, 'title', x.path); };
+  update(l);
+  return {el, update, dispose: () => rs.dispose()};
+}
+
 function draw() {
   const data = state.libraries, cur = data?.info, list = (data?.libraries || []).filter(l => l.path !== data?.current);
-  body ||= POP();
   const {refs} = body;
   text(refs.name, cur?.name || t('图库')); text(refs.path, home(data?.current || '')); show(refs.path, !!data?.current);
-  for (const row of [...refs.list.querySelectorAll('.library-row')]) row.remove();
-  rows?.dispose(); rows = s.child('rows');   // 每次重画换一批行，监听跟着它们一起释放
-  for (const l of list) {
-    const {el, refs: r} = ROW();
-    text(r.name, l.name); text(r.path, home(l.path)); attr(el, 'title', l.path);
-    rows.on(el, 'click', () => { setOpen(false); openLibrary(l.path, l.name); });
-    refs.list.append(el);
-  }
+  rows.set(list);
   show(refs.list, list.length > 0);
   if (!$('libraryPop').contains(body.el)) $('libraryPop').replaceChildren(body.el);
 }
@@ -55,6 +59,7 @@ async function choose() {
 export function wireLibraryPop() {
   s.on($('brand'), 'click', () => setOpen($('libraryPop').hidden));
   body = POP();
+  rows = keyed(body.refs.rows, {key: l => l.path, create: libraryRow, scope: s});
   s.on(body.refs.choose, 'click', choose);
   s.on(body.refs.settings, 'click', () => setOpen(false, 'silent'));
 }

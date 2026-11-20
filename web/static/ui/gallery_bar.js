@@ -4,14 +4,16 @@
 //   galleryAction(act, n, payload)  是这里的按钮就做、返回 true；payload() 是选区（同 /api/change，超过 500 张时带 confirm），n 是张数
 // 收藏页上不另加「拿出」：选择栏原有的收藏按钮就是取消收藏。
 import {t} from '../core/i18n.js';
-import {droppable, forgetCovers, galleryOf, isFav, isManual, withFav} from '../core/galleries.js';
+import {droppable, galleryOf, isFav, isManual, removeBody, withFav} from '../core/galleries.js';
 import {number} from '../core/format.js';
 import {pageOf} from '../core/pages.js';
 import {state} from '../core/state.js';
-import {newManual, putInto} from './gallery_actions.js';
-import {mutate} from './grid.js';
+import {newManual, putInto, setFavorites} from './gallery_actions.js';
+import {favorite, mutate} from './grid.js';
 import {openPicker} from './palette.js';
-import {loadGalleryCovers} from './rail.js';
+
+// 放进收藏交给网格原有的收藏写入（见 ui/gallery_actions.js 的 setFavorites）。
+setFavorites(selection => favorite(selection, true));
 
 // 现在在哪个手选画廊里（收藏不算）；不在时是 null。
 const manualHere = r => { const g = pageOf(r).gallery ? galleryOf(r.id) : null; return g && isManual(g) && !isFav(g.id) ? g : null; };
@@ -27,8 +29,8 @@ export function galleryAction(act, n, payload) {
   if (act === 'gallery-add') { pick(n, payload); return true; }
   if (act !== 'gallery-remove') return false;
   const here = manualHere(state.route);
-  // 拿出以后图离开这一页：照 grid.js 的 mutate 淡出、重读，撤销在提示条上；封面跟着重读。
-  if (here) Promise.resolve(mutate('/api/galleries', {action: 'remove', id: Number(here.id), ...payload()}, true)).then(() => { forgetCovers(); loadGalleryCovers(); });
+  // 拿出以后图离开这一页：照 grid.js 的 mutate 淡出、重读，撤销在提示条上；封面由 ui/gallery_save.js 在写入之后重读。
+  if (here) mutate('/api/galleries', removeBody(here.id, payload()), true);
   return true;
 }
 

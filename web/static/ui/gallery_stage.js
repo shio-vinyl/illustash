@@ -9,8 +9,8 @@
 // 末尾「全部 N 张」去显示全部图的那一种（ALL_SHOW，瀑布）。不能选：选择和批量操作在瀑布、色彩里做。
 import {number} from '../core/format.js';
 import {t} from '../core/i18n.js';
-import {chooseShow, galleryHref, galleryOf, isFav, isManual, showcaseOf} from '../core/galleries.js';
-import {ALL_SHOW, showFor, showOf} from '../core/gallery_shows.js';
+import {galleryHref, galleryOf, isFav, isManual, showcaseOf} from '../core/galleries.js';
+import {ALL_SHOW, chooseShow, showFor, showOf} from '../core/gallery_shows.js';
 import {aspect, collage, hall, hashSeed, magazine} from '../core/layout.js';
 import {readError} from '../core/session.js';
 import {state} from '../core/state.js';

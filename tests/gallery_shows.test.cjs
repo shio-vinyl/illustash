@@ -91,19 +91,15 @@ test('定义画廊的那个条件：手选画廊是 gallery:<id>，收藏是 fav
   assert.equal(galleries.ownConditionOf({page: 'library', id: '2'}), '');
 });
 
-test('放进、拿出：手选画廊走 /api/galleries 的 add / remove，收藏走 /api/favorite；选区原样带上', async () => {
+test('放进、拿出：手选画廊走 /api/galleries 的 add / remove（拿出的请求体交给网格的 mutate）；选区原样带上', async () => {
   await galleries.addTo('2', {ids: ['a', 'b']});
-  await galleries.removeFrom(2, {filter: {has: '["gallery:2"]'}, exclude: ['c'], confirm: true});
-  await galleries.addTo('fav', {ids: ['a']});
-  await galleries.removeFrom('fav', {ids: ['a']});
   await galleries.createManual('新画廊', {ids: ['a']});
   assert.deepEqual(calls.map(c => [c.path, c.body]), [
     ['/api/galleries', {action: 'add', id: 2, ids: ['a', 'b']}],
-    ['/api/galleries', {action: 'remove', id: 2, filter: {has: '["gallery:2"]'}, exclude: ['c'], confirm: true}],
-    ['/api/favorite', {ids: ['a']}],
-    ['/api/favorite', {ids: ['a'], add: false}],
     ['/api/galleries', {action: 'create', kind: 'manual', name: '新画廊', ids: ['a']}],
   ]);
+  assert.deepEqual(galleries.removeBody('2', {filter: {has: '["gallery:2"]'}, exclude: ['c'], confirm: true}),
+    {action: 'remove', id: 2, filter: {has: '["gallery:2"]'}, exclude: ['c'], confirm: true});
 });
 
 test('列表卡片的预览：一次请求拿样图和张数；手动封面排第一张；条件失效给原因', async () => {

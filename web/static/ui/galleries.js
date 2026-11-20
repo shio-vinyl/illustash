@@ -7,8 +7,8 @@
 import {number} from '../core/format.js';
 import {t} from '../core/i18n.js';
 import {routeFields, sameParams, savedParams} from '../core/filters.js';
-import {chooseShow, deleteGallery, galleryHref, galleryOf, isFav, isManual, loadShows, setGallery, updateGallery} from '../core/galleries.js';
-import {SHOWS, pageFor, showFor} from '../core/gallery_shows.js';
+import {deleteGallery, galleryHref, galleryOf, isFav, isManual, setGallery, updateGallery} from '../core/galleries.js';
+import {chooseShow, loadShows, pageFor, showFor, SHOWS} from '../core/gallery_shows.js';
 import {implement, onPage, pageOf} from '../core/pages.js';
 import {go, replaceRoute} from '../core/route.js';
 import {state} from '../core/state.js';

@@ -48,8 +48,8 @@ const conditions = r => conditionLists(r).has;
 const narrowed = r => !!(r.q || r.tag || r.utag || r.check || r.doubt || conditionCount(r) || r.from || r.to);
 
 // 图库和角色页共用的一组字段：角色页是图库加 char 参数，不是独立页面。
-// 只按收藏筛选、没有别的条件的图库（#447、#679）：活页条上亮「画廊 › 收藏」（core/rail.js 的 railAt），标题写「收藏」，空着时说怎么收藏。
-// 写在注册表这里（core/favorites.js 转出它）：注册表的空状态要用，放在 favorites.js 会互相导入。
+// 只按收藏筛选、没有别的条件的图库（#447、#679）：收藏的旧地址，core/route.js 把它改写到收藏画廊 #/gallery/fav（#710），
+// 所以运行时的路由不会是它。
 const NOT_FAV_ONLY = ['q', 'tag', 'utag', 'work', 'day', 'artist', 'char', 'from', 'to', 'like'];
 const asList = v => { if (Array.isArray(v)) return v; try { const x = JSON.parse(v || '[]'); return Array.isArray(x) ? x : []; } catch { return []; } };
 export function favoritesOnly(route = state.route) {
@@ -77,9 +77,7 @@ const libraryBase = {
 const list = [
   // 图库的三种视图（#706）：按天（原来的首页，#677）、网格（原来的图库）、日历。打开 App 落在按天。
   {name: 'days', root: true, area: 'homePage', panel: true, keys: 'shown', click: 'own', entry: 'library', view: 'days', filters: true, toolbar: 'filters', emptyIcon: 'image'},
-  // 只按收藏筛选时（#679）空着说怎么收藏；隐藏或只看 NSFW 时空着不等于没有收藏，照图库的说法。
-  {name: 'library', ...libraryBase, click: 'browse', sortPref: 'sortLibrary', emptyIcon: r => favoritesOnly(r) ? 'heart' : 'image',
-    empty: (r, ctx = {}) => favoritesOnly(r) && !ctx.nsfw ? t('还没有收藏。在详情面板或大图里点心形，或者按 F 收藏。') : libraryBase.empty(r, ctx)},
+  {name: 'library', ...libraryBase, click: 'browse', sortPref: 'sortLibrary', emptyIcon: 'image'},
   {name: 'calendar', area: 'calendarPage', panel: true, click: 'own', entry: 'library', view: 'calendar', filters: true, toolbar: 'filters', emptyIcon: 'calendar'},
   // 画廊（#445、#710）：全部画廊（收藏在最前），和一个画廊。一个画廊按它的展示方式（core/gallery_shows.js）落在两页之一：
   // gallery 是显示全部图的几种（瀑布、色彩），就是带着它的条件的图库网格，分行和排序随展示方式（gridLayout、params）；

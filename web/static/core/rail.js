@@ -13,7 +13,6 @@ import {castWorks} from './catalog.js';
 import {aspect, strip} from './layout.js';
 import {galleryHref, isFav, isManual, withFav} from './galleries.js';
 import {listeners} from './events.js';
-import {favoritesOnly} from './favorites.js';
 import {t} from './i18n.js';
 import {number} from './format.js';
 import {libraryPrefs} from './prefs.js';
@@ -34,7 +33,6 @@ export const ENTRIES = [
 
 // 地址落在哪个入口、二级层里选中哪一项。char 默认取路由的 char（角色还没读到时也认得出角色页）。
 export function railAt(route, char = route.char) {
-  if (favoritesOnly(route)) return {entry: 'galleries', item: 'fav'};
   const view = viewOf(route, char);
   // 一个画廊（网格那几种展示方式和展示页都算）；收藏是 id 为 fav 的内置画廊（#710）。
   if (view.entry === 'galleries' && route.id) return {entry: 'galleries', item: route.id === 'fav' ? 'fav' : 'g:' + route.id};

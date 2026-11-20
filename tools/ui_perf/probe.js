@@ -143,16 +143,15 @@
   }
 
   async function perfGallery(show) {
-    // 展示方式照应用里那样经 core/galleries.js 记进偏好：只改 gallery_shows.js 的内存表的话，页面第一次 loadShows() 会用存着的
-    // 偏好盖掉它。
-    const galleries = await import('/core/galleries.js');
-    await galleries.loadShows();
+    // 展示方式照应用里那样记进偏好（先读一次，免得页面第一次 loadShows() 用存着的偏好盖掉它）。
+    const galleries = await import('/core/galleries.js'), shows = await import('/core/gallery_shows.js');
+    await shows.loadShows();
     let g = (await galleries.loadGalleries()).find(x => x.name === '性能测量');
     if (!g) {
       await galleries.createManual('性能测量', {filter: {order: 'newest'}, confirm: true});
       g = (await galleries.loadGalleries()).find(x => x.name === '性能测量');
     }
-    galleries.chooseShow(g.id, show);
+    shows.chooseShow(g.id, show);
     return galleries.galleryHref(g.id, show);
   }
 

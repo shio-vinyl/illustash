@@ -1,11 +1,16 @@
 // 拖图进画廊（#710）：在页面里按住图拖动，「拿起」一张跟手的缩略图，活页条的二级层换成画廊封面（ui/rail.js 的 mode）。
-// 松手在收藏或手选画廊上：放进去，缩略图飞进封面，封面弹一下、冒出 +N；按条件的画廊变淡、不接收；松手在别处：缩略图飞回去。
-// 拖出窗口边缘：交给拖到别的应用（#450，ui/files.js 的 startDrag，只有桌面 App 有）。系统开了「减少动态效果」时不飞、不弹。
+// 松手在收藏或手选画廊上：放进去，缩略图飞进封面，封面弹一下、冒出 +N；按条件的画廊和这一页自己的画廊变淡、不接收；松手在
+// 「新建手选画廊」上：先问名字，取消就什么也不建；松手在别处：缩略图飞回去。系统开了「减少动态效果」时不飞、不弹。
+// 取消：Esc（拿起时向浮层管理器 ui/overlay.js 登记一层，Esc 不落到网格的兜底）、窗口失焦、收不到松手（指针移动时左键已经
+// 不在按着）。
+// 拖出窗口：指针坐标出了窗口（按住鼠标时窗口外的 pointermove 照样会来），或者窗口收到 relatedTarget 为空的 mouseout，就交给
+// 拖到别的应用（#450，ui/files.js 的 startDrag，只有桌面 App 有；网页形态里拖出去什么也不做，回到窗口里还能接着拖）。
+// 窄窗口（活页条收进抽屉）时二级层不在，拿起以后只能拖出窗口；放进画廊用选择栏的「放进画廊…」。
 //
-// 接住图的地方：活页条上换出来的那组项（键 'fav'、'g:<id>'、'new'），以及页面里带 data-drop 的元素（全部画廊的卡片写画廊 id，
-// 「新建」写 new）。用指针事件自己做，不用 HTML5 拖放：后者在桌面 App 里会和拖到别的应用的系统拖放打架。
+// 用指针事件自己做，不用 HTML5 拖放：后者在桌面 App 里会和拖到别的应用的系统拖放打架。接住图的只有活页条上换出来的那组项
+// （键 'fav'、'g:<id>'、'new'）。
 //
-// 给各视图的接口（和 ui/files.js 的 wireDragOut 同一个写法）：
+// 给各视图的接口（和 ui/files.js 的 wireDragOut 同一个写法，手势都在 ui/press.js）：
 //   wireLift(el, ids, when)  el 里按住拖动超过 6px 时拿起 ids(down) 给的那组图（uuid 数组，空的不拖），之后吞掉那次点击。down 是按下时的
 //                            pointerdown 事件：在容器上委托时用 down.target.closest(…) 找按的是哪张；when(down) 为假时不拖。返回 off()，
 //                            交给作用域（scope.add(wireLift(…))）。展示页（ui/gallery_stage.js）、按天视图、详情卡片的预览图用它
@@ -23,30 +28,22 @@ import {startDrag} from './files.js';
 import {read, write} from './frame.js';
 import {newManual, putInto} from './gallery_actions.js';
 import {animate, reduced} from './motion.js';
+import {createLayer} from './overlay.js';
+import {wirePress} from './press.js';
 import {mode, railCovers} from './rail.js';
 
-const SLOP = 6, GHOST = 64, OFFSET = 14;
+const GHOST = 64, OFFSET = 14;
 let live = null;   // 正在拖：{ids, ghost, x, y, from, target}
+// Esc 取消拖动：拿起时打开这一层，结束时关掉。
+const escape = createLayer({kind: 'overlay', id: 'lift', el: () => live?.ghost, onDismiss: () => { if (live) flyBack(); }});
 
 export function wireLift(el, ids, when = () => true) {
-  let down = null, dragged = false;
-  const on = {
-    pointerdown: e => { dragged = false; down = e.button === 0 && e.pointerType !== 'touch' && when(e) ? e : null; },
-    pointermove: e => {
-      if (!down || !(e.buttons & 1) || Math.hypot(e.clientX - down.clientX, e.clientY - down.clientY) < SLOP) return;
-      const got = ids(down); down = null;
-      if (got?.length) { dragged = true; lift(got, e); }
-    },
-    pointerup: () => { down = null; },
-    pointercancel: () => { down = null; },
-  };
-  const swallow = e => { if (dragged) { e.preventDefault(); e.stopImmediatePropagation(); } dragged = false; };
-  for (const [type, fn] of Object.entries(on)) el.addEventListener(type, fn);
-  el.addEventListener('click', swallow, true);
-  return () => {
-    for (const [type, fn] of Object.entries(on)) el.removeEventListener(type, fn);
-    el.removeEventListener('click', swallow, true);
-  };
+  return wirePress(el, {when, start: (down, move) => {
+    const got = ids(down);
+    if (!got?.length) return false;
+    lift(got, move);
+    return true;
+  }});
 }
 
 // 拿起：缩略图跟着指针，活页条换成画廊封面。拖着的时候一直在窗口上监听指针，松手、取消或拖出窗口时结束。
@@ -56,20 +53,21 @@ export function lift(ids, e) {
   const ghost = make('div', 'lift');
   ghost.setAttribute('aria-hidden', 'true');
   for (const id of ids.slice(0, 3)) { const img = make('img'); img.alt = ''; img.src = `/image?id=${encodeURIComponent(id)}&size=thumb`; ghost.append(img); }
-  if (ids.length > 1) ghost.append(make('b', 'lift-count', number(ids.length)));
+  if (ids.length > 1) ghost.append(make('b', 'drop-badge', number(ids.length)));
   document.body.append(ghost);
   live = {ids, ghost, x: e.clientX, y: e.clientY, from: {x: e.clientX, y: e.clientY}, target: null};
   place();
   document.body.classList.add('lifting');
   mode('drop', dropItems(), t('放进画廊'));
-  addEventListener('pointermove', onMove);
-  addEventListener('pointerup', onUp);
-  addEventListener('pointercancel', onCancel);
-  addEventListener('mouseout', onOut);
+  escape.open();
+  for (const [type, fn] of Object.entries(LISTENERS)) addEventListener(type, fn);
 }
-// 活页条上换出来的那组：收藏和各画廊（按条件的变淡、不接收），最后一项是新建手选画廊。
+// 这一页自己是哪个画廊（网格页、展示页）：拖到它上面不算。
+const hereId = () => { const p = pageOf(state.route); return p.gallery || p.stage ? String(state.route.id) : ''; };
+const accepts = g => !!g && droppable(g) && String(g.id) !== hereId();
+// 活页条上换出来的那组：收藏和各画廊（按条件的、这一页自己的变淡、不接收），最后一项是新建手选画廊。
 function dropItems() {
-  const items = galleryItems(railCovers()).map(x => ({...x, off: !droppable(x.gallery)}));
+  const items = galleryItems(railCovers()).map(x => ({...x, off: !accepts(x.gallery)}));
   return [...items, {key: 'new', kind: 'gallery', label: t('新建手选画廊'), cover: null, href: '#/galleries', meta: t('松手新建一个手选画廊，放进这些图')}];
 }
 function place() {
@@ -85,13 +83,16 @@ function targetAt(x, y) {
     const key = rail.dataset.key;
     if (key === 'new') return {key: 'new', el: rail};
     const g = rail.railItem?.gallery;
-    return g && droppable(g) ? {key: String(g.id), el: rail} : null;
+    return accepts(g) ? {key: String(g.id), el: rail} : null;
   }
-  const box = hit?.closest?.('[data-drop]');
-  return box ? {key: box.dataset.drop, el: box} : null;
+  return null;
 }
+// 指针出了窗口（按住鼠标时窗口外的移动照样派过来，坐标在窗口外）。
+const outside = e => e.clientX < 0 || e.clientY < 0 || e.clientX >= innerWidth || e.clientY >= innerHeight;
 function onMove(e) {
   if (!live) return;
+  if (!(e.buttons & 1)) { flyBack(); return; }   // 没收到松手（例如切走以后才松开）：当取消
+  if (outside(e)) { handOff(); return; }
   live.x = e.clientX; live.y = e.clientY;
   place();
   read(() => {
@@ -102,25 +103,32 @@ function onMove(e) {
     write(() => { if (before) cls(before.el, 'is-drop', false); if (next) cls(next.el, 'is-drop', true); }, 'lift:over');
   }, 'lift:hit');
 }
-// 拖出窗口：交给拖到别的应用（只有桌面 App 有；网页形态里拖出去什么也不做，回到窗口里还能接着拖）。
-function onOut(e) {
-  if (!live || e.relatedTarget || !canDrag()) return;
+// 拖出窗口：交给拖到别的应用（只有桌面 App 有；网页形态里什么也不做，回到窗口里还能接着拖）。
+function handOff() {
+  if (!live || !canDrag()) return;
   const ids = live.ids;
   finish();
   startDrag(ids);
 }
+function onOut(e) { if (!e.relatedTarget) handOff(); }
 function onCancel() { if (live) flyBack(); }
+const LISTENERS = {pointermove: onMove, pointerup: onUp, pointercancel: onCancel, mouseout: onOut, blur: onCancel};
 async function onUp(e) {
   if (!live) return;
   live.x = e.clientX; live.y = e.clientY;
   const target = targetAt(live.x, live.y);
   if (!target) { flyBack(); return; }
   const {ids, ghost} = live, n = ids.length;
+  // 新建：先问名字（取消就什么也不建），缩略图和活页条先收起来。
+  if (target.key === 'new') {
+    finish();
+    if (await newManual({ids})) pageOf(state.route).refresh?.('edit');
+    return;
+  }
   detach();
-  const g = target.key === 'new' ? null : galleryOf(target.key);
-  // 先飞进去、弹一下，同时写入；写入失败时提示原因（write 里），不再另做动画。
+  // 先飞进去、弹一下，同时写入；写入失败时提示原因（写入那里），不再另做动画。
   const flown = flyInto(ghost, target.el, n);
-  const ok = g ? await putInto(g, {ids}, n) : !!await newManual({ids});
+  const ok = await putInto(galleryOf(target.key), {ids}, n);
   await flown;
   if (ok) pageOf(state.route).refresh?.('edit');
   mode(null);
@@ -132,7 +140,7 @@ async function flyInto(ghost, el, n) {
   await animate(ghost, [{transform: ghost.style.transform, opacity: 1}, {transform: `translate(${x}px,${y}px) scale(.25)`, opacity: .2}], {dur: 2});
   ghost.remove();
   if (reduced()) return;
-  const plus = make('span', 'drop-plus');
+  const plus = make('span', 'drop-badge');
   text(plus, `+${number(n)}`);
   el.append(plus);
   await Promise.all([
@@ -155,10 +163,8 @@ function detach() {
   if (live.target) cls(live.target.el, 'is-drop', false);
   live = null;
   document.body.classList.remove('lifting');
-  removeEventListener('pointermove', onMove);
-  removeEventListener('pointerup', onUp);
-  removeEventListener('pointercancel', onCancel);
-  removeEventListener('mouseout', onOut);
+  escape.close('silent');
+  for (const [type, fn] of Object.entries(LISTENERS)) removeEventListener(type, fn);
 }
 // 立刻结束：缩略图摘掉，活页条换回来。
 function finish() {

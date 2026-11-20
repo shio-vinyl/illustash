@@ -10,10 +10,8 @@
 // GET /api/galleries/covers?ids=[…]&nsfw=（#590，回复里另附封面主色 color，#717）。写入是 POST /api/galleries，每一步都可以撤销
 // （回复里的 undo）。放进、拿出的选区和 /api/change 一样二选一：{ids} 或 {filter, exclude}，超过 500 张带 confirm。
 import {t} from './i18n.js';
-import {libraryPrefs} from './prefs.js';
 import {api, post} from './session.js';
-import {currentLibraryId} from './settings.js';
-import {pageFor, setShows, showFor, chooseShow as choose, forgetShow as forget} from './gallery_shows.js';
+import {forgetShow, pageFor, showFor} from './gallery_shows.js';
 import {pageOf, pathFor} from './pages.js';
 import {state} from './state.js';
 
@@ -72,17 +70,6 @@ export function forgetCovers() { covers.clear(); previews.clear(); }
 // 一个画廊的图（/api/assets 的参数）：保存的条件，加 NSFW 设置。
 const query = (g, nsfw, extra = {}) => new URLSearchParams({...g.params, ...(nsfw ? {nsfw} : {}), ...extra});
 
-// 一个画廊现在有几张：{n} 或 {error}（保存的条件失效时后端回 400，error 是它的原因）。
-export async function countOf(params, nsfw = state.nsfw) {
-  try {
-    const r = await api('/api/assets/count?' + new URLSearchParams({...params, ...(nsfw ? {nsfw} : {})}));
-    return {n: r.total};
-  } catch (e) {
-    if (e.status === 400) return {error: e.message};
-    throw e;
-  }
-}
-
 // 画廊列表卡片上的预览：前 n 张（带主色）和张数，一次请求。有手动封面时它排第一张（不在前 n 张里也补上）。
 // 回 {items, total} 或 {error}（条件失效）。同一画廊、同一 NSFW 设置只读一次，写入后 forgetCovers() 清掉。
 export const PREVIEW = 5;
@@ -113,16 +100,6 @@ export async function showcaseOf(g, take, {nsfw = state.nsfw, order = 'newest', 
   }
 }
 
-// ---------- 每个画廊的展示方式（core/gallery_shows.js），按图库存在浏览器本地 ----------
-let shows = null, showsLibrary = '';
-// 读一次；读不到图库 id 时不读也不写（同活页条钉住的项）。
-export function loadShows() {
-  shows ||= currentLibraryId().then(id => { showsLibrary = id; setShows(libraryPrefs(id).get('galleryShow', {})); });
-  return shows;
-}
-export function chooseShow(id, show) { libraryPrefs(showsLibrary).set('galleryShow', choose(id, show)); }
-function forgetShow(id) { libraryPrefs(showsLibrary).set('galleryShow', forget(id)); }
-
 // ---------- 写入：都返回 {undo, gallery?} ----------
 export const createGallery = (params, name) => post('/api/galleries', {action: 'create', params, ...(name ? {name} : {})});
 // 手选画廊：名字必填；可以顺带放进一批图（选区同 /api/change）。
@@ -133,10 +110,7 @@ export async function deleteGallery(id) {
   forgetShow(id);
   return r;
 }
-// 放进、拿出一批图。收藏走 /api/favorite（add:false 是取消收藏），手选画廊走 /api/galleries。
-export function addTo(id, selection) {
-  return isFav(id) ? post('/api/favorite', {...selection}) : post('/api/galleries', {action: 'add', id: Number(id), ...selection});
-}
-export function removeFrom(id, selection) {
-  return isFav(id) ? post('/api/favorite', {...selection, add: false}) : post('/api/galleries', {action: 'remove', id: Number(id), ...selection});
-}
+// 手选画廊放进、拿出一批图（选区同 /api/change）。收藏不走这里：它是 /api/favorite，由网格的收藏写入做（ui/grid.js 的 favorite）。
+// 拿出要在网格里淡出，由 ui/gallery_bar.js 交给 grid.js 的 mutate，所以这里给的是请求体。
+export const addTo = (id, selection) => post('/api/galleries', {action: 'add', id: Number(id), ...selection});
+export const removeBody = (id, selection) => ({action: 'remove', id: Number(id), ...selection});

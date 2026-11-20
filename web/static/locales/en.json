@@ -238,7 +238,6 @@
     "other": "{n} examples in all"
   },
   "例图还没有特征，识别完成后再试。": "The examples have no features yet. Try again after recognition finishes.",
-  "在详情面板或大图里点心形，或者按 F 收藏。": "Click the heart in the details panel or large view, or press F, to add a favorite.",
   "还没有收藏。在详情面板或大图里点心形，或者按 F 收藏。": "No favorites yet. Click the heart in the details panel or large view, or press F, to add one.",
   "在符合筛选条件的图里，取和例图最像的 500 张。": "The 500 pictures most like the examples, among those that match the filters.",
   "按画面比较画面标签，按角色比较角色特征。": "By picture compares picture tags; by character compares character features.",
@@ -3310,7 +3309,6 @@
     "other": "Add {n} pictures to “{name}”"
   },
   "新建画廊": "New gallery",
-  "把图拖到这里，新建一个手选画廊": "Drop pictures here to create a hand-picked gallery",
   "在图库里加上条件，点「保存为画廊」": "Add conditions in the library, then click “Save as gallery”",
   "全部 {n} 张": {
     "one": "All {n} picture",

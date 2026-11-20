@@ -197,7 +197,7 @@ export function renderGrid(relayout = false) {
   }
   if (relayout || before[0] !== state.cols || before[1] !== state.rowH) state.gridKey = '';
   const rows = rowCount(); grid.style.height = `${rowTop(rows)}px`;
-  const first = Math.max(0, rowAt(v.scrollTop - rowReach()) - (state.fit ? 1 : 2)), last = Math.min(rows, rowAt(v.scrollTop + v.clientHeight) + 2);
+  const first = Math.max(0, rowAt(v.scrollTop - rowReach()) - (flowing() ? 1 : 2)), last = Math.min(rows, rowAt(v.scrollTop + v.clientHeight) + 2);
   // 屏幕倍率也算进键：窗口拖到倍率不同的屏幕后，下一次重画（滚动、改窗口大小）就按新倍率换缩略图档位（#452）。
   const scale = screenScale(), key = `${first}:${last}:${state.dataVersion}:${layoutKey()}:${scale}`;
   if (key !== state.gridKey) { state.gridKey = key; placeCards(rowStart(first), rowStart(last), scale); }
@@ -529,7 +529,7 @@ export async function sweep() {
 // ---------- 收藏（#447） ----------
 // 心形和不重读的写入在 ui/favorites.js，判断在 core/favorites.js。这一页按收藏筛选、图会离开本页时（「只看收藏」里取消）
 // 照其他写入走 mutate：淡出、重读；否则只在本地改掉这些图和同组副本的心形，面板页（按天视图）自己重读。
-function favorite(payload, add) {
+export function favorite(payload, add) {
   if (favLeaves(add)) return mutate('/api/favorite', {...payload, add}, true);
   const ids = payload.ids && new Set(payload.ids), exclude = state.sel.exclude;
   const pick = ids ? x => ids.has(x.uuid) : x => !exclude.has(x.uuid);

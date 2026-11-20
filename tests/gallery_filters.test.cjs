@@ -123,12 +123,6 @@ test('封面按可见的画廊批量取；没有封面接口（#590 之前的 ma
   await assert.rejects(c.coversFor([1]), /读取失败/);
 });
 
-test('张数：条件失效时回 400，给出原因而不是报错', async () => {
-  globalThis.fetch = async path => path.includes('work%3Agone') ? reply({error: '作品不存在'}, 400) : reply({total: 12});
-  assert.deepEqual(await c.countOf({has: json(['tag:beach'])}, 'hide'), {n: 12});
-  assert.deepEqual(await c.countOf({has: json(['work:gone'])}, ''), {error: '作品不存在'});
-});
-
 test('写入之后的列表：回复里的画廊换进原来的位置，删除时去掉', () => {
   const {state} = c;
   state.galleries = [{id: 1, name: 'a'}, {id: 2, name: 'b'}];

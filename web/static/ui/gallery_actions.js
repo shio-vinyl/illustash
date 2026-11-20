@@ -9,7 +9,6 @@ import {readError} from '../core/session.js';
 import {openDialog} from './dialog.js';
 import {error, toast, written} from './dom.js';
 import {text, tpl} from './el.js';
-import {paintHearts} from './favorites.js';
 import {conditionLabel} from './filters.js';
 import {loadGalleryCovers} from './rail.js';
 
@@ -56,15 +55,19 @@ export async function newManual(selection = {}) {
   return result.gallery;
 }
 
+// 放进收藏交给网格原有的收藏写入（ui/grid.js 的 favorite：改本地数据和同组副本、详情卡片和大图的心形、「不含收藏」的页上
+// 让图离开），由 ui/gallery_bar.js 登记进来；这里直接导入 grid.js 会形成循环导入（grid → drag → gallery_actions → grid）。
+let favorites = null;
+export function setFavorites(fn) { favorites = fn; }
+
 // 把一批图放进画廊 g（收藏或手选画廊）。n 是张数（提示用）；超过 500 张要 confirm（选择栏「全选」以后）。返回是否成功。
-// 放进收藏的图就地点亮心形（同 ui/favorites.js 的写入，不重读列表）。
+// 封面由 ui/gallery_save.js 在每次写入之后重读。
 export async function putInto(g, selection, n) {
-  const text = isFav(g.id) ? t('已收藏 {n} 张', {n: number(n)}) : t('已放进「{name}」：{n} 张', {name: g.name, n: number(n)});
-  const result = await write(() => addTo(g.id, {...selection, ...(n > 500 ? {confirm: true} : {})}), text);
+  const sel = {...selection, ...(n > 500 ? {confirm: true} : {})};
+  if (isFav(g.id)) return !!await favorites?.(sel);
+  const result = await write(() => addTo(g.id, sel), t('已放进「{name}」：{n} 张', {name: g.name, n: number(n)}));
   if (!result) return false;
-  if (isFav(g.id) && selection.ids) paintHearts(new Set(selection.ids), true);
   if (result.gallery) setGallery(g.id, result.gallery);
-  loadGalleryCovers();
   return true;
 }
 

@@ -228,3 +228,33 @@ test('一次同步进来三个新日期：沿游标补齐中间那天，再算�
   assert.deepEqual(h.state.items.map(x => x.uuid), ['d4', 'd3', 'd2', 'd1']);
   scopes.page('library');
 });
+test('「点掉的是…」写入途中切到隐藏 NSFW：新批留在卡上，旧批剩下的图不放回去；锁写完才放开（#757 核对）', async () => {
+  const {dayAsk} = await web.load('ui/day_ask.js');
+  const pic = uuid => ({uuid, width: 100, height: 100, memberships: []});
+  const old = {entity: 'e1', name: 'A', kind: 'hint', items: ['nsfw1', 'nsfw2', 'nsfw3'].map(pic)}, fresh = {entity: 'e2', name: 'B', kind: 'hint', items: ['s1', 's2'].map(pic)};
+  const h = daysHarness(() => ({}));
+  let finish, opened;
+  globalThis.fetch = async (path, init) => {
+    if (path.startsWith('/api/ask/answer')) return new Promise(r => { finish = () => r({status: 200, ok: true, json: async () => ({undo: {id: 3, label: 'x'}})}); });
+    const body = path.startsWith('/api/ask') ? {batch: h.state.nsfw === 'hide' ? fresh : old} : path.startsWith('/api/bootstrap') ? {token: '', total: 0, undo: null} : {days: [], next: ''};
+    return {status: 200, ok: true, json: async () => body};
+  };
+  const scope = scopes.page('days'), ask = dayAsk(scope, {pick: o => { opened = o; }});
+  await ask.next(); await tick();
+  const btn = ref => [...ask.el.querySelectorAll('button')].find(b => b.getAttribute('data-ref') === ref);
+  const peeks = () => [...ask.el.querySelectorAll('button')].filter(b => b.dataset.peek && !b.inert).map(b => b.dataset.peek);
+  btn('open').dispatchEvent({type: 'click'});
+  const first = [...ask.el.querySelectorAll('button')].find(b => b.dataset.peek === 'nsfw1');
+  first.parentNode.dispatchEvent({type: 'click', target: first});
+  btn('other').dispatchEvent({type: 'click'});
+  assert.ok(opened, '打开了角色选择器');
+  const writing = opened.pick({id: 'x', name: 'X'}); await tick();
+  h.state.nsfw = 'hide'; ask.reset(); for (let i = 0; i < 4; i++) await tick();
+  assert.deepEqual(peeks(), ['s1', 's2'], '新批上来了');
+  assert.equal(btn('ok').disabled, true, '写入还没回来，锁着');
+  finish(); await writing; for (let i = 0; i < 4; i++) await tick();
+  assert.deepEqual(peeks(), ['s1', 's2'], '旧批剩下的 nsfw2、nsfw3 没有放回卡上');
+  assert.equal(btn('ok').disabled, false, '写完放开');
+  h.state.nsfw = '';
+  scopes.page('library');
+});

@@ -53,15 +53,15 @@ function daysView(scope) {
   const {el, refs} = PAGE(), viewport = $('viewport');
   $('homePage').replaceChildren(el);
   // failed：从头读或接着读失败了（挡住接着读）；stale：同步、改动之后的重读失败了（'newest' 或 'around'，画面留着，「重试」重做它）。
-  // jump：这一次跳转的凭据（target 是要去的那天，读失败后「重试」接着往那里读）。peopleSeq：每天的名单读到第几次。
+  // jump：这一次跳转的凭据（target 是要去的那天，读失败后「重试」接着往那里读）。peopleRead：每天正在读的名单（它的 AbortController）。
   const v = {route: null, query: null, key: '', gen: 0, abort: null, days: [], next: '', reading: false, failed: false, stale: '', paging: null,
     target: '', jump: null, pending: new Set(), refreshing: false, retries: 0, boxes: [], height: 0, width: 0, day: '',
-    heroes: new Map(), open: new Set(), opened: new Map(), people: new Map(), peopleSeq: new Map(), fresh: new Map(), grow: new Map(), widgets: new Set()};
+    heroes: new Map(), open: new Set(), opened: new Map(), people: new Map(), peopleRead: new Map(), fresh: new Map(), grow: new Map(), widgets: new Set()};
   // 这一轮读取的凭据：回来的时候代号和查询条件都没变、这一页也还在，回复才算数。
   const ticket = () => ({gen: v.gen, key: v.key});
   const valid = tk => scope.alive && tk.gen === v.gen && tk.key === v.key;
   const signal = () => v.abort.signal;
-  scope.add(() => v.abort?.abort());
+  scope.add(() => { v.abort?.abort(); dropPeopleReads(); });
 
   // ---------- 两张卡 ----------
   const sync = scope.add(syncCard({open: () => openTasks()}));
@@ -157,7 +157,8 @@ function daysView(scope) {
     v.abort?.abort(); v.abort = new AbortController();
     cancelJump();
     Object.assign(v, {query, key, gen: v.gen + 1, days: [], next: '', day: '', reading: true, failed: false, stale: '', paging: null, target: route.at || ''});
-    for (const m of [v.heroes, v.open, v.opened, v.people, v.peopleSeq, v.fresh, v.grow]) m.clear();
+    dropPeopleReads();
+    for (const m of [v.heroes, v.open, v.opened, v.people, v.fresh, v.grow]) m.clear();
     list.dispose(); list = makeList();
     layout();
     const tk = ticket(), days = [];
@@ -239,7 +240,7 @@ function daysView(scope) {
         v.pending.delete(kind);
         if (!v.days.length && !v.next) { v.pending.clear(); load(v.route, {force: true}); return; }   // 空图库第一次同步进图：从头读
         const ok = await reread(kind);
-        if (ok) v.retries = 0;
+        if (ok) { v.retries = 0; if (v.stale) { v.stale = ''; layout(); } }   // 后来的一次重读成功了：「重试」收起
         else if (kind === 'newest' && v.retries < RETRIES) { v.retries++; scope.timeout(() => refresh('newest'), RETRY_MS); }
         else { v.stale = kind; layout(); }   // 自动重试也用完了（或改动之后的重读失败）：画面留着，给「重试」
       }
@@ -267,9 +268,8 @@ function daysView(scope) {
     v.days = merged.days;
     if (merged.end) v.next = next;
     regrow(kind, top, was, merged.changed);
-    // 重读过的这几天，展开的角色名单作废：开着的重读，收着的下次展开时再读。
-    for (const g of fresh) forgetPeople(g.day);
-    for (const day of merged.changed) forgetPeople(day);
+    // 重读过的这几天，展开的角色名单作废（每天一次）：开着的重读，收着的下次展开时再读。
+    for (const day of new Set([...fresh.map(g => g.day), ...merged.changed])) forgetPeople(day);
     layout();
     return true;
   }
@@ -288,12 +288,13 @@ function daysView(scope) {
       if (next) v.grow.set(top.day, next);
     }
   }
-  // 这一天的展开名单作废，连同还在路上的那次读取（#757 复核第 8 条）；开着的重读。
+  // 这一天的展开名单作废，还在路上的那次读取中止（#757 复核第 8 条，不把整天分页读完）；开着的重读。
   function forgetPeople(day) {
-    v.peopleSeq.set(day, (v.peopleSeq.get(day) || 0) + 1);
+    v.peopleRead.get(day)?.abort(); v.peopleRead.delete(day);
     v.people.delete(day);
     if (v.open.has(day)) loadPeople(day);
   }
+  function dropPeopleReads() { for (const c of v.peopleRead.values()) c.abort(); v.peopleRead.clear(); }
 
   // ---------- 展开或收起一天的全部角色 ----------
   // 展开时先用已有的前八位撑着，读到全部再换。
@@ -302,14 +303,15 @@ function daysView(scope) {
     v.open.add(day); layout();
     if (!v.people.has(day)) loadPeople(day);
   }
-  // 每天的名单读取单独编号，只收最后一次的回复。
+  // 每天的名单读取各有自己的 AbortController：同一天同一时间只读一次，作废时中止，只收最后一次的回复。
   async function loadPeople(day) {
-    const tk = ticket(), n = (v.peopleSeq.get(day) || 0) + 1, mine = () => valid(tk) && v.peopleSeq.get(day) === n;
-    v.peopleSeq.set(day, n);
+    if (v.peopleRead.has(day)) return;
+    const tk = ticket(), read = new AbortController(), mine = () => valid(tk) && v.peopleRead.get(day) === read;
+    v.peopleRead.set(day, read);
     try {
-      const people = await readDayPeople(v.query, day, {signal: signal()});
+      const people = await readDayPeople(v.query, day, {signal: read.signal});
       if (mine() && v.open.has(day)) { v.people.set(day, people); layout(); }
-    } catch (e) { if (mine()) toast(readError(e)); }
+    } catch (e) { if (mine()) toast(readError(e)); } finally { if (v.peopleRead.get(day) === read) v.peopleRead.delete(day); }
   }
 
   // ---------- 点图 ----------

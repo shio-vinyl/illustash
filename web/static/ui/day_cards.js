@@ -59,8 +59,12 @@ export function syncCard({open}) {
     cls(refs.ring, 'is-busy', active); cls(refs.ring, 'is-warn', ['error', 'interrupted', 'needs_recognition'].includes(status));
     show(refs.tick, status === 'done');
     text(refs.title, active ? t('正在同步') : TITLES[status]?.() || t('同步'));
-    // 读不到同步状态（轮询失败、正在重试）：不把上一次读到的进度当成现在的。
-    if (lost) { cls(refs.ring, 'is-busy', false); text(refs.sub, t('读不到同步状态，正在重新连接…')); return; }
+    // 读不到同步状态（轮询失败、正在重试）：不把上一次读到的进度当成现在的，标题、圆环和副标题都这么写。
+    if (lost) {
+      text(refs.title, t('读不到同步状态')); text(refs.sub, t('正在重新连接…'));
+      css(refs.ring, '--p', '0'); cls(refs.ring, 'is-busy', false); show(refs.tick, false);
+      return;
+    }
     const facts = status === 'done' ? [
       ...(sync.finished_at ? [stamp(sync.finished_at)] : []),
       t('新加入 {n} 张', {n: number(sync.imported || 0)}),

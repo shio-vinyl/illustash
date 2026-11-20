@@ -735,7 +735,8 @@
   "正在同步": "Syncing",
   "同步已中断": "Sync interrupted",
   "还没有同步过": "Not synced yet",
-  "读不到同步状态，正在重新连接…": "Cannot read the sync status; reconnecting…",
+  "读不到同步状态": "Cannot read the sync status",
+  "正在重新连接…": "Reconnecting…",
   "等待识别": "Waiting for recognition",
   "今天认出 {n} 位角色": {
     "one": "{n} character recognized today",

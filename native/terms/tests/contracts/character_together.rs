@@ -92,7 +92,10 @@ fn character_together_http_contract() {
     );
     assert_eq!(get("?id=subject&nsfw=hide&limit=2"), json!([peer("a", 1), peer("b", 1)]));
     assert_eq!(get("?id=subject&nsfw=only"), json!([peer("z", 2)]));
-    assert_eq!(get("?id=subject&limit=7").as_array().unwrap().last(), Some(&peer("f", 1)));
+    assert_eq!(
+        get("?id=subject&limit=20"),
+        json!([peer("z", 3), peer("a", 1), peer("b", 1), peer("c", 1), peer("d", 1), peer("e", 1), peer("f", 1)])
+    );
     for id in ["missing", "possible", "label", "mascot"] {
         assert_eq!(get(&format!("?id={id}")), json!([]));
     }

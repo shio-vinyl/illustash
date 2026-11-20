@@ -210,7 +210,7 @@ Tauri 桌面外壳（`desktop/`）只负责启动核心 HTTP 命令、管理窗�
 - **R3（7 个）**：`/api/assets`、`/api/assets/count`、`/api/ids`、`/api/detail`、`/api/home`、`/api/fold`、`/api/review-pools`。包括现有筛选、排序、分页、可见性、NSFW、作品树、画师和 `pool=cluster|similar` 的持久化分组查询；详情组装包括源库标签和来源库帖子。
 - **R4（8 个）**：`/api/characters`、`/api/tagged`、`/api/character/profile`、`/api/character/activity`、`/api/character/stats`、`/api/identity/count`、`/api/identity/queue`、`/api/bootstrap`。保留未设置/hybrid 策略、summary、封面分配、首次命中、去重、分页、历史重渲染和会话字段；其他读取见下节。
 
-角色资料页通过 `GET /api/character/together?id=<角色>&nsfw=<筛选>&limit=<数量>` 读取同框次数。结果为 `[{id, count}]`，按次数降序、同数按角色 ID 升序排列。`limit` 为正整数，默认 6。`nsfw` 与角色统计共用分级和可见性条件。双方均须在同一张图上有正式归属（人工确认或机器认定），并排除自身及只当标签的角色。
+`GET /api/character/together?id=<角色>&nsfw=<筛选>&limit=<数量>` 返回指定角色的同框次数。结果为 `[{id, count}]`，按次数降序、同数按角色 ID 升序排列。`limit` 为正整数，默认 6。`nsfw` 与角色统计共用分级和可见性条件。双方均须在同一张图上有正式归属（人工确认或机器认定），并排除自身及只当标签的角色。
 
 ### 本地、外部与任务读取
 

@@ -116,6 +116,29 @@ class NativeSyncTest(unittest.TestCase):
             self.assertEqual(c.execute("SELECT rating FROM asset_rating WHERE uuid='D'").fetchall(), [('general',)])
             self.assertEqual(c.execute("SELECT src_path FROM assets WHERE uuid='D'").fetchone()[0],str(original))
 
+    def test_native_library_new_photos_without_content_hash_keep_rating_on_repeat_scan(self):
+        for asset in ('D', 'E'):
+            self.photo(asset, 'net.pxv.iphone')
+        with sqlite3.connect(self.library / 'database' / 'Photos.sqlite') as c:
+            c.execute("""UPDATE ZADDITIONALASSETATTRIBUTES SET ZORIGINALSTABLEHASH=NULL
+                         WHERE Z_PK=(SELECT ZADDITIONALATTRIBUTES FROM ZASSET WHERE ZUUID='D')""")
+        with sqlite3.connect(self.lib.source) as c:
+            c.executemany("INSERT INTO labels(uuid,dim,value,conf) VALUES (?,'rating','general',1)", [('D',), ('E',)])
+
+        def scan():
+            result = subprocess.run([str(self.binary), 'library-scan', '--library', str(self.lib.path)],
+                                    env=self.env, capture_output=True, timeout=WAIT)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            return json.loads(result.stdout)
+
+        self.assertGreaterEqual(scan()['added'], 2)
+        for _ in range(2):
+            result = scan()
+            self.assertEqual((result['added'], result['removed']), (0, 0))
+            with sqlite3.connect(self.lib.db) as c:
+                ratings = c.execute("SELECT uuid,rating FROM asset_rating WHERE uuid IN ('D','E') ORDER BY uuid")
+                self.assertEqual(ratings.fetchall(), [('D', 'general'), ('E', 'general')])
+
     def test_native_library_new_label_only_failure_retries_without_rewriting_unchanged_assets(self):
         self.photo('D', 'com.atebits.Tweetie2')
         with sqlite3.connect(self.lib.source) as c:

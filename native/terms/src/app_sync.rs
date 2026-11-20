@@ -592,9 +592,11 @@ fn refresh(
         }
         let key = format!("folder_hash:{u}");
         let old = metadata.get(&key).map(String::as_str);
-        if previous.is_some()
-            && ((old.is_some() && old != hash) || (old.is_none() && journal.get(u).and_then(Value::as_str) == hash))
-        {
+        let replaced = match old {
+            Some(old) => Some(old) != hash,
+            None => journal.get(u).and_then(Value::as_str).is_some_and(|recorded| Some(recorded) == hash),
+        };
+        if previous.is_some() && replaced {
             changed.push(u.to_owned());
         }
         if let Some(hash) = hash.filter(|hash| old != Some(*hash)) {

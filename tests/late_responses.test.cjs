@@ -9,9 +9,9 @@ const element = () => ({hidden: false, classList: {remove() {}, toggle() {}}, li
   addEventListener(kind, fn) { this.listeners[kind] = fn; }});
 
 test('a group page answer that arrives after navigating home does not take over the page', async () => {
-  // applyRoute() 在 ui/shell.js；按天视图在 ui/days.js；组页进入前的读取在 ui/review.js；页面是假的。
+  // applyRoute() 在 ui/shell.js；按天视图在 ui/days.js；组页进入前的读取在 ui/groups.js；页面是假的。
   const requests = [], {applyRoute} = await web.load('ui/shell.js'), {state} = web.core();
-  await web.load('ui/review.js'); await web.load('ui/days.js');
+  await web.load('ui/groups.js'); await web.load('ui/days.js');
   let answer;
   Object.assign(state, {route: {page: 'days'}, nsfw: '', guide: undefined});
   globalThis.location = {hash: '#/g/3'}; globalThis.history = {replaceState() {}};

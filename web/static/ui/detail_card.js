@@ -129,7 +129,9 @@ function otherRow(compact) {
 export function identities({compact = false} = {}) {
   const {el, refs} = WHO(), s = scope('identities');
   cls(el, 'is-compact', compact);
-  const others = keyed(refs.others, {key: x => x.m.id, create: x => { const row = otherRow(compact); row.update(x); return row; }, scope: s});
+  // 大图底栏按位置复用行：翻图时换的是另一个角色，行和头像 <img> 留着、只换内容，不拆已经显示的头像（#683 的翻页测量）。
+  // 卡片里按角色复用：点了某一行的按钮以后，焦点不会留在换成别的角色的同一位置上。
+  const others = keyed(refs.others, {key: (x, i) => compact ? i : x.m.id, create: x => { const row = otherRow(compact); row.update(x); return row; }, scope: s});
   return {el, dispose: () => s.dispose(), update(d) {
     const primary = primaryOf(d), pc = primary && (state.charMap.get(primary.id) || primary);
     show(refs.lead, !compact && !!primary); show(refs.none, !primary); show(refs.acts, !compact);

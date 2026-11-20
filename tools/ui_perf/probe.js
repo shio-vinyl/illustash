@@ -30,11 +30,15 @@
       watch: () => $('charIndex')},
     viewer: {
       hash: '#/library', ready: () => !!document.querySelector('#grid .card[data-id] img'), scroller: viewport, watch: () => $('viewer'),
-      // 双击网格里的第一张打开大图，点「下一张」翻页；image 是大图的 <img>，换图时它的 src 会变。
+      // 双击网格里的第一张打开大图，点「下一张」翻页。看图器三张轮换（#709）：image 给一个固定的对象，src、complete、
+      // naturalWidth 读当前那一张的预览图，换图时 src 会变。
       open: () => document.querySelector('#grid .card[data-id]').dispatchEvent(new MouseEvent('dblclick', {bubbles: true, cancelable: true})),
       opened: () => !$('viewer').hidden,
       next: () => $('viewerNext').click(),
-      image: () => $('viewerImg'),
+      image: () => {
+        const shown = () => document.querySelector('#viewer .vw-slot.is-current .vw-low') || {};
+        return {get src() { return shown().src; }, get complete() { return shown().complete; }, get naturalWidth() { return shown().naturalWidth; }};
+      },
     },
     // 页面自己的同步入口：和上手指引里「同步」按钮一样，先 startSync 再 pollSync（同步进行中每 2 秒读一次，有新图就重画）。
     // 上一次还没结束时不发新的。返回这次有没有发出。

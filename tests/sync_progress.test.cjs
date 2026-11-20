@@ -100,23 +100,36 @@ test('damaged pictures are listed where they are, the rest counted', () => {
 test('a picture that cannot be decoded shows a plain placeholder; the viewer keeps its own message', async () => {
   // wireDom()（ui/dom.js）在整个页面上监听图片错误。
   const dom = await web.load('ui/dom.js'), listeners = [];
+  // <img> 不换掉（部件里的图建一次、之后只换 src）：藏起来，后面放占位；同一个 <img> 之后读好了，占位撤掉。
   class HTMLImageElement {
-    constructor(src, id = '') { this.id = id; this.src = src; this.replaced = null; }
+    constructor(src, id = '') {
+      this.id = id; this.src = src; this.placed = null; this.nextElementSibling = null;
+      const names = new Set();
+      this.classList = {add: c => names.add(c), remove: c => names.delete(c), contains: c => names.has(c)};
+    }
     getAttribute() { return this.src; }
-    replaceWith(node) { this.replaced = node; }
+    after(node) {
+      this.placed = node; this.nextElementSibling = node;
+      node.classList = {contains: c => c === node.className};
+      node.remove = () => { this.nextElementSibling = null; node.removed = true; };
+    }
   }
   globalThis.HTMLImageElement = HTMLImageElement;
-  const page = web.fakePage();
-  page.document.addEventListener = (type, f, capture) => { if (type === 'error') { assert.equal(capture, true); listeners.push(f); } };
+  const page = web.fakePage(), on = {};
+  page.document.addEventListener = (type, f, capture) => { if (type === 'error' || type === 'load') { assert.equal(capture, true); on[type] = f; } };
   dom.wireDom();
-  const [listener] = listeners;
   const card = new HTMLImageElement('/image?id=a&size=thumb');
-  listener({target: card});
-  assert.equal(card.replaced.className, 'img-broken');
-  assert.equal(card.replaced.textContent, '无法打开');
-  const viewer = new HTMLImageElement('/image?id=a&size=preview', 'viewerImg'), other = new HTMLImageElement('/favicon.svg');
-  listener({target: viewer}); listener({target: other});
-  assert.equal(viewer.replaced, null); assert.equal(other.replaced, null);
+  on.error({target: card});
+  assert.equal(card.placed.className, 'img-broken');
+  assert.equal(card.placed.textContent, '无法打开');
+  assert.ok(card.classList.contains('is-broken'));
+  on.error({target: card});   // 同一张再报一次错，不重复放占位
+  const ph = card.placed;
+  card.src = '/image?id=b&size=thumb'; on.load({target: card});
+  assert.ok(!card.classList.contains('is-broken')); assert.ok(ph.removed);
+  const viewer = new HTMLImageElement('/image?id=a&size=preview', 'viewerLow0'), other = new HTMLImageElement('/favicon.svg');
+  on.error({target: viewer}); on.error({target: other});
+  assert.equal(viewer.placed, null); assert.equal(other.placed, null);
 });
 
 test('a sync the system refused the Photos library says what to do, by its code and not its words (#202)', async () => {

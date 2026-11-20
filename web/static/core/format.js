@@ -26,6 +26,8 @@ export const short = name => name.length > 28 ? name.slice(0, 26) + '…' : name
 // 拖到倍率不同的屏幕后，下次重画换档。
 export const screenScale = (dpr = globalThis.devicePixelRatio) => Math.max(1, Number(dpr) || 1);
 export const thumbSize = (cssPx, dpr) => cssPx * screenScale(dpr) > 260 ? 'medium' : 'thumb';
+/** 一张图的地址：size 是 thumb、medium、preview 或 full。 */
+export const imageUrl = (uuid, size = 'thumb') => `/image?id=${encodeURIComponent(uuid)}&size=${size}`;
 // 大小按十进制（1 MB = 10⁶ 字节，和 macOS 的访达一致）。bytes 带单位；megabytes 只给数字，接在写好「MB」的文案里，
 // 10 MB 以下留一位小数。
 export const bytes = n => n >= 1e9 ? (n / 1e9).toFixed(1) + ' GB' : n >= 1e6 ? (n / 1e6).toFixed(1) + ' MB' : Math.round(n / 1e3) + ' KB';

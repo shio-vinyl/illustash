@@ -16,7 +16,8 @@ import {cast, createWork, drawCast, drawShelf, openTagged, searchIndex, shelf} f
 import {dirDrawn, dirToolbar, onDir, wireDirToolbar} from './artist_dir.js';
 import {$, error, helpTip, searchIcon, showArea, wireHelpTip, workSmall} from './dom.js';
 import {attr, make, show, text, tpl} from './el.js';
-import {closeInspector, closeViewer} from './detail.js';
+import {closeInspector} from './detail.js';
+import {closeViewer} from './viewer.js';
 import {markSelectButton, placeFor, rememberPlace, reload, resetForRoute, selectAll, setNsfw, sweep, toggleFit, toggleSelecting} from './grid.js';
 import {guideTick} from './guide.js';
 import {filterBar, wireFilterBar} from './filters.js';

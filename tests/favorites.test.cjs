@@ -168,11 +168,7 @@ test('选择栏的按钮：选中的都已收藏时是「取消收藏」，超�
   assert.deepEqual(web.barButton(document.getElementById('selectionBar'), 'fav'), {act: 'fav', label: '收藏', key: 'F', disabled: false, title: ''});
 });
 
-// 网格卡片上的心形是 ui/grid_card.js 的部件，在 tests/grid_card.test.cjs 里测。
-test('心形：大图底栏和详情栏的按钮', () => {
-  assert.match(ui.viewerHeart('a', true), /data-vact="fav".*<kbd>F<\/kbd><span class="fav-label">已收藏<\/span>/);
-  assert.match(ui.detailHeart('a<', false), /data-fav="a&lt;"/);
-});
+// 网格卡片上的心形是 ui/grid_card.js 的部件，在 tests/grid_card.test.cjs 里测；详情卡片、大图的心形在各自的测试里。
 
 test('写入后就地改掉页面上这些图的心形，别的图不动', () => {
   const heart = (id, label) => {

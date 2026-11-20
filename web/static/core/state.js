@@ -59,8 +59,14 @@ export const state = {
   // ---- 选择与键盘光标：ui/grid.js（cursor 用 setCursor；换页复位用 resetForRoute） ----
   selecting: false, sel: {all: false, ids: new Set(), exclude: new Set()}, anchor: -1, cursor: -1, armed: null,
 
-  // ---- 详情栏与大图：ui/detail.js ----
-  focused: null, detail: null, viewer: -1, viewerItem: null, question: null,
+  // ---- 详情栏开着的那张：ui/detail.js ----
+  focused: null,
+
+  // ---- 详情卡片、大图底栏读到的详情和正显示的提问：core/detail.js（setDetail、setQuestion） ----
+  detail: null, question: null,
+
+  // ---- 大图：ui/viewer.js（序号和那张图） ----
+  viewer: -1, viewerItem: null,
 
   // ---- 「第 N 组」页标题用的近似组信息和各组的先后（空了时「下一组」用）：ui/review.js（进入该页前读取） ----
   groupNear: null, groupNearId: null, groupTraits: null, groupOrder: [],

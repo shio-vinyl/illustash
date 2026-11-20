@@ -545,7 +545,7 @@ fn refresh(
         crate::app_migrate_data::rows(&c, "SELECT uuid,filename,src_path,width,height,added_at,src_kind FROM assets")?;
     let have: HashMap<_, _> = known.iter().map(|r| (asset_uuid(r), r)).collect();
     let present: HashSet<_> = live.iter().map(asset_uuid).collect();
-    let removed: Vec<_> = known.iter().map(asset_uuid).filter(|u| !present.contains(u)).collect();
+    let removed: Vec<_> = known.iter().map(asset_uuid).filter(|u| !present.contains(u)).map(str::to_owned).collect();
     // 机器结果是否最新以源库标签为准。已有的内容元数据持久化在 meta 里，这样源库提交后应用库失败时，
     // 即使下次扫描看到文件没变也会重试。
     let journal_path = library.source().with_extension("scan-pending.json");
@@ -602,7 +602,7 @@ fn refresh(
         }
     }
     // 只有在库且没有分级的图片还在等待识别。Photos 必须先识别；文件夹可先导入。
-    let mut pending = 0;
+    let mut pending = 0_i64;
     let mut photos_pending = HashSet::new();
     let mut query = src.prepare(
         "SELECT a.uuid, EXISTS(SELECT 1 FROM asset_links l

@@ -155,7 +155,7 @@ pub(crate) fn duplicates(c: &Connection, src: &Connection, assets: &[Value]) -> 
             ]));
         }
     }
-    out
+    Ok(out)
 }
 use rusqlite::OptionalExtension;
 pub(crate) fn early_groups(c: &Connection, src: &Connection) -> Result<()> {

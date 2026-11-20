@@ -187,17 +187,18 @@ export async function renderNamesCard(fresh = true) {
 const modelHost = m => { try { return new URL(m?.base || 'https://api.deepseek.com').host; } catch (e) { return '—'; } };
 export function renderModelCard() {
   const card = $('modelCard'), m = state.names?.model_api; if (!card || !m) return;
-  if (!setSettingsHTML(card, cardHead(t('名称翻译（可选）'), t('Bangumi 没有中文名时，用兼容 OpenAI 接口的大模型翻译，只发送 tag、日文名和作品名。译名可能不准，悬停提示里会标「机器翻译」。API key 只存在这个图库的数据库里。'), 'library') + `
+  const status = m.credential_error ? tb(m.credential_error) : m.configured ? t('已配置') : t('未配置，不会使用');
+  if (!setSettingsHTML(card, cardHead(t('名称翻译（可选）'), t('Bangumi 没有中文名时，用兼容 OpenAI 接口的大模型翻译，只发送 tag、日文名和作品名。译名可能不准，悬停提示里会标「机器翻译」。API key 保存在本机凭据存储中。'), 'library') + `
     <div class="form-grid">
       <label for="modelBase">${t('接口地址')}</label><input id="modelBase" value="${esc(m.base || '')}" placeholder="https://api.deepseek.com" spellcheck="false" autocomplete="off">
       <label for="modelName">${t('模型')}</label><input id="modelName" value="${esc(m.model || '')}" placeholder="deepseek-chat" spellcheck="false" autocomplete="off">
       <label for="modelKey">API key</label>`
         + `<input id="modelKey" type="password" placeholder="${m.configured ? t('已配置（尾号 {hint}），留空则不修改', {hint: esc(m.hint || '')}) : t('未配置')}" spellcheck="false" autocomplete="off">
     </div>
-    <div class="sync-now form-actions"><span class="muted-note">${m.configured ? t('已配置') : t('未配置，不会使用')}</span><div class="spacer"></div>
-      ${m.configured ?
-          `<button class="quiet small" id="modelClear">${t('清除 key')}</button><button class="quiet small" id="modelTest">${t('测试连接')}</button>`
-          : ''}<button class="primary" id="modelSave">${t('保存')}</button></div>`)) return;
+    <div class="sync-now form-actions"><span class="muted-note">${esc(status)}</span><div class="spacer"></div>
+      ${m.configured || m.credential_error ? `<button class="quiet small" id="modelClear">${t('清除 key')}</button>` : ''}
+      ${m.configured ? `<button class="quiet small" id="modelTest">${t('测试连接')}</button>` : ''}
+      <button class="primary" id="modelSave">${t('保存')}</button></div>`)) return;
   const save = async (body, done) => { try { await saveModelApi(body); toast(typeof done === 'function' ? done() : done); renderSettings(); } catch (e) { toast(e.message); } };
   $('modelSave').onclick = () => {
     const body = {base: $('modelBase').value.trim() || 'https://api.deepseek.com', model: $('modelName').value.trim() || 'deepseek-chat'};

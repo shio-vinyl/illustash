@@ -87,6 +87,27 @@ test('saving or clearing model settings keeps the grant and revoke control avail
   }
 });
 
+test('a model credential error keeps the settings save and clear controls available', async () => {
+  const {state} = web.core();
+  const controls = Object.fromEntries(['modelCard', 'modelSave', 'modelClear', 'modelBase', 'modelName', 'modelKey', 'toast', 'toastText', 'toastAct', 'toastUndo']
+    .map(id => [id, {value: '', contains: () => false}]));
+  const credentialError = '模型 API key 尚未迁移，请重新打开图库或保存模型设置';
+  const calls = [];
+  Object.assign(state, {route: {page: 'library'}, names: {model_api: {configured: false, credential_error: credentialError}}});
+  globalThis.document = {getElementById: id => controls[id], activeElement: null};
+  globalThis.fetch = async (path, options) => {
+    calls.push([path, JSON.parse(options.body)]);
+    return {status: 200, ok: true, json: async () => ({model_api: {configured: false}})};
+  };
+  settings.renderModelCard();
+  assert.ok(controls.modelCard.innerHTML.includes(credentialError));
+  assert.match(controls.modelCard.innerHTML, /id="modelClear"/);
+  assert.match(controls.modelCard.innerHTML, /id="modelSave"/);
+  assert.doesNotMatch(controls.modelCard.innerHTML, /id="modelTest"/);
+  await controls.modelClear.onclick();
+  assert.deepEqual(calls, [['/api/names', {action: 'model_api', key: null}]]);
+});
+
 test('saving a new model address that drops the key says the key must be entered again', async () => {
   // 后端只为填写 key 时的那个地址保留 key（app_names.rs 的 configure）。
   const {renderModelCard} = await web.load('ui/settings.js');

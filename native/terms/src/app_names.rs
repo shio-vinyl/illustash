@@ -165,7 +165,7 @@ fn entities(c: &Connection, ids: &str) -> Result<Vec<Entity>> {
     Ok(rows)
 }
 fn fingerprint(c: &Connection, rows: &[Entity]) -> Result<String> {
-    fingerprint_with(c, rows, &indexed(c, rows)?, true)
+    fingerprint_with(c, rows, &indexed(c, rows)?, Fingerprint::LegacyScope)
 }
 /// `rows` 的 CCIP 键对应的索引名称（source.sqlite）：来源指纹中位于应用数据库之外的部分，在查询的写事务之前读取，
 /// 而不是在它的锁下读取（#275）。
@@ -216,10 +216,16 @@ fn seed_index_names(c: &mut Connection, rows: &[Entity], index: &Value) -> Resul
         Ok(valid)
     })
 }
-fn fingerprint_with(c: &Connection, rows: &[Entity], indexed: &Value, full: bool) -> Result<String> {
+#[derive(Clone, Copy)]
+enum Fingerprint {
+    Job,
+    LegacyJob,
+    LegacyScope,
+}
+fn fingerprint_with(c: &Connection, rows: &[Entity], indexed: &Value, mode: Fingerprint) -> Result<String> {
     let mut values = vec![];
     for r in rows {
-        let links = if full { json!(r.keys) } else { json!(r.tag) };
+        let links = if matches!(mode, Fingerprint::LegacyScope) { json!(r.keys) } else { json!(r.tag) };
         values.push(json!([r.id, r.parent, r.work, r.variant, links]));
         // 自动的显示名写入不得使任务自己的来源指纹失效。
         values.push(json!(c
@@ -239,7 +245,7 @@ fn fingerprint_with(c: &Connection, rows: &[Entity], indexed: &Value, full: bool
             ])))?
             .collect::<rusqlite::Result<Vec<_>>>()?));
     }
-    if full {
+    if !matches!(mode, Fingerprint::Job) {
         let works = dump(&json!(rows.iter().map(|r| r.work.as_str()).collect::<BTreeSet<_>>()));
         values.push(json!(crate::app_migrate_data::rows_with(
             c,
@@ -616,10 +622,7 @@ fn jobs(rows: &[Entity], known: &mut BTreeSet<Job>, attempted: &BTreeSet<Job>) -
 fn character_job(c: &Connection, planned: &[Entity], key: &str, work: &str) -> Result<Vec<Entity>> {
     let targets: BTreeSet<_> = crate::names_commands::tag_entities(c, key)?.into_iter().collect();
     let current = entities(c, &dump(&json!(targets)))?;
-    if targets.is_empty()
-        || current.len() != targets.len()
-        || !current.iter().all(|row| row.tag == key && row.parent.is_none())
-    {
+    if targets.is_empty() || current.len() != targets.len() {
         return invalid(SOURCE_CHANGED);
     }
     if !planned.is_empty() {
@@ -633,7 +636,7 @@ fn character_job(c: &Connection, planned: &[Entity], key: &str, work: &str) -> R
     }
     Ok(current)
 }
-fn job_fingerprint(c: &Connection, job: &Job, rows: &[Entity], index: &Value) -> Result<String> {
+fn job_fingerprint(c: &Connection, job: &Job, rows: &[Entity], index: &Value, mode: Fingerprint) -> Result<String> {
     let key = if job.character() { &job.work } else { &job.key };
     let kind = if job.character() { "work" } else { job.kind };
     let mut inputs = vec![json!(crate::app_migrate_data::rows_with(
@@ -644,7 +647,7 @@ fn job_fingerprint(c: &Connection, job: &Job, rows: &[Entity], index: &Value) ->
         [kind, key],
     )?)];
     if job.character() {
-        inputs.push(json!(fingerprint_with(c, rows, index, false)?));
+        inputs.push(json!(fingerprint_with(c, rows, index, mode)?));
     } else if kind == "work" {
         inputs.push(json!(crate::app_migrate_data::rows_with(
             c,
@@ -781,12 +784,23 @@ fn lookup(
     };
     let before = current(c)?;
     let index = if job.character() { indexed(c, &before)? } else { Value::Null };
-    let job_fp = job_fingerprint(c, job, &before, &index)?;
-    if marker.is_some_and(|value| {
-        (legacy_current && value.parse::<f64>().is_ok())
-            || serde_json::from_str::<Value>(value).is_ok_and(|done| done["sources"].as_str() == Some(&job_fp))
-    }) {
-        return Ok(());
+    let job_fp = job_fingerprint(c, job, &before, &index, Fingerprint::Job)?;
+    if let Some(marker) = marker {
+        if legacy_current && marker.parse::<f64>().is_ok() {
+            return Ok(());
+        }
+        if let Ok(done) = serde_json::from_str::<Value>(marker) {
+            if done["sources"].as_str() == Some(&job_fp) {
+                return Ok(());
+            }
+            // 旧版完成标记仍匹配时直接沿用，避免升级后全库重做。实际查询与发布只用当前指纹。
+            if job.character()
+                && !done["sources"].is_null()
+                && done["sources"].as_str() == Some(&job_fingerprint(c, job, &before, &index, Fingerprint::LegacyJob)?)
+            {
+                return Ok(());
+            }
+        }
     }
     let builtin = match *kind {
         "work" => crate::names_view::work_name(key).map(str::to_owned),
@@ -810,7 +824,9 @@ fn lookup(
     }
     let tx = c.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
     let publishing = current(&tx)?;
-    if index_keys(&publishing) != index_keys(&checked) || job_fingerprint(&tx, job, &publishing, &index)? != job_fp {
+    if index_keys(&publishing) != index_keys(&checked)
+        || job_fingerprint(&tx, job, &publishing, &index, Fingerprint::Job)? != job_fp
+    {
         return invalid(SOURCE_CHANGED);
     }
     crate::schema::begin_writing(&tx)?;
@@ -2710,6 +2726,8 @@ mod sources_tests {
                     ("live_wd", 0, "wd_character", "shared_live", Some("img-live")),
                     ("oc_holder", 1, "danbooru", "shared_oc", None),
                     ("live_oc_peer", 0, "wd_character", "shared_oc", Some("img-oc")),
+                    ("ccip_named", 0, "danbooru", "different_primary", None),
+                    ("ccip_only", 0, "ccip_base", r#"["shared_base",2]"#, Some("img-base")),
                 ] {
                     crate::character_entities::create(
                         &tx,
@@ -2732,6 +2750,12 @@ mod sources_tests {
                         .unwrap();
                     }
                 }
+                tx.execute(
+                    "INSERT INTO term_links(system,key,term_id,current,source,added_at)
+                     SELECT 'ccip_base',?1,id,1,'import','2026-11-19' FROM terms WHERE key='ccip_named'",
+                    [r#"["shared_base",1]"#],
+                )
+                .unwrap();
                 crate::character_commands::command(
                     &tx,
                     &json!({"op":"merge","source":"merged_old","target":"live_merged"}),
@@ -2744,6 +2768,7 @@ mod sources_tests {
                 a.wikis.insert("shared_merged".into(), vec!["合并活跃名".into()]);
                 a.wikis.insert("shared_live".into(), vec!["跨系统活跃名".into()]);
                 a.wikis.insert("shared_oc".into(), vec!["同键非原创名".into()]);
+                a.wikis.insert("shared_base".into(), vec!["合成索引名".into()]);
             });
             lib.run(&p, None, false).unwrap();
             let c = lib.db();
@@ -2751,6 +2776,18 @@ mod sources_tests {
             assert_eq!(shown("live_merged").name, "合并活跃名");
             assert_eq!(shown("live_wd").name, "跨系统活跃名");
             assert_eq!(shown("live_oc_peer").name, "同键非原创名");
+            assert_eq!(shown("ccip_only").name, "合成索引名");
+            assert_eq!(crate::names_commands::tag_entities(&c, "shared_base").unwrap(), ["ccip_only"]);
+            assert_eq!(
+                c.query_row(
+                    "SELECT count(*) FROM term_names n JOIN terms t ON t.id=n.term_id
+                     WHERE t.key='ccip_named' AND n.value='合成索引名'",
+                    [],
+                    |r| r.get::<_, i64>(0)
+                )
+                .unwrap(),
+                0
+            );
             assert_eq!(
                 c.query_row(
                     "SELECT count(*) FROM term_names n JOIN terms t ON t.id=n.term_id WHERE t.key='oc_holder'",
@@ -2760,6 +2797,51 @@ mod sources_tests {
                 .unwrap(),
                 0
             );
+        }
+
+        #[test]
+        fn old_character_completion_is_reused_and_current_fingerprint_ignores_work_links() {
+            let lib = Library::load();
+            let mut c = lib.db();
+            let job = Job::new("character", "alice", "Example");
+            let rows = character_job(&c, &[], &job.key, &job.work).unwrap();
+            let index = indexed(&c, &rows).unwrap();
+            let legacy = job_fingerprint(&c, &job, &rows, &index, Fingerprint::LegacyJob).unwrap();
+            let current = job_fingerprint(&c, &job, &rows, &index, Fingerprint::Job).unwrap();
+            assert_ne!(legacy, current);
+            let marker = dump(&json!({"sources":legacy}));
+            c.execute("INSERT INTO name_cache VALUES (?,?)", [job.marker(), marker.clone()]).unwrap();
+
+            let p = Providers::start();
+            lib.run(&p, None, false).unwrap();
+            assert!(
+                !p.calls().iter().any(|(url, _)| url.split_once('?').is_some_and(|(path, query)| {
+                    path == "/wiki_pages.json" && test_provider::param(query, "search[title]") == "alice"
+                })),
+                "{:?}",
+                p.calls()
+            );
+            assert_eq!(
+                c.query_row("SELECT value FROM name_cache WHERE key=?", [job.marker()], |r| r.get::<_, String>(0))
+                    .unwrap(),
+                marker,
+            );
+
+            let tx = c.transaction().unwrap();
+            crate::schema::begin_writing(&tx).unwrap();
+            assert_eq!(
+                tx.execute(
+                    "INSERT INTO term_links(system,key,term_id,current,source,added_at)
+                     SELECT 'danbooru','Synthetic_other_title',term_id,1,'import','2026-11-19'
+                     FROM term_links WHERE system='qualifier' AND key='Example'",
+                    [],
+                )
+                .unwrap(),
+                1
+            );
+            crate::schema::commit_writing(tx).unwrap();
+            assert_ne!(job_fingerprint(&c, &job, &rows, &index, Fingerprint::LegacyJob).unwrap(), legacy);
+            assert_eq!(job_fingerprint(&c, &job, &rows, &index, Fingerprint::Job).unwrap(), current);
         }
 
         #[test]

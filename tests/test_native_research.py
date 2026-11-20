@@ -536,20 +536,26 @@ note('正常结束')
         self.assertEqual(len(self.versions()) - runs, 1, self.why(seen))
         self.assertEqual(self.pending(), 0, self.why(seen))
 
-        # 场景 2：显式 /api/similar 运行中并发执行名称刷新，双方同样一次完成。
+        # 场景 2：名称在线查询暂停时发布显式相似扫描，发布不能使该名称查询的来源失效。
         runs = len(self.versions())
-        self.mode.write_text('held')
-        self.assertEqual(self.request('/api/similar', {})['status'], 200)
-        self.wait(lambda: len(self.versions()) > runs)
-        self.assertEqual(self.request('/api/names', {'action': 'refresh'})['status'], 200)
+        service.block = True
+        service.entered.clear()
+        service.release.clear()
+        try:
+            self.assertEqual(self.request('/api/names', {'action': 'refresh'})['status'], 200)
+            self.assertTrue(service.entered.wait(WAIT))
+            self.mode.write_text('held')
+            self.assertEqual(self.request('/api/similar', {})['status'], 200)
+            self.wait(lambda: len(self.versions()) > runs)
+            self.mode.write_text('ok')
+            self.release()
+            self.finished()
+            self.assertEqual(len(self.versions()) - runs, 1, self.why())
+            self.assertEqual(names_state()['status'], 'running', names_state())
+        finally:
+            service.block = False
+            service.release.set()
         wait_names('done')
-        self.mode.write_text('ok')
-        self.release()
-        seen = []
-        self.wait(settled)
-        self.assertEqual(seen[-1], 'idle', self.why(seen))
-        self.assertNotIn('waiting', seen, self.why(seen))
-        self.assertEqual(len(self.versions()) - runs, 1, self.why(seen))
 
         # 场景 3：研究与名称同时运行中正常关闭宿主，重启后诊断里不应出现因取消记下的 invalid_input 或 conflict。
         from tools.verify_read_http import output

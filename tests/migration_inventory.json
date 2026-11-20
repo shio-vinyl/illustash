@@ -101,11 +101,11 @@
 
  "crates/core/src/lib.rs":"571c3078561ae4e76176bfebd3dcd8c898fd70adb26685825d148655a6a132bd",
 
- "crates/core/src/names_commands.rs":"c0d4f33eb74352f477deb5814bb6ab23eba39e199520084a76fa7cead9f96f9d",
+ "crates/core/src/names_commands.rs":"d3ed90b19622d86c45694f73355117611e79f87ea724eb3978edaa0b61bc5354",
 
  "crates/core/src/names_search.rs":"ca951df0cd2afb41a9a5f29c73e1e8c377914f45c12fe2bf3891818ca7aa71ac",
 
- "crates/core/src/names_view.rs":"402105f806711cab1c2955c9b48d3f1e9c5ea6e13e3330dac6d598c6d3b3cab6",
+ "crates/core/src/names_view.rs":"a6743d9a5cda6845dc5b350388cb311c934cabfef6d6a5ccbc6f2b85d99d4a37",
 
  "crates/core/src/new_library.rs":"66d11a3e942e573585a204300ede8c0bf0225f00d44ce38e9dc30081e9d7a820",
 
@@ -309,7 +309,7 @@
 
  "native/terms/src/app_name_sources.rs":"a9d895621405e92c2bdacd7f547f28feec7f294f307d628ea25d5e2bf27f9515",
 
- "native/terms/src/app_names.rs":"d0c21c2bd1694eb6c1d8859a3ba5d61fe23cf30d31577caf763625160f4889c3",
+ "native/terms/src/app_names.rs":"361e94950157542982ddd0f2275cf98c63fd0c45e55658e74a0926244be1c6e1",
 
  "native/terms/src/app_onboarding.rs":"5e0d950d43ad03ffeb44e19a9090795c479a9e4a6199fcbafe93e107fe9a62a9",
 

@@ -8,7 +8,7 @@ use crate::character_names::{alias, put_name, TERM_OF};
 use crate::error::invalid;
 use crate::schema::{begin_writing, commit_writing};
 use crate::{names_view, Error, Result};
-use rusqlite::{Connection, TransactionBehavior};
+use rusqlite::{Connection, OptionalExtension, TransactionBehavior};
 use serde_json::{json, Value};
 
 fn text<'a>(v: &'a Value, message: &str) -> Result<&'a str> {
@@ -22,34 +22,43 @@ fn given(v: &Value) -> Option<&str> {
 
 /// `names.tag_entities`：名字存在这个 tag 下的活跃顶层角色身份，系统按具体程度排。
 /// 已合并、皮肤（有父角色）、原创或作品实体不作为角色名写入目标。
+/// 低优先级链接只有和身份当前显示标签一致时才可写入，避免用旧标签的名字覆盖另一个角色。
 pub fn tag_entities(c: &Connection, tag: &str) -> Result<Vec<String>> {
     let active = format!(
         "SELECT l.entity_id FROM {LINKS} l
          JOIN {ENTITIES} e ON e.id = l.entity_id
          WHERE l.core_system = ? AND l.key = ? AND l.current = 1
            AND e.merged_into IS NULL AND e.parent_id IS NULL
-           AND e.kind NOT IN ('oc','work') AND coalesce(e.original,0) = 0
-         ORDER BY e.seq"
+           AND e.kind NOT IN ('oc','work') AND coalesce(e.original,0) = 0"
     );
     for system in ["danbooru", "wd", "photos_album", "ccip"] {
-        let ids: Vec<String> = c
-            .prepare_cached(&active)?
-            .query_map([core_system(system), tag], |r| r.get(0))?
-            .collect::<rusqlite::Result<_>>()?;
-        if !ids.is_empty() {
-            return Ok(ids);
+        let id: Option<String> =
+            c.prepare_cached(&active)?.query_row([core_system(system), tag], |r| r.get(0)).optional()?;
+        if let Some(id) = id {
+            if names_view::has_tag(c, &id, tag)? {
+                return Ok(vec![id]);
+            }
         }
     }
-    Ok(c.prepare_cached(&format!(
-        "SELECT l.entity_id FROM {LINKS} l
-         JOIN {ENTITIES} e ON e.id = l.entity_id
-         WHERE l.core_system = 'ccip_base' AND l.current = 1 AND json_extract(l.key, '$[0]') = ?
-           AND e.merged_into IS NULL AND e.parent_id IS NULL
-           AND e.kind NOT IN ('oc','work') AND coalesce(e.original,0) = 0
-         ORDER BY e.seq"
-    ))?
-    .query_map([tag], |r| r.get(0))?
-    .collect::<rusqlite::Result<_>>()?)
+    let candidates: Vec<String> = c
+        .prepare_cached(&format!(
+            "SELECT DISTINCT l.entity_id FROM {LINKS} l
+             JOIN {ENTITIES} e ON e.id = l.entity_id
+             WHERE l.core_system = 'ccip_base' AND l.current = 1
+               AND CASE WHEN json_valid(l.key) THEN json_extract(l.key, '$[0]') END = ?
+               AND e.merged_into IS NULL AND e.parent_id IS NULL
+               AND e.kind NOT IN ('oc','work') AND coalesce(e.original,0) = 0
+             ORDER BY e.seq"
+        ))?
+        .query_map([tag], |r| r.get(0))?
+        .collect::<rusqlite::Result<_>>()?;
+    let mut ids = Vec::new();
+    for id in candidates {
+        if names_view::has_tag(c, &id, tag)? {
+            ids.push(id);
+        }
+    }
+    Ok(ids)
 }
 
 /// 作品文字（qualifier 链接）的身份。

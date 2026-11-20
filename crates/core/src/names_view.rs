@@ -810,6 +810,11 @@ fn old_state(c: &Connection, id: &str) -> Result<Option<(String, Entity)>> {
     Ok(Some((work, e)))
 }
 
+/// 候选身份的当前显示标签是否仍是这个键。
+pub(crate) fn has_tag(c: &Connection, id: &str, tag: &str) -> Result<bool> {
+    Ok(fetch(c, id)?.is_some_and(|(_, entity)| entity.tag == tag))
+}
+
 /// 一个身份和它的当前链接，与 `View::load` 里同一个身份逐项相同（`seq` 由 `Scope::load` 重新编）。
 fn fetch(c: &Connection, id: &str) -> Result<Option<(i64, Entity)>> {
     use rusqlite::OptionalExtension;

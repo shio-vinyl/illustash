@@ -11,11 +11,13 @@ import {updatesPost} from '../core/settings.js';
 import {state} from '../core/state.js';
 import {confirmAction} from './dialog.js';
 import {$, toast} from './dom.js';
-import {taskList} from './tasks.js';
 
 // 外壳的状态，只在这个安装能自己更新时；否则 null。
 export const selfUpdate = (u = state.updates) => u?.install?.available ? u.install : null;
-export const tasksBusy = () => taskList().some(task => task.active);
+// 有没有任务在运行：任务面板（ui/tasks.js）知道，由 ui/settings.js 启动时登记进来（这里不导入任务面板，免得成环）。
+let busyNow = () => false;
+export const setTasksBusy = fn => { busyNow = fn; };
+export const tasksBusy = () => busyNow();
 // 下载、下好、失败、安装中：用户点过「下载并重启」之后的这几步。
 export const updateStarted = (u = state.updates) => ['downloading', 'ready', 'failed', 'installing'].includes(selfUpdate(u)?.stage);
 // 下载进度：{done, total}，没在下载时 null（ui/rows.js 的 progress）。

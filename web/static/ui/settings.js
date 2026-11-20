@@ -9,22 +9,23 @@ import {onModels} from '../core/models.js';
 import {onPack, loadPack} from '../core/packs.js';
 import {onIntegrity} from '../core/integrity.js';
 import {onJob} from '../core/jobs.js';
-import {onSettings, allowNames, loadSettingsData, updatesTick} from '../core/settings.js';
+import {onSettings, loadSettingsData, updatesTick} from '../core/settings.js';
 import {readError} from '../core/session.js';
 import {$, toast, error} from './dom.js';
 import {attr, make} from './el.js';
-import {confirmAction} from './dialog.js';
 import {closeInspector} from './detail.js';
 import {undo} from './grid.js';
-import {drawGuide, drawNudge} from './guide.js';
+import {drawNudge} from './guide.js';
 import {onHumanClick, wireHuman} from './human.js';
 import {onRefresh} from './settings_group.js';
-import {drawUpdateButton, selfUpdate, updateAct} from './updates.js';
+import {drawUpdateButton, selfUpdate, setTasksBusy, updateAct} from './updates.js';
+import {taskList} from './tasks.js';
 import * as general from './settings_general.js';
 import * as library from './settings_library.js';
 import * as characters from './settings_characters.js';
 import * as artists from './settings_artists.js';
 import * as network from './settings_network.js';
+import {setNamesNetwork} from './settings_network.js';
 import * as data from './settings_data.js';
 import * as about from './settings_about.js';
 
@@ -38,20 +39,6 @@ const SECTIONS = [
   ['data', t('数据'), t('备份、缓存、识别模型与存储位置'), data],
   ['about', t('关于'), t('版本、致谢与诊断信息'), about]];
 export const settingsSection = () => SECTIONS.find(s => s[0] === state.route.section) || SECTIONS[0];
-
-// ---------- 名称：这个图库联网查询名称的授权 ----------
-// 名称的文字查询（只有 tag 和作品名）需要这个图库授权：授权之前，后端以「显示名联网尚未授权」拒绝。其他失败都是真正的
-// 网络或服务错误。
-const NAMES_NOTE = t('允许这个图库联网查询名称吗？\n\n会把你输入的角色名、作品名，以及图库里角色的 Danbooru tag 和作品名发给 Danbooru 和 Bangumi，用来搜索角色、作品和补全中文名。不会发送图片。\n\n允许后对这个图库一直有效，可以在「设置 › 网络与隐私」里随时撤销。');
-export async function setNamesNetwork(allow) {
-  if (allow && !await confirmAction(NAMES_NOTE, t('允许联网查询名称'))) return false;
-  try {
-    await allowNames(allow);
-  } catch (err) { toast(err.message); return false; }
-  toast(allow ? t('已允许这个图库联网查询名称') : t('已撤销名称联网查询'));
-  drawGuide();
-  return true;
-}
 
 // ---------- 页面 ----------
 // view：这一页的部件（导航和当前一节），建在页面作用域上；换节时只换节的那一块。
@@ -149,6 +136,7 @@ export function wireSettings() {
   $('settingsPage').addEventListener('click', onHumanClick);
   wireHuman({undo});
   $('updateButton').onclick = updateButtonClick;
+  setTasksBusy(() => taskList().some(task => task.active));
   library.wireLibrary();
 }
 

@@ -7,25 +7,13 @@ import {refreshMeta} from '../core/meta.js';
 import {SYNC_ACTIVE, syncLine, pollImports} from '../core/jobs.js';
 import {loadLibraries, saveFold} from '../core/settings.js';
 import {toast} from './dom.js';
-import {attr, make, text} from './el.js';
-import {keyed} from './keyed.js';
-import {groups, refreshSection, startupRow, taskRow} from './settings_group.js';
+import {groups, refreshSection, startupRow, taskRow, tiles} from './settings_group.js';
 import {librariesGroup} from './settings_libraries.js';
 
 // 排除规则的数字格：每个原因一格，链到被排除的图；最后一格是待确认。
-function tiles(el, scope) {
-  el.className = 'set-tiles';
-  const list = keyed(el, {key: x => x.href, scope, create: x => {
-    const a = make('a', 'set-tile'), b = make('b'), span = make('span', '', x.label);
-    attr(a, 'href', x.href); a.append(b, span);
-    const update = y => text(b, number(y.n));
-    update(x);
-    return {el: a, update};
-  }});
-  return {update: s => list.set([
-    ...Object.entries(REASONS).map(([k, label]) => ({href: `#/excluded?reason=${k}`, label, n: s.exclInfo?.reasons?.[k] || 0})),
-    {href: '#/pending', label: t('待确认'), n: s.pendingCount || 0}])};
-}
+const excluded = s => [
+  ...Object.entries(REASONS).map(([k, label]) => ({key: k, href: `#/excluded?reason=${k}`, label, big: number(s.exclInfo?.reasons?.[k] || 0)})),
+  {key: 'pending', href: '#/pending', label: t('待确认'), big: number(s.pendingCount || 0)}];
 // 相似折叠的一个勾选项：改动时连同其他已勾的一起保存，保存后重读计数。
 const foldRow = ([kind, label, hint]) => ({kind: 'switch', key: 'fold-' + kind, label, hint,
   disabled: s => !s.fold, get: s => (s.fold || []).includes(kind),
@@ -54,7 +42,7 @@ export function build(main, scope) {
        ]},
     ]},
     {key: 'exclude', title: t('排除规则'), scope: 'library', note: t('照片、截图、文字图这类不是插画的图不算进图库。你的判断优先于自动规则。'), parts: [
-      {kind: 'block', key: 'tiles', mount: tiles},
+      {kind: 'block', key: 'tiles', mount: tiles(excluded)},
     ]},
     {key: 'fold', title: t('重复与相似'), scope: 'library', note: t('勾选的关系会合并显示：图库里只留分辨率最高的一张，整组在「重复」页查看。'),
      more: t('改动组里任一张会同步到整组。组里角色不一致时不合并，留在「重复」页等你处理。字节完全相同的副本总是合并。'), parts: [

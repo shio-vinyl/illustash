@@ -23,7 +23,7 @@
 //   select  选择行：右边下拉框，options 是 [{value, label}] 或者 state => […]；改动时调 set(value, state)。
 //   field   输入行：右边输入框（type 默认 text），离开输入框或回车（change 事件）时调 set(value, state)。
 //   list    列表行：标题下面一项一行（按 itemKey 复用），每项右边可以有几个按钮（actions），点了调 run(item, state)。
-// 每行都可以带 hidden(state)、disabled(state)（list 的按钮各自带）。配置表在建任何节点之前整张校验，写错 kind 时
+// 每行都可以带 hidden(state)、disabled(state)（list 的按钮各自带）；hidden 为真时这一行别的值都不取。配置表在建任何节点之前整张校验，写错 kind 时
 // 直接抛错，容器里不会留下半张表。
 //
 // 设置页要的几个选项（#714，不加新的 kind）：
@@ -80,7 +80,8 @@ const FIELD = tpl`<label class="row"><span class="row-text"><span class="row-tit
   <small class="row-hint" data-ref="hint"></small><a class="row-link" data-ref="link" target="_blank" rel="noreferrer noopener" hidden></a>
   <em class="row-warn" data-ref="warn" hidden></em><span class="row-bar" data-ref="bar" hidden><span data-ref="fill"></span></span></span>
   <span class="row-ctrl"><input class="row-input" data-ref="input"><span class="row-unit" data-ref="unit" hidden></span></span></label>`;
-const LIST = tpl`<div class="row-list"><div class="row is-head" data-ref="head"><span class="row-text"><span class="row-title"><span class="row-dot" data-ref="dot" hidden></span><b data-ref="label"></b></span>
+const LIST = tpl`<div class="row-list"><div class="row is-head" data-ref="head">
+  <span class="row-text"><span class="row-title"><span class="row-dot" data-ref="dot" hidden></span><b data-ref="label"></b></span>
   <small class="row-hint" data-ref="hint"></small><a class="row-link" data-ref="link" target="_blank" rel="noreferrer noopener" hidden></a>
   <em class="row-warn" data-ref="warn" hidden></em><span class="row-bar" data-ref="bar" hidden><span data-ref="fill"></span></span></span></div>
   <div class="row-items" data-ref="items"></div></div>`;
@@ -188,6 +189,9 @@ export function rows(container, table, {scope: parent = null} = {}) {
       item.current = next;
       const words = spec.itemText(next), href = spec.itemHref?.(next) || null;
       text(refs.to, href ? words : ''); attr(refs.to, 'href', href); show(refs.to, href);
+      // 外部链接在新窗口打开（桌面 App 里不把设置页换掉）。
+      const away = /^https?:/.test(href || '');
+      attr(refs.to, 'target', away ? '_blank' : null); attr(refs.to, 'rel', away ? 'noreferrer noopener' : null);
       text(refs.text, href ? '' : words); show(refs.text, !href);
       const h = spec.itemHint?.(next) ?? ''; text(refs.hint, h); show(refs.hint, h);
       for (const {b, action} of buttons) {
@@ -202,7 +206,10 @@ export function rows(container, table, {scope: parent = null} = {}) {
 
   function paint(row) {
     const {spec, el, refs} = row;
-    show(el, !spec.hidden?.(state));
+    // 藏起来的行不再取别的值：它要的数据这时可能还没有。
+    const hidden = Boolean(spec.hidden?.(state));
+    show(el, !hidden);
+    if (hidden) return;
     text(refs.label, read(row.label, state));
     if (row.to) attr(row.to, 'href', read(spec.href, state) || null);
     const h = read(row.hint, state) || ''; text(refs.hint, h); show(refs.hint, h);

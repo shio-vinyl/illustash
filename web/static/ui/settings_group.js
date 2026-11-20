@@ -17,6 +17,7 @@ import {saveStartup} from '../core/settings.js';
 import {state as app} from '../core/state.js';
 import {attr, make, show, text, tpl} from './el.js';
 import {toast} from './dom.js';
+import {keyed} from './keyed.js';
 import {rows} from './rows.js';
 import {openTasks} from './tasks.js';
 
@@ -135,3 +136,16 @@ export const taskRow = (key, line, dot, extra = {}) => ({
 });
 // 只给开发者的入口（测试图库的标记、粘贴 Pixiv cookie）要带 ?dev 打开过一次页面后才显示。
 export const devMode = (() => { try { if (new URLSearchParams(location.search).has('dev')) prefs.set('dev', true); } catch {} return !!prefs.get('dev', false); })();
+// 一排数字格（排除规则、找回画师的覆盖率）：items(state) => [{key, big, label, small?, href?}]，有 href 的是链接。
+export const tiles = items => (el, scope) => {
+  el.className = 'set-tiles';
+  const list = keyed(el, {key: x => x.key, scope, create: x => {
+    const box = make(x.href ? 'a' : 'div', 'set-tile'), b = make('b'), span = make('span'), small = make('small', 'row-hint');
+    if (x.href) attr(box, 'href', x.href);
+    box.append(b, span, small);
+    const update = y => { text(b, y.big); text(span, y.label); text(small, y.small || ''); show(small, y.small); };
+    update(x);
+    return {el: box, update};
+  }});
+  return {update: s => list.set(items(s))};
+};

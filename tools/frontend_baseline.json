@@ -11,17 +11,10 @@
    "ui/grid.js -> ui/detail.js": 1,
    "ui/grid.js -> ui/palette.js": 1,
    "ui/grid.js -> ui/shell.js": 1,
-   "ui/guide.js -> ui/settings.js": 1,
    "ui/guide.js -> ui/tasks.js": 1,
-   "ui/integrity.js -> ui/settings.js": 1,
    "ui/palette.js -> ui/catalog.js": 1,
    "ui/palette.js -> ui/grid.js": 1,
    "ui/palette.js -> ui/shell.js": 1,
-   "ui/settings.js -> ui/detail.js": 1,
-   "ui/settings.js -> ui/grid.js": 1,
-   "ui/settings.js -> ui/guide.js": 1,
-   "ui/settings.js -> ui/integrity.js": 1,
-   "ui/settings.js -> ui/tasks.js": 1,
    "ui/shell.js -> ui/catalog.js": 1,
    "ui/shell.js -> ui/detail.js": 1,
    "ui/shell.js -> ui/grid.js": 1,
@@ -46,7 +39,7 @@
    "ui/dom.js": 1,
    "ui/grid.js": 24,
    "ui/guide.js": 4,
-   "ui/models.js": 3,
+   "ui/models.js": 1,
    "ui/palette.js": 21,
    "ui/review.js": 14,
    "ui/shell.js": 12,
@@ -130,11 +123,10 @@
    "ui/grid.js": 5,
    "ui/guide.js": 2,
    "ui/human.js": 2,
-   "ui/integrity.js": 2,
+   "ui/integrity.js": 1,
    "ui/like.js": 1,
    "ui/palette.js": 13,
    "ui/review.js": 8,
-   "ui/settings.js": 11,
    "ui/shell.js": 6
   },
   "animation-entry": {
@@ -215,8 +207,7 @@
    "app.css: backdrop-filter": 15
   },
   "ui-file-length": {
-   "ui/grid.js": 474,
-   "ui/settings.js": 395
+   "ui/grid.js": 474
   },
   "ui-request": {
    "ui/artist_dir.js": 1,
@@ -228,7 +219,6 @@
    "ui/like.js": 1,
    "ui/palette.js": 2,
    "ui/review.js": 2,
-   "ui/settings.js": 1,
    "ui/tasks.js": 3
   }
  }

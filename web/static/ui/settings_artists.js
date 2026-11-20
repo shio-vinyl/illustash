@@ -72,8 +72,8 @@ export function build(main, scope) {
   const view = groups(main, [
     {key: 'provenance', title: t('找回画师'), scope: 'library',
      note: t('逐张查图的画师：用像素哈希和 IQDB 签名（只发哈希文本，不发图片）在 Danbooru 查原帖，并比对你关注的画师。结果在详情面板的「画师」里。'), parts: [
-       {kind: 'info', key: 'provReading', label: t('正在读取…'), hidden: s => !!prov(s)},
-       {kind: 'info', key: 'provNone', label: t('只有图库包能找回画师。'), hidden: s => !prov(s) || provReady(s)},
+       {kind: 'note', text: t('正在读取…'), hidden: s => !!prov(s)},
+       {kind: 'note', text: t('只有图库包能找回画师。'), hidden: s => !prov(s) || provReady(s)},
        {kind: 'block', key: 'provTiles', hidden: s => !provReady(s) || !cov(s), mount: tiles(coverageTiles)},
        {kind: 'action', key: 'provStatus', hidden: s => !provReady(s), label: provLine,
         dot: s => working(s) ? 'busy' : prov(s).state?.status === 'failed' ? 'warn' : '',

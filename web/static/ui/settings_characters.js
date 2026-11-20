@@ -122,7 +122,7 @@ export function build(main, scope) {
   const save = () => modelAct(draft, 'save');
   const view = groups(main, [
     {key: 'pack', title: packName(), scope: 'library', note: s => s.pack ? packNote(s.pack) : '', parts: [
-      {kind: 'info', key: 'packReading', label: () => inst.packError ? readError(inst.packError) : t('正在读取…'), hidden: s => !!s.pack},
+      {kind: 'note', text: () => inst.packError ? readError(inst.packError) : t('正在读取…'), hidden: s => !!s.pack},
       {kind: 'action', key: 'packStatus', hidden: s => !s.pack, label: s => packLine(s.pack), hint: s => packHintText(s.pack), link: s => packManual(s.pack),
        dot: s => packDot(s.pack) || '', progress: s => packProgress(s.pack),
        buttons: s => [...packButtons(s.pack), ...(packHasTask(s.pack) ? [{act: 'tasks', label: t('在任务面板查看')}] : [])],

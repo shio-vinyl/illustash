@@ -48,7 +48,7 @@ a.row.is-link:hover .row-title b{color:var(--accent-ink)}
 .row-dot[data-dot=warn]{background:var(--bad)}
 .row-dot[data-dot=off]{background:var(--faint)}
 .row-bar{display:block;height:4px;margin-top:var(--space-6);border-radius:var(--radius-4);background:var(--sheet);overflow:hidden}
-.row-bar>span{display:block;height:100%;background:var(--accent);transition:width var(--dur-3) var(--ease)}
+.row-bar>span{display:block;height:100%;background:var(--accent);transform:scaleX(0);transform-origin:left;transition:transform var(--dur-3) var(--ease)}
 .row-ctrl{display:flex;flex:0 1 auto;flex-wrap:wrap;align-items:center;justify-content:flex-end;gap:var(--space-6);min-width:0}
 .row-value{color:var(--muted);font-size:var(--fs-12);font-variant-numeric:tabular-nums;white-space:nowrap}
 .row-unit{color:var(--muted);font-size:var(--fs-12)}

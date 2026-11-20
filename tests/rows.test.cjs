@@ -161,7 +161,7 @@ test('设置页的选项（#714）：分段、一行几个按钮、圆点、进�
   const models = panel.row('models');
   assert.equal(models.querySelector('.row-dot').getAttribute('data-dot'), 'busy');
   assert.equal(models.querySelector('.row-bar').getAttribute('aria-valuenow'), '1');
-  assert.equal(models.querySelector('.row-bar').firstChild.style.width, '25.0%');
+  assert.equal(models.querySelector('.row-bar').firstChild.style.transform, 'scaleX(0.250)');
   assert.equal(models.querySelector('.row-link').getAttribute('href'), 'https://x');
   const cancel = models.querySelector('button');
   cancel.dispatchEvent(dom.event('click')); cancel.dispatchEvent(dom.event('click'));

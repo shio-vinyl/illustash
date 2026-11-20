@@ -11,11 +11,11 @@ window.CENSUS = {
   "css/library.css": "111a033624e4d7dac2e9f2c55811b458f41204620a2dfe81df33aeca213804d1",
   "css/overlays.css": "3e18fddd6cbc8c59478a35b978d51868e4c93aeb4a075a98139d54696dd2601a",
   "css/rail.css": "e42b74acf9f290263810bb3ac3b2d679af30cdb62e0c36eb6ad849cc1d26951d",
-  "css/settings.css": "c56332a1a6fe7dafa2c5801493a6d9c301e3afc727b29af99e8e120ee0c95d3d",
+  "css/settings.css": "cc4715b8dcdd1bb9d1168d5a5067e61ab3d560c7ab42b019afe3c865143f3c71",
   "css/tidy.css": "0dae765ffbd6e5e96298c7b5ad97a2d9a64c085d13ae8bd0ad0d82c49e536bec",
   "css/tokens.css": "debccd019e1f850d3aaccc13ae456b24e58b704772df86b167b6b16858a42e2c"
  },
- "sha256": "8ecd3c54ebd69c767bda2e14d997adbaad68abfb6bc14bcf2cd8e637362c0db0",
+ "sha256": "250eba260be470b11fd2db63a865920254218f6eea77c878185bef10eb49ff09",
  "lines": 1782,
  "rules": 1343,
  "themeVars": {

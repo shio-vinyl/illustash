@@ -9,7 +9,7 @@ import {attr, make, refill, rich, text, tpl} from './el.js';
 import {replayGuide} from './guide.js';
 import {openModal} from './overlay.js';
 import {groups, refreshSection} from './settings_group.js';
-import {updateAct, updateButtons, updateProgress, updateStarted, updatesHint, updatesTitle} from './updates.js';
+import {drawUpdateButton, updateAct, updateButtons, updateProgress, updateStarted, updatesHint, updatesTitle} from './updates.js';
 
 const CREDITS = [
   ['WD SwinV2 Tagger v3', 'SmilingWolf', t('图片标签与角色识别'), 'https://huggingface.co/SmilingWolf/wd-swinv2-tagger-v3'],
@@ -40,10 +40,14 @@ async function help(act) {
   if (act === 'export') { try { downloadDiagnostic({...await diagnosticReport(), environment: env}); } catch (e) { error(readError(e)); } }
   if (act === 'logs') { try { await openDiagnosticLogs(); } catch { toast(t('无法打开日志所在文件夹')); } }
 }
+// 检查、下载、取消以后，侧栏的更新入口跟着变，不用等下一次通知。
 async function update(act) {
-  if (act !== 'check') { await updateAct(act); refreshSection(); return; }
-  try { const u = await checkUpdates(); toast(u.error ? tb(u.error) : u.newer ? t('有新版本 {version}', {version: u.latest}) : t('已是最新版本')); }
-  catch (err) { toast(err.message); }
+  if (act !== 'check') await updateAct(act);
+  else {
+    try { const u = await checkUpdates(); toast(u.error ? tb(u.error) : u.newer ? t('有新版本 {version}', {version: u.latest}) : t('已是最新版本')); }
+    catch (err) { toast(err.message); }
+  }
+  drawUpdateButton();
   refreshSection();
 }
 // 许可说明里的链接。
@@ -61,7 +65,7 @@ export function build(main, scope) {
   let report = null, asked = 0;
   const view = groups(main, [
     {key: 'about', title: t('关于'), note: t('在本机识别、整理收藏的插画和里面的角色。'), parts: [
-      {kind: 'info', key: 'aboutReading', label: t('正在读取…'), hidden: s => !!s.about},
+      {kind: 'note', text: t('正在读取…'), hidden: s => !!s.about},
       {kind: 'block', key: 'head', hidden: s => !s.about, mount: el => {
         const {el: head, refs} = HEAD(); el.appendChild(head);
         return {update: s => {

@@ -159,8 +159,8 @@ export const librariesGroup = () => ({key: 'libraries', title: t('图库'), note
   foot: s => t('导出的 zip 包含识别结果、人工整理记录和来源配置，不含模型连接设置或联网授权，可以换电脑或发给别人。导入后需重新设置模型接口，并自行确认名称查询的联网授权；旧版导出包也会清除这些设置。个人备份请保留完整图库目录。')
     + (s.libraries?.export?.status === 'done' ? '' : EXPORT_LEAVES_OUT),
   parts: [
-    {kind: 'info', key: 'reading', label: t('正在读取…'), hidden: s => !!s.libraries},
-    {kind: 'info', key: 'legacy', label: t('当前是旧的数据布局（不是图库包）。'), hidden: s => !s.libraries || !!info()},
+    {kind: 'note', text: t('正在读取…'), hidden: s => !!s.libraries},
+    {kind: 'note', text: t('当前是旧的数据布局（不是图库包）。'), hidden: s => !s.libraries || !!info()},
     {kind: 'info', key: 'current', label: () => info()?.name || '', hint: () => home(info()?.path || ''), value: t('当前图库'), hidden: () => !info()},
     {kind: 'sub', label: t('来源'), hidden: () => !info()},
     {kind: 'block', key: 'folders', hidden: () => !info(), mount: (el, scope) => {

@@ -61,39 +61,31 @@ import {attr, cls, css, make, prop, show, text, tpl, value} from './el.js';
 import {keyed} from './keyed.js';
 import {scope} from './scope.js';
 
-// 每种行左边都是同一段文字区：圆点、标题、说明、小链接、醒目的小字、进度条。模板不能拼接，所以各写一份。
-const SWITCH = tpl`<label class="row"><span class="row-text"><span class="row-title"><span class="row-dot" data-ref="dot" hidden></span><b data-ref="label"></b></span>
+// 每种行左边都是同一段文字区：圆点、标题、说明、小链接、醒目的小字、进度条。只写一份（TEXT），各行种的外壳里留一个
+// <span data-ref="text">，建行时换成它，两边的 refs 合在一起。
+const TEXT = tpl`<span class="row-text"><span class="row-title"><span class="row-dot" data-ref="dot" hidden></span><b data-ref="label"></b></span>
   <small class="row-hint" data-ref="hint"></small><a class="row-link" data-ref="link" target="_blank" rel="noreferrer noopener" hidden></a>
-  <em class="row-warn" data-ref="warn" hidden></em><span class="row-bar" data-ref="bar" hidden><span data-ref="fill"></span></span></span>
-  <input type="checkbox" class="switch" data-ref="input"></label>`;
-const ACTION = tpl`<div class="row"><span class="row-text"><span class="row-title"><span class="row-dot" data-ref="dot" hidden></span><b data-ref="label"></b></span>
-  <small class="row-hint" data-ref="hint"></small><a class="row-link" data-ref="link" target="_blank" rel="noreferrer noopener" hidden></a>
-  <em class="row-warn" data-ref="warn" hidden></em><span class="row-bar" data-ref="bar" hidden><span data-ref="fill"></span></span></span>
+  <em class="row-warn" data-ref="warn" hidden></em><span class="row-bar" data-ref="bar" hidden><span data-ref="fill"></span></span></span>`;
+const SWITCH = tpl`<label class="row"><span data-ref="text"></span><input type="checkbox" class="switch" data-ref="input"></label>`;
+const ACTION = tpl`<div class="row"><span data-ref="text"></span>
   <span class="row-ctrl" data-ref="ctrl"><span class="row-value" data-ref="value" hidden></span><button type="button" class="btn is-small" data-ref="input"></button></span></div>`;
-const INFO = tpl`<div class="row"><span class="row-text"><span class="row-title"><span class="row-dot" data-ref="dot" hidden></span><b data-ref="label"></b></span>
-  <small class="row-hint" data-ref="hint"></small><a class="row-link" data-ref="link" target="_blank" rel="noreferrer noopener" hidden></a>
-  <em class="row-warn" data-ref="warn" hidden></em><span class="row-bar" data-ref="bar" hidden><span data-ref="fill"></span></span></span>
-  <span class="row-value" data-ref="value"></span></div>`;
-const SELECT = tpl`<label class="row"><span class="row-text"><span class="row-title"><span class="row-dot" data-ref="dot" hidden></span><b data-ref="label"></b></span>
-  <small class="row-hint" data-ref="hint"></small><a class="row-link" data-ref="link" target="_blank" rel="noreferrer noopener" hidden></a>
-  <em class="row-warn" data-ref="warn" hidden></em><span class="row-bar" data-ref="bar" hidden><span data-ref="fill"></span></span></span>
-  <select class="row-select" data-ref="input"></select></label>`;
-const SEG = tpl`<div class="row"><span class="row-text"><span class="row-title"><span class="row-dot" data-ref="dot" hidden></span><b data-ref="label"></b></span>
-  <small class="row-hint" data-ref="hint"></small><a class="row-link" data-ref="link" target="_blank" rel="noreferrer noopener" hidden></a>
-  <em class="row-warn" data-ref="warn" hidden></em><span class="row-bar" data-ref="bar" hidden><span data-ref="fill"></span></span></span>
-  <span class="seg" role="group" data-ref="input"></span></div>`;
-const FIELD = tpl`<label class="row"><span class="row-text"><span class="row-title"><span class="row-dot" data-ref="dot" hidden></span><b data-ref="label"></b></span>
-  <small class="row-hint" data-ref="hint"></small><a class="row-link" data-ref="link" target="_blank" rel="noreferrer noopener" hidden></a>
-  <em class="row-warn" data-ref="warn" hidden></em><span class="row-bar" data-ref="bar" hidden><span data-ref="fill"></span></span></span>
+const INFO = tpl`<div class="row"><span data-ref="text"></span><span class="row-value" data-ref="value"></span></div>`;
+const SELECT = tpl`<label class="row"><span data-ref="text"></span><select class="row-select" data-ref="input"></select></label>`;
+const SEG = tpl`<div class="row"><span data-ref="text"></span><span class="seg" role="group" data-ref="input"></span></div>`;
+const FIELD = tpl`<label class="row"><span data-ref="text"></span>
   <span class="row-ctrl"><input class="row-input" data-ref="input"><span class="row-unit" data-ref="unit" hidden></span></span></label>`;
-const LIST = tpl`<div class="row-list"><div class="row is-head" data-ref="head">
-  <span class="row-text"><span class="row-title"><span class="row-dot" data-ref="dot" hidden></span><b data-ref="label"></b></span>
-  <small class="row-hint" data-ref="hint"></small><a class="row-link" data-ref="link" target="_blank" rel="noreferrer noopener" hidden></a>
-  <em class="row-warn" data-ref="warn" hidden></em><span class="row-bar" data-ref="bar" hidden><span data-ref="fill"></span></span></span></div>
+const LIST = tpl`<div class="row-list"><div class="row is-head" data-ref="head"><span data-ref="text"></span></div>
   <div class="row-items" data-ref="items"></div></div>`;
+// 外壳加上文字区。
+const shell = make_ => () => {
+  const {el, refs} = make_(), text = TEXT();
+  refs.text.replaceWith(text.el);
+  return {el, refs: {...refs, ...text.refs, text: text.el}};
+};
 const ITEM = tpl`<div class="row is-item"><span class="row-text"><a class="row-to" data-ref="to" hidden></a><span data-ref="text"></span><small class="row-hint" data-ref="hint"></small></span>
   <span class="row-ctrl" data-ref="actions"></span></div>`;
-const KINDS = {switch: SWITCH, action: ACTION, info: INFO, select: SELECT, field: FIELD, list: LIST};
+const KINDS = {switch: shell(SWITCH), action: shell(ACTION), info: shell(INFO), select: shell(SELECT), field: shell(FIELD), list: shell(LIST)};
+const SEG_ROW = shell(SEG);
 
 // 文字原样用，函数每次按状态取值。
 const read = (v, s) => typeof v === 'function' ? v(s) : v;
@@ -124,7 +116,7 @@ export function rows(container, table, {scope: parent = null} = {}) {
   const built = table.map(spec => build(spec));
 
   function build(spec) {
-    const make_ = spec.kind === 'select' && spec.seg ? SEG : KINDS[spec.kind];
+    const make_ = spec.kind === 'select' && spec.seg ? SEG_ROW : KINDS[spec.kind];
     const {el, refs} = make_(), label = spec.label, hint = spec.hint ?? '';
     const row = {spec, el, refs, label, hint, list: null, options: '', pending: null, buttons: null, to: null};
     if (spec.href && spec.kind === 'info') {
@@ -236,6 +228,7 @@ export function rows(container, table, {scope: parent = null} = {}) {
     show(el, !hidden);
     if (hidden) return;
     text(refs.label, read(row.label, state));
+    if (spec.kind === 'select' && spec.seg) attr(refs.input, 'aria-label', read(row.label, state));
     if (row.to) attr(row.to, 'href', read(spec.href, state) || null);
     const h = read(row.hint, state) || ''; text(refs.hint, h); show(refs.hint, h);
     const dot = spec.dot ? spec.dot(state) : null;
@@ -247,7 +240,7 @@ export function rows(container, table, {scope: parent = null} = {}) {
     show(refs.bar, total > 0);
     if (total > 0) {
       attr(refs.bar, 'role', 'progressbar'); attr(refs.bar, 'aria-valuemax', String(total)); attr(refs.bar, 'aria-valuenow', String(bar.done || 0));
-      css(refs.fill, 'width', `${Math.min(100, (bar.done || 0) / total * 100).toFixed(1)}%`);
+      css(refs.fill, 'transform', `scaleX(${Math.min(1, (bar.done || 0) / total).toFixed(3)})`);
     }
     const off = Boolean(spec.disabled?.(state));
     if (refs.input && spec.kind === 'action') setOff(refs.input, off);

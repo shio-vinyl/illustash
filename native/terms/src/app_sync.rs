@@ -1547,10 +1547,10 @@ mod tests {
         let replacement_source = snapshot(&replacement.source());
         let replacement_app = snapshot(&replacement.db());
         let mut options = Options::new(root.clone());
-        options.names_enabled = false;
-        options.provenance_enabled = false;
-        options.index_automatic = false;
-        options.auto_sync = false;
+        options.startup.names_enabled = false;
+        options.startup.provenance_enabled = false;
+        options.startup.index_auto_check = false;
+        options.startup.auto_sync = false;
         // 下面每个任务都跑真实的同步流程，用的是会话持有的真实槽位。
         for finish in ["switch", "shutdown", "drop"] {
             for stage in ["before_source_commit", "before_application_commit", "completed"] {

@@ -290,6 +290,21 @@ fn writer(path: &std::path::Path) -> Result<Connection> {
     c.busy_timeout(crate::app_library::TASK_WRITE_WAIT)?;
     Ok(c)
 }
+struct SyncTiming(Option<std::time::Instant>);
+
+impl SyncTiming {
+    fn new() -> Self {
+        Self(std::env::var_os("ILLUSTASH_SYNC_TIMING").is_some().then(std::time::Instant::now))
+    }
+
+    fn mark(&mut self, stage: &str) {
+        if let Some(start) = self.0 {
+            eprintln!("sync-timing {stage} {:.3} ms", start.elapsed().as_secs_f64() * 1000.0);
+            self.0 = Some(std::time::Instant::now());
+        }
+    }
+}
+
 /// 可供 M4 复用：文件盘点后本地刷新；imported 事件与应用变更同事务提交，保留 pending 给 M4 消费。
 pub(crate) fn run(library: &Library, cancel: &AtomicBool, update: &dyn Fn(Value)) -> Result<Value> {
     run_with(library, cancel, None, &crate::app_resources::default_root(), 0, update)
@@ -305,6 +320,7 @@ fn run_with(
     if !Syncer::available(library) {
         return Err(Error::Invalid("原生同步没有支持的来源".into()));
     }
+    let mut timing = SyncTiming::new();
     let wd = context.and_then(|_| {
         crate::app_wd_extension::Delivery::load(root, library).unwrap_or_else(|error| {
             eprintln!("无法加载本次同步的 WD 扩展包：{error}");
@@ -340,6 +356,7 @@ fn run_with(
         let mut sources: Vec<(String, Value)> = Vec::new();
         let mut scanned = 0;
         let mut unreadable = 0;
+        timing.mark("prepare");
         step.set("scan, source.sqlite");
         for source in library.config()["sources"].as_array().into_iter().flatten() {
             let done_in_source = std::cell::Cell::new(0);
@@ -395,6 +412,7 @@ fn run_with(
             }
             // 应用库失败后靠持久化的来源哈希驱动重试，而不是这份内存里的列表。
         }
+        timing.mark("source_scan");
         // 先扫描，避免已删除/换内容的图片被旧 pending 永久挡住；仍有效的结果再恢复。
         step.set("recognition resume, source.sqlite and library.sqlite");
         let deferred = retry_recognition_write(active, || {
@@ -428,7 +446,8 @@ fn run_with(
         check(cancel)?;
         update(json!({"status":"importing"}));
         step.set("library refresh, library.sqlite");
-        let (out, refreshed) = refresh(library, run_id, cancel, &deferred)?;
+        timing.mark("resume_and_record");
+        let (out, refreshed) = refresh(library, run_id, cancel, &deferred, &mut timing)?;
         counts["imported"] = out["added"].clone();
         counts["removed"] = out["removed"].clone();
         let pending = out["pending"].as_u64().expect("internal sync counter must be unsigned");
@@ -516,6 +535,7 @@ fn refresh(
     run_id: i64,
     cancel: &AtomicBool,
     deferred: &HashSet<String>,
+    timing: &mut SyncTiming,
 ) -> Result<(Value, HashSet<String>)> {
     let mut c = writer(&library.db())?;
     let mut src = crate::app_library::read_connection(&library.source())?;
@@ -601,6 +621,7 @@ fn refresh(
         .collect::<Vec<_>>();
     let uuids =
         added.iter().map(|r| r[0].as_str().expect("SQLite uuid column must be text").to_owned()).collect::<Vec<_>>();
+    timing.mark("compare");
     check(cancel)?;
     // WD 结果走既定的原生证据包路径交付；源库快照保持只读。
     crate::app_migrate::deliver_wd(&mut c, &library.source(), library.id(), Some(&uuids), true)?;
@@ -634,14 +655,17 @@ fn refresh(
             params![r[1].as_str(), r[2].as_str(), r[0].as_str()],
         )?;
     }
+    timing.mark("app_prepare");
     let shape = known
         .iter()
         .filter(|r| !removed.contains(&r[0]) && !uuids.iter().any(|u| Some(u.as_str()) == r[0].as_str()))
         .cloned()
         .chain(added.iter().cloned())
         .collect::<Vec<_>>();
+    let duplicates = crate::app_migrate_data::duplicates(&tx, &src, &shape)?;
+    timing.mark("duplicates");
     let stamp = now();
-    let args = json!({"op":"import","rows":added,"removed":removed,"run_id":run_id,"new_ids":{},"wd_tags":crate::app_migrate_data::rows(&src,"SELECT char_id,wd_tag FROM characters")?,"labels":labels,"decisions":decisions,"album_map":album,"duplicates":crate::app_migrate_data::duplicates(&tx,&src,&shape)?,"realistic":realistic,"indexed":stamp});
+    let args = json!({"op":"import","rows":added,"removed":removed,"run_id":run_id,"new_ids":{},"wd_tags":crate::app_migrate_data::rows(&src,"SELECT char_id,wd_tag FROM characters")?,"labels":labels,"decisions":decisions,"album_map":album,"duplicates":duplicates,"realistic":realistic,"indexed":stamp});
     let out = if !uuids.is_empty() || !removed.is_empty() {
         let out = crate::character_commands::command(&tx, &args)?;
         tx.execute("INSERT INTO backend_effects(kind) VALUES ('imported')", [])?;
@@ -656,6 +680,7 @@ fn refresh(
     }
     check(cancel)?;
     crate::schema::commit_writing(tx)?;
+    timing.mark("app_commit");
     // 应用库里的哈希标记让重试是幂等的，即使删除已提交的日志失败也一样。
     if journal_path.exists() {
         std::fs::remove_file(&journal_path)?;

@@ -9,7 +9,7 @@ use crate::{
     },
     Error, Result,
 };
-use illustash_core::{error::invalid, schema::FAVORITE_KEY};
+use illustash_core::{error::invalid, legacy_labels::page_asset_tags, schema::FAVORITE_KEY};
 use rusqlite::{types::Value, Connection, OptionalExtension};
 use std::collections::{HashMap, HashSet};
 /// 重复图 `d` 所在的组里，各份副本所属的身份不完全相同。
@@ -875,8 +875,8 @@ impl PageExtras {
     fn load(c: &Connection, ids: &str) -> Result<Self> {
         let selected = "IN (SELECT value FROM json_each(?))";
         let mut tags: HashMap<String, Vec<Json>> = HashMap::new();
-        for r in rows(c, &format!("SELECT uuid,tag FROM asset_tags WHERE uuid {selected} ORDER BY tag"), &[ids])? {
-            tags.entry(get(&r, "uuid").text().into()).or_default().push(get(&r, "tag"));
+        for (uuid, tag) in page_asset_tags(c, ids)? {
+            tags.entry(uuid).or_default().push(tag.into());
         }
         let deferred =
             strings(c, &format!("SELECT uuid FROM deferred WHERE uuid {selected}"), &[ids])?.into_iter().collect();

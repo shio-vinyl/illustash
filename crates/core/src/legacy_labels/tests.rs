@@ -91,6 +91,20 @@ fn the_views_read_the_core_and_follow_the_library() {
     .unwrap();
     assert_eq!(state(&c, a, summer).unwrap().as_deref(), Some("confirmed"));
     assert_eq!(rows(&c, "SELECT uuid,tag FROM asset_tags"), [("c".into(), "summer".into())]);
+    assert_eq!(page_asset_tags(&c, r#"["b","unknown"]"#).unwrap(), []);
+    assert_eq!(page_asset_tags(&c, r#"["b","c","c"]"#).unwrap(), [("c".into(), "summer".into())]);
+    crate::store::judge(
+        &mut c,
+        &[crate::store::VerdictTarget::Image { asset: a, term: summer }],
+        crate::store::Verdict::Clear,
+        "user",
+        "",
+        "去掉",
+    )
+    .unwrap();
+    assert_eq!(page_asset_tags(&c, r#"["c"]"#).unwrap(), []);
+    crate::store::undo(&mut c, None).unwrap();
+    assert_eq!(page_asset_tags(&c, r#"["c"]"#).unwrap(), [("c".into(), "summer".into())]);
     assert_eq!(concept_by_name(&c, "nope", None).unwrap(), None);
     // 应用升级 schema 时会重跑建表语句：CREATE TABLE IF NOT EXISTS 碰到同名视图不报错；给视图建索引则报错。
     c.execute_batch(
@@ -102,6 +116,8 @@ fn the_views_read_the_core_and_follow_the_library() {
     // 图从图库移除：视图里跟着消失。
     c.execute("DELETE FROM assets WHERE uuid='b'", []).unwrap();
     assert_eq!(rows(&c, "SELECT uuid,value FROM general_hits"), [("a".into(), "solo".into())]);
+    c.execute("DELETE FROM assets WHERE uuid='c'", []).unwrap();
+    assert_eq!(page_asset_tags(&c, r#"["c"]"#).unwrap(), []);
 }
 
 #[test]

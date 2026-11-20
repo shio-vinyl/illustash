@@ -45,6 +45,9 @@ windows = { version = "0.62", features = ["Data_Xml_Dom", "Foundation", "UI_Noti
 reqwest = { version = "0.13", default-features = false }
 rustls = { version = "0.23", default-features = false, features = ["ring"] }
 
+[target.'cfg(target_os = "macos")'.dev-dependencies]
+libtest-mimic = "0.8"
+
 # macOS 上 WKWebView 只能在主线程构造；用无默认 harness 的集成测试在主线程验证 tabFocusesLinks（#761）。
 [[test]]
 name = "wkwebview_tab_focus"

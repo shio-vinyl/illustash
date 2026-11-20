@@ -10,7 +10,10 @@ pub(crate) fn build<M: Manager<tauri::Wry>>(
     builder: WebviewWindowBuilder<'_, tauri::Wry, M>,
 ) -> tauri::Result<WebviewWindow> {
     let window = builder.build()?;
-    enable_tab_focuses_links(&window)?;
+    #[cfg(target_os = "macos")]
+    if let Err(error) = enable_tab_focuses_links(&window) {
+        eprintln!("[webview] 无法设置链接的 Tab 焦点：{error}");
+    }
     Ok(window)
 }
 
@@ -33,12 +36,6 @@ pub(crate) fn enable_wk_tab_focuses_links(wk: &objc2_web_kit::WKWebView) {
     unsafe {
         wk.configuration().preferences().setTabFocusesLinks(true);
     }
-}
-
-#[cfg(not(target_os = "macos"))]
-fn enable_tab_focuses_links(_window: &WebviewWindow) -> tauri::Result<()> {
-    // Windows 的 WebView2 基于 Chromium，默认允许 Tab 聚焦链接，无需额外设置（#761）。
-    Ok(())
 }
 
 #[cfg(test)]

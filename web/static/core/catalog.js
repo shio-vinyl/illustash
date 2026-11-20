@@ -5,9 +5,12 @@ import {t} from './i18n.js';
 import {work} from './format.js';
 import {api, post} from './session.js';
 import {state} from './state.js';
+import {listeners} from './events.js';
 import {setIndex} from './jobs.js';
 import {pageOf} from './pages.js';
 import {parseHash} from './route.js';
+// 资料库的数据被对话框改过（关注、作品、只当标签、自建角色的关联）：资料库和作品页据此重画（ui/catalog.js 发，不导入页面）。
+export const catalogChanged = listeners();
 // 每个角色的最近动态（{recent, last}），每种筛选、每个数据版本读一次。
 export const catalog = {activity: new Map(), activityKey: ''};
 export const recentOf = c => catalog.activity.get(c.id)?.recent || 0;

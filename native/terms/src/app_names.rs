@@ -3,6 +3,7 @@ use crate::error::invalid;
 use crate::{
     app_library::Library,
     app_name_sources::{self as net, Source},
+    character_links::{core_system, LINKS},
     http_json::Json,
     Error, Result,
 };
@@ -276,7 +277,7 @@ fn aliases(c: &Connection, kind: &str, key: &str, query: bool) -> Result<Vec<Str
         Ok(c.prepare(sql)?.query_map(params, |r| r.get(0))?.collect::<rusqlite::Result<_>>()?)
     };
     let (index, wiki) = if kind == "character" {
-        let id = crate::names_commands::tag_entities(c, key)?.first().cloned();
+        let id = active_character_targets(c, key)?.into_iter().next().map(|row| row.id);
         let index = pairs(
             &format!(
                 "SELECT lang, value
@@ -336,7 +337,7 @@ fn matched(c: &Connection, work: &str) -> Result<Vec<Value>> {
         _ => vec![],
     })
 }
-fn enrich(source: &mut Source, kind: &str, key: &str, work: &str) -> Result<Vec<Value>> {
+fn enrich(source: &mut Source, kind: &str, key: &str, work: &str, targets: &[&str]) -> Result<Vec<Value>> {
     let mut c = net::db(&source.path)?;
     let wiki_tag = if kind == "work" {
         c.query_row(
@@ -356,7 +357,7 @@ fn enrich(source: &mut Source, kind: &str, key: &str, work: &str) -> Result<Vec<
     let wiki = if let Some(tag) = wiki_tag { source.wiki(&tag)? } else { vec![] };
     let alias = json!({"op":"danbooru_aliases","kind":kind,"tag":key,"values":wiki});
     // 搜索候选在内存里组装；中间的远端别名不会覆盖并发的编辑。
-    let id = crate::names_commands::tag_entities(&c, key)?.first().cloned();
+    let id = targets.first().copied();
     let index: Vec<(String, String)> = if kind == "character" {
         c.prepare(&format!(
             "SELECT lang, value
@@ -517,7 +518,7 @@ fn enrich(source: &mut Source, kind: &str, key: &str, work: &str) -> Result<Vec<
         let tx = c.transaction()?;
         crate::schema::begin_writing(&tx)?;
         for op in &ops {
-            crate::names_commands::one(&tx, op)?;
+            crate::names_commands::one_checked(&tx, op, targets)?;
         }
         // 这个键自己的行，按这个事务写入后的样子读（#105）：不刷新投影，不做全图库加载。
         let choice = choose(&tx, kind, key)?;
@@ -618,11 +619,39 @@ fn jobs(rows: &[Entity], known: &mut BTreeSet<Job>, attempted: &BTreeSet<Job>) -
     jobs.extend(other.into_iter().filter(|job| !attempted.contains(job)));
     jobs
 }
+/// 联网更新只写活跃顶层角色的当前主标签。同一系统的键唯一，CCIP base 可以有多个同主标签身份。
+fn active_character_targets(c: &Connection, key: &str) -> Result<Vec<Entity>> {
+    let active = |ids: Vec<String>| {
+        let mut rows = entities(c, &dump(&json!(ids)))?;
+        rows.retain(|row| row.parent.is_none() && row.tag == key);
+        Ok::<_, Error>(rows)
+    };
+    let mut link = c.prepare_cached(&format!(
+        "SELECT l.entity_id FROM {LINKS} l WHERE l.core_system=? AND l.key=? AND l.current=1"
+    ))?;
+    for system in ["danbooru", "wd", "photos_album", "ccip"] {
+        let id: Option<String> = link.query_row([core_system(system), key], |r| r.get(0)).optional()?;
+        if let Some(id) = id {
+            let rows = active(vec![id])?;
+            if !rows.is_empty() {
+                return Ok(rows);
+            }
+        }
+    }
+    let ids = c
+        .prepare_cached(&format!(
+            "SELECT DISTINCT l.entity_id FROM {LINKS} l WHERE l.core_system='ccip_base' AND l.current=1
+             AND CASE WHEN json_valid(l.key) THEN json_extract(l.key,'$[0]') END=?"
+        ))?
+        .query_map([key], |r| r.get(0))?
+        .collect::<rusqlite::Result<_>>()?;
+    active(ids)
+}
+
 /// 归属和候选负责排队。名称写入及显示投影共用文字键，只有实际写入目标的作品都匹配时才能查询。
 fn character_job(c: &Connection, planned: &[Entity], key: &str, work: &str) -> Result<Option<Vec<Entity>>> {
-    let targets: BTreeSet<_> = crate::names_commands::tag_entities(c, key)?.into_iter().collect();
-    let current = entities(c, &dump(&json!(targets)))?;
-    if targets.is_empty() || current.len() != targets.len() {
+    let current = active_character_targets(c, key)?;
+    if current.is_empty() {
         return invalid(SOURCE_CHANGED);
     }
     if !planned.is_empty() {
@@ -814,7 +843,8 @@ fn lookup(
     if job.character() && seed_index_names(c, &before, &index)? {
         published.set(true);
     }
-    let ops = if *kind == "skin" { translate_skin(source, key)? } else { enrich(source, kind, key, work)? };
+    let targets: Vec<_> = before.iter().map(|row| row.id.as_str()).collect();
+    let ops = if *kind == "skin" { translate_skin(source, key)? } else { enrich(source, kind, key, work, &targets)? };
     net::check(&source.cancel)?;
     // 写事务前先用最新的 CCIP 键重查索引名称。识别新加的链接可以没有对应名称，这时查询内容没变。
     // 事务内只核对这次读源库所用的键，因此持有应用写锁时不用等 source.sqlite（#275）。
@@ -831,8 +861,9 @@ fn lookup(
     }
     crate::schema::begin_writing(&tx)?;
     let has_ops = !ops.is_empty();
+    let targets: Vec<_> = publishing.iter().map(|row| row.id.as_str()).collect();
     for op in ops {
-        crate::names_commands::one(&tx, &op)?;
+        crate::names_commands::one_checked(&tx, &op, &targets)?;
     }
     tx.execute("INSERT OR REPLACE INTO name_cache VALUES (?,?)", [job.marker(), dump(&json!({"sources":job_fp}))])?;
     net::check(&source.cancel)?;
@@ -2777,7 +2808,12 @@ mod sources_tests {
             assert_eq!(shown("live_wd").name, "跨系统活跃名");
             assert_eq!(shown("live_oc_peer").name, "同键非原创名");
             assert_eq!(shown("ccip_only").name, "合成索引名");
-            assert_eq!(crate::names_commands::tag_entities(&c, "shared_base").unwrap(), ["ccip_only"]);
+            assert_eq!(
+                active_character_targets(&c, "shared_base").unwrap().into_iter().map(|row| row.id).collect::<Vec<_>>(),
+                ["ccip_only"]
+            );
+            assert!(stored_names(&c, "merged_old").is_empty());
+            assert!(stored_names(&c, "live_merged").iter().any(|name| name == "合并活跃名"));
             assert_eq!(
                 c.query_row(
                     "SELECT count(*) FROM term_names n JOIN terms t ON t.id=n.term_id

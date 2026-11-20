@@ -2,13 +2,12 @@
 //! `{"op": …}`（或 `{"op": "batch", "ops": [...]}`），一个核心事务。NameUpdater（联网补名字）和相册标题的写入走这里，
 //! 逐行照 tests/reference/web/names.py（#9 已删除） 的 `put`、`tag_entities`、`NameUpdater.replace` / `aliases` / `seed` 与 tests/reference/web/store.py（#9 已删除） 的
 //! `Store.alias`。名字切到核心之后，旧表是兼容表（写保护），提交时由 `legacy_names::after_write` 补齐主数据、重建投影。
-use crate::character_entities::ENTITIES;
 use crate::character_links::{core_system, LINKS};
 use crate::character_names::{alias, put_name, TERM_OF};
 use crate::error::invalid;
 use crate::schema::{begin_writing, commit_writing};
 use crate::{names_view, Error, Result};
-use rusqlite::{Connection, OptionalExtension, TransactionBehavior};
+use rusqlite::{Connection, TransactionBehavior};
 use serde_json::{json, Value};
 
 fn text<'a>(v: &'a Value, message: &str) -> Result<&'a str> {
@@ -20,45 +19,48 @@ fn given(v: &Value) -> Option<&str> {
     v.as_str().filter(|s| !s.trim_matches(|c: char| c.is_whitespace() || ('\u{1c}'..='\u{1f}').contains(&c)).is_empty())
 }
 
-/// `names.tag_entities`：名字存在这个 tag 下的活跃顶层角色身份，系统按具体程度排。
-/// 已合并、皮肤（有父角色）、原创或作品实体不作为角色名写入目标。
-/// 低优先级链接只有和身份当前显示标签一致时才可写入，避免用旧标签的名字覆盖另一个角色。
+/// `names.tag_entities`：名字存在这个 tag 下的身份，系统按具体程度排。
 pub fn tag_entities(c: &Connection, tag: &str) -> Result<Vec<String>> {
-    let active = format!(
-        "SELECT l.entity_id FROM {LINKS} l
-         JOIN {ENTITIES} e ON e.id = l.entity_id
-         WHERE l.core_system = ? AND l.key = ? AND l.current = 1
-           AND e.merged_into IS NULL AND e.parent_id IS NULL
-           AND e.kind NOT IN ('oc','work') AND coalesce(e.original,0) = 0"
-    );
     for system in ["danbooru", "wd", "photos_album", "ccip"] {
-        let id: Option<String> =
-            c.prepare_cached(&active)?.query_row([core_system(system), tag], |r| r.get(0)).optional()?;
-        if let Some(id) = id {
-            if names_view::has_tag(c, &id, tag)? {
-                return Ok(vec![id]);
+        let ids: Vec<String> = c
+            .prepare_cached(&format!(
+                "SELECT l.entity_id FROM {LINKS} l WHERE l.core_system = ? AND l.key = ? AND l.current = 1"
+            ))?
+            .query_map([core_system(system), tag], |r| r.get(0))?
+            .collect::<rusqlite::Result<_>>()?;
+        if !ids.is_empty() {
+            return Ok(ids);
+        }
+    }
+    Ok(c.prepare_cached(&format!(
+        "SELECT l.entity_id FROM {LINKS} l WHERE l.core_system = 'ccip_base' AND json_extract(l.key, '$[0]') = ?"
+    ))?
+    .query_map([tag], |r| r.get(0))?
+    .collect::<rusqlite::Result<_>>()?)
+}
+
+#[derive(Clone, Copy)]
+enum CharacterTargets<'a> {
+    Tag,
+    Checked(&'a [&'a str]),
+}
+
+impl CharacterTargets<'_> {
+    fn apply(self, c: &Connection, tag: &str, mut write: impl FnMut(&str) -> Result<()>) -> Result<()> {
+        match self {
+            Self::Tag => {
+                for id in tag_entities(c, tag)? {
+                    write(&id)?;
+                }
+            }
+            Self::Checked(ids) => {
+                for id in ids {
+                    write(id)?;
+                }
             }
         }
+        Ok(())
     }
-    let candidates: Vec<String> = c
-        .prepare_cached(&format!(
-            "SELECT DISTINCT l.entity_id FROM {LINKS} l
-             JOIN {ENTITIES} e ON e.id = l.entity_id
-             WHERE l.core_system = 'ccip_base' AND l.current = 1
-               AND CASE WHEN json_valid(l.key) THEN json_extract(l.key, '$[0]') END = ?
-               AND e.merged_into IS NULL AND e.parent_id IS NULL
-               AND e.kind NOT IN ('oc','work') AND coalesce(e.original,0) = 0
-             ORDER BY e.seq"
-        ))?
-        .query_map([tag], |r| r.get(0))?
-        .collect::<rusqlite::Result<_>>()?;
-    let mut ids = Vec::new();
-    for id in candidates {
-        if names_view::has_tag(c, &id, tag)? {
-            ids.push(id);
-        }
-    }
-    Ok(ids)
 }
 
 /// 作品文字（qualifier 链接）的身份。
@@ -72,6 +74,18 @@ fn entities_for(c: &Connection, sql: &str, key: &str) -> Result<Vec<String>> {
 
 /// `names.put`：按文字键的显示名。人物写进身份的 `names`；作品与皮肤词按文字存（作品同时写 qualifier 对应的作品身份）。
 pub fn put(c: &Connection, kind: &str, key: &str, lang: &str, source: &str, value: &Value) -> Result<()> {
+    put_to(c, kind, key, lang, source, value, CharacterTargets::Tag)
+}
+
+fn put_to(
+    c: &Connection,
+    kind: &str,
+    key: &str,
+    lang: &str,
+    source: &str,
+    value: &Value,
+    targets: CharacterTargets<'_>,
+) -> Result<()> {
     if !matches!(lang, "zh" | "ja" | "en") || !names_view::PRIORITY.contains(&source) {
         return invalid("显示名来源或语言不正确");
     }
@@ -79,11 +93,12 @@ pub fn put(c: &Connection, kind: &str, key: &str, lang: &str, source: &str, valu
         return Ok(());
     }
     if kind == "character" {
-        for entity in tag_entities(c, key)? {
+        targets.apply(c, key, |entity| {
             if let Some(v) = value.as_str() {
-                put_name(c, &entity, lang, source, v, "display", 0, 0)?;
+                put_name(c, entity, lang, source, v, "display", 0, 0)?;
             }
-        }
+            Ok(())
+        })?;
     } else if let Some(v) = given(value) {
         if kind == "work" {
             for entity in entities_for(c, &QUALIFIED, key)? {
@@ -98,14 +113,22 @@ pub fn put(c: &Connection, kind: &str, key: &str, lang: &str, source: &str, valu
 }
 
 /// `NameUpdater.replace`：这个来源在这个键上的显示名整批替换（空列表 = 成功的空结果，旧的全部删掉）。
-fn replace(c: &Connection, kind: &str, key: &str, source: &str, values: &[Value]) -> Result<()> {
+fn replace(
+    c: &Connection,
+    kind: &str,
+    key: &str,
+    source: &str,
+    values: &[Value],
+    targets: CharacterTargets<'_>,
+) -> Result<()> {
     if kind == "character" {
-        for entity in tag_entities(c, key)? {
+        targets.apply(c, key, |entity| {
             c.prepare_cached(&format!(
                 "DELETE FROM term_names WHERE term_id = {TERM_OF} AND source = ? AND role = 'display'"
             ))?
-            .execute([&entity, source])?;
-        }
+            .execute([entity, source])?;
+            Ok(())
+        })?;
     } else {
         if kind == "work" {
             c.prepare_cached(
@@ -120,13 +143,19 @@ fn replace(c: &Connection, kind: &str, key: &str, source: &str, values: &[Value]
     }
     for pair in values {
         let lang = text(&pair[0], "显示名来源或语言不正确")?;
-        put(c, kind, key, lang, source, &pair[1])?;
+        put_to(c, kind, key, lang, source, &pair[1], targets)?;
     }
     Ok(())
 }
 
 /// `NameUpdater.aliases(fetch=True)` 写库的那一半：Danbooru wiki 的别名按顺序整批替换。
-fn danbooru_aliases(c: &Connection, kind: &str, tag: &str, values: &[Value]) -> Result<()> {
+fn danbooru_aliases(
+    c: &Connection,
+    kind: &str,
+    tag: &str,
+    values: &[Value],
+    targets: CharacterTargets<'_>,
+) -> Result<()> {
     let values: Vec<&str> = values.iter().map(|v| text(v, "别名不正确")).collect::<Result<_>>()?;
     let write = |entity: &str| -> Result<()> {
         c.prepare_cached(&format!(
@@ -139,9 +168,7 @@ fn danbooru_aliases(c: &Connection, kind: &str, tag: &str, values: &[Value]) -> 
         Ok(())
     };
     if kind == "character" {
-        for entity in tag_entities(c, tag)? {
-            write(&entity)?;
-        }
+        targets.apply(c, tag, write)?;
     } else {
         c.prepare_cached("DELETE FROM term_key_aliases WHERE kind=? AND key=?")?.execute([kind, tag])?;
         let mut insert = c.prepare_cached("INSERT INTO term_key_aliases VALUES (?,?,?,?)")?;
@@ -176,22 +203,38 @@ fn seed_index(c: &Connection, entity: &str, legacy_key: Option<&str>, names: &Va
 }
 
 pub fn one(c: &Connection, op: &Value) -> Result<()> {
+    one_with_targets(c, op, CharacterTargets::Tag)
+}
+
+/// 将联网名称命令应用到指定的人物身份。正式提交前，调用方须在写事务中核对这些身份。
+pub fn one_checked(c: &Connection, op: &Value, ids: &[&str]) -> Result<()> {
+    one_with_targets(c, op, CharacterTargets::Checked(ids))
+}
+
+fn one_with_targets(c: &Connection, op: &Value, targets: CharacterTargets<'_>) -> Result<()> {
     let s = |k: &str| text(&op[k], "名字命令缺少参数");
     match s("op")? {
-        "put" => put(c, s("kind")?, s("key")?, s("lang")?, s("source")?, &op["value"]),
-        "replace" => {
-            replace(c, s("kind")?, s("key")?, s("source")?, op["values"].as_array().map(Vec::as_slice).unwrap_or(&[]))
-        }
-        "danbooru_aliases" => {
-            danbooru_aliases(c, s("kind")?, s("tag")?, op["values"].as_array().map(Vec::as_slice).unwrap_or(&[]))
-        }
+        "put" => put_to(c, s("kind")?, s("key")?, s("lang")?, s("source")?, &op["value"], targets),
+        "replace" => replace(
+            c,
+            s("kind")?,
+            s("key")?,
+            s("source")?,
+            op["values"].as_array().map(Vec::as_slice).unwrap_or(&[]),
+            targets,
+        ),
+        "danbooru_aliases" => danbooru_aliases(
+            c,
+            s("kind")?,
+            s("tag")?,
+            op["values"].as_array().map(Vec::as_slice).unwrap_or(&[]),
+            targets,
+        ),
         // NameUpdater.character：Bangumi 信息框里的中文原名，作为排在最后的别名。
-        "bangumi_alias" => {
-            for entity in tag_entities(c, s("tag")?)? {
-                put_name(c, &entity, "zh", "bangumi", s("value")?, "alias", 10000, 0)?;
-            }
+        "bangumi_alias" => targets.apply(c, s("tag")?, |entity| {
+            put_name(c, entity, "zh", "bangumi", s("value")?, "alias", 10000, 0)?;
             Ok(())
-        }
+        }),
         // NameUpdater.seed：索引给的名字，先删掉这个身份原有的索引名。
         "seed_index" => seed_index(c, s("entity")?, Some(s("key")?), &op["names"]).map(|_| ()),
         // Store.alias（相册标题等）。

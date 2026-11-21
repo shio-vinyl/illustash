@@ -6,7 +6,7 @@ import {home, isMac, megabytes, number} from '../core/format.js';
 import {session} from '../core/session.js';
 import {state} from '../core/state.js';
 import {importLine, importActive, importStarted, cancelImport, pollSync} from '../core/jobs.js';
-import {libraryRequest, pollExport, chooseFolders, openLibraryRequest, libraryOpened, loadLibraries} from '../core/settings.js';
+import {libraryRequest, startExport, chooseFolders, openLibraryRequest, libraryOpened, loadLibraries} from '../core/settings.js';
 import {$, toast} from './dom.js';
 import {confirmAction} from './dialog.js';
 import {changeFolder, folderResult} from './folder-move.js';
@@ -153,7 +153,7 @@ async function manage(act) {
     else await startImport(r.path);
     return;
   }
-  if (act === 'export' && await libraryAction('export')) { await loadLibraries(); pollExport(); }
+  if (act === 'export') { try { await startExport(); } catch (err) { toast(err.message); } }
 }
 function exportText(ex = state.libraries?.export || {}) {
   if (ex.status === 'running') return t('正在导出到 {path}…', {path: home(ex.path)});

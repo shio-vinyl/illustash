@@ -1,5 +1,6 @@
-// #771 审核里的边角（Codex 5990680560、可维护性 5990870995）：都从设置页的行触发，断言操作结束那一刻的 DOM，
-// 并覆盖请求还没回来时离开这一节再进来。页面是 tests/dom.cjs 的假 DOM，请求由 fetch 的假回复控制先后。
+// #771 审核里的边角（Codex 5990680560、可维护性 5990870995，复核 5991357717 剩下的几条见 #785）：都从设置页的行触发，
+// 断言操作结束那一刻的 DOM，并覆盖请求还没回来时离开这一节再进来。页面是 tests/dom.cjs 的假 DOM，请求由 fetch 的假回复
+// 控制先后；这一节随外壳订阅的通知更新（tests/settings_view.cjs），测试不自己补 update()。
 const {test, before, beforeEach, afterEach, after} = require('node:test');
 const assert = require('node:assert/strict');
 const web = require('./web.cjs');
@@ -71,7 +72,7 @@ test('整库备份以后读回设置：份数更新、按钮可点', async () =>
       ? {backup_count: 2, backups: [], thumbnails: {files: 3, bytes: 10}, package: {path: '/tmp/a.pilib'}} : c.path === '/api/fold' ? {kinds: []} : {});
     await tick(8);
   }
-  v.update();
+  // 不手动 update：读回设置以后的通知（onSettings）就要把这一节画对。
   assert.match(v.text, /共 2 份备份/);
   // 设置读回来了：按钮不再因为没有设置数据而不能点（还在等这次备份的收尾时，按钮自己的忙碌状态另算）。
   assert.equal(v.button('backupNow', '立即备份').dataset.off, undefined);
@@ -251,4 +252,212 @@ test('新建图库：等回复时离开这一节，建好但没登记的图库�
   assert.doesNotMatch(v.text, /\/tmp\/late/, 'the late folder pick is dropped');
   assert.equal(calls.filter(c => c.path === '/api/libraries/open').length, 0);
   v.dispose();
+});
+
+// ---------- #785：复核 5991357717 剩下的几条 ----------
+// 回掉第一个还挂着的这个路径的请求。
+const replier = calls => (path, body, status) => {
+  const c = calls.find(x => !x.replied && x.path === path);
+  assert.ok(c, `没有在等的 ${path}`);
+  c.reply(body, status);
+};
+// 假的计时器和时钟：setTimeout 只记下来，run() 时按记下的先后调用，并把时钟拨过它们的时长。
+function clock() {
+  const real = {setTimeout: globalThis.setTimeout, clearTimeout: globalThis.clearTimeout, now: Date.now};
+  let now = real.now();
+  const timers = [];
+  globalThis.setTimeout = (fn, ms = 0) => { const t = {fn, ms, fake: true}; timers.push(t); return t; };
+  globalThis.clearTimeout = t => { if (t?.fake) t.cleared = true; else real.clearTimeout(t); };
+  Date.now = () => now;
+  return {
+    get now() { return now; },
+    pending: () => timers.filter(t => !t.cleared && !t.ran),
+    async run() {
+      const due = timers.filter(t => !t.cleared && !t.ran);
+      for (const t of due) { t.ran = true; now += t.ms; t.fn(); }
+      await tick(8);
+      return due.length;
+    },
+    restore() { globalThis.setTimeout = real.setTimeout; globalThis.clearTimeout = real.clearTimeout; Date.now = real.now; },
+  };
+}
+const LIBS = (ex = {status: 'idle'}) => ({info: {name: '合成', path: '/tmp/合成.pilib', sources: []}, current: '/tmp/合成.pilib', home: '/tmp',
+  libraries: [], export: ex});
+const libraryState = () => Object.assign(state, {settings: null, sync: {status: 'idle'}, syncHistory: [], exclInfo: {}, fold: [], importTask: undefined});
+
+test('#785-1 语言下拉框保存失败：焦点还在框上，落定后回到原来的语言', async () => {
+  const calls = server(), v = (await view('general'))();
+  const select = v.row('language').querySelector('select');
+  assert.equal(select.value, 'zh-CN');
+  select.focus(); select.value = 'system'; select.dispatchEvent(dom.event('change'));
+  await tick();
+  const save = calls.find(c => c.path === '/api/preferences');
+  assert.deepEqual(save.body, {language: 'system'});
+  save.reply({error: '无法写入设置'}, 500);
+  await tick(8);
+  assert.equal(document.activeElement, select, 'the focus stays on the select');
+  assert.equal(select.value, 'zh-CN');
+  assert.match(toastText.textContent, /无法写入设置/);
+  v.dispose();
+});
+
+test('#785-2 进这一节时同批的 /api/names 还挂着，备份以后照样新读一次设置', async () => {
+  const core = web.core();
+  Object.assign(state, {settings: null, fold: null, index: null, names: null, integrity: null, human: null, models: null});
+  const calls = server(), answer = replier(calls);
+  core.loadSettingsData(true);   // 进设置页时外壳发的那一批
+  const old = {backup_count: 1, backups: [], thumbnails: {files: 3, bytes: 10}, package: {path: '/tmp/a.pilib'}};
+  answer('/api/settings', old); answer('/api/fold', {kinds: []}); answer('/api/index', {});
+  await tick();
+  const v = (await view('data'))();
+  assert.match(v.text, /共 1 份备份/);
+  v.press('backupNow', '立即备份');
+  await tick();
+  answer('/api/backup', {path: '/tmp/a.pilib/backups/b.sqlite'});
+  await tick();
+  assert.equal(calls.filter(c => c.path === '/api/settings').length, 2, 'a fresh settings read after the backup');
+  answer('/api/settings', {...old, backup_count: 2});
+  await tick(8);
+  assert.match(v.text, /共 2 份备份/);
+  assert.equal(v.button('thumbnails', '清除').dataset.off, undefined);
+  answer('/api/names', {});
+  await tick();
+  v.dispose();
+});
+
+test('#785-4 导出：启动时读到 running 就接上轮询；从设置行开始导出，紧接着的读取失败也不丢状态', async () => {
+  const lib = await web.load('ui/settings_library.js'), t = clock();
+  try {
+    libraryState();
+    const calls = server(), answer = replier(calls);
+    lib.wireLibrary();   // 页面启动
+    answer('/api/libraries', LIBS({status: 'running', path: '/tmp/a.zip'}));
+    await tick();
+    await t.run();
+    answer('/api/libraries', LIBS({status: 'done', path: '/tmp/a.zip', bytes: 1048576}));
+    await tick();
+    assert.equal(state.libraries.export.status, 'done', 'the startup export was followed to the end');
+    const v = (await view('library'))();
+    assert.match(v.text, /已导出：\/tmp\/a.zip/);
+    v.press('manage', '导出当前图库');
+    await tick();
+    answer('/api/libraries/export', {status: 'running', path: '/tmp/b.zip'});
+    await tick();
+    assert.match(v.text, /正在导出到 \/tmp\/b.zip/, 'the POST reply is the first state');
+    await t.run();
+    answer('/api/libraries', {error: '数据库被锁'}, 500);
+    await tick();
+    assert.equal(state.libraries.export.status, 'running', 'a failed read keeps the last state');
+    assert.match(v.text, /正在导出到 \/tmp\/b.zip/);
+    await t.run();
+    answer('/api/libraries', LIBS({status: 'done', path: '/tmp/b.zip', bytes: 1048576}));
+    await tick();
+    assert.match(v.text, /已导出：\/tmp\/b.zip/);
+    v.dispose();
+  } finally { t.restore(); }
+});
+
+test('#785-8 导出一直读不到：按截止时间停，约一小时', async () => {
+  const t = clock();
+  try {
+    libraryState(); state.libraries = LIBS();
+    const calls = server(), v = (await view('library'))(), start = t.now;
+    v.press('manage', '导出当前图库');
+    await tick();
+    replier(calls)('/api/libraries/export', {status: 'running', path: '/tmp/c.zip'});
+    await tick();
+    for (let i = 0; i < 5000 && t.pending().length; i++) {
+      await t.run();
+      for (const c of calls) if (!c.replied && c.path === '/api/libraries') c.reply({error: '数据库被锁'}, 500);
+      await tick();
+    }
+    const reads = calls.filter(c => c.path === '/api/libraries').length, minutes = (t.now - start) / 60e3;
+    assert.equal(t.pending().length, 0, 'the poll stopped');
+    assert.ok(minutes >= 60 && minutes <= 60.25, `stopped after ${minutes.toFixed(1)} min`);
+    assert.ok(reads > 200 && reads < 300, `${reads} reads, 15 s apart once backed off`);
+    assert.match(v.text, /正在导出到 \/tmp\/c.zip/, 'the last known state stays');
+    v.dispose();
+  } finally { t.restore(); }
+});
+
+test('#785-6 检查在两次轮询之间做完（idle 直接到 checked）：还缺几个按新的检查重读', async () => {
+  const core = web.core();
+  const index = checked => ({state: {status: checked ? 'checked' : 'idle'}, works: [], history: [], mb_per_character: 2,
+    watch: {works: ['w1'], min_posts: 100}, check: {checked_at: checked ? 't2' : 't1', missing: []}});
+  Object.assign(state, {pack: {current: {}, library: {}}, names: null, index: index(false)});
+  const calls = server(), answer = replier(calls);
+  const first = core.loadCoverage(state.index, true);
+  answer('/api/index/coverage', {checked_at: 't1', coverage: {w1: {packs: 1, own: 0, missing: 5}}});
+  await first;
+  const v = (await view('characters'))();
+  assert.match(v.text, /关注的作品还缺 5 个角色/);
+  // 改「只提示图片较多的角色」：保存以后读一次状态，这时另一处发起的检查已经做完。
+  const min = v.row('min').querySelector('input');
+  min.value = '200'; min.dispatchEvent(dom.event('change'));
+  await tick();
+  answer('/api/index', index(false));
+  await tick();
+  answer('/api/index?progress=1', {state: {status: 'checked'}});
+  await tick();
+  answer('/api/index', index(true));
+  await tick();
+  answer('/api/index/coverage', {checked_at: 't2', coverage: {w1: {packs: 1, own: 0, missing: 2}}});
+  await tick(8);
+  assert.match(v.text, /关注的作品还缺 2 个角色/);
+  v.dispose();
+});
+
+test('#785-6 覆盖读取挂着时离开这一节再进来：读到以后「还缺几个」就显示', async () => {
+  const index = {state: {status: 'idle'}, works: [], history: [], mb_per_character: 2, watch: {works: ['w1'], min_posts: 100},
+    check: {checked_at: 't3', missing: []}};
+  Object.assign(state, {pack: {current: {}, library: {}}, names: {state: {status: 'idle'}, network: {}}, index});
+  const calls = server(), answer = replier(calls), open = await view('characters');
+  let v = open();
+  v.load(false);
+  await tick();
+  answer('/api/packs', state.pack);
+  await tick();
+  assert.ok(calls.some(c => c.path === '/api/index/coverage' && !c.replied), 'the coverage read is out');
+  v.dispose(); state.route = {page: 'settings', section: 'characters'};
+  v = open();
+  v.load(false);
+  await tick();
+  answer('/api/packs', state.pack);
+  await tick();
+  assert.equal(calls.filter(c => c.path === '/api/index/coverage').length, 1, 'the same check is not read twice');
+  answer('/api/index/coverage', {checked_at: 't3', coverage: {w1: {packs: 1, own: 0, missing: 3}}});
+  await tick(8);
+  assert.match(v.text, /关注的作品还缺 3 个角色/);
+  v.dispose();
+});
+
+test('#785-7 下载计时器和任务面板的读取先发后到：更新状态不从 ready 退回下载中', async () => {
+  const core = web.core(), t = clock();
+  try {
+    for (const id of ['updateButton', 'updateLabel', 'nudge']) { const n = document.createElement('div'); n.setAttribute('id', id); document.body.appendChild(n); }
+    const install = stage => ({available: true, stage, version: '1.1', received: stage === 'downloading' ? 1 : 10, total: 10});
+    const updates = stage => ({newer: true, latest: '1.1', current: '1.0', checked_at: '2026-11-20T00:00:00Z', auto: true, install: install(stage)});
+    Object.assign(state, {about: null, updates: updates('idle')});
+    const calls = server(), v = (await view('about'))();
+    v.press('updates', '下载并重启');
+    await tick();
+    calls.find(c => c.path === '/api/updates').reply(updates('downloading'));
+    await tick();
+    assert.match(v.text, /取消下载/);
+    await t.run();   // 下载计时器到点：发出读取 A
+    const timerRead = calls.at(-1);
+    core.updatesTick();   // 任务面板：读取 B
+    await tick();
+    const panelRead = calls.at(-1);
+    assert.notEqual(timerRead, panelRead);
+    panelRead.reply(updates('ready'));
+    await tick(8);
+    timerRead.reply(updates('downloading'));
+    await tick(8);
+    assert.equal(state.updates.install.stage, 'ready');
+    assert.match(v.text, /重启并安装/);
+    assert.doesNotMatch(v.text, /取消下载/);
+    assert.equal(t.pending().filter(x => x.ms === 1000).length, 0, 'no download poll is scheduled again');
+    v.dispose();
+  } finally { t.restore(); }
 });

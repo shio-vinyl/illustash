@@ -7,6 +7,9 @@ const dom = require('./dom.cjs');
 
 async function view(name) {
   const mod = await web.load(`ui/settings_${name}.js`), S = await web.load('ui/scope.js'), G = await web.load('ui/settings_group.js');
+  // 外壳订阅的几种通知（ui/settings.js 的 buildPage）：数据变了就更新这一节。测试不自己补 update()，漏掉的通知照样露出来。
+  const sources = await Promise.all([['settings', 'onSettings'], ['packs', 'onPack'], ['models', 'onModels'], ['integrity', 'onIntegrity'], ['jobs', 'onJob']]
+    .map(async ([file, on]) => (await web.load(`core/${file}.js`))[on]));
   return () => {
     const box = document.createElement('div'), scope = S.scope('test-' + name), {state} = web.core();
     const part = mod.build(box, scope);
@@ -21,8 +24,9 @@ async function view(name) {
       press: (key, label) => { const b = v.button(key, label); if (!b) throw new Error(`没有「${label}」按钮：${key}`); b.dispatchEvent(dom.event('click')); },
       dispose: () => scope.dispose(),
     };
-    // 和外壳（ui/settings.js）一样：各节调 refreshSection() 时更新这一节。
+    // 和外壳（ui/settings.js）一样：各节调 refreshSection() 时、读取或更改了数据之后更新这一节。
     G.onRefresh(() => { if (scope.alive) v.update(); });
+    for (const on of sources) scope.add(on(() => { if (scope.alive) v.update(); }));
     return v.update();
   };
 }

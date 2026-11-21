@@ -37,7 +37,8 @@ test('entering the settings page always reads again', async () => {
   dom.install();
   const {state} = web.core();
   Object.assign(state, {route: {page: 'settings', section: 'artists'}, provenance: null, accounts: null});
-  globalThis.fetch = async path => { calls.push(path.split('?')[0]); return {status: 200, ok: true, json: async () => ({})}; };
+  // 账号的回复带上 x 和 pixiv（形状同 /api/accounts）：读到以后外壳的通知会照它重画这一节。
+  globalThis.fetch = async path => { calls.push(path.split('?')[0]); return {status: 200, ok: true, json: async () => path.startsWith('/api/accounts') ? {x: {}, pixiv: {}} : {}}; };
   const v = (await view('artists'))();
   v.load();
   await new Promise(resolve => setImmediate(resolve));

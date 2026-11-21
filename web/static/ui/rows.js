@@ -51,8 +51,8 @@
 // 控件（离开输入框以后、新状态回来之前来一次轮询，打的字不会被冲回旧值）；state 里的值等于它时提前清掉。清掉的同时
 // 按最新的 state 重画这一行：保存失败、确认框取消时控件立刻回到原值，各节的 set 不用自己重画。
 // 焦点在输入框、下拉框上时 update 也不覆盖它们的值（ui/el.js 的 value），下拉框的选项在焦点上时也不换，免得展开着的
-// 列表被换掉。这一条的前提是点开下拉框时它拿到焦点：Chromium 是这样；macOS 的 Safari 点按钮、复选框不给焦点，点
-// <select> 给焦点（Safari 17.0 也是）。
+// 列表被换掉；例外是下拉框的提交落定、用户没再选过时，照 state 写回（见 submit）。这一条的前提是点开下拉框时它拿到
+// 焦点：Chromium 是这样；macOS 的 Safari 点按钮、复选框不给焦点，点 <select> 给焦点（Safari 17.0 也是）。
 // label、hint、value 可以写成文字或函数（state => 文字，每次 update 取值，用来带上数字）；button、placeholder、选项和
 // 按钮的 label 是文字。文字都由调用方用 t('…') 翻译好再传进来（键要写成字面量，tests/i18n.test.cjs 才收集得到）。
 //
@@ -183,7 +183,18 @@ export function rows(container, table, {scope: parent = null} = {}) {
     const result = row.spec.set?.(v, state);
     // 落定以后（保存成功、失败或取消）按最新的 state 重画这一行：失败或取消时控件回到原值，不用等别处来一次 update。
     // 这期间又改过（row.pending 换了）或者这张表已经释放，就不动。
-    const clear = () => { if (row.pending !== pending) return; row.pending = null; if (s.alive && state) paint(row); };
+    const clear = () => {
+      if (row.pending !== pending) return;
+      row.pending = null;
+      if (!s.alive || !state) return;
+      paint(row);
+      // 下拉框选完焦点通常还在它上面，paint 经 ui/el.js 的 value 不写有焦点的控件：框里还是这次提交的值（用户没再选过）
+      // 时，这里照 state 写回，保存失败的语言下拉框不会停在没存上的那一项。
+      const input = row.refs.input;
+      if (row.spec.kind === 'select' && !row.spec.seg && document.activeElement === input && input.value === String(v)) {
+        prop(input, 'value', String(row.spec.get?.(state) ?? ''));
+      }
+    };
     if (result && typeof result.then === 'function') result.then(clear, clear); else clear();
   }
   // 控件该不该照 state 写：没有待提交的值，或者 state 已经是它了。

@@ -192,8 +192,9 @@ export function build(main, scope) {
         run: (s, a) => queue(a)},
      ]},
   ], {scope});
-  // 检查新角色结束（检查时间或最近一条历史可能变了）：重读每个作品的覆盖情况。
-  scope.add(onJob((job, change) => { if (job === 'index' && change.ended) loadCoverage(state.index).then(changed => { if (changed && scope.alive) refreshSection(); }); }));
+  // 检查新角色的状态每次读到：检查时间或最近一条历史变了就重读每个作品的覆盖情况（loadCoverage 按这两样判断）。不只看
+  // 「运行刚结束」：短的检查可能在两次轮询之间就做完了，状态从 idle 直接变成 checked。
+  scope.add(onJob(job => { if (job === 'index') loadCoverage(state.index).then(changed => { if (changed && scope.alive) refreshSection(); }); }));
   // 进这一节：资料包、检查新角色、角色名称和覆盖情况各读一次（还没读到的先显示「正在读取…」）。离开以后回来的回复不弹提示。
   function load(fresh) {
     const route = state.route, here = () => scope.alive && state.route === route;

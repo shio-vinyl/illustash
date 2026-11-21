@@ -9,8 +9,8 @@ import {workName} from '../core/catalog.js';
 import {charHash} from '../core/route.js';
 import {loadPack} from '../core/packs.js';
 import {readError} from '../core/session.js';
-import {INDEX_ACTIVE, NAMES_ACTIVE, indexLine, indexTone, namesTone, namesLine, indexAction, checkIndex, onJob, pollIndex, pollNamesSoon} from '../core/jobs.js';
-import {loadIndex, loadNames, loadCoverage, indexCoverage, saveModelApi, testModelApi} from '../core/settings.js';
+import {INDEX_ACTIVE, NAMES_ACTIVE, indexLine, indexTone, namesTone, namesLine, indexAction, checkIndex, loadIndex, onJob, pollIndex, pollNamesSoon} from '../core/jobs.js';
+import {loadNames, loadCoverage, indexCoverage, saveModelApi, testModelApi} from '../core/settings.js';
 import {confirmAction} from './dialog.js';
 import {toast} from './dom.js';
 import {packButtons, packDeleteButtons, packDot, packHasTask, packHintText, packInfoItems, packLine, packManual, packName, packNote,

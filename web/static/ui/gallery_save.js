@@ -1,15 +1,12 @@
-// 工具栏上的「保存为画廊」（#445）和启动时的画廊列表（#710）。框架（ui/shell.js）画工具栏时用它，所以单独一个文件：
-// 画廊页本身（ui/galleries.js）要导入 shell，放在一起会循环导入。
+// 工具栏上的「保存为画廊」（#445）。框架（ui/shell.js）画工具栏时用它，所以单独一个文件：画廊页本身（ui/galleries.js）要导入
+// shell，放在一起会循环导入。
 import {t} from '../core/i18n.js';
 import {defaultName, savable, savedParams} from '../core/filters.js';
-import {createGallery, forgetCovers, galleryHref, setGallery} from '../core/galleries.js';
-import {onMeta} from '../core/meta.js';
+import {createGallery, galleryHref, setGallery} from '../core/galleries.js';
 import {pageOf} from '../core/pages.js';
-import {onPost} from '../core/session.js';
 import {$} from './dom.js';
 import {conditionLabel} from './filters.js';
 import {askName, reloadList, write} from './gallery_actions.js';
-import {loadGalleryCovers} from './rail.js';
 
 // 在图库和角色页上有条件（含搜索词）时出现；画廊页上换成页头的「更新画廊」「另存为新画廊」。「更多像这张的」页上不出现：
 // 画廊存不下例图，存出来的和屏幕上看到的不一样（#646，用户 2026-11-18 选 A）。
@@ -25,11 +22,4 @@ export async function saveNew(r) {
   setGallery(result.gallery.id, result.gallery);
   location.hash = galleryHref(result.gallery.id);
   reloadList();
-}
-// 页面启动时调用一次：每次读元数据（启动、写入、撤销、同步之后）顺带重读画廊列表，活页条画廊那一组跟着变。
-// 任何写入（收藏、排除、撤销……）都可能改了画廊里有哪些图：封面和预览作废，活页条的封面停下 0.7 秒后重读一次。
-let soon = 0;
-export function wireGalleries() {
-  onMeta(() => { reloadList(); });
-  onPost(() => { forgetCovers(); clearTimeout(soon); soon = setTimeout(loadGalleryCovers, 700); });
 }

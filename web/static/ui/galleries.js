@@ -7,7 +7,7 @@
 import {number} from '../core/format.js';
 import {t} from '../core/i18n.js';
 import {routeFields, sameParams, savedParams} from '../core/filters.js';
-import {deleteGallery, galleryHref, galleryOf, isFav, isManual, setGallery, updateGallery} from '../core/galleries.js';
+import {deleteGallery, galleryHref, galleryOf, isFavGallery, isManual, setGallery, updateGallery} from '../core/galleries.js';
 import {chooseShow, loadShows, pageFor, showFor, SHOWS} from '../core/gallery_shows.js';
 import {implement, onPage, pageOf} from '../core/pages.js';
 import {go, replaceRoute} from '../core/route.js';
@@ -88,7 +88,7 @@ function galleryHead(r, {n}) {
   if (!g) return {title: t('画廊')};
   const stage = pageOf(r).stage, total = stage ? stageTotal() : null, count = stage ? (total === null ? '…' : number(total)) : n;
   return {title: g.name, sub: [kindText(g), t('{n} 张', {n: count})].filter(Boolean).join(' · '),
-    actions: [...editButtons(g, r), showSwitch(g), ...(isFav(g.id) ? [] : [moreButton(g)])]};
+    actions: [...editButtons(g, r), showSwitch(g), ...(isFavGallery(g.id) ? [] : [moreButton(g)])]};
 }
 
 // ---------- 「⋯」菜单 ----------

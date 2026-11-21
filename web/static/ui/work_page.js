@@ -5,7 +5,8 @@
 //
 // 进来的过渡：从作品卡（或活页条二级层钉住的那一项）展开：横幅先裁成卡片的大小、放在卡片的位置，再展开到原位，文字和下面的内容
 // 随后依次淡入（ui/motion.js；开了「减少动态效果」时直接到终态）。卡片在点击时用 launch() 记下自己的位置。
-import {castWorks, catalogChanged, forgetActivity, loadActivity, loadIndex, PSEUDO_NOTES, recentOf, workColor, workCovers, workImages} from '../core/catalog.js';
+import {castWorks, catalogChanged, forgetActivity, loadActivity, PSEUDO_NOTES, recentOf, workColor, workCovers, workImages} from '../core/catalog.js';
+import {loadIndex} from '../core/jobs.js';
 import {imageUrl, number} from '../core/format.js';
 import {t} from '../core/i18n.js';
 import {implement, onPage} from '../core/pages.js';

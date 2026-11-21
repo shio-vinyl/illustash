@@ -18,9 +18,9 @@
 // 动效（都经 ui/motion.js，「减少动态效果」时直接到终态）：切一级时标签带回弹滑过去（CSS 过渡，--dur-3、--ease-spring），
 // 旧的二级项依次退场、新的依次进场；悬停二级项时它探出来，相邻的项微微探出，旁边滑出预览卡（ui/rail_peek.js）；
 // 指示条跟着选中项滑；时间轴、钉住的项增减时其余平滑让位；二级层滚动时上下边缘渐隐（下面的「滚动与渐隐」）。
-import {ENTRIES, entryHref, forgetTimeline, galleryItems, itemForDay, loadPins, loadTimeline, movePin, noteLibraryView, pinItems, pins, queues, railAt,
+import {ENTRIES, entryHref, forgetTimeline, galleryCovers, galleryItems, itemForDay, loadGalleryCovers, loadPins, loadTimeline, movePin, noteLibraryView,
+  pinItems, pins, queues, railAt,
   railEdges, railReveal, tidyWaiting, timeline, timelineHref} from '../core/rail.js';
-import {FAV, coversFor, favGallery, previewOf} from '../core/galleries.js';
 import {coverUrl, dayWithWeekday, monthLong, monthShort, number} from '../core/format.js';
 import {t} from '../core/i18n.js';
 import {composing} from '../core/keys.js';
@@ -208,7 +208,7 @@ function showEntry(entry) {
   if (temp) return;
   swap(lists.get(was)?.box, providers.has(entry) ? listFor(entry).box : null).catch(() => {});
 }
-// 二级层临时换成另一组（E 的拖放）。
+// 二级层临时换成另一组（拖图进画廊时换成画廊封面，ui/drag.js）。
 export function mode(name, items = [], hint = '') {
   if (!name) {
     if (!temp) return;
@@ -332,7 +332,7 @@ export function wireRail() {
   wired = true;
   buildPeek(s);
   provide('tidy', () => queues());
-  provide('galleries', () => galleryItems(galleryCovers));
+  provide('galleries', () => galleryItems(galleryCovers.byId));
   provide('catalog', () => pinItems());
   provide('library', () => timeline.items.map(x => ({...x, label: timelineLabel(x), meta: timelineMeta(x), href: timelineHref(state.route, x.first)})));
   // 时间轴读完重画：原来选中的那项还在就留着（网格里 ⌥↑↓ 移过去的、按天视图滚动时 selectDay 设的），不在了才回到地址上的那一项。
@@ -340,6 +340,7 @@ export function wireRail() {
     refresh('library');
     if (current === 'library' && !timeline.items.some(x => x.key === selected)) select(railAt(state.route, state.char).item);
   });
+  galleryCovers.changed.on(() => refresh('galleries'));
   pins.changed.on(() => { refresh('catalog'); select(railAt(state.route, state.char).item); });
   loadPins().then(() => refresh('catalog'));
   // 写入、撤销之后旧月份的张数和封面可能变了：整条重读。同步到了新图只重读最新的月。
@@ -391,16 +392,3 @@ export function railNsfw() {
   if (current === 'library') loadTimeline(state.route).catch(() => {});
   loadGalleryCovers();
 }
-// 画廊的封面按 NSFW 设置批量读（core/galleries.js）；收藏不在封面接口里，取它的第一张。读到以后重画画廊这一组。
-let galleryCovers = {};
-// 先后两次读取倒序回来时只认后一次（切换 NSFW 后晚到的旧封面不该留下）。
-let coverReads = 0;
-export async function loadGalleryCovers() {
-  const ids = (state.galleries || []).map(g => g.id), seq = ++coverReads;
-  const [covers, fav] = await Promise.all([coversFor(ids).catch(() => ({})), previewOf(favGallery()).catch(() => null)]);
-  if (seq !== coverReads) return;
-  galleryCovers = {...covers, [FAV]: fav?.items?.[0]?.uuid || null};
-  refresh('galleries');
-}
-// 现在的封面：{画廊 id: uuid}（拖图进画廊时换上的那组项用它）。
-export const railCovers = () => galleryCovers;

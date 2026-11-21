@@ -72,3 +72,23 @@ test('资料包卡片底部：还缺时写数字，有待添加的链到「作�
   assert.match(add.text, /查看并添加 ›/);
   assert.equal(add.check, undefined);
 });
+
+// /api/index 只在 core/jobs.js 读一份（资料库、作品页、设置页共用）：同一时间的几次读取合并成一次；回来时已经换了图库（会话
+// 令牌变了）就不换上。
+test('loadIndex：并发的读取合并成一次；换了图库以后回来的不换上', async () => {
+  const {loadIndex} = await web.load('core/jobs.js'), {state, session} = web.core();
+  const asked = [];
+  let answer;
+  globalThis.fetch = path => { asked.push(path); return new Promise(done => { answer = body => done({status: 200, ok: true, json: async () => body}); }); };
+  state.index = {works: [], watch: {works: []}, tag: 'old'};
+  session.token = 'a';
+  const a = loadIndex(), b = loadIndex();
+  assert.deepEqual(asked, ['/api/index']);
+  answer({works: [], watch: {works: []}, tag: 'new'}); await Promise.all([a, b]);
+  assert.equal(state.index.tag, 'new');
+  const c = loadIndex();
+  session.token = 'b';
+  answer({works: [], watch: {works: []}, tag: 'other library'}); await c;
+  assert.equal(state.index.tag, 'new', '换了图库以后回来的不换上');
+  session.token = '';
+});

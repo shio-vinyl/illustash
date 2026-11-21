@@ -10,7 +10,7 @@
 // 色彩里做。排版先量后改：读阶段量宽高、算框，写阶段写进去；页面的宽、视口的高变了重排（展厅的墙高跟着视口高）。
 import {imageUrl, number} from '../core/format.js';
 import {t} from '../core/i18n.js';
-import {galleryHref, galleryOf, isFav, isManual, showcaseOf} from '../core/galleries.js';
+import {galleryHref, galleryOf, isFavGallery, isManual, showcaseOf} from '../core/galleries.js';
 import {ALL_SHOW, chooseShow, showFor, showOf} from '../core/gallery_shows.js';
 import {aspect, collage, hall, hashSeed, magazine} from '../core/layout.js';
 import {readError} from '../core/session.js';
@@ -129,7 +129,7 @@ function stageView(scope) {
 function emptyOf(g, got, nsfw) {
   if (got.error) return {icon: 'gallery', fact: t('条件失效：{reason}', {reason: got.error})};
   if (nsfw === 'only') return {icon: 'search', fact: t('「只看 NSFW」开着，没有符合条件的 NSFW 图片。'), next: [{label: t('显示全部'), act: 'nsfw'}]};
-  if (isFav(g.id)) return {icon: 'heart', fact: t('还没有收藏。在详情面板或大图里点心形，或者按 F 收藏。')};
+  if (isFavGallery(g.id)) return {icon: 'heart', fact: t('还没有收藏。在详情面板或大图里点心形，或者按 F 收藏。')};
   if (isManual(g)) return {icon: 'gallery', fact: t('这个画廊还没有图。把图拖到活页条上的画廊封面，或者在选择栏里点「放进画廊…」。')};
   return {icon: 'gallery', fact: t('没有符合条件的图片。')};
 }

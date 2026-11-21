@@ -13,7 +13,7 @@
 //   ask.busy(on)                                       // 写入的时候锁住这一批
 //
 // 认一认收起时是一行：几张小图、问句、「不全是」「都对」。点「不全是」展开：图放大，点一张是「不是 TA」（再点改回），
-// Space 或长按看大图（data-peek，页面用 ui/detail.js 的 wirePeek 接）；底下是「以后再说」「都不是」「点掉的是…」和主按钮。
+// Space 或长按看大图（data-peek，页面用 ui/viewer.js 的 wirePeek 接）；底下是「以后再说」「都不是」「点掉的是…」和主按钮。
 // 主按钮随点掉的张数变：「都对」→「其余 N 张是」→ 全部点掉后是「都不是」，这时常驻的「都不是」不再画（#675）。
 import {SYNC_ACTIVE, syncBar, syncLine, syncTone} from '../core/jobs.js';
 import {imageUrl, number, stamp} from '../core/format.js';

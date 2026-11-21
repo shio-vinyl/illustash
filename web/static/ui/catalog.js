@@ -6,9 +6,9 @@ import {esc, number} from '../core/format.js';
 import {composing, onTyped} from '../core/keys.js';
 import {session, readError} from '../core/session.js';
 import {state} from '../core/state.js';
-import {pollIndex, indexAction} from '../core/jobs.js';
+import {loadIndex, pollIndex, indexAction} from '../core/jobs.js';
 import {remoteNames, remoteNote} from '../core/settings.js';
-import {catalogChanged, loadTagged, loadWorkTree, loadLocalLinks, castWorks, PSEUDO_NOTES, WORK_NAMES, workName, loadIndex, searchWorks, saveWatch, watchTarget,
+import {catalogChanged, loadTagged, loadWorkTree, loadLocalLinks, castWorks, PSEUDO_NOTES, WORK_NAMES, workName, searchWorks, saveWatch, watchTarget,
   saveWork} from '../core/catalog.js';
 import {$, toast, toastMore, error, namesAllowButton} from './dom.js';
 import {icon, searchHTML} from './icons.js';

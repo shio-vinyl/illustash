@@ -184,6 +184,18 @@ test('写入后就地改掉页面上这些图的心形，别的图不动', () =>
   ui.paintHearts(new Set(['a', 'b']), true, {querySelectorAll: () => els});
   assert.deepEqual(els.map(el => el.classList.contains('on')), [true, true, false]);
   assert.equal(els[0].getAttribute('aria-pressed'), 'true');
-  assert.equal(els[0].title, '取消收藏（F）');
+  assert.equal(els[0].getAttribute('title'), '取消收藏（F）');
   assert.equal(els[1].span.textContent, '已收藏');
+});
+
+// paintHearts 经 ui/el.js 的写入函数写：部件之前写过「没收藏」，paintHearts 改成收藏以后，部件再按自己的数据写回「没收藏」
+// （撤销、重读）时照样写进 DOM，不会因为缓存里还是旧值而跳过。
+test('paintHearts 之后部件照常改回心形（ui/el.js 的缓存跟着变）', async () => {
+  const {cls} = await web.load('ui/el.js');
+  const el = new web.FakeElement('button'); el.dataset.fav = 'a'; el.querySelector = () => null;
+  cls(el, 'on', false);
+  ui.paintHearts(new Set(['a']), true, {querySelectorAll: () => [el]});
+  assert.equal(el.classList.contains('on'), true);
+  cls(el, 'on', false);
+  assert.equal(el.classList.contains('on'), false);
 });

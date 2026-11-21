@@ -101,7 +101,6 @@ export const WORK_NAMES = {blue_archive: t('蔚蓝档案'), 'arknights:_endfield
 export const workName = w => state.workNames?.get(w) || WORK_NAMES[w] || work(w);
 // 名字、别名或 tag 与 q 匹配的本地作品（q 为空时是全部）。
 export const searchWorks = q => api('/api/works?' + new URLSearchParams({q}));
-export async function loadIndex() { const x = await api('/api/index'); if (x) setIndex(x); return x; }
 // 显示用的作品树：在每个父作品下深度优先，大的作品在前；父作品已不在的子作品显示在顶层。filter 为 all、watched 或
 // pending；q 匹配名字或 tag。
 export function shelfRows(x, {q = '', filter = 'all'}) {

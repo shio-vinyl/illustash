@@ -355,7 +355,7 @@ function daysView(scope) {
   };
 }
 
-// 启动时调一次：认一认的图 Space 或长按看大图（ui/detail.js 的 wirePeek 不能撤销，所以挂在常驻的主区上，只挂一次）；
+// 启动时调一次：认一认的图 Space 或长按看大图（ui/viewer.js 的 wirePeek 不能撤销，所以挂在常驻的主区上，只挂一次）；
 // 活页条里点某一天、某个月：已经在按天视图里时直接滚过去，不换地址（WEB_V2.md「页面框架与活页条」）。
 // 刚进这一页（或作用域已经释放）才建，建好就读认一认的第一批；认一认不随筛选变，只在进页面时读。
 const view = pageView(scope => { const v = daysView(scope); v.ask.next(); return v; });

@@ -13,6 +13,13 @@ import {baseDownloadStatus} from './models.js';
 const changed = listeners();
 // /api/index 的最新回应（关注列表、作品、检查与添加的状态）。资料库、设置页、引导读到新的回应也经这里换上。
 export function setIndex(value) { state.index = value; }
+// 读 /api/index 换上：同一时间的几次读取合并成一次（session.js 的 shared）；回来时已经换了图库（会话令牌变了）就不换上。
+// 写入之后要读改动以后的那份时不用它（合并会拿到写入之前就在途的读取），直接 setIndex(await api('/api/index'))。
+export async function loadIndex() {
+  const token = session.token, value = await shared('/api/index');
+  if (value && token === session.token) setIndex(value);
+  return value;
+}
 // /api/names 的最新回应（覆盖率、设置、运行状态）；mergeNames 只换掉回应里带的那几项。
 export function setNames(value) { state.names = value; }
 export function mergeNames(patch) { state.names = {...state.names, ...patch}; }

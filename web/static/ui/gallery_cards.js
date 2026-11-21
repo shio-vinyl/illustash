@@ -4,7 +4,7 @@
 // 页面的登记在 ui/galleries.js；数据在 core/galleries.js。
 import {imageUrl, number} from '../core/format.js';
 import {t} from '../core/i18n.js';
-import {coversFor, galleryHref, isFav, isManual, previewOf, withFav} from '../core/galleries.js';
+import {coversFor, galleryHref, isFavGallery, isManual, previewOf, withFav} from '../core/galleries.js';
 import {loadShows, showFor, showOf} from '../core/gallery_shows.js';
 import {readError} from '../core/session.js';
 import {state} from '../core/state.js';
@@ -30,7 +30,7 @@ const NEW = tpl`<div class="gcard gcard-new"><span class="gcard-prev"><span clas
   d="M10 4v12M4 10h12"/></svg></span><b data-t>新建画廊</b></span><span class="gcard-acts"><button class="btn"
   type="button" data-ref="manual" data-t>手选画廊…</button><a class="btn is-quiet" href="#/library" data-ref="cond" title="在图库里加上条件，点「保存为画廊」"
   data-t-attr="title" data-t>按条件…</a></span></div>`;
-const kindOf = g => isFav(g.id) ? 'fav' : isManual(g) ? 'manual' : 'condition';
+const kindOf = g => isFavGallery(g.id) ? 'fav' : isManual(g) ? 'manual' : 'condition';
 
 // 一张卡片。预览和张数由 fill() 读到以后写进来；读之前图位空着，底色是第一张图的主色（读到预览以后）。
 function card(g) {

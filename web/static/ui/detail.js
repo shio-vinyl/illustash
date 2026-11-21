@@ -176,7 +176,7 @@ export async function singleAction(kind) {
 }
 // 收藏写入成功、没有重读时（ui/grid.js 的 favorite）：详情和大图里那张也改掉。changed 是列表里改到的图，ids 是这次写入
 // 点名的图（全选时为空）；这里改到的也加进 changed，好让网格卡片的心形跟着改（ui/favorites.js 的 paintHearts）。
-// 详情卡片和大图底栏的收藏按钮不归 paintHearts 管（它绕开 ui/el.js 的缓存），这里经部件自己改。
+// 详情卡片和大图底栏的收藏按钮不带 data-fav，不归 paintHearts 管，这里经部件自己改。
 export function noteFavorite(changed, ids, on) {
   for (const x of [state.detail, state.viewerItem]) if (x && (changed.has(x.uuid) || ids?.has(x.uuid))) { x.fav = on; changed.add(x.uuid); }
   if (card?.uuid && (changed.has(card.uuid) || ids?.has(card.uuid))) card.fav(on);

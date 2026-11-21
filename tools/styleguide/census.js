@@ -3,7 +3,7 @@ window.CENSUS = {
  "source": "web/static/app.css、web/static/css/base.css、web/static/css/catalog.css、web/static/css/character.css、web/static/css/detail.css、web/static/css/galleries.css、web/static/css/library.css、web/static/css/overlays.css、web/static/css/rail.css、web/static/css/settings.css、web/static/css/tidy.css、web/static/css/tokens.css",
  "files": {
   "app.css": "80732ee9fe5ccba79b7a0719e322884682b9196de34666a691916738ad487c4c",
-  "css/base.css": "20a5921045d9d9f7cdd1f08740335acc3882218ffa1ed4ba3d5aa92b45c60b93",
+  "css/base.css": "16a5c876b42ece60820e230773a74c7c480d0c977868af8455a978c3b59550a4",
   "css/catalog.css": "076a0fcebc95af0a6daff5b99fb5e0d5c407fa7bacc908dcd8383bc4e52a6ba2",
   "css/character.css": "c700d9eb883a6ef2848b44e5c9d96446dc649e7b9d63e2ae83ebfbfef7151697",
   "css/detail.css": "a9eaf043f2074eea276c1b235e7da4db3630a280ad99ea15956c62d2ecba2904",
@@ -15,7 +15,7 @@ window.CENSUS = {
   "css/tidy.css": "63c15db2f00a009f88d0b19a20ab688b72849fc49e487ae3bf9260e55dada604",
   "css/tokens.css": "6f31fbe3b32f892a26e753e410d7e5ea94d7e4165ed49d04458eecca3314e787"
  },
- "sha256": "dcb9ca213725ef90adda9d9f31d46a5ba5008a740443c8e5c12990a3d0d696b4",
+ "sha256": "e3596ec4768ae00c26729658c46a9bf132e069d3039e35ca08b54eb54065edd1",
  "lines": 2040,
  "rules": 1452,
  "themeVars": {

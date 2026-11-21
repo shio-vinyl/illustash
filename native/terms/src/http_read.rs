@@ -34,6 +34,7 @@ pub const CORE_ROUTES: &[&str] = &[
     "/api/character/profile",
     "/api/character/activity",
     "/api/character/stats",
+    crate::http_characters::TOGETHER,
     "/api/identity/count",
     "/api/identity/queue",
     "/api/bootstrap",

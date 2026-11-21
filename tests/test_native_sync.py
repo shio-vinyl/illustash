@@ -116,6 +116,60 @@ class NativeSyncTest(unittest.TestCase):
             self.assertEqual(c.execute("SELECT rating FROM asset_rating WHERE uuid='D'").fetchall(), [('general',)])
             self.assertEqual(c.execute("SELECT src_path FROM assets WHERE uuid='D'").fetchone()[0],str(original))
 
+    def test_native_library_new_photos_without_content_hash_keep_rating_on_repeat_scan(self):
+        for asset in ('D', 'E'):
+            self.photo(asset, 'net.pxv.iphone')
+        with sqlite3.connect(self.library / 'database' / 'Photos.sqlite') as c:
+            c.execute("""UPDATE ZADDITIONALASSETATTRIBUTES SET ZORIGINALSTABLEHASH=NULL
+                         WHERE Z_PK=(SELECT ZADDITIONALATTRIBUTES FROM ZASSET WHERE ZUUID='D')""")
+        with sqlite3.connect(self.lib.source) as c:
+            c.executemany("INSERT INTO labels(uuid,dim,value,conf) VALUES (?,'rating','general',1)", [('D',), ('E',)])
+
+        def scan():
+            result = subprocess.run([str(self.binary), 'library-scan', '--library', str(self.lib.path)],
+                                    env=self.env, capture_output=True, timeout=WAIT)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            return json.loads(result.stdout)
+
+        self.assertGreaterEqual(scan()['added'], 2)
+        for _ in range(2):
+            result = scan()
+            self.assertEqual((result['added'], result['removed']), (0, 0))
+            with sqlite3.connect(self.lib.db) as c:
+                ratings = c.execute("SELECT uuid,rating FROM asset_rating WHERE uuid IN ('D','E') ORDER BY uuid")
+                self.assertEqual(ratings.fetchall(), [('D', 'general'), ('E', 'general')])
+
+    def test_native_library_new_label_only_failure_retries_without_rewriting_unchanged_assets(self):
+        self.photo('D', 'com.atebits.Tweetie2')
+        with sqlite3.connect(self.lib.source) as c:
+            c.execute("INSERT INTO labels(uuid,dim,value,conf) VALUES ('D','rating','general',1)")
+        self.assertEqual(self.sync()['state']['status'], 'needs_recognition')
+
+        def fingerprint(c):
+            return c.execute("SELECT value FROM meta WHERE key='folder_labels:D'").fetchone()[0]
+
+        with sqlite3.connect(self.lib.db) as c:
+            previous = fingerprint(c)
+            c.execute("""CREATE TRIGGER fail_import BEFORE INSERT ON assets WHEN NEW.uuid='D'
+                         BEGIN SELECT RAISE(ABORT,'synthetic label projection failure'); END""")
+        with sqlite3.connect(self.lib.source) as c:
+            c.execute("INSERT INTO labels(uuid,dim,value,conf) VALUES ('D','general','1girl',0.9)")
+        self.assertEqual(self.sync()['state']['status'], 'error')
+        with sqlite3.connect(self.lib.db) as c:
+            self.assertEqual(fingerprint(c), previous)
+            c.execute('DROP TRIGGER fail_import')
+        retried = self.sync()['state']
+        self.assertEqual((retried['found'], retried['imported']), (0, 1))
+        with sqlite3.connect(self.lib.db) as c:
+            self.assertNotEqual(fingerprint(c), previous)
+            self.assertEqual(c.execute("SELECT value FROM general_hits WHERE uuid='D'").fetchall(), [('1girl',)])
+            c.execute("""CREATE TRIGGER reject_unchanged_path BEFORE UPDATE OF filename,src_path ON assets WHEN OLD.uuid='D'
+                         BEGIN SELECT RAISE(ABORT,'unchanged asset path'); END""")
+            c.execute("""CREATE TRIGGER reject_unchanged_hash BEFORE INSERT ON meta WHEN NEW.key='folder_labels:D'
+                         BEGIN SELECT RAISE(ABORT,'unchanged asset fingerprint'); END""")
+        unchanged = self.sync()['state']
+        self.assertEqual((unchanged['status'], unchanged['found'], unchanged['imported']), ('needs_recognition', 0, 0))
+
     def worker(self, mode='ok', per_run=0):
         import hashlib, sys
         self.stop(self.process)

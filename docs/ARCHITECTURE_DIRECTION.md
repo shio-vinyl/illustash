@@ -58,7 +58,7 @@ Platform picker 以 Selected/Cancelled/Unsupported 表达原生回退结果，�
 
 实际依赖为 `desktop → illustash-terms / illustash-platform`，`illustash-terms → illustash-core / illustash-platform`，`illustash-platform → illustash-core`；Core 不引用 Platform、宿主、HTTP/CLI 或 Tauri。`tools/check_architecture.py` 检查四份显式 manifest 的普通、build、dev、target 条件依赖和重命名包，禁止反向依赖及 Core/Platform 传输或 UI 依赖；各 crate 保持独立 manifest 与 path dependency，没有根 workspace。
 
-`native/terms` 继续是第三个后端 crate（应用宿主）。`app_service::Application` 私有持有 Session、实例、generation、任务和导出：显式 `open(path, Options)` 只校验/登记，`start` 初始化既有任务和恢复，`recover` 在该实例锁内恢复持久事件，`switch(received_generation, path)` 在写锁内复验后按原顺序打开、登记、停止旧任务、替换并发布新 generation，`shutdown` 停止并回收任务/导出；Drop 复用同一收尾。关闭后新的服务调用拒绝，重复关闭可安全调用。Options 保留本次网络与自动任务标志，偏好不会自行授予网络权限。进程内客户端须在接受工作时取 generation，再通过 `with_library` 的锁内复验执行 Core 操作，回调取得的 Library 经打开时固定的物理实例访问包内文件，显示别名重指不能改写另一包；任务结果还须沿用完整 TaskIdentity、持久幂等与原所有者的正式提交校验。库 ID 相同不能代替实例路径、generation 或会话身份。
+`native/terms` 继续是第三个后端 crate（应用宿主）。`app_service::Application` 私有持有 Session、实例、generation、任务和导出：显式 `open(path, Options)` 只校验/登记，`start` 初始化既有任务和恢复，`recover` 在该实例锁内恢复持久事件，`switch(received_generation, path)` 在写锁内复验后按原顺序打开、登记、停止旧任务、替换并发布新 generation，`shutdown` 停止并回收任务/导出；Drop 复用同一收尾。关闭后新的服务调用拒绝，重复关闭可安全调用。`Options::startup` 的 `SessionStartup` 供首次开库与切库共用，分别设置功能启用、宿主联网权限和后台自动执行。任务请求中的单次联网授权由对应任务处理，偏好不会自行授予网络权限。进程内客户端须在接受工作时取 generation，再通过 `with_library` 的锁内复验执行 Core 操作，回调取得的 Library 经打开时固定的物理实例访问包内文件，显示别名重指不能改写另一包；任务结果还须沿用完整 TaskIdentity、持久幂等与原所有者的正式提交校验。库 ID 相同不能代替实例路径、generation 或会话身份。
 
 HTTP 前门仅装配服务与 socket，保留 Host/Origin/token 检查、请求体解析、路由、状态码、响应序列化及等待后安全复验，原 403 和成功 JSON 字节契约不变。会话转 HTTP LibraryContext 留在传输适配；慢 body 不持图库锁，释放锁执行的旧库快照不能重新绑定替换实例。连接有上界（2026-10-12，#25）：tiny_http 0.12 本身没有每连接超时，且会在自己不限量的线程池里先读完不超过 1024 字节的请求体，所以宿主用 `native/terms/vendor/tiny_http` 的补丁副本（`[patch.crates-io]`，`native/terms` 与 `desktop` 两个构建根都要带）。单次读或写等待超过 30 秒即关闭连接（尚未开始请求时回 408）；同时最多 64 个连接，超出的连接立即得到 503 并关闭；应用层同时最多 128 个请求处理线程，超出的请求回 503「服务繁忙」。补丁只新增 `Server::from_listener_with_limits`，默认的 `from_listener` 行为与上游相同（外壳登录桥仍用它）。`ILLUSTASH_HTTP_TIMEOUT_MS` 仅供测试缩短超时。回退：去掉两处 `[patch.crates-io]` 并把 `serve` 改回 `from_listener`。CLI 保留原命令/bin，连接内命令调用 Core；原角色命令事务 helper 移到应用服务，CLI、工厂、迁移与常驻 JSON 通道消费同一函数。`app_service::create` 与欢迎页、HTTP 多来源建库共用唯一 `app_create` 工厂及 optional reference 规则；登记使用工厂返回的实际绝对路径，相对目标不受之后 cwd 变化影响；发布后登记失败仍保留完整包，建库不自动打开、扫描或授权。登记失败时 HTTP 建库返回 200 和 `{path, name, listed: false, error}`，欢迎页的建库命令返回 `{created, error}`（2026-10-12，#97），界面提供「打开这个图库」（打开时再登记一次）和「仍然新建一个」，不再让重试另建带编号的包。打开图库（启动或切换）时登记失败同样不挡住图库（2026-10-18，#176）：照常打开，stderr 记一行，`/api/libraries` 只在这时多带 `unlisted`（原因；升级场景写明「升级已提交」和升级前备份的位置），页面启动后提示一次；之前是服务直接启动失败。建库、导入、打开三处的登记失败原因都写成一句「最近图库记录（libraries.json 路径）写不进去：原因」，没有写入权限时说明可能是只读，不带「读取失败」「不合法」或 Python 风格的 errno（2026-10-18，#179）。来源库、应用库、事件与文件发布各自的提交边界不合并。
 
@@ -141,6 +141,8 @@ Python 合成测试在导入 `tests` 时为 `urllib.request.OpenerDirector.open`
 Tauri 桌面外壳（`desktop/`）只负责启动核心 HTTP 命令、管理窗口、Pixiv 请求通道和用图动作的系统调用（见下文「用图动作」），不承载业务逻辑。
 桌面直接调用自身链接的 `http --native --no-open` 命令，透传图库、端口及网络授权参数，保留原生账号模块实际使用的 `ILLUSTASH_DESKTOP_BRIDGE/TOKEN` 登录桥。资源优先使用显式 `--root` / `ILLUSTASH_ROOT`，安装包使用 Tauri `resource_dir()/resources`，仅 debug 构建允许源码根回退；启动前检查 `web/static/index.html` 和 `tags/tags_v3.csv`。核心链接进外壳，无额外核心边车；资源或执行文件缺失、启动失败、端口冲突与服务异常退出显示本地错误页及重装、检查参数后重启的操作提示。
 
+macOS 外壳创建主窗口和 Pixiv 登录窗口时显式开启 WKWebView 的 `tabFocusesLinks`，使 Tab 能聚焦页面链接（#761）。
+
 ### 关窗、后台任务与窗口记忆（#451）
 
 宿主（`native/terms/src/app_activity.rs`）每秒读一次各任务在内存里的状态，「进行中」的判断与任务面板相同（`web/static/core/jobs.js` 的 `*_ACTIVE`，单元测试对照两边的列表）。有任务开始、结束或进度变化时，经登录桥 `POST /platform/activity` 告诉外壳：在跑的任务（种类、状态、进度），以及刚结束的任务（状态、数字、失败原因前 200 字），不含路径和图库内容。换图库时上一个图库的任务不算结束。外壳（`desktop/src/background.rs`）据此：
@@ -209,6 +211,8 @@ Tauri 桌面外壳（`desktop/`）只负责启动核心 HTTP 命令、管理窗�
 - **R1–R2（7 个）**：`/api/user-tags`、`/api/general-tags`（本地 CSV）、`/api/artists`（OC 画师统计）、`/api/artist`、`/api/artist-audit`、`/api/entities`、`/api/works`。画师读取保留旧/核心来源、来源帖子、候选原因及固定 SHA1 抽样；本地搜索的 `remote` 缺失或空值分支直读。
 - **R3（7 个）**：`/api/assets`、`/api/assets/count`、`/api/ids`、`/api/detail`、`/api/home`、`/api/fold`、`/api/review-pools`。包括现有筛选、排序、分页、可见性、NSFW、作品树、画师和 `pool=cluster|similar` 的持久化分组查询；详情组装包括源库标签和来源库帖子。
 - **R4（8 个）**：`/api/characters`、`/api/tagged`、`/api/character/profile`、`/api/character/activity`、`/api/character/stats`、`/api/identity/count`、`/api/identity/queue`、`/api/bootstrap`。保留未设置/hybrid 策略、summary、封面分配、首次命中、去重、分页、历史重渲染和会话字段；其他读取见下节。
+
+`GET /api/character/together?id=<角色>&nsfw=<筛选>&limit=<数量>` 返回指定角色的同框次数。结果为 `[{id, count}]`，按次数降序、同数按角色 ID 升序排列。`limit` 为正整数，默认 6。`nsfw` 与角色统计共用分级和可见性条件。双方均须在同一张图上有正式归属（人工确认或机器认定），并排除自身及只当标签的角色。
 
 ### 本地、外部与任务读取
 
@@ -392,7 +396,7 @@ Windows 开发计算候选复用 #151 的固定 ILP64 OpenBLAS 加载器：显�
 
 宿主在每个数据库的一致读事务内为当次任务取数（#29、#457）。源快照只取 `embeddings` 里的 CCIP 行，学习另取 `characters`，relate 的源快照为空。应用库的取数范围如下。
 
-- 学习（events/regroup）在副本中调用核心学习发布并重算投影，混合任务还会分组和扫描相似图。副本保留普通应用表结构、索引、视图和触发器，按学习核心、分组及相似计算取数，术语和身份表按组保留。纯学习批次省去已有的术语投影行，带分组的批次会复制这些行以读取主题标签。名称来源设置（含密钥）、名称缓存、偏好、同步及研究队列、画廊、相似组已读记录和导入报告均不复制数据。学习指纹保守覆盖应用表，跳过偏好、名称缓存及设置、调度和同步表、画廊与相似组已读记录，以及人工结论备份的状态和图片摘要。`meta` 中的 `names_version` 和 `human_revision` 是修订计数，哈希时跳过。画廊和相似组已读对应的操作历史也跳过。核心学习戳仍独立核验。另核对特征和锚点文件内容，以及全部原图的大小、修改时间。
+- 学习（events/regroup）在副本中调用核心学习发布并重算投影，混合任务还会分组和扫描相似图。副本保留普通应用表结构、索引、视图和触发器，按学习核心、分组及相似计算取数，术语和身份表按组保留。纯学习批次省去已有的术语投影行，带分组的批次会复制这些行以读取主题标签。学习指纹保守覆盖应用表。不复制的数据和指纹排除项分别由 `app_research.rs` 的 `SnapshotDb::copies_rows` 与 `UNREAD`、`UNREAD_META` 定义。名称表、显示投影和对应版本见[核心词条存储](TERMS_SCHEMA.md#14-第-8-版2026-10-19-起201)。画廊和相似组已读对应的操作历史也跳过。核心学习戳仍独立核验。另核对特征和锚点文件内容，以及全部原图的大小、修改时间。
 - similar 取 `assets`、`duplicates`、`excluded`、`image_sigs`、`relations`、`similar_paired`、`similar_retry`，核对特征文件和全部原图。OC 取 `memberships`、`duplicates`、`excluded` 和 `general_hits` 的可见行，核对特征文件。relate 只取请求 UUID 的原图路径，并核对相应原图。
 
 接收时，宿主用取快照时的同一对连接开启新读事务，逐库比较 `PRAGMA data_version`。版本相同就复用该库的行指纹，有其他连接提交就重算该库在本任务范围内的指纹。共享文件和原图在锁外重新核对。发布方取到应用库写锁后再比较应用库版本与共享文件戳（大小、修改时间、索引代号），有变化就放锁重试，最多三轮（#275）。源库读事务一直保持到应用库事务提交。等写锁每 20 毫秒看一次源库写入方，出现就让路（见下文）；一轮 5 秒内拿不到写锁按「有变化」算。三轮都有提交时不发布，任务内状态显示 `waiting`「图库正在写入，研究稍后继续」，按 2、4、8、16、32 秒退避后用同一份结果重新检查，仍不行就结束本次运行，状态 `waiting`「图库一直在写入，研究稍后继续」，不记错误、pending 原样保留、不计入下面输入变化的 5 次，恢复 60 秒后重新开始。OC/relate 只读、不取写锁。原图只在锁外核对。范围内的人工操作、输入更新和旧会话结果仍导致拒收。 在 50,000 张合成图库的 Windows x64 release 对照中，单张确认到学习生效的三轮中位数由 16.465 秒降至 4.606 秒，观测到的两个临时数据库主文件合计由 522.0 MB 降至 224.9 MB（#457）。

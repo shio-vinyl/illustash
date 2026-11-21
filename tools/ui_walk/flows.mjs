@@ -437,12 +437,13 @@ export const FLOWS = [
       // 每张图上某个角色的人工结论（confirmed / rejected / ''），按图的次序。
       const statusOf = async (pics, id) => (await Promise.all(pics.map(u => assertionsOf(page, u)))).map(list => (list || []).find(a => a.id === id)?.status || '');
       const all = (list, status) => list.length > 0 && list.every(x => x === status);
-      // 点一个按钮，在页面里逐帧记下卡片收起时自己身上的动画时长，直到卡片离开页面（不靠计时：减少动态效果时应是 0，平时是 --dur-1）。
+      // 点一个按钮，记下卡片收起时在它自己身上起的动画请求的时长，等卡片离开页面再读（不靠计时：减少动态效果时应是 0，平时是
+      // --dur-1）。时长为 0 的动画在两帧之间就播完了，逐帧读 getAnimations() 看不到，所以在这张卡上接住 animate() 的调用。
       const collapseMs = async (p, act) => {
         await p.eval(`(() => { const card = document.querySelector(${JSON.stringify(first)}), seen = []; window.__collapse = null;
-          const tick = () => { for (const a of card.getAnimations()) seen.push(Number(a.effect?.getTiming?.().duration) || 0);
-            if (card.isConnected) requestAnimationFrame(tick); else window.__collapse = seen; };
-          tick(); })()`);
+          card.animate = (...args) => { seen.push(Number(args[1]?.duration) || 0); return Element.prototype.animate.apply(card, args); };
+          const watch = () => { if (card.isConnected) setTimeout(watch, 10); else window.__collapse = seen; };
+          watch(); })()`);
         await p.click(`${first} [data-ref="${act}"]`);
         await p.waitFor(`window.__collapse !== null`, 5000);
         return p.eval(`window.__collapse.length ? Math.max(...window.__collapse) : -1`);
@@ -489,7 +490,7 @@ export const FLOWS = [
       // 收起动画：平时是 --dur-1（约 140ms，作对照），开了「减少动态效果」是 0（卡直接消失）
       let ms = -1;
       await w.step('点「是 A」，记下卡片收起的动画时长（对照）', async p => { ms = await collapseMs(p, 'a'); await feedbackEnd(p); });
-      w.check('平时卡片收起有动画（时长 > 0）', ms > 0, {ms});
+      w.check('平时卡片收起有动画（时长 > 0，--dur-1）', ms > 0, {ms});
       await w.step('撤销', async p => { await p.click('#undoButton'); await feedbackEnd(p); });
       w.check('撤销以后卡回来', (await settled(cards, c => c.includes(key))).includes(key), {key});
       await w.step('打开「减少动态效果」（模拟系统设置）', p => p.send('Emulation.setEmulatedMedia', {features: [{name: 'prefers-reduced-motion', value: 'reduce'}]}));

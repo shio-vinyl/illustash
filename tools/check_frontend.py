@@ -398,7 +398,7 @@ def new_rules():
              '新的增强处在 Issue 里提出，由用户同意后登记进 tools/check_frontend.py 的 SAFARI17_ENHANCEMENTS。',
              baselined=False),
         Rule('css-scale', '13', '样式里用了三档以外的字重、阴影、时长或缓动，或者新代码不该用的字号、圆角档位',
-             '0.4 的视觉语言（#685、#705，docs/WEB_V2.md「前端整体升级」）：字重三档 --fw-400 / --fw-600 / --fw-750；阴影三档 --shadow-hover / '
+             '0.4 的视觉语言（#685、#705，docs/WEB_V2.md「样式令牌」）：字重三档 --fw-400 / --fw-600 / --fw-750；阴影三档 --shadow-hover / '
              '--shadow-pop / --shadow-dialog（不带模糊的描边环不算阴影）；时长三档 --dur-1 / --dur-2 / --dur-3，缓动 --ease 和只给强调动作的 '
              '--ease-spring（循环动画 infinite 不查）；字号只用 11 / 12 / 13 / 20 / 28 / 40；圆角 2 / 6 / 10 / 14 / 16 冻结给旧样式。'
              'app.css 里的旧档位已冻结为基线，不得新增；css/ 下没有基线。',

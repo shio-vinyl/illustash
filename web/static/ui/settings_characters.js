@@ -177,7 +177,7 @@ export function build(main, scope) {
         ]},
      ]},
     {key: 'model', title: t('名称翻译（可选）'), scope: 'library', hidden: () => !api(),
-     note: t('Bangumi 没有中文名时，用兼容 OpenAI 接口的大模型翻译，只发送 tag、日文名和作品名。译名可能不准，悬停提示里会标「机器翻译」。API key 只存在这个图库的数据库里。'), parts: [
+     note: t('Bangumi 没有中文名时，用兼容 OpenAI 接口的大模型翻译，只发送 tag、日文名和作品名。译名可能不准，悬停提示里会标「机器翻译」。API key 保存在本机凭据存储中。'), parts: [
        {kind: 'field', key: 'modelBase', label: t('接口地址'), placeholder: 'https://api.deepseek.com', wide: true, plain: true,
         get: () => draft.base ?? api()?.base ?? '', set: v => { draft.base = v; }, enter: save},
        {kind: 'field', key: 'modelName', label: t('模型'), placeholder: 'deepseek-chat', wide: true, plain: true,
@@ -185,8 +185,10 @@ export function build(main, scope) {
        {kind: 'field', key: 'modelKey', label: 'API key', type: 'password', wide: true, get: () => draft.key, set: v => { draft.key = v; }, enter: save,
         force: (s, current) => { const hit = !!draft.keySent && current === draft.keySent; draft.keySent = null; return hit; },
         placeholder: () => api()?.configured ? t('已配置（尾号 {hint}），留空则不修改', {hint: api().hint || ''}) : t('未配置')},
-       {kind: 'action', key: 'modelSave', label: () => api()?.configured ? t('已配置') : t('未配置，不会使用'),
-        buttons: () => [...(api()?.configured ? [{act: 'clear', label: t('清除 key')}, {act: 'test', label: t('测试连接')}] : []), {act: 'save', label: t('保存'), primary: true}],
+       // 系统凭据存储读不出 key 时（#780）写那个原因，照样能清除 key、重新保存；测试连接只在配置好时给。
+       {kind: 'action', key: 'modelSave', label: () => api()?.credential_error ? tb(api().credential_error) : api()?.configured ? t('已配置') : t('未配置，不会使用'),
+        buttons: () => [...(api()?.configured || api()?.credential_error ? [{act: 'clear', label: t('清除 key')}] : []),
+          ...(api()?.configured ? [{act: 'test', label: t('测试连接')}] : []), {act: 'save', label: t('保存'), primary: true}],
         run: (s, a) => queue(a)},
      ]},
   ], {scope});

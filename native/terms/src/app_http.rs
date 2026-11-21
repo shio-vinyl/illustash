@@ -37,7 +37,7 @@ fn serve(listener: TcpListener) -> Result<Server> {
     Server::from_listener_with_limits(listener, None, limits).map_err(|e| Error::Invalid(e.to_string()))
 }
 
-use crate::app_service::{truthy, Application, Options, Session};
+use crate::app_service::{truthy, Application, Options, Session, SessionStartup};
 struct Host {
     application: Application,
     origin: String,
@@ -208,45 +208,26 @@ fn failure(request: Request, err: Error, write: bool) {
 fn unavailable(request: Request) {
     respond(request, error("接口或可选研究任务不可用"), 502, "unavailable");
 }
-fn forced_off(
-    library: &Library,
-    names_enabled: bool,
-    sync_disabled: bool,
-    provenance_enabled: bool,
-    index_automatic: bool,
-) -> Vec<String> {
+fn forced_off(library: &Library, startup: &SessionStartup) -> Vec<String> {
     let mut result: Vec<String> = FORCED_OFF
         .iter()
         .filter(|key| {
             (**key != "similar" || !crate::app_research::configured())
-                && (**key != "sync" || sync_disabled || !crate::app_sync::Syncer::available(library))
+                && (**key != "sync" || startup.sync_disabled || !crate::app_sync::Syncer::available(library))
         })
         .map(|s| s.to_string())
         .collect();
-    if !index_automatic {
+    if !startup.index_auto_check {
         result.insert(0, "index_check".into());
     }
-    if !provenance_enabled || std::env::var_os("ILLUSTASH_PROVENANCE_WORKER").is_none() {
-        result.insert(if index_automatic { 0 } else { 1 }, "provenance".into());
+    if !startup.provenance_enabled || std::env::var_os("ILLUSTASH_PROVENANCE_WORKER").is_none() {
+        result.insert(if startup.index_auto_check { 0 } else { 1 }, "provenance".into());
     }
-    if !names_enabled {
+    if !startup.names_enabled {
         result.insert(1, "names".into());
     }
     result
 }
-fn settings(
-    library: &Library,
-    names_enabled: bool,
-    sync_disabled: bool,
-    provenance_enabled: bool,
-    index_automatic: bool,
-) -> Result<Json> {
-    crate::app_settings::info(
-        library,
-        &forced_off(library, names_enabled, sync_disabled, provenance_enabled, index_automatic),
-    )
-}
-
 fn handle(mut request: Request, host: &Host, received: u64) {
     let write = request.method().as_str() == "POST";
     // 页面语言下的名称（#173）：只有读请求使用它（以及只读的建议，http_host_post.rs），所以写入保存的东西从不依赖它。
@@ -479,8 +460,7 @@ fn startup_progress(stage: &str, done: f64) {
         return;
     }
     *last = Some((permille, stage.to_owned(), Instant::now()));
-    println!("启动进度：{permille} {stage}");
-    let _ = std::io::Write::flush(&mut std::io::stdout());
+    print_progress_line(permille, stage);
 }
 /// 最近一条启动进度行和它打印的时间。
 static LAST_PROGRESS: std::sync::Mutex<Option<(u32, String, Instant)>> = std::sync::Mutex::new(None);
@@ -518,7 +498,21 @@ impl Drop for Keepalive {
 }
 fn print_progress_line(permille: u32, stage: &str) {
     println!("启动进度：{permille} {stage}");
-    let _ = std::io::Write::flush(&mut std::io::stdout());
+    if std::io::Write::flush(&mut std::io::stdout()).is_ok() {
+        trace_startup_output(format_args!("{permille} {stage}"));
+    }
+}
+
+/// 仅供升级测试：记录宿主写出进度的单调时刻，避免把测试读线程的调度延迟算入间隔。
+fn trace_startup_output(event: std::fmt::Arguments<'_>) {
+    static START: std::sync::LazyLock<Option<Instant>> =
+        std::sync::LazyLock::new(|| std::env::var_os("ILLUSTASH_TEST_TRACE_STARTUP_OUTPUT").map(|_| Instant::now()));
+    if let Some(start) = *START {
+        let _ = std::io::Write::write_fmt(
+            &mut std::io::stderr().lock(),
+            format_args!("ILLUSTASH_TEST_STARTUP_OUTPUT_NS {} {event}\n", start.elapsed().as_nanos()),
+        );
+    }
 }
 
 /// 从桌面启动页发起的 `--upgrade`：把升级的各阶段作为启动进度，在无法报告的步骤中保活（#267）。
@@ -553,6 +547,9 @@ fn rescue_reporting(path: &Path, root: &Path) -> Result<crate::app_rescue::Repor
 
 pub(crate) fn run(args: &[String]) -> Result<u8> {
     use crate::diagnostics::{self, Operation, Publication, Stage};
+    if crate::desktop_shell::is_host_child() {
+        trace_startup_output(format_args!("<host start>"));
+    }
     diagnostics::initialize();
     let result = run_inner(args);
     if let Err(error) = &result {
@@ -579,17 +576,8 @@ fn run_inner(args: &[String]) -> Result<u8> {
         });
     }
     let mut path = None;
-    let mut root = crate::app_resources::default_root();
+    let mut options = Options::new(crate::app_resources::default_root());
     let mut port = 8765;
-    let mut names_enabled = true;
-    let mut names_network = false;
-    let mut provenance_enabled = true;
-    let mut provenance_network = false;
-    let mut index_network = false;
-    let mut index_automatic = true;
-    let mut auto_sync = true;
-    let mut sync_disabled = false;
-    let mut per_run = 0usize;
     let mut backup = false;
     let mut upgrade = false;
     let mut rescue = false;
@@ -633,18 +621,18 @@ fn run_inner(args: &[String]) -> Result<u8> {
                     "兼容宿主参数已退役：{arg}；HTTP 默认使用原生宿主，升级请使用 --upgrade"
                 )));
             }
-            "--no-names" => names_enabled = false,
-            "--no-provenance" => provenance_enabled = false,
-            "--allow-provenance-network" => provenance_network = true,
-            "--names-network" => names_network = true,
-            "--index-network" => index_network = true,
-            "--no-index-check" => index_automatic = false,
-            "--index-check" => index_automatic = true,
-            "--auto-sync" => auto_sync = true,
-            "--no-auto-sync" => auto_sync = false,
+            "--no-names" => options.startup.names_enabled = false,
+            "--no-provenance" => options.startup.provenance_enabled = false,
+            "--allow-provenance-network" => options.startup.provenance_network_authorized = true,
+            "--names-network" => options.startup.names_network_authorized = true,
+            "--index-network" => options.startup.index_network_authorized = true,
+            "--no-index-check" => options.startup.index_auto_check = false,
+            "--index-check" => options.startup.index_auto_check = true,
+            "--auto-sync" => options.startup.auto_sync = true,
+            "--no-auto-sync" => options.startup.auto_sync = false,
             "--no-sync" => {
-                auto_sync = false;
-                sync_disabled = true;
+                options.startup.auto_sync = false;
+                options.startup.sync_disabled = true;
             }
             "--backup" => backup = true,
             "--upgrade" => upgrade = true,
@@ -653,9 +641,10 @@ fn run_inner(args: &[String]) -> Result<u8> {
                 let value = iter.next().ok_or_else(|| Error::Invalid(format!("{arg} 缺少值")))?;
                 match arg.as_str() {
                     "--library" => path = Some(expand_path(value)?),
-                    "--root" => root = PathBuf::from(value),
+                    "--root" => options.root = PathBuf::from(value),
                     "--sync-limit" => {
-                        per_run = value.parse().map_err(|_| Error::Invalid("sync-limit 必须是非负整数".into()))?
+                        options.startup.sync_limit =
+                            value.parse().map_err(|_| Error::Invalid("sync-limit 必须是非负整数".into()))?;
                     }
                     _ => {
                         port = value
@@ -669,7 +658,9 @@ fn run_inner(args: &[String]) -> Result<u8> {
             _ => return Err(Error::Invalid(format!("原生 HTTP 不支持参数：{arg}"))),
         }
     }
-    let root = if root.is_absolute() { root } else { std::env::current_dir()?.join(root) };
+    if options.root.is_relative() {
+        options.root = std::env::current_dir()?.join(&options.root);
+    }
     let path = match path {
         Some(path) => path,
         None => crate::app_libraries::startup()?,
@@ -706,7 +697,7 @@ fn run_inner(args: &[String]) -> Result<u8> {
         }
     } else {
         if rescue {
-            rescued = Some(rescue_reporting(&path, &root)?);
+            rescued = Some(rescue_reporting(&path, &options.root)?);
         }
         match open_reporting(&path) {
             Err(Error::Schema(_)) if desktop_child && !rescue && crate::app_upgrade::needed(&path).is_some() => {
@@ -722,30 +713,14 @@ fn run_inner(args: &[String]) -> Result<u8> {
             serve(listener)?
         }
     };
-    let application = Application::from_library(
-        library,
-        token,
-        Options {
-            root,
-            names_enabled,
-            names_network,
-            provenance_enabled,
-            provenance_network,
-            index_network,
-            index_automatic,
-            auto_sync,
-            sync_disabled,
-            per_run,
-        },
-        |error| match &upgrade_backup {
-            Some(backup) => format!(
-                "升级已提交，没能记进最近图库：{reason}；升级前备份：{backup}",
-                reason = crate::app_libraries::unlisted_reason(&error),
-                backup = backup.display()
-            ),
-            None => crate::app_libraries::unlisted_reason(&error),
-        },
-    )?;
+    let application = Application::from_library(library, token, options, |error| match &upgrade_backup {
+        Some(backup) => format!(
+            "升级已提交，没能记进最近图库：{reason}；升级前备份：{backup}",
+            reason = crate::app_libraries::unlisted_reason(&error),
+            backup = backup.display()
+        ),
+        None => crate::app_libraries::unlisted_reason(&error),
+    })?;
     {
         let mut session = application.session.write().expect("http session lock poisoned");
         session.upgraded = upgrade_backup.map(|backup| crate::app_upgrade::shown(&backup));
@@ -761,6 +736,9 @@ fn run_inner(args: &[String]) -> Result<u8> {
     let address = host.entry.address(&host.origin);
     println!("图库已启动：{address}");
     std::io::Write::flush(&mut std::io::stdout())?;
+    if desktop_child {
+        trace_startup_output(format_args!("<ready>"));
+    }
     // `start-web.command` 在默认浏览器里打开页面；其他情况下手动打开打印出的地址。
     #[cfg(target_os = "macos")]
     if open {

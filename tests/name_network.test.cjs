@@ -94,6 +94,22 @@ test('saving or clearing model settings keeps the grant and revoke control avail
   }
 });
 
+test('a model credential error keeps the settings save and clear controls available', async () => {
+  // 系统凭据存储读不出 key（#780）：「名称翻译」那一组的状态写这个原因，可以清除 key、重新保存，不给测试连接。
+  const credentialError = '模型 API key 尚未迁移，请重新打开图库或保存模型设置', calls = [];
+  const c = await modelCard({network: {}, model_api: {configured: false, credential_error: credentialError}}, async (path, options) => {
+    calls.push([path, JSON.parse(options.body)]);
+    return {status: 200, ok: true, json: async () => ({model_api: {configured: false}})};
+  });
+  assert.ok(c.v.row('modelSave').textContent.includes(credentialError));
+  const labels = c.v.buttons('modelSave').map(b => b.textContent);
+  assert.deepEqual(labels, ['清除 key', '保存']);
+  assert.ok(c.v.buttons('modelSave').every(b => !b.disabled));
+  await c.press('清除 key');
+  assert.deepEqual(calls, [['/api/names', {action: 'model_api', key: null}]]);
+  c.done();
+});
+
 test('saving a new model address that drops the key says the key must be entered again', async () => {
   // 后端只为填写 key 时的那个地址保留 key（app_names.rs 的 configure）。
   for (const [kept, said] of [[true, '设置已保存'], [false, '接口地址已更改，原来的 API key 已清除，请重新填写']]) {

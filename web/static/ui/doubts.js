@@ -60,7 +60,7 @@ function doubtCard(page, c) {
       {key: 'a', label: ({k, kept}) => k ? t('其余 {n} 张是 {name}', {n: number(kept.length), name: current.a.name}) : t('是 {name}', {name: current.a.name}),
         primary: true, disabled: none, title: ({k}) => k ? t('点掉的记成不是 {name}', {name: current.a.name}) : '', run: act('a')},
       {key: 'b', label: () => t('是 {name}', {name: current.b.name}), title: ({n}) => t('{n} 张都记成 {name}', {n: number(n), name: current.b.name}), run: act('b')},
-      {key: 'none', label: t('都不是'), title: () => t('{a}、{b} 都记成不是', {a: current.a.name, b: current.b.name}), run: act('none')},
+      {key: 'none', label: t('都不是', {context: 'pair'}), title: () => t('{a}、{b} 都记成不是', {a: current.a.name, b: current.b.name}), run: act('none')},
       {key: 'other', label: t('点掉的是…'), when: ({k}) => k > 0, run: off => page.other(current, off)},
       {key: 'later', label: t('以后再说'), quiet: true, run: () => page.later(current)},
     ]});

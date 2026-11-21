@@ -798,6 +798,7 @@
   "点掉的记成不是 {name}": "The ones left out are marked as not {name}",
   "{n} 张都记成 {name}": "Mark all {n} as {name}",
   "{a}、{b} 都记成不是": "Mark as neither {a} nor {b}",
+  "pair\u0004都不是": "Neither",
   "{n} 张 · 这一对共 {total} 张": {
     "one": "{n} picture · {total} for this pair",
     "other": "{n} pictures · {total} for this pair"

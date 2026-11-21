@@ -84,18 +84,22 @@ const missingLabel = s => t('关注的作品还缺 {n} 个角色', {n: number(mi
 const api = () => state.names?.model_api;
 // 三个框一起保存：打的字先记在这一节的草稿里（离开输入框时），点「保存」或在框里按回车才发出去；轮询刷新不会把草稿冲掉，
 // 换节或离开设置页时草稿（包括没保存的 key）随这一节释放。保存时记下发出去的值，回复回来时只清掉那以后没再改过的框。
-function modelAct(draft, act) {
+// 保存成功、发出去的 key 被采用以后，密码框里如果还是这个 key（焦点还在框里，轮询不会改它的值），也要清掉：不然离开
+// 输入框时它又进了草稿，下一次只改地址的保存会把旧 key 带到新地址（宿主把带 key 的保存当成给新地址填的凭据）。
+// draft.keySent 记下要清的值，密码框那一行的 force 照它判断（见 ui/rows.js 的 field.force）。
+function modelAct(draft, act, snap = draft) {
   const m = api();
   const done = (body, sent, note) => saveModelApi(body).then(() => {
     toast(typeof note === 'function' ? note() : note);
     for (const [k, v] of Object.entries(sent)) if (draft[k] === v) draft[k] = k === 'key' ? '' : null;
+    if (sent.key) draft.keySent = sent.key;
   }, e => toast(e.message)).then(refreshSection);
   if (act === 'clear') return done({key: null}, {}, t('API key 已清除'));
   if (act === 'test') return testModelApi().then(r => toast(r.ok === false ? t('连接失败：{reason}', {reason: tb(r.error) || t('未知错误')}) : t('连接成功')),
     e => toast(t('连接失败：{reason}', {reason: e.message})));
-  const sent = {base: draft.base, model: draft.model, key: draft.key};
-  const body = {base: (draft.base ?? m.base ?? '').trim() || 'https://api.deepseek.com', model: (draft.model ?? m.model ?? '').trim() || 'deepseek-chat'};
-  if (draft.key.trim()) body.key = draft.key.trim();
+  const sent = {base: snap.base, model: snap.model, key: snap.key};
+  const body = {base: (snap.base ?? m.base ?? '').trim() || 'https://api.deepseek.com', model: (snap.model ?? m.model ?? '').trim() || 'deepseek-chat'};
+  if (snap.key.trim()) body.key = snap.key.trim();
   // 后端只为输入 key 时的那个地址保留 key：换了新地址而不带 key 会把它清掉。
   return done(body, sent, () => m.configured && !state.names?.model_api?.configured ? t('接口地址已更改，原来的 API key 已清除，请重新填写') : t('设置已保存'));
 }
@@ -107,7 +111,7 @@ const countItems = s => [[t('角色'), 'characters'], [t('作品'), 'works'], [t
 
 export function build(main, scope) {
   // 这一节自己的状态：名称翻译的草稿、待确认移除的角色、资料包读取失败的原因。都随这一节的作用域释放。
-  const draft = {base: null, model: null, key: ''};
+  const draft = {base: null, model: null, key: '', keySent: null};
   const inst = {armed: null, packError: null};
   // 移除要点两次（4 秒内）；第二次点返回提交的 promise，按钮等结果回来再开放。
   inst.drop = c => {
@@ -119,7 +123,14 @@ export function build(main, scope) {
     inst.armed = null;
     return act({action: 'drop', char: c.short_tag, reason: '在设置中手动移除'});
   };
-  const save = () => modelAct(draft, 'save');
+  // 回车和按钮共用一条队列：一次保存落定再发下一次，每次发的是按下那一刻框里的值，连续回车时回复不会乱序把值退回去。
+  let saving = Promise.resolve();
+  const queue = act => {
+    const snap = {base: draft.base, model: draft.model, key: draft.key};
+    saving = saving.then(() => modelAct(draft, act, snap));
+    return saving;
+  };
+  const save = () => queue('save');
   const view = groups(main, [
     {key: 'pack', title: packName(), scope: 'library', note: s => s.pack ? packNote(s.pack) : '', parts: [
       {kind: 'note', text: () => inst.packError ? readError(inst.packError) : t('正在读取…'), hidden: s => !!s.pack},
@@ -172,10 +183,11 @@ export function build(main, scope) {
        {kind: 'field', key: 'modelName', label: t('模型'), placeholder: 'deepseek-chat', wide: true, plain: true,
         get: () => draft.model ?? api()?.model ?? '', set: v => { draft.model = v; }, enter: save},
        {kind: 'field', key: 'modelKey', label: 'API key', type: 'password', wide: true, get: () => draft.key, set: v => { draft.key = v; }, enter: save,
+        force: (s, current) => { const hit = !!draft.keySent && current === draft.keySent; draft.keySent = null; return hit; },
         placeholder: () => api()?.configured ? t('已配置（尾号 {hint}），留空则不修改', {hint: api().hint || ''}) : t('未配置')},
        {kind: 'action', key: 'modelSave', label: () => api()?.configured ? t('已配置') : t('未配置，不会使用'),
         buttons: () => [...(api()?.configured ? [{act: 'clear', label: t('清除 key')}, {act: 'test', label: t('测试连接')}] : []), {act: 'save', label: t('保存'), primary: true}],
-        run: (s, a) => modelAct(draft, a)},
+        run: (s, a) => queue(a)},
      ]},
   ], {scope});
   // 检查新角色结束（检查时间或最近一条历史可能变了）：重读每个作品的覆盖情况。

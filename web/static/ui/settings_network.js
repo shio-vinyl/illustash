@@ -32,11 +32,13 @@ const via = (service, what) => t('{service}：{what}', {service, what});
 const net = s => s.names?.network;
 const modelHost = m => { try { return new URL(m?.base || 'https://api.deepseek.com').host; } catch { return '—'; } };
 // 找回画师真正会不会在同步后自己联网：要这个图库打开了「同步后自动查新图」（auto）、这次启动有联网授权（auto_network），
-// 并且不是测试图库（frozen 的不同步），宿主 app_provenance.rs 照这三样判断。还没读到或读取失败时写状态未知。
+// 并且不是冻结的图库（frozen 的宿主直接拒绝），宿主 app_provenance.rs 照这三样判断。冻结的单列一句；还没读到或读取失败时
+// 写状态未知。
 const provenanceStatus = s => {
   const p = s.provenance;
   if (!p) return t('状态未知');
-  return p.auto && p.auto_network && !p.frozen ? t('同步后自动，每次有流量上限') : ASK();
+  if (p.frozen) return t('冻结的图库不可用');   // 宿主不在冻结的图库上运行找回画师（app_provenance.rs）
+  return p.auto && p.auto_network ? t('同步后自动，每次有流量上限') : ASK();
 };
 // 一行：标题链到 #/settings/<section>，右边是状态文字。
 const line = (key, section, label, hint, value, extra = {}) => ({kind: 'info', key, label, href: `#/settings/${section}`, hint, value, ...extra});

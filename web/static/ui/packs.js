@@ -113,11 +113,12 @@ export function packButtons(x = current(), compact = false) {
   }
   if (packDownloading(x)) return x.download.kind === 'catalog' ? [] : [button('package-cancel', t('取消'))];
   const withdraw = on(x) ? [button('withdraw', t('撤回…'))] : [];
-  // 重新检查失败时照样能撤回，不只能重试。重试照失败的那次的目标版本再做一遍（换包失败就再换那个版本）；不知道失败的是
-  // 不是换包（页面重新载入过）而又有下好的新版本时不给「重试」，免得它其实去查旧版本，换包走下面「有新版本」那一行。
+  // 重新检查失败时照样能撤回，不只能重试。重试照失败的那个任务的目标版本再做一遍（换包失败就再换那个版本）。显示的失败
+  // 任务不是这个页面记下的那一个（页面重新载入过，或者后来的操作被宿主拒绝、没有起任务），又有下好的新版本时，不给
+  // 「重试」：说不准它是查旧版本还是换包，换包走下面「有新版本」那一行。
   if (task?.status === 'failed') {
     if (task.kind === 'withdraw') return [button('withdraw-retry', t('重试'), true)];
-    const unsure = enableTarget === undefined && on(x) && packOffer(x)?.status === 'ready';
+    const unsure = retryVersion(task) === undefined && on(x) && packOffer(x)?.status === 'ready';
     return [...(unsure ? [] : [button('enable-retry', t('重试'), true, blocked)]), ...(compact ? [] : withdraw)];
   }
   if (!ready(x)) {
@@ -156,10 +157,16 @@ export function packHintText(x = current()) {
 // 整个 App 一份，导入结果也是，换了图库（页面重新载入）或别的窗口导入的不列。只留在发起导入的那一页（state.route 每次换页
 // 都是新的），切走再回来就不列了（#643）。离线包里随附的许可和说明（extra）不是要导入的文件，不列。
 let importedHere = null;
-// 这个页面最近一次启用、重新检查或换包的目标版本：换包是那个版本号，启用和重新检查是 null（卡片上的版本），还没做过是
-// undefined。失败以后的「重试」照它再做。
-let enableTarget;
-const enable = version => { enableTarget = version || null; return enablePack(version); };
+// 宿主接受了的启用、重新检查或换包：{task: 起的任务 ID, version: 换包是那个版本号，启用和重新检查是 null（卡片上的版本）}。
+// 宿主拒绝的（409 之类，没起任务）不记。失败以后的「重试」只对同一个任务照它再做。
+let enableTarget = null;
+async function enable(version) {
+  const value = await enablePack(version);
+  if (value?.task?.id) enableTarget = {task: value.task.id, version: version || null};
+  return value;
+}
+// 这个失败任务重试时用的版本：是这个页面记下的那个任务就照记下的；对不上时 undefined。
+const retryVersion = task => enableTarget && task?.id === enableTarget.task ? enableTarget.version : undefined;
 const RESULT = {accepted: () => t('已接收'), mismatch: () => t('SHA-256 不符，已拒绝'), already: () => t('已经有了'),
   unknown: () => t('不是角色资料包'),
   // 离线包里的包目录和签名（#602）。
@@ -296,7 +303,7 @@ export async function runPack(what) {
       if (!await confirmAction(enableMessage(), t('启用角色资料包'), t('启用'))) return;
       await enable();
     } else if (what === 'enable') await enable();
-    else if (what === 'enable-retry') await enablePack(enableTarget || undefined);
+    else if (what === 'enable-retry') await enable(retryVersion(current()?.task) || undefined);
     else if (what === 'decline') await declinePack();
     else if (what === 'withdraw') {
       if (!await confirmAction(withdrawMessage(), t('撤回角色资料包'), t('撤回'))) return;

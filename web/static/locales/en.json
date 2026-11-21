@@ -1058,6 +1058,7 @@
   "{service}：{what}": "{service}: {what}",
   "原图不发出去。找回画师和查找画师会发送由图片算出的哈希和签名文本。": "Original pictures are never sent. Finding artists and looking up an artist send hashes and signature text computed from the pictures.",
   "状态未知": "Unknown",
+  "冻结的图库不可用": "Not available in a frozen library",
   "关注作品的名称；添加角色时下载约 20 张公开参考图": "Names of followed series; adding a character downloads about 20 public reference pictures",
   "Bangumi、Danbooru": "Bangumi, Danbooru",
   "tag、作品名、日文名": "Tags, series names, Japanese names",

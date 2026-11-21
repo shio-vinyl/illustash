@@ -15,18 +15,20 @@ const excluded = s => [
   ...Object.entries(REASONS).map(([k, label]) => ({key: k, href: `#/excluded?reason=${k}`, label, big: number(s.exclInfo?.reasons?.[k] || 0)})),
   {key: 'pending', href: '#/pending', label: t('待确认'), big: number(s.pendingCount || 0)}];
 // 相似折叠的勾选项：几个勾选框共用一份「要保存的集合」，快速连点时每次改动都记进去，保存一个接一个地发、每次发最新的
-// 集合，后点的不会把先点的冲掉。最后一次保存落定后清掉这份集合，回到照 state 显示。
-let foldWant = null, foldChain = Promise.resolve();
+// 集合，后点的不会把先点的冲掉。排着的保存都落定以后才清掉这份集合，回到照 state 显示。
+let foldWant = null, foldChain = Promise.resolve(), foldQueued = 0;
 const foldRow = ([kind, label, hint]) => ({kind: 'switch', key: 'fold-' + kind, label, hint,
   disabled: s => !s.fold, get: s => (foldWant ?? new Set(s.fold || [])).has(kind),
   set: on => {
     foldWant ??= new Set(state.fold || []);
     if (on) foldWant.add(kind); else foldWant.delete(kind);
     const want = foldWant;
+    foldQueued++;
     foldChain = foldChain.then(async () => {
       try { await saveFold(FOLD_OPTIONS.map(o => o[0]).filter(k => want.has(k))); await refreshMeta(); toast(t('已更新，「重复」页现在有 {n} 组', {n: number(state.dupInfo.groups)})); }
       catch (e) { toast(e.message); }
-      if (foldWant === want) foldWant = null;
+      // 队列排空了才清：中间某一次先回来时，后面还排着的保存仍要拿到完整的集合。
+      if (--foldQueued === 0 && foldWant === want) foldWant = null;
     });
     return foldChain;
   }});

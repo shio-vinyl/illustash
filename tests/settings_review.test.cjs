@@ -13,12 +13,17 @@ beforeEach(() => { dom.install(); toastText = toastNodes(); state.route = {page:
 // 提示条 3.5 秒后自己收起（ui/dom.js 的计时器），所以假 DOM 留到整个文件跑完再拆。
 afterEach(() => { delete globalThis.fetch; });
 after(() => dom.uninstall());
+// 还没回的请求都回掉（折叠保存回它发的集合，其余回空对象），直到不再有新请求。
+async function drain(calls) {
+  for (let i = 0; i < 6; i++) { for (const c of calls) if (!c.replied) c.reply(c.path === '/api/fold' ? {kinds: c.body.kinds} : {}); await tick(); }
+}
 // 每个请求挂起，测试自己决定什么时候、用什么回。
 function server() {
   const calls = [];
   globalThis.fetch = (path, options) => new Promise((resolve, reject) => {
-    calls.push({path, body: options?.body ? JSON.parse(options.body) : null,
-      reply: (body, status = 200) => resolve({status, ok: status < 400, headers: {get: () => null}, json: async () => body}), fail: reject});
+    const call = {path, body: options?.body ? JSON.parse(options.body) : null, replied: false, fail: reject,
+      reply: (body, status = 200) => { call.replied = true; resolve({status, ok: status < 400, headers: {get: () => null}, json: async () => body}); }};
+    calls.push(call);
   });
   return calls;
 }
@@ -49,6 +54,7 @@ test('相似折叠快速连点两项：第二次保存的集合两项都有', as
   assert.ok(saves.length >= 1);
   assert.ok(saves.every(c => c.body.kinds.includes('subtle')), 'the second click does not drop the first');
   assert.deepEqual(saves.at(-1).body.kinds.sort(), ['edit', 'subtle']);
+  await drain(calls);
   v.dispose();
 });
 
@@ -73,17 +79,91 @@ test('整库备份以后读回设置：份数更新、按钮可点', async () =>
   v.dispose();
 });
 
-test('名称联网授权点了取消：开关立刻回到关', async () => {
+// 确认框（ui/dialog.js 的 <dialog>）换成测试自己的假对象：记下标题，由测试决定点确定还是取消。行的节点照旧是假 DOM 的。
+function dialogs() {
+  const opened = [], create = document.createElement.bind(document), append = document.body.append.bind(document.body);
+  document.createElement = tag => tag !== 'dialog' ? create(tag) : (() => {
+    const parts = {};
+    return {localName: 'dialog', returnValue: '', set innerHTML(_) {}, setAttribute() {}, addEventListener() {}, remove() {},
+      querySelector: sel => parts[sel] ||= {textContent: '', focus() {}}, showModal() { this.open = true; },
+      close(value = '') { this.returnValue = value; this.open = false; this.onclose?.(); }};
+  })();
+  document.body.append = (...nodes) => { for (const n of nodes) if (n.localName === 'dialog' && typeof n.nodeType !== 'number') opened.push(n); else append(n); };
+  return opened;
+}
+
+test('名称联网授权点了取消：确认框开着时开关是开，取消后复位、没发写请求', async () => {
   Object.assign(state, {names: {network: {authorized: false, granted_at: null}}, provenance: null, accounts: null, models: null, updates: null});
-  server();
-  // 确认框：假 DOM 的 <dialog> 由测试关掉（点取消）。
-  const append = document.body.append.bind(document.body);
-  document.body.append = d => { if (d.localName === 'dialog') { d.showModal = () => { d.returnValue = 'cancel'; queueMicrotask(() => d.dispatchEvent(dom.event('close'))); }; } append(d); };
+  const calls = server(), opened = dialogs();
   const v = (await view('network'))(), box = v.row('names').querySelector('input');
   box.checked = true; box.dispatchEvent(dom.event('change'));
+  await tick();
+  assert.equal(opened.length, 1, 'the confirmation is open');
+  assert.equal(opened[0].open, true);
+  assert.equal(box.checked, true, 'still on while the question is open');
+  opened[0].close('cancel');
   await tick(8);
   assert.equal(box.checked, false);
+  assert.equal(calls.filter(c => c.path === '/api/names').length, 0, 'nothing was written');
   v.dispose();
+});
+
+test('名称翻译：回车保存了 key 以后框里的旧 key 清掉，接着只改地址不会把它带上；连续回车按顺序', async () => {
+  Object.assign(state, {pack: {}, index: null, names: {network: {}, model_api: {configured: false, base: 'https://a.invalid', model: 'm1'}}});
+  const calls = server(), v = (await view('characters'))();
+  const enter = (key, value) => {
+    const input = v.row(key).querySelector('input');
+    input.focus(); input.value = value;
+    input.dispatchEvent(dom.event('keydown', {key: 'Enter'}));
+    return input;
+  };
+  const key = enter('modelKey', 'sk-old');
+  await tick();
+  const first = calls.at(-1);
+  assert.equal(first.body.key, 'sk-old');
+  state.names.model_api = {configured: true, base: 'https://a.invalid', model: 'm1', hint: 'old'};
+  first.reply({model_api: state.names.model_api});
+  await tick(8);
+  assert.equal(key.value, '', 'the saved key left the box even with the focus still in it');
+  key.dispatchEvent(dom.event('change')); key.blur();
+  enter('modelBase', 'https://b.invalid');
+  await tick();
+  assert.equal(calls.at(-1).body.base, 'https://b.invalid');
+  assert.equal('key' in calls.at(-1).body, false, 'the old key does not travel to the new address');
+  calls.at(-1).reply({model_api: {configured: false, base: 'https://b.invalid', model: 'm1'}});
+  await tick(8);
+  // 连续两次回车：第二次等第一次落定才发。
+  const before = calls.length;
+  enter('modelName', 'm2'); enter('modelName', 'm3');
+  await tick();
+  assert.equal(calls.length, before + 1, 'the second save waits for the first');
+  assert.equal(calls.at(-1).body.model, 'm2', 'each save sends what was in the box when Enter was pressed');
+  calls.at(-1).reply({model_api: {configured: false, base: 'https://b.invalid', model: 'm2'}});
+  await tick(8);
+  assert.equal(calls.length, before + 2);
+  assert.equal(calls.at(-1).body.model, 'm3');
+  v.dispose();
+});
+
+test('换包被宿主拒绝：另一个失败任务的「重试」不会去换那个版本', async () => {
+  const packs = await web.load('ui/packs.js');
+  const ready = {status: 'ready', components: {}}, lib = {enabled: true, wd: true, ccip: true};
+  const failedA = {current: ready, library: lib, task: {id: 'a', kind: 'enable', status: 'failed', message: 'x'},
+    offer: {version: 'B', status: 'ready'}, download: null, wd: {package: {}}, ccip: {library: {}}};
+  state.pack = failedA;
+  const calls = server(), bodies = () => calls.filter(c => c.path === '/api/packs').map(c => c.body);
+  const p = packs.runPack('enable');   // 宿主接受了重新检查，起了任务 a
+  await tick(); calls.at(-1).reply(failedA); await p;
+  globalThis.confirm = () => true;
+  const opened = dialogs();
+  const sw = packs.runPack('offer-switch');
+  await tick(); opened.at(-1)?.close('ok'); await tick();
+  calls.at(-1).reply({error: '正在同步'}, 409); await sw;
+  assert.deepEqual(bodies().at(-1), {action: 'enable', version: 'B'});
+  state.pack = failedA;
+  const retry = packs.runPack('enable-retry');
+  await tick(); calls.at(-1).reply(failedA); await retry;
+  assert.deepEqual(bodies().at(-1), {action: 'enable'}, 'retrying task a re-checks the card version, not B');
 });
 
 test('名称翻译的草稿和待确认的移除，离开这一节再进来就没有了', async () => {
@@ -118,7 +198,7 @@ test('新建图库等回复时点了取消：回复回来也不切库', async ()
   v.dispose();
 });
 
-test('网络列表：自动查画师关着时写每次询问，没读到时写状态未知', async () => {
+test('网络列表：自动查画师关着时写每次询问，冻结的图库单列，没读到时写状态未知', async () => {
   Object.assign(state, {names: null, accounts: null, models: null, updates: null, settings: null});
   server();
   const v = (await view('network'))();
@@ -128,5 +208,47 @@ test('网络列表：自动查画师关着时写每次询问，没读到时写�
   assert.match(v.text, /找回画师[^|]*\| [^|]*\| 每次询问/);
   state.provenance = {auto: true, auto_network: true, frozen: false}; v.update();
   assert.match(v.text, /同步后自动，每次有流量上限/);
+  state.provenance = {auto: true, auto_network: true, frozen: true}; v.update();
+  assert.match(v.text, /找回画师[^|]*\| [^|]*\| 冻结的图库不可用/);
+  v.dispose();
+});
+
+test('相似折叠快速连点三项：每次保存都带上之前点过的', async () => {
+  Object.assign(state, {settings: null, libraries: null, sync: {status: 'idle'}, syncHistory: [], exclInfo: {}, fold: [], dupInfo: {groups: 0}});
+  const calls = server(), v = (await view('library'))(), saves = () => calls.filter(c => c.path === '/api/fold');
+  const click = kind => { const box = v.row('fold-' + kind).querySelector('input'); box.checked = true; box.dispatchEvent(dom.event('change')); };
+  click('subtle'); await tick();
+  click('edit'); await tick();
+  // 第一个保存先回来，第三次点在第二个保存回来之前。
+  saves()[0].reply({kinds: ['subtle']});
+  for (let i = 0; i < 3; i++) { for (const c of calls) if (!c.replied && c.path !== '/api/fold') c.reply({}); await tick(); }
+  click('crop'); await tick();
+  await drain(calls);
+  assert.deepEqual(saves().at(-1).body.kinds.sort(), ['crop', 'edit', 'subtle']);
+  v.dispose();
+});
+
+test('新建图库：等回复时离开这一节，建好但没登记的图库回来还在表单里，选文件夹的迟到结果不写回', async () => {
+  const {libForm} = await web.load('ui/settings_libraries.js');
+  Object.assign(state, {settings: null, sync: {status: 'idle'}, syncHistory: [], exclInfo: {}, fold: [], importTask: undefined,
+    libraries: {info: null, current: '', home: '/tmp', libraries: [], export: {}}});
+  Object.assign(libForm, {open: true, name: '合成', folders: {pixiv: ['/tmp/p']}, photos: false, created: null});
+  const calls = server(), open = await view('library');
+  let v = open();
+  v.press('formCreate', '创建并打开');
+  v.press('formPick', 'Pixiv');   // 文件夹选择框开着
+  await tick();
+  v.dispose(); state.route = {page: 'settings'};   // 离开这一节，路由换了
+  calls.find(c => c.path === '/api/libraries/new').reply({path: '/tmp/合成.pilib', name: '合成', listed: false, error: '写入失败'});
+  const pickCall = calls.find(c => c.path === '/api/libraries/choose' && c.body?.kind === 'folder');
+  assert.ok(pickCall, 'the folder picker was asked');
+  pickCall.reply({paths: ['/tmp/late']});
+  await tick(8);
+  v = open();
+  assert.match(v.text, /图库已经建好/);
+  assert.match(v.text, /写入失败/);
+  assert.ok(v.button('formCreated', '打开这个图库'));
+  assert.doesNotMatch(v.text, /\/tmp\/late/, 'the late folder pick is dropped');
+  assert.equal(calls.filter(c => c.path === '/api/libraries/open').length, 0);
   v.dispose();
 });

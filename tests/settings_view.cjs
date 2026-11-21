@@ -6,7 +6,7 @@ const web = require('./web.cjs');
 const dom = require('./dom.cjs');
 
 async function view(name) {
-  const mod = await web.load(`ui/settings_${name}.js`), S = await web.load('ui/scope.js');
+  const mod = await web.load(`ui/settings_${name}.js`), S = await web.load('ui/scope.js'), G = await web.load('ui/settings_group.js');
   return () => {
     const box = document.createElement('div'), scope = S.scope('test-' + name), {state} = web.core();
     const part = mod.build(box, scope);
@@ -21,6 +21,8 @@ async function view(name) {
       press: (key, label) => { const b = v.button(key, label); if (!b) throw new Error(`没有「${label}」按钮：${key}`); b.dispatchEvent(dom.event('click')); },
       dispose: () => scope.dispose(),
     };
+    // 和外壳（ui/settings.js）一样：各节调 refreshSection() 时更新这一节。
+    G.onRefresh(() => { if (scope.alive) v.update(); });
     return v.update();
   };
 }

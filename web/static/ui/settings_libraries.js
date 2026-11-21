@@ -122,14 +122,22 @@ async function create() {
   if (!sources.length) { toast(t('请至少添加一个文件夹')); return; }
   const gen = libForm.gen, route = state.route;
   const lib = await libraryAction('new', {name: libForm.name, sources});
-  // 等回复期间点了取消、重开了表单或者离开了这一节：图库照样建好（在图库列表里），只是不自动打开。
-  if (!lib || libForm.gen !== gen || !still(route)) { if (lib) loadLibraries(); return; }
-  if (lib.listed === false) { libForm.created = lib; refreshSection(); }
-  else { libForm.open = false; libForm.gen++; openLibrary(lib.path, lib.name); }
+  if (!lib) return;
+  // 建好了但没能登记到最近图库（listed 为 false）：路径只在这个回复里，不管还在不在这一节，都留进这一份表单（没取消、
+  // 没重开的话），回来时照样显示原路径、原因和「打开这个图库」，再点创建不会另建一份。取消或重开过的，提示一句路径。
+  if (lib.listed === false) {
+    if (libForm.gen === gen) { libForm.created = lib; refreshSection(); }
+    else toast(t('保存在 {path}，但没能加入最近图库列表：{reason}', {path: home(lib.path), reason: tb(lib.error)}));
+    return;
+  }
+  // 自动打开只在原来的操作还有效时：等回复期间点了取消、重开了表单或者离开了这一节，图库照样建好（在图库列表里）。
+  if (libForm.gen !== gen || !still(route)) { loadLibraries(); return; }
+  libForm.open = false; libForm.gen++; openLibrary(lib.path, lib.name);
 }
 async function pick(origin) {
-  const gen = libForm.gen, picked = await pickFolders();
-  if (libForm.gen !== gen || !libForm.open) return;
+  // 选择框开着的时候离开了这一节（路由换了）、取消或重开了表单：这次选的作废，不写回表单。
+  const gen = libForm.gen, route = state.route, picked = await pickFolders();
+  if (libForm.gen !== gen || !libForm.open || !still(route)) return;
   const column = libForm.folders[origin] ||= [];
   for (const p of picked) if (!Object.values(libForm.folders).some(c => c.includes(p))) column.push(p);
   refreshSection();

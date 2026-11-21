@@ -40,7 +40,8 @@
 //   value（action 也有）   右边按钮之前的一段文字（「3 部 ›」）。
 //   field 的 min / max / step / unit / wide / plain   数字框的范围和后面的单位（「张」），wide 是长输入框（地址），plain
 //                         关掉拼写检查和自动填充；placeholder 也可以是 state => 文字；enter(state) 是在框里按回车时做的事
-//                         （先把框里的值交给 set，输入法组字时不算）。
+//                         （先把框里的值交给 set，输入法组字时不算）；force(state, 框里现在的值) 为真时焦点在框里也照
+//                         state 改写（名称翻译保存成功后清掉密码框里那个 key）。
 //   list 的 itemHref      item => 地址 | null：这一项的文字是链接；itemTitle 是这一项的悬停提示（完整路径、SHA-256）；
 //                         actions 的 label、title 可以是 (item, state) => 文字，primary 是主按钮。
 // action 带 buttons 时，行级的 disabled 不起作用，每个按钮自己带 disabled。
@@ -277,7 +278,12 @@ export function rows(container, table, {scope: parent = null} = {}) {
       } else if (settled(row, v)) value(refs.input, v);
     }
     if (spec.kind === 'field') attr(refs.input, 'placeholder', read(spec.placeholder, state) || null);
-    if (spec.kind === 'field') { const v = spec.get?.(state); if (settled(row, v ?? '')) value(refs.input, v); }
+    if (spec.kind === 'field') {
+      const v = spec.get?.(state);
+      // force(state, 框里现在的值) 为真时，焦点在框里也照 state 写（保存成功后清掉密码框）。
+      if (spec.force?.(state, refs.input.value)) prop(refs.input, 'value', v ?? '');
+      else if (settled(row, v ?? '')) value(refs.input, v);
+    }
     if (spec.kind === 'list') { show(refs.head, read(row.label, state) || h); row.list.set(read(spec.items, state) || []); }
   }
 

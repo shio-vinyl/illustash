@@ -20,7 +20,7 @@ import {$, error, showArea, toast, written} from './dom.js';
 import {drawEmpty} from './empty.js';
 import {railKey, railNsfw} from './rail.js';
 import {renderChrome, renderHeading} from './shell.js';
-import {lift} from './drag.js';
+import {lift, onPress} from './drag.js';
 import {answerAsk, closeInspector, closeViewer, ensureVisible, indexOf, inspect, noteFavorite, openViewer, peek, pickAlternative, showViewer, singleAction, step, zoomView} from './detail.js';
 import {jumpToCharacter, openPicker} from './palette.js';
 import {inPopover, popoverOpen} from './overlay.js';
@@ -623,10 +623,10 @@ export function wireGrid() {
     const item = state.items[Number(b.closest('.card').dataset.index)];
     if (item?.hint) mutate('/api/change', {ids: [item.uuid], action: 'confirmed', entity: item.hint.id}, pageOf(state.route).lead);
   });
-  $('grid').addEventListener('pointerdown', e => {
+  onPress($('grid'), e => {   // 拖到别的应用以后的第一次按下只有 mousedown（ui/press.js）
     if (e.button !== 0 || e.pointerType === 'touch' || e.target.closest('[data-hint],[data-tagact],button[data-fav]')) return;
     const card = e.target.closest('.card[data-id]');
-    drag = {x: e.clientX, y: e.clientY, start: card ? Number(card.dataset.index) : null, check: !!e.target.closest('.check'), moved: false, id: e.pointerId, base: null, lastY: e.clientY, lastX: e.clientX};
+    drag = {x: e.clientX, y: e.clientY, start: card ? Number(card.dataset.index) : null, check: !!e.target.closest('.check'), moved: false, id: e.pointerId ?? 1, base: null, lastY: e.clientY, lastX: e.clientX};
   });
   window.addEventListener('pointermove', e => {
     if (!drag || e.pointerId !== drag.id) return;

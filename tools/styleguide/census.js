@@ -3,11 +3,11 @@ window.CENSUS = {
  "source": "web/static/app.css、web/static/css/base.css、web/static/css/catalog.css、web/static/css/character.css、web/static/css/detail.css、web/static/css/galleries.css、web/static/css/library.css、web/static/css/overlays.css、web/static/css/rail.css、web/static/css/settings.css、web/static/css/tidy.css、web/static/css/tokens.css",
  "files": {
   "app.css": "23ae6478832cfc0a576d8ad4f4034d236052a195e69cde37483947f35ca892cb",
-  "css/base.css": "bb93692b2cb33514c4cc027ce627826f8dc12c779182b191c99472a216b32943",
+  "css/base.css": "351186aaed4e7469c17b0bcca980ec2fcb3437114c49e4b38e9afd3c78997fe1",
   "css/catalog.css": "6af407c23feb8360ce625efb0c23a632e6d405ac0ca90ec378a5665f40a7df88",
   "css/character.css": "52eaf299dfeb41d32014564d83057a714061e8970e67356a9631efc1dc087a71",
   "css/detail.css": "a9eaf043f2074eea276c1b235e7da4db3630a280ad99ea15956c62d2ecba2904",
-  "css/galleries.css": "61c419bb2bda5759dce9e311cbe4f93cbbbd54d7849c8f8680c702dae74d3553",
+  "css/galleries.css": "616576c53e0bc5ce243f1bba00287f2d6d6716e4e4ea6a20ec027b45235883b8",
   "css/library.css": "111a033624e4d7dac2e9f2c55811b458f41204620a2dfe81df33aeca213804d1",
   "css/overlays.css": "3e18fddd6cbc8c59478a35b978d51868e4c93aeb4a075a98139d54696dd2601a",
   "css/rail.css": "589b1e1f2f6a8ec830520f887de33efdf66c3bf28efd2dc7223f2d9c1be13986",
@@ -15,9 +15,9 @@ window.CENSUS = {
   "css/tidy.css": "0dae765ffbd6e5e96298c7b5ad97a2d9a64c085d13ae8bd0ad0d82c49e536bec",
   "css/tokens.css": "debccd019e1f850d3aaccc13ae456b24e58b704772df86b167b6b16858a42e2c"
  },
- "sha256": "09d950e687ee84c2ae92dbcb0d18121c9b7b1faf3b732a677b3a07d9ab83239b",
- "lines": 1943,
- "rules": 1477,
+ "sha256": "a27fe886f5e1eee469cd9810e090ae423fa8546542875f2362c6657a38c2f82e",
+ "lines": 1949,
+ "rules": 1481,
  "themeVars": {
   "light": {
    "--canvas": "#f4f4f6",

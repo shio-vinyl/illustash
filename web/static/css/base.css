@@ -72,6 +72,11 @@ button.chip:hover,a.chip:hover{background:var(--chip-hover);color:var(--ink)}
 .content>.page-head{flex:none;align-items:center;gap:var(--space-12);padding:var(--space-20) 0 var(--space-12)}
 .page-head>.page-heading{display:flex;flex:1;align-items:center;flex-wrap:wrap;gap:var(--space-12);min-width:0}
 .page-head .page-sub:empty{display:none}
+/* 窄的时候标题截成一行加省略号，不被挤成一个字一行 */
+.page-heading>.heading-main{min-width:0}
+.page-heading .title-page{overflow:hidden;white-space:nowrap;text-overflow:ellipsis;overflow-wrap:normal}
+/* 拖到别的应用以后、下一次按下之前：页面不可选（ui/press.js 的 handedOff） */
+body.handed-off{-webkit-user-select:none;user-select:none}
 .page-head>.page-actions{flex:none;margin-left:0}
 .content>.page-tools[hidden]{display:none}
 

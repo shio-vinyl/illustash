@@ -140,4 +140,5 @@ a.gcard:focus-visible .gcard-prev{box-shadow:0 0 0 2px var(--sheet),0 0 0 4px va
 body.lifting,body.lifting *{cursor:grabbing}
 body.lifting{-webkit-user-select:none;user-select:none}
 body.lifting .rail-peek{display:none}
+body.lifting :is(input,textarea,select,[contenteditable]){pointer-events:none}
 }

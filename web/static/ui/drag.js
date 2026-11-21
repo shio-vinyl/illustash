@@ -29,9 +29,11 @@ import {read, write} from './frame.js';
 import {newManual, putInto} from './gallery_actions.js';
 import {animate, reduced} from './motion.js';
 import {createLayer} from './overlay.js';
-import {wirePress} from './press.js';
+import {handedOff, onPress, wirePress} from './press.js';
 import {mode, railCovers} from './rail.js';
 
+// 网格的按下也要 mousedown 补位（ui/press.js），从这里转出，grid.js 不另导入一个模块。
+export {onPress};
 const GHOST = 64, OFFSET = 14;
 let live = null;   // 正在拖：{ids, ghost, x, y, from, target}
 // Esc 取消拖动：拿起时打开这一层，结束时关掉。
@@ -55,7 +57,7 @@ export function lift(ids, e) {
   for (const id of ids.slice(0, 3)) { const img = make('img'); img.alt = ''; img.src = `/image?id=${encodeURIComponent(id)}&size=thumb`; ghost.append(img); }
   if (ids.length > 1) ghost.append(make('b', 'drop-badge', number(ids.length)));
   document.body.append(ghost);
-  live = {ids, ghost, x: e.clientX, y: e.clientY, from: {x: e.clientX, y: e.clientY}, target: null};
+  live = {ids, ghost, x: e.clientX, y: e.clientY, from: {x: e.clientX, y: e.clientY}, target: null, focus: document.activeElement};
   place();
   document.body.classList.add('lifting');
   mode('drop', dropItems(), t('放进画廊'));
@@ -108,6 +110,7 @@ function handOff() {
   if (!live || !canDrag()) return;
   const ids = live.ids;
   finish();
+  handedOff();   // 松手被系统拖放接走：清选区、页面暂时不可选，下一次按下由 mousedown 补上（ui/press.js）
   startDrag(ids);
 }
 function onOut(e) { if (!e.relatedTarget) handOff(); }
@@ -161,10 +164,17 @@ async function flyBack() {
 function detach() {
   if (!live) return;
   if (live.target) cls(live.target.el, 'is-drop', false);
+  keepFocus(live.focus);
   live = null;
   document.body.classList.remove('lifting');
   escape.close('silent');
   for (const [type, fn] of Object.entries(LISTENERS)) removeEventListener(type, fn);
+}
+// 拖动期间松手不该把焦点落进输入框（在搜索框上松手，下一个按键就打进去了）：拖着时输入框不接指针（css/galleries.css 的
+// body.lifting），松手以后焦点要是进了一个拿起时不在的输入框，就让它失焦。
+const TYPING = 'input,textarea,select,[contenteditable]';
+function keepFocus(was) {
+  setTimeout(() => { const now = document.activeElement; if (now && now !== was && now.matches?.(TYPING)) now.blur(); }, 0);
 }
 // 立刻结束：缩略图摘掉，活页条换回来。
 function finish() {

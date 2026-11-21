@@ -20,9 +20,10 @@ import {number, stamp} from '../core/format.js';
 import {t} from '../core/i18n.js';
 import {charHash} from '../core/route.js';
 import {workLabel} from '../core/labels.js';
-import {attr, cls, css, make, prop, rich, show, text, tpl} from './el.js';
+import {attr, cls, css, make, rich, show, text, tpl} from './el.js';
 import {keyed} from './keyed.js';
-import {exit, thumbs} from './motion.js';
+import {judgeCard} from './judge.js';
+import {thumbs} from './motion.js';
 import {scope} from './scope.js';
 import {thumbUrl} from './day.js';
 import {releaseImages} from './virtual.js';
@@ -32,13 +33,8 @@ const SYNC = tpl`<button class="group day-card day-sync" type="button"><span cla
   data-ref="sub"></span></span></button>`;
 const ASK = tpl`<section class="group day-card day-ask" aria-labelledby="dayAskTitle"><div class="day-ask-peek" data-ref="peek" aria-hidden="true"></div><div class="day-card-text">
   <h3 class="day-card-title" id="dayAskTitle" data-ref="title"></h3><span class="day-card-sub" data-ref="sub"></span></div><div class="day-ask-tiles" data-ref="tiles"></div>
-  <div class="day-ask-foot"><span class="day-ask-state" data-ref="state" role="status"></span><button class="btn is-small is-quiet" type="button" data-ref="later" data-t>以后再说</button>
-  <button class="btn is-small" type="button" data-ref="none" data-t>都不是</button><button class="btn is-small" type="button" data-ref="other" data-t>点掉的是…</button>
-  <button class="btn is-small" type="button" data-ref="open" data-t>不全是</button><button class="btn is-small is-primary" type="button" data-ref="ok"></button>
-  <button class="btn is-small" type="button" data-ref="retry" hidden data-t>重试</button></div></section>`;
-const ASK_TILE = tpl`<button class="day-ask-tile" type="button"><img data-ref="img" alt="" draggable="false" loading="lazy" decoding="async"><i aria-hidden="true">✕</i></button>`;
+  <div class="day-ask-foot" data-ref="foot"></div></section>`;
 const PEEK_IMG = tpl`<img alt="" draggable="false" loading="lazy" decoding="async">`;
-const ratio = x => x.width > 0 && x.height > 0 ? Math.min(2.4, Math.max(.4, x.width / x.height)) : .75;
 // 收起时露出几张小图。
 const PEEK = 4;
 
@@ -76,74 +72,52 @@ export function syncCard({open}) {
 }
 
 // ---------- 认一认 ----------
-function askTile(x) {
-  const {el, refs} = ASK_TILE();
-  el.dataset.peek = x.uuid;
-  attr(refs.img, 'src', thumbUrl(x.uuid)); thumbs.mark(refs.img, x.uuid);   // 看图器从这张 <img> 展开、缩回（#709）
-  css(el, 'aspect-ratio', String(ratio(x)));
-  return {el, update() {}, dispose() { releaseImages(el); }};
-}
+// 图和按钮是共用的判断卡（ui/judge.js）；这里管收起、展开，没读到时的「重试」，和问句。
 export function askCard({answer, other, later, retry}) {
   const s = scope('day-ask'), {el, refs} = ASK();
   show(el, false);   // 有一批要问的才显示
-  let batch = null, off = new Set(), open = false, entity = '';
-  const tiles = keyed(refs.tiles, {key: x => x.uuid, create: askTile, exit: el => exit(el, {to: 'scale'}), scope: s});
-  // 点一张图：在「不是 TA」和「是」之间切换（在图的容器上接，按 data-peek 找是哪张）。
-  s.on(refs.tiles, 'click', e => {
-    let tile = e.target;
-    while (tile && tile !== refs.tiles && !tile.dataset?.peek) tile = tile.parentNode;
-    if (!tile || tile === refs.tiles || tile.inert || tile.disabled) return;
-    const uuid = tile.dataset.peek;
-    if (off.has(uuid)) off.delete(uuid); else off.add(uuid);
-    paint();
-  });
+  let batch = null, open = false, lost = false, entity = '';
+  const shown = () => !lost && !!batch;
+  const judge = judgeCard({scope: s, look: 'tiles', max: Infinity, shrink: true,
+    tip: {off: t('点一下：不是 TA'), on: t('点一下：改回「是」')},
+    status: ({k}) => !shown() || !open ? '' : k ? t('{n} 张不是 TA', {n: number(k)}) : t('点掉不是 TA 的'),
+    actions: [
+      {key: 'later', label: t('以后再说'), quiet: true, when: shown, run: () => later()},
+      {key: 'none', label: t('都不是'), when: ({n, k}) => shown() && open && k < n, title: ({n}) => t('{n} 张都记成不是 TA', {n: number(n)}), run: off => answer('none', off)},
+      {key: 'other', label: t('点掉的是…'), when: ({k}) => shown() && open && k > 0, run: off => other(off)},
+      {key: 'open', label: t('不全是'), when: () => shown() && !open, run: () => { open = true; paint(); refs.tiles.querySelector('button')?.focus(); }},
+      {key: 'ok', label: ({n, k}) => k === n ? t('都不是') : k ? t('其余 {n} 张是', {n: number(n - k)}) : t('都对'), primary: true, when: shown,
+        run: off => answer(off.size === batch.items.length ? 'none' : 'ok', off)},
+      {key: 'retry', label: t('重试'), when: () => lost, run: () => retry()},
+    ]});
+  refs.tiles.append(judge.el); refs.foot.append(judge.acts);
   const peek = keyed(refs.peek, {key: x => x.uuid, scope: s, create: x => {
     const {el} = PEEK_IMG(); attr(el, 'src', thumbUrl(x.uuid)); thumbs.mark(el, x.uuid); return {el, update() {}, dispose() { releaseImages(el); }};
   }});
-  s.on(refs.open, 'click', () => { open = true; paint(); refs.tiles.querySelector('button')?.focus(); });
-  s.on(refs.ok, 'click', () => answer(off.size === batch.items.length ? 'none' : 'ok', new Set(off)));
-  s.on(refs.none, 'click', () => answer('none', new Set(off)));
-  s.on(refs.other, 'click', () => other(new Set(off)));
-  s.on(refs.later, 'click', () => later());
-  s.on(refs.retry, 'click', () => retry());
 
-  // 每次写全部状态；值没变的不动 DOM（ui/el.js）。
   function paint() {
-    if (!batch) return;
-    const n = batch.items.length, k = off.size, all = k === n;
-    cls(el, 'is-open', open);
-    show(refs.peek, !open); show(refs.tiles, open); show(refs.open, !open); show(refs.state, open);
-    show(refs.none, open && !all); show(refs.other, open && k > 0);
-    text(refs.state, k ? t('{n} 张不是 TA', {n: number(k)}) : t('点掉不是 TA 的'));
-    attr(refs.none, 'title', t('{n} 张都记成不是 TA', {n: number(n)}));
-    text(refs.ok, all ? t('都不是') : k ? t('其余 {n} 张是', {n: number(n - k)}) : t('都对'));
-    for (const tile of refs.tiles.children) {
-      if (tile.inert) continue;
-      const no = off.has(tile.dataset.peek);
-      attr(tile, 'aria-pressed', String(no));
-      attr(tile, 'title', (no ? t('点一下：改回「是」') : t('点一下：不是 TA')) + ' · ' + t('长按或 Space 看大图'));
-    }
+    cls(el, 'is-open', open); cls(el, 'is-failed', lost);
+    show(refs.peek, shown() && !open); show(refs.tiles, shown() && open);
+    judge.paint();
   }
-  // 没读到（failed）：卡片写一句、给「重试」，其余都藏起来。
-  function failed(on) {
-    cls(el, 'is-failed', on); show(refs.retry, on);
-    for (const n of [refs.peek, refs.tiles, refs.state, refs.later, refs.none, refs.other, refs.open, refs.ok]) if (on) show(n, false);
-    // 标题和 titleFor 一样直接换内容（它是拼出来的节点，不经 text() 的缓存）。
-    if (on) { refs.title.textContent = t('没读到要认的图'); text(refs.sub, ''); }
-  }
-  function update({batch: next, failed: lost = false}) {
-    show(el, lost || !!next?.items?.length);
+  function update({batch: next, failed = false}) {
+    show(el, failed || !!next?.items?.length);
     // 藏起来（没有题、开关关了、NSFW 换了）或没读到：点选和展开都复位，再出现时从头来。
-    if (!next?.items?.length) { batch = null; entity = ''; open = false; off = new Set(); failed(lost); return; }
-    failed(false); show(refs.ok, true); show(refs.later, true);
+    if (!next?.items?.length) {
+      batch = null; entity = ''; open = false; lost = failed; judge.update([]);
+      // 标题和 titleFor 一样直接换内容（它是拼出来的节点，不经 text() 的缓存）。
+      if (failed) { refs.title.textContent = t('没读到要认的图'); text(refs.sub, ''); }
+      paint(); return;
+    }
+    lost = false;
     // 同一个角色、只是少了几张（「点掉的是…」提交了那几张）：留在展开的样子，点掉的只留还在的。其余情况（换了一批）收起、清掉点掉的。
     const shrunk = batch && next.entity === entity && next.items.every(x => batch.items.some(y => y.uuid === x.uuid));
-    if (shrunk) off = new Set([...off].filter(u => next.items.some(x => x.uuid === u)));
-    else { open = false; off = new Set(); entity = next.entity; titleFor(next); }
+    const off = shrunk ? new Set([...judge.off].filter(u => next.items.some(x => x.uuid === u))) : new Set();
+    if (!shrunk) { open = false; entity = next.entity; titleFor(next); }
     batch = next;
     const why = next.kind === 'hint' ? t('和你确认过的 TA 很像') : next.kind === 'seed' ? '' : t('随机抽查');
     text(refs.sub, [workLabel({id: next.entity, name: next.name}), why, t('机器认出 {n} 张', {n: number(next.items.length)})].filter(Boolean).join(' · '));
-    tiles.set(next.items); peek.set(next.items.slice(0, PEEK));
+    judge.update(next.items, {off}); peek.set(next.items.slice(0, PEEK));
     paint();
   }
   // 问句里的名字是去角色页的链接：用节点拼（ui/el.js 的 rich），名字只进 textContent。
@@ -156,7 +130,7 @@ export function askCard({answer, other, later, retry}) {
   // 写入的时候锁住这一批：按钮和图都点不动，写完再放开（ui/day_ask.js）。
   function busy(on) {
     cls(el, 'is-busy', on); attr(el, 'aria-busy', on ? 'true' : null);
-    for (const b of el.querySelectorAll('button')) prop(b, 'disabled', on);
+    judge.busy(on);
   }
   return {el, update, busy, dispose: () => s.dispose()};
 }

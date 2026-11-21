@@ -1,5 +1,6 @@
-// 整理（#706）：未识别、重复、已排除三个页签各自的标题、说明、子页签和空了时的去处，以及随机抽查、身份整理、画师抽查的标题。
-// 三个页签之间的分段切换画在页头上（ui/shell.js）；各页的主区在 ui/groups.js、ui/similar.js、ui/identity.js、ui/artist_audit.js 和网格里。
+// 整理（#706）：未识别、可能认错（#787）、重复、已排除四个页签各自的标题、说明、子页签和空了时的去处，以及随机抽查、身份整理、
+// 画师抽查的标题。四个页签之间的分段切换画在页头上（ui/shell.js）；各页的主区在 ui/groups.js、ui/doubts.js、ui/similar.js、
+// ui/identity.js、ui/artist_audit.js 和网格里。
 import {esc, number} from '../core/format.js';
 import {t} from '../core/i18n.js';
 import {REASONS} from '../core/labels.js';
@@ -60,6 +61,8 @@ implement({
   group: {subTabs, helpHint: true,
     head: (r, {n}) => ({title: t('第 {id} 组', {id: r.id}), actions: groupActions(),
       sub: [state.totalReady && !state.total ? '' : t('{n} 张长得像的未识别图', {n}), ...(state.groupTraits || [])].filter(Boolean).join(' · ')})},
+  doubts: {head: tidy, help: () => [t('机器算给了某个角色、但和另一个角色分不太清的图。'), t('点一下缩略图把它点掉，长按或鼠标停在上面按 Space 看大图。'),
+    t('回答只作用于卡上的图。')]},
   duplicates: {head: tidy, subTabs, emptyNext: () => [{label: t('相似的图'), href: '#/similar'}], help: () => [t('同色角标是同一组。'), t('组里的角色不一致时不折叠，对齐以后折叠成一张。')]},
   similar: {head: tidy, subTabs, help: () => [t('同一幅画的不同文件。'), t('点一组进去看。')]},
   sgroup: {subTabs, emptyNext: () => [{label: t('回到相似的图'), href: '#/similar'}], help: () => [t('选中两张以上可以判断它们的关系。')], helpHint: true},

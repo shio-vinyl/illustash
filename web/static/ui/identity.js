@@ -44,7 +44,7 @@ function pairCard(page, x) {
   r.acts.append(acts.el);
   r.title.append(title.el);
   r.strip.replaceWith(sides.el);
-  const a = thumbStrip(p.a, {scope: s, max: 6, gimg: false}), b = thumbStrip(p.b, {scope: s, max: 6, gimg: false});
+  const a = thumbStrip(p.a, {scope: s, max: 6}), b = thumbStrip(p.b, {scope: s, max: 6});
   const buttons = [...acts.el.querySelectorAll('[data-act]')];
   let current = x;
   setPeekList(p.a, () => current.a.samples); setPeekList(p.b, () => current.b.samples);

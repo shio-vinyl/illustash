@@ -443,6 +443,159 @@ note('正常结束')
         self.assertEqual(self.request('/api/assets/count')['status'],200)
         self.assertEqual(before,self.rows(['assertions','actions','relations','prototypes']))
 
+    def test_research_and_names_concurrent_complete_without_interference(self):
+        # #752：相似图片/学习与角色名称同时运行时互不打断；合并残留链接不导致名称失败；正常取消不写 invalid_input 诊断。
+        import subprocess
+        import tempfile
+        from tests import test_native_names as names_mod
+        from tests.test_read_http import SPAWN, wait_human_backup
+        from tools.verify_read_http import enter
+
+        self.stop(self.process)
+        service = names_mod.TextService()
+        self.addCleanup(service.close)
+        self.env.update(
+            ILLUSTASH_COPYRIGHT_BASE=service.base,
+            ILLUSTASH_BANGUMI_BASE=service.base,
+            ILLUSTASH_RESEARCH_RETRY_MS='200',
+            ILLUSTASH_RESEARCH_TIMEOUT_MS=TASK_LIMIT_MS,
+        )
+
+        def start_host():
+            log = tempfile.TemporaryFile()
+            self.addCleanup(log.close)
+            args = [
+                str(self.binary), 'http', '--no-auto-sync', '--names-network',
+                '--library', str(self.lib.path), '--port', str(self.port),
+                '--root', str(self.resources), '--no-index-check',
+            ]
+            proc = subprocess.Popen(args, env=self.env, stdout=log, stderr=log, **SPAWN)
+            self.addCleanup(self.stop, proc)
+            enter(self.origin, log, proc)
+            wait_human_backup(self, self.origin)
+            return proc, log
+
+        def names_state():
+            return json.loads(self.request('/api/names?progress=1')['body'])['state']
+
+        def wait_names(target='done'):
+            wait_until(lambda: names_state()['status'] in ('done', 'error'))
+            self.assertEqual(names_state()['status'], target, names_state())
+
+        # 先准备一个已合并实体（保留旧 danbooru 链接）和一个共享同 tag 的活跃 wd 实体，验证名称任务不会因此报 invalid_input。
+        with sqlite3.connect(self.lib.db) as c:
+            c.execute("INSERT OR REPLACE INTO meta(key,value) VALUES ('terms_writer','1')")
+            c.execute("INSERT INTO terms(key,kind,origin) VALUES ('merged_old','character','import'),('live_wd','character','import')")
+            c.execute(
+                "INSERT INTO term_tree(term_id,parent_id,merged_into,work_text,variant,artist,label_only,mascot,original,seq) "
+                "SELECT id,NULL,'live_wd','Example','','',0,0,0,9001 FROM terms WHERE key='merged_old'"
+            )
+            c.execute(
+                "INSERT INTO term_tree(term_id,parent_id,merged_into,work_text,variant,artist,label_only,mascot,original,seq) "
+                "SELECT id,NULL,NULL,'Example','','',0,0,0,9002 FROM terms WHERE key='live_wd'"
+            )
+            c.execute(
+                "INSERT INTO term_links(system,key,term_id,current,source,added_at) "
+                "SELECT 'danbooru','shared_tag',id,1,'import','2026-11-19' FROM terms WHERE key='merged_old'"
+            )
+            c.execute(
+                "INSERT INTO term_links(system,key,term_id,current,source,added_at) "
+                "SELECT 'wd_character','shared_tag',id,1,'import','2026-11-19' FROM terms WHERE key='live_wd'"
+            )
+            c.execute(
+                "INSERT INTO memberships(uuid,entity,status,origin,sources,source_count,ccip_only,skey) "
+                "VALUES ('a','live_wd','auto','wd','WD',1,0,'')"
+            )
+            c.execute("DELETE FROM meta WHERE key='terms_writer'")
+
+        self.process, self.log = start_host()
+        self.token = json.loads(self.request('/api/bootstrap')['body'])['token']
+        self.finished()
+        wait_until(lambda: names_state()['status'] in ('idle', 'done', 'error'))
+        self.assertNotEqual(names_state()['status'], 'error', names_state())
+
+        # 场景 1：events（含 similar）运行中并发执行全库角色名称刷新，双方一次完成且研究不判定输入变化。
+        runs = len(self.versions())
+        self.mode.write_text('held')
+        self.poke_event()
+        self.wait(lambda: len(self.versions()) > runs)
+        self.assertEqual(self.request('/api/names', {'action': 'refresh'})['status'], 200)
+        wait_names('done')
+        self.mode.write_text('ok')
+        self.release()
+        seen = []
+
+        def settled():
+            s = self.state()
+            seen.append(s['status'])
+            return s['status'] in ('idle', 'error')
+
+        self.wait(settled)
+        self.assertEqual(seen[-1], 'idle', self.why(seen))
+        self.assertNotIn('waiting', seen, self.why(seen))
+        self.assertEqual(len(self.versions()) - runs, 1, self.why(seen))
+        self.assertEqual(self.pending(), 0, self.why(seen))
+
+        # 场景 2：名称在线查询暂停时发布显式相似扫描，发布不能使该名称查询的来源失效。
+        runs = len(self.versions())
+        service.block = True
+        service.entered.clear()
+        service.release.clear()
+        try:
+            self.assertEqual(self.request('/api/names', {'action': 'refresh'})['status'], 200)
+            self.assertTrue(service.entered.wait(WAIT))
+            self.mode.write_text('held')
+            self.assertEqual(self.request('/api/similar', {})['status'], 200)
+            self.wait(lambda: len(self.versions()) > runs)
+            self.mode.write_text('ok')
+            self.release()
+            self.finished()
+            self.assertEqual(len(self.versions()) - runs, 1, self.why())
+            self.assertEqual(names_state()['status'], 'running', names_state())
+        finally:
+            service.block = False
+            service.release.set()
+        wait_names('done')
+
+        # 场景 3：研究与名称同时运行中正常关闭宿主，重启后诊断里不应出现因取消记下的 invalid_input 或 conflict。
+        from tools.verify_read_http import output
+        self.env['ILLUSTASH_TEST_TRACE_NAMES_CANCEL'] = '1'
+        self.stop(self.process)
+        self.process, self.log = start_host()
+        self.token = json.loads(self.request('/api/bootstrap')['body'])['token']
+        self.finished()
+        wait_until(lambda: names_state()['status'] in ('idle', 'done'))
+
+        self.mode.write_text('hang')
+        self.pid.unlink(missing_ok=True)
+        self.assertEqual(self.request('/api/similar', {})['status'], 200)
+        self.wait(self.pid.exists)
+        service.entered.clear()
+        service.release.clear()
+        service.block = True
+        self.assertEqual(self.request('/api/names', {'action': 'refresh'})['status'], 200)
+        self.assertTrue(service.entered.wait(WAIT))
+        with ThreadPoolExecutor(1) as pool:
+            stopping = pool.submit(self.stop, self.process)
+            try:
+                wait_until(lambda: b'ILLUSTASH_TEST_NAMES_CANCELLED' in output(self.log))
+            finally:
+                service.release.set()
+            stopping.result(timeout=WAIT)
+        service.block = False
+        self.mode.write_text('ok')
+
+        self.process, self.log = start_host()
+        self.token = json.loads(self.request('/api/bootstrap')['body'])['token']
+        self.finished()
+        wait_names('done')
+        records = json.loads(self.request('/api/diagnostics')['body'])['records']
+        bad = [
+            r for r in records
+            if r.get('operation') in ('research', 'names') and r.get('cause') in ('conflict', 'invalid_input')
+        ]
+        self.assertEqual(bad, [], records)
+
 
 def lines(path):
     return path.read_text().split() if path.exists() else []

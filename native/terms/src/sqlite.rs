@@ -1,10 +1,35 @@
 pub use illustash_platform::sqlite::*;
 
+/// 在任何读取或执行归档里的 schema 之前，配置这一条 SQLite 连接。
+pub(crate) fn protect_archive(c: &rusqlite::Connection) -> rusqlite::Result<()> {
+    use rusqlite::config::DbConfig;
+    c.set_db_config(DbConfig::SQLITE_DBCONFIG_TRUSTED_SCHEMA, false)?;
+    c.set_db_config(DbConfig::SQLITE_DBCONFIG_DEFENSIVE, true)?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use rusqlite::OpenFlags;
     use std::fs;
+
+    #[test]
+    fn archive_flags_apply_to_the_supplied_connection() {
+        use rusqlite::config::DbConfig;
+
+        let connection = rusqlite::Connection::open_in_memory().unwrap();
+        let other = rusqlite::Connection::open_in_memory().unwrap();
+        connection.set_db_config(DbConfig::SQLITE_DBCONFIG_TRUSTED_SCHEMA, true).unwrap();
+        connection.set_db_config(DbConfig::SQLITE_DBCONFIG_DEFENSIVE, false).unwrap();
+        other.set_db_config(DbConfig::SQLITE_DBCONFIG_TRUSTED_SCHEMA, true).unwrap();
+        other.set_db_config(DbConfig::SQLITE_DBCONFIG_DEFENSIVE, false).unwrap();
+        protect_archive(&connection).unwrap();
+        assert!(!connection.db_config(DbConfig::SQLITE_DBCONFIG_TRUSTED_SCHEMA).unwrap());
+        assert!(connection.db_config(DbConfig::SQLITE_DBCONFIG_DEFENSIVE).unwrap());
+        assert!(other.db_config(DbConfig::SQLITE_DBCONFIG_TRUSTED_SCHEMA).unwrap());
+        assert!(!other.db_config(DbConfig::SQLITE_DBCONFIG_DEFENSIVE).unwrap());
+    }
 
     #[test]
     fn long_path_create_attach_wal_backup_and_restore() {

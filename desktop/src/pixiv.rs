@@ -76,7 +76,8 @@ fn window(app: &AppHandle) -> Result<WebviewWindow, String> {
         });
     #[cfg(target_os = "macos")]
     let builder = builder.data_store_identifier(STORE);
-    let win = builder.build().map_err(|e| crate::i18n::tr_with("打不开 Pixiv 窗口：{error}", &[("error", &e)]))?;
+    let win = crate::webview::build(builder)
+        .map_err(|e| crate::i18n::tr_with("打不开 Pixiv 窗口：{error}", &[("error", &e)]))?;
     let hide = win.clone();
     win.on_window_event(move |event| {
         if let WindowEvent::CloseRequested { api, .. } = event {

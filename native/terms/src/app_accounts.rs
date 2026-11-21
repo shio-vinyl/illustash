@@ -65,27 +65,6 @@ pub fn network_state(authorized: bool) -> Result<Value> {
         "pixiv_user_id":user_id,"pixiv_expired":m.get("pixiv").and_then(|p|p.get("expired")).map(Json::text),
         "saucenao_bound":secret_inner("saucenao")?.is_some()}))
 }
-/// 敏感字段有意不实现 Debug/Serialize。
-pub struct ModelCredentials {
-    pub key: Option<String>,
-    pub model: String,
-    pub base: String,
-}
-pub fn model_credentials(c: &rusqlite::Connection) -> Result<ModelCredentials> {
-    let v = c
-        .prepare("SELECT key,value FROM name_settings")?
-        .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?
-        .collect::<rusqlite::Result<std::collections::HashMap<_, _>>>()?;
-    Ok(ModelCredentials {
-        key: v.get("model_key").or_else(|| v.get("deepseek_key")).filter(|s| !s.is_empty()).cloned(),
-        model: v
-            .get("model_name")
-            .or_else(|| v.get("deepseek_model"))
-            .cloned()
-            .unwrap_or_else(|| "deepseek-chat".into()),
-        base: v.get("model_base").cloned().unwrap_or_else(|| "https://api.deepseek.com".into()),
-    })
-}
 fn support() -> Result<PathBuf> {
     crate::platform_credentials::support()
 }
@@ -655,14 +634,5 @@ mod tests {
         assert!(p.dump().starts_with(r#"{"user_id": "123", "name": "new", "following": 7, "via": "app""#));
         let m = updated_pixiv(m, None, Some(PIXIV_EXPIRED), Some("HTTP 401"));
         assert_eq!(m.get("pixiv").unwrap().get("expired_detail").unwrap().text(), "HTTP 401");
-    }
-    #[test]
-    fn model_credentials_keep_legacy_fallback_without_network_authorization() {
-        let c = rusqlite::Connection::open_in_memory().unwrap();
-        c.execute_batch("CREATE TABLE name_settings(key TEXT PRIMARY KEY,value TEXT); INSERT INTO name_settings VALUES ('deepseek_key','synthetic-key'),('deepseek_model','synthetic-model');").unwrap();
-        let model = model_credentials(&c).unwrap();
-        assert_eq!(model.key.as_deref(), Some("synthetic-key"));
-        assert_eq!(model.model, "synthetic-model");
-        assert_eq!(model.base, "https://api.deepseek.com");
     }
 }

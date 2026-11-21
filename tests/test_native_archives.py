@@ -24,10 +24,13 @@ class NativeArchivesTest(unittest.TestCase):
     setUp = lifecycle.NativeLifecycleTest.setUp
     package = lifecycle.NativeLifecycleTest.package
     stop = lifecycle.NativeLifecycleTest.stop
-    start = lifecycle.NativeLifecycleTest.start
     clone_closed_library = lifecycle.NativeLifecycleTest.clone_closed_library
     request = lifecycle.NativeLifecycleTest.request
     pair = lifecycle.NativeLifecycleTest.pair
+
+    def start(self, path, extra=(), command=None):
+        self.env['ILLUSTASH_NO_KEYCHAIN'] = '1'
+        return lifecycle.NativeLifecycleTest.start(self, path, extra, command)
 
     def reference_status(self, url, body=None, **kwargs):
         """原参考服务器对同一请求给出的状态码（已录制）。"""

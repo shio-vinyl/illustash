@@ -290,6 +290,21 @@ fn writer(path: &std::path::Path) -> Result<Connection> {
     c.busy_timeout(crate::app_library::TASK_WRITE_WAIT)?;
     Ok(c)
 }
+struct SyncTiming(Option<std::time::Instant>);
+
+impl SyncTiming {
+    fn new() -> Self {
+        Self(std::env::var_os("ILLUSTASH_SYNC_TIMING").is_some().then(std::time::Instant::now))
+    }
+
+    fn mark(&mut self, stage: &str) {
+        if let Some(start) = self.0 {
+            eprintln!("sync-timing {stage} {:.3} ms", start.elapsed().as_secs_f64() * 1000.0);
+            self.0 = Some(std::time::Instant::now());
+        }
+    }
+}
+
 /// 可供 M4 复用：文件盘点后本地刷新；imported 事件与应用变更同事务提交，保留 pending 给 M4 消费。
 pub(crate) fn run(library: &Library, cancel: &AtomicBool, update: &dyn Fn(Value)) -> Result<Value> {
     run_with(library, cancel, None, &crate::app_resources::default_root(), 0, update)
@@ -305,6 +320,7 @@ fn run_with(
     if !Syncer::available(library) {
         return Err(Error::Invalid("原生同步没有支持的来源".into()));
     }
+    let mut timing = SyncTiming::new();
     let wd = context.and_then(|_| {
         crate::app_wd_extension::Delivery::load(root, library).unwrap_or_else(|error| {
             eprintln!("无法加载本次同步的 WD 扩展包：{error}");
@@ -340,6 +356,7 @@ fn run_with(
         let mut sources: Vec<(String, Value)> = Vec::new();
         let mut scanned = 0;
         let mut unreadable = 0;
+        timing.mark("prepare");
         step.set("scan, source.sqlite");
         for source in library.config()["sources"].as_array().into_iter().flatten() {
             let done_in_source = std::cell::Cell::new(0);
@@ -395,6 +412,7 @@ fn run_with(
             }
             // 应用库失败后靠持久化的来源哈希驱动重试，而不是这份内存里的列表。
         }
+        timing.mark("source_scan");
         // 先扫描，避免已删除/换内容的图片被旧 pending 永久挡住；仍有效的结果再恢复。
         step.set("recognition resume, source.sqlite and library.sqlite");
         let deferred = retry_recognition_write(active, || {
@@ -428,7 +446,8 @@ fn run_with(
         check(cancel)?;
         update(json!({"status":"importing"}));
         step.set("library refresh, library.sqlite");
-        let (out, refreshed) = refresh(library, run_id, cancel, &deferred)?;
+        timing.mark("resume_and_record");
+        let (out, refreshed) = refresh(library, run_id, cancel, &deferred, &mut timing)?;
         counts["imported"] = out["added"].clone();
         counts["removed"] = out["removed"].clone();
         let pending = out["pending"].as_u64().expect("internal sync counter must be unsigned");
@@ -516,6 +535,7 @@ fn refresh(
     run_id: i64,
     cancel: &AtomicBool,
     deferred: &HashSet<String>,
+    timing: &mut SyncTiming,
 ) -> Result<(Value, HashSet<String>)> {
     let mut c = writer(&library.db())?;
     let mut src = crate::app_library::read_connection(&library.source())?;
@@ -523,17 +543,9 @@ fn refresh(
     let live=crate::app_migrate_data::rows(&src,"SELECT uuid,filename,src_path,width,height,added_at,src_kind FROM assets WHERE in_scope=1 AND coalesce(trashed,0)=0")?;
     let known =
         crate::app_migrate_data::rows(&c, "SELECT uuid,filename,src_path,width,height,added_at,src_kind FROM assets")?;
-    let have = known
-        .iter()
-        .map(|r| r[0].as_str().expect("SQLite uuid column must be text").to_owned())
-        .collect::<HashSet<_>>();
-    let present =
-        live.iter().map(|r| r[0].as_str().expect("SQLite uuid column must be text").to_owned()).collect::<HashSet<_>>();
-    let removed = known
-        .iter()
-        .filter(|r| !present.contains(r[0].as_str().expect("SQLite uuid column must be text")))
-        .map(|r| r[0].clone())
-        .collect::<Vec<_>>();
+    let have: HashMap<_, _> = known.iter().map(|r| (asset_uuid(r), r)).collect();
+    let present: HashSet<_> = live.iter().map(asset_uuid).collect();
+    let removed: Vec<_> = known.iter().map(asset_uuid).filter(|u| !present.contains(u)).map(str::to_owned).collect();
     // 机器结果是否最新以源库标签为准。已有的内容元数据持久化在 meta 里，这样源库提交后应用库失败时，
     // 即使下次扫描看到文件没变也会重试。
     let journal_path = library.source().with_extension("scan-pending.json");
@@ -545,8 +557,9 @@ fn refresh(
     let mut changed = Vec::new();
     let mut hashes = Vec::new();
     let mut labels_changed = HashSet::new();
+    let mut paths = Vec::new();
     let metadata = c
-        .prepare("SELECT key,value FROM meta WHERE key LIKE 'folder_hash:%' OR key LIKE 'folder_labels:%'")?
+        .prepare("SELECT key,value FROM meta WHERE key GLOB 'folder_hash:*' OR key GLOB 'folder_labels:*'")?
         .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?
         .collect::<rusqlite::Result<HashMap<_, _>>>()?;
     let source_hashes = src
@@ -555,98 +568,128 @@ fn refresh(
         .collect::<rusqlite::Result<HashMap<_, _>>>()?;
 
     for row in &live {
-        let u = row[0].as_str().expect("SQLite uuid column must be text");
+        let u = asset_uuid(row);
         // 保留其应用状态和哈希基线；输入回来后仍须经过 resume 校验，不能由普通刷新发布。
         if deferred.contains(u) {
             continue;
         }
-        let hash = source_hashes.get(u).cloned().unwrap_or(None);
+        let previous = have.get(u);
+        if previous.is_some_and(|r| r[1] != row[1] || r[2] != row[2]) {
+            paths.push(row);
+        }
+        let hash = source_hashes.get(u).and_then(Option::as_deref);
         let label_rows =
             crate::app_migrate_data::rows_with(&src, "SELECT * FROM labels WHERE uuid=? ORDER BY dim,value,conf", [u])?;
         let label_hash = crate::strict_json::sha256_hex(
             serde_json::to_string(&label_rows).expect("SQLite rows contain serializable JSON").as_bytes(),
         );
         let label_key = format!("folder_labels:{u}");
-        let old_labels = metadata.get(&label_key);
-        if have.contains(u) && old_labels.map(String::as_str) != Some(label_hash.as_str()) && !label_rows.is_empty() {
-            labels_changed.insert(u.to_string());
+        if metadata.get(&label_key) != Some(&label_hash) {
+            if previous.is_some() && !label_rows.is_empty() {
+                labels_changed.insert(u);
+            }
+            hashes.push((label_key, label_hash));
         }
-        hashes.push((label_key, label_hash));
         let key = format!("folder_hash:{u}");
-        let old = metadata.get(&key);
-        if have.contains(u)
-            && ((old.is_some() && old.map(String::as_str) != hash.as_deref())
-                || (old.is_none() && journal.get(u).and_then(Value::as_str) == hash.as_deref()))
-        {
+        let old = metadata.get(&key).map(String::as_str);
+        let replaced = match old {
+            Some(old) => Some(old) != hash,
+            None => journal.get(u).and_then(Value::as_str).is_some_and(|recorded| Some(recorded) == hash),
+        };
+        if previous.is_some() && replaced {
             changed.push(u.to_owned());
         }
-        if let Some(hash) = hash {
-            hashes.push((key, hash));
+        if let Some(hash) = hash.filter(|hash| old != Some(*hash)) {
+            hashes.push((key, hash.to_owned()));
         }
     }
-    let pending:i64=src.query_row("SELECT count(*) FROM assets a WHERE in_scope=1 AND coalesce(trashed,0)=0 AND NOT EXISTS(SELECT 1 FROM labels l WHERE l.uuid=a.uuid AND l.dim='rating')",[],|r|r.get(0))?;
-    // Photos 保持既定的做法：只有就绪的图片才导入应用库。文件夹盘点结果在识别之前就能浏览，这是 M3 交付的行为；
-    // 两种来源共用同一份待办。
-    let photos_pending=src.prepare("SELECT a.uuid FROM assets a WHERE EXISTS(SELECT 1 FROM asset_links l WHERE l.asset=a.uuid AND l.system='photos' AND l.source_id=a.source_id) AND NOT EXISTS(SELECT 1 FROM labels l WHERE l.uuid=a.uuid AND l.dim='rating')")?.query_map([],|r|r.get::<_,String>(0))?.collect::<rusqlite::Result<HashSet<_>>>()?;
+    // 只有在库且没有分级的图片还在等待识别。Photos 必须先识别；文件夹可先导入。
+    let mut pending = 0_i64;
+    let mut photos_pending = HashSet::new();
+    let mut query = src.prepare(
+        "SELECT a.uuid, EXISTS(SELECT 1 FROM asset_links l
+            WHERE l.asset=a.uuid AND l.system='photos' AND l.source_id=a.source_id)
+         FROM assets a WHERE in_scope=1 AND coalesce(trashed,0)=0
+            AND NOT EXISTS(SELECT 1 FROM labels l WHERE l.uuid=a.uuid AND l.dim='rating')",
+    )?;
+    let mut results = query.query([])?;
+    while let Some(row) = results.next()? {
+        pending += 1;
+        if row.get::<_, bool>(1)? {
+            photos_pending.insert(row.get::<_, String>(0)?);
+        }
+    }
+    let content_changed: HashSet<_> = changed.iter().map(String::as_str).collect();
     let added = live
         .iter()
-        .filter(|r| !deferred.contains(r[0].as_str().expect("SQLite uuid column must be text")))
-        .filter(|r| !photos_pending.contains(r[0].as_str().expect("SQLite uuid column must be text")))
         .filter(|r| {
-            !have.contains(r[0].as_str().expect("SQLite uuid column must be text"))
-                || labels_changed.contains(r[0].as_str().expect("SQLite uuid column must be text"))
-                || changed.iter().any(|u| Some(u.as_str()) == r[0].as_str())
+            let u = asset_uuid(r);
+            !deferred.contains(u)
+                && !photos_pending.contains(u)
+                && (!have.contains_key(u) || labels_changed.contains(u) || content_changed.contains(u))
         })
         .cloned()
         .collect::<Vec<_>>();
-    let uuids =
-        added.iter().map(|r| r[0].as_str().expect("SQLite uuid column must be text").to_owned()).collect::<Vec<_>>();
+    let uuids: Vec<_> = added.iter().map(|r| asset_uuid(r).to_owned()).collect();
+    timing.mark("compare");
     check(cancel)?;
     // WD 结果走既定的原生证据包路径交付；源库快照保持只读。
-    crate::app_migrate::deliver_wd(&mut c, &library.source(), library.id(), Some(&uuids), true)?;
-    let list = serde_json::to_string(&uuids).expect("UUID strings are serializable");
-    let labels=crate::app_migrate_data::rows(&src,&format!("SELECT uuid,value,conf,dim FROM labels WHERE ((dim='character' AND conf>=0.35) OR dim='char_ext') AND uuid IN (SELECT value FROM json_each('{}'))",list.replace('\'',"''")))?;
-    let decisions = crate::app_migrate_data::rows(
-        &src,
-        &format!(
-            "SELECT uuid,value FROM decisions WHERE dim='character' AND uuid IN (SELECT value FROM json_each('{}'))",
-            list.replace('\'', "''")
-        ),
-    )?;
-    let realistic = crate::app_recognition::realistic(&c, &src, &uuids)?;
-    let album = library.source().parent().expect("source database path must have a parent").join("album-char-map.json");
-    let album = if album.is_file() {
-        serde_json::from_str::<Value>(&std::fs::read_to_string(album)?).map_err(|e| Error::Invalid(e.to_string()))?
-            ["map"]
-            .clone()
-    } else {
-        json!({})
-    };
+    if !uuids.is_empty() {
+        crate::app_migrate::deliver_wd(&mut c, &library.source(), library.id(), Some(&uuids), true)?;
+    }
     let tx = c.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
     crate::schema::begin_writing(&tx)?;
     crate::app_migrate::invalidate_wd(&tx, &changed)?;
-    for r in &live {
-        if deferred.contains(r[0].as_str().expect("SQLite uuid column must be text")) {
-            continue;
-        }
+    for r in paths {
         tx.execute(
             "UPDATE assets SET filename=?,src_path=? WHERE uuid=?",
-            params![r[1].as_str(), r[2].as_str(), r[0].as_str()],
+            params![r[1].as_str(), r[2].as_str(), asset_uuid(r)],
         )?;
     }
-    let shape = known
-        .iter()
-        .filter(|r| !removed.contains(&r[0]) && !uuids.iter().any(|u| Some(u.as_str()) == r[0].as_str()))
-        .cloned()
-        .chain(added.iter().cloned())
-        .collect::<Vec<_>>();
-    let stamp = now();
-    let args = json!({"op":"import","rows":added,"removed":removed,"run_id":run_id,"new_ids":{},"wd_tags":crate::app_migrate_data::rows(&src,"SELECT char_id,wd_tag FROM characters")?,"labels":labels,"decisions":decisions,"album_map":album,"duplicates":crate::app_migrate_data::duplicates(&tx,&src,&shape)?,"realistic":realistic,"indexed":stamp});
     let out = if !uuids.is_empty() || !removed.is_empty() {
+        let list = serde_json::to_string(&uuids).expect("UUID strings are serializable");
+        let labels = crate::app_migrate_data::rows_with(
+            &src,
+            "SELECT uuid,value,conf,dim FROM labels WHERE ((dim='character' AND conf>=0.35) OR dim='char_ext')
+             AND uuid IN (SELECT value FROM json_each(?))",
+            [&list],
+        )?;
+        let decisions = crate::app_migrate_data::rows_with(
+            &src,
+            "SELECT uuid,value FROM decisions WHERE dim='character' AND uuid IN (SELECT value FROM json_each(?))",
+            [&list],
+        )?;
+        let realistic = crate::app_recognition::realistic(&tx, &src, &uuids)?;
+        let album =
+            library.source().parent().expect("source database path must have a parent").join("album-char-map.json");
+        let album = if album.is_file() {
+            serde_json::from_str::<Value>(&std::fs::read_to_string(album)?)
+                .map_err(|e| Error::Invalid(e.to_string()))?["map"]
+                .clone()
+        } else {
+            json!({})
+        };
+        timing.mark("app_prepare");
+        let importing: HashSet<_> = uuids.iter().map(String::as_str).collect();
+        let shape = known
+            .into_iter()
+            .filter(|r| present.contains(asset_uuid(r)) && !importing.contains(asset_uuid(r)))
+            .chain(added.iter().cloned())
+            .collect::<Vec<_>>();
+        let duplicates = crate::app_migrate_data::duplicates(&tx, &src, &shape)?;
+        timing.mark("duplicates");
+        let wd_tags = crate::app_migrate_data::rows(&src, "SELECT char_id,wd_tag FROM characters")?;
+        let args = json!({
+            "op":"import","rows":added,"removed":removed,"run_id":run_id,"new_ids":{},"wd_tags":wd_tags,
+            "labels":labels,"decisions":decisions,"album_map":album,"duplicates":duplicates,
+            "realistic":realistic,"indexed":now(),
+        });
         let out = crate::character_commands::command(&tx, &args)?;
         tx.execute("INSERT INTO backend_effects(kind) VALUES ('imported')", [])?;
         out
     } else {
+        timing.mark("app_prepare");
+        timing.mark("duplicates");
         json!({"added":0,"removed":0})
     };
     // 改变的图片已在上面导入（随后有 'imported' 事件），所以 similar 会重新计算它们。
@@ -656,12 +699,17 @@ fn refresh(
     }
     check(cancel)?;
     crate::schema::commit_writing(tx)?;
+    timing.mark("app_commit");
     // 应用库里的哈希标记让重试是幂等的，即使删除已提交的日志失败也一样。
     if journal_path.exists() {
         std::fs::remove_file(&journal_path)?;
     }
     Ok((json!({"added":out["added"],"removed":out["removed"],"pending":pending}), uuids.into_iter().collect()))
 }
+fn asset_uuid(row: &Value) -> &str {
+    row[0].as_str().expect("SQLite uuid column must be text")
+}
+
 /// 本次运行放弃的图片，按怎样处理有用来分：等一会儿再同步，或者修复、替换文件。
 fn failure_message(failed: u64, damaged: u64) -> String {
     let mut parts = Vec::new();
@@ -1547,10 +1595,10 @@ mod tests {
         let replacement_source = snapshot(&replacement.source());
         let replacement_app = snapshot(&replacement.db());
         let mut options = Options::new(root.clone());
-        options.names_enabled = false;
-        options.provenance_enabled = false;
-        options.index_automatic = false;
-        options.auto_sync = false;
+        options.startup.names_enabled = false;
+        options.startup.provenance_enabled = false;
+        options.startup.index_auto_check = false;
+        options.startup.auto_sync = false;
         // 下面每个任务都跑真实的同步流程，用的是会话持有的真实槽位。
         for finish in ["switch", "shutdown", "drop"] {
             for stage in ["before_source_commit", "before_application_commit", "completed"] {

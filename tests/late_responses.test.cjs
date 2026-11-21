@@ -36,38 +36,6 @@ test('a group page answer that arrives after navigating home does not take over 
   assert.ok(!requests.some(p => p.startsWith('/api/assets')), 'the group page never reads its pictures');
 });
 
-test('a split group ID opens its own page and Next group follows the remaining order', async () => {
-  const {state, parseHash} = web.core();
-  const {viewOf} = await web.load('core/pages.js');
-  const {filters} = await web.load('ui/grid.js');
-  await web.load('ui/review.js');
-  const clusters = [
-    {cid: 4, size: 2, members: ['a', 'b'], lead: {id: 'X'}, traits: ['blue eyes']},
-    {cid: 5, size: 2, members: ['c', 'd'], lead: {id: 'Y'}},
-    {cid: 6, size: 3, members: ['e', 'f', 'g'], lead: null},
-  ];
-  globalThis.location = {hash: '#/g/4'};
-  Object.assign(state, {route: parseHash(), nsfw: '', char: null});
-  const fetch = globalThis.fetch;
-  globalThis.fetch = async () => ({status: 200, ok: true, json: async () => ({clusters})});
-  try {
-    const view = viewOf(state.route);
-    await view.prepare(state.route);
-    assert.equal(filters().pool, 'cluster');
-    assert.equal(filters().cluster, '4');
-    assert.deepEqual(state.groupTraits, ['blue eyes']);
-    assert.match(view.emptyNext(state.route), /下一组/);
-    clusters.shift();
-    view.emptyAct('next-group');
-    await tick();
-    assert.equal(location.hash, '#/g/5');
-    state.route = parseHash();
-    assert.equal(filters().cluster, '5');
-  } finally {
-    globalThis.fetch = fetch;
-  }
-});
-
 test('a recognition batch refreshes an already imported folder while sync is running', async () => {
   const {state, pollSync, onJob} = web.core(), changes = [];
   state.sync = {status: 'recognising', imported: 5, import_done: 0};

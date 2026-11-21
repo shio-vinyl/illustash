@@ -1,5 +1,6 @@
-//! HTTP 读取共用的 SQL 片段（#205）：每个条件只在这里写一次。接受别名 `a` 的片段读取图片列
-//! `a.uuid`（或 `a.entity`）；文本与各读取方原先用的完全相同。
+//! HTTP 读取和研究分组共用的 SQL 片段（#205）：每个条件只在这里写一次。接受别名 `a` 的片段读取图片列
+//! `a.uuid`（或 `a.entity`）；文本与各读取方原先用的完全相同。`first_leads` 自己执行查询，
+//! 研究分组（`research_compute/groups.rs`）和 HTTP 读取都调用它（#790）。
 use crate::{Error, Result};
 use std::collections::HashSet;
 
@@ -48,7 +49,9 @@ pub(crate) fn unrejected(a: &str) -> String {
 pub(crate) fn leads() -> String {
     format!("(SELECT v.* FROM {HINTS} v WHERE {})", unrejected("v"))
 }
-/// 从 UUID 的 JSON 数组取每张图的首选线索。组头按返回顺序计票，同票时取先出现的角色。
+/// 从 UUID 的 JSON 数组取每张图的首选线索：没有被否定的线索里，先强证据再弱认领，同类按分数从高到低取第一条。
+/// 分组按它拆组，组头按返回顺序计票（同票时取先出现的角色），网格上每张图的线索也取它（#790）。
+/// 这几处共用这一个排序，改排序会同时改变分组和组头。
 pub(crate) fn first_leads(c: &rusqlite::Connection, page: &str) -> Result<Vec<(String, String)>> {
     let mut query = c.prepare(&format!(
         "SELECT v.uuid,v.entity

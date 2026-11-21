@@ -247,3 +247,38 @@ test('each kind of page remembers its own sort', () => {
     assert.equal(defaultSort({page: 'library', char: 'c1'}), 'newest');
   } finally { globalThis.localStorage = saved; }
 });
+
+// 按线索拆出的组各有自己的组号（#790）：组页 #/g/<cid> 用注册表的查询参数读这一组，
+// 「下一组」按进入时的先后取还在的下一组。
+const tick = () => new Promise(resolve => setImmediate(resolve));
+test('a split group ID opens its own page and Next group follows the remaining order', async () => {
+  const {state, parseHash} = web.core();
+  const {viewOf} = await web.load('core/pages.js');
+  const {filters} = await web.load('ui/grid.js');
+  await web.load('ui/review.js');
+  const clusters = [
+    {cid: 4, size: 2, members: ['a', 'b'], lead: {id: 'X'}, traits: ['blue eyes']},
+    {cid: 5, size: 2, members: ['c', 'd'], lead: {id: 'Y'}},
+    {cid: 6, size: 3, members: ['e', 'f', 'g'], lead: null},
+  ];
+  globalThis.location = {hash: '#/g/4'};
+  Object.assign(state, {route: parseHash(), nsfw: '', char: null});
+  const fetch = globalThis.fetch;
+  globalThis.fetch = async () => ({status: 200, ok: true, json: async () => ({clusters})});
+  try {
+    const view = viewOf(state.route);
+    await view.prepare(state.route);
+    assert.equal(filters().pool, 'cluster');
+    assert.equal(filters().cluster, '4');
+    assert.deepEqual(state.groupTraits, ['blue eyes']);
+    assert.match(view.emptyNext(state.route), /下一组/);
+    clusters.shift();
+    view.emptyAct('next-group');
+    await tick();
+    assert.equal(location.hash, '#/g/5');
+    state.route = parseHash();
+    assert.equal(filters().cluster, '5');
+  } finally {
+    globalThis.fetch = fetch;
+  }
+});

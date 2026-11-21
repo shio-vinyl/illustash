@@ -310,19 +310,25 @@ child.terminate();child.wait()
             self.assertEqual(reply['status'], 200, reply)
             return json.loads(reply['body'])
 
-        ids = [f'lead-split-{i}' for i in range(9)]
-        first, second, unknown, separate = (frozenset(ids[i:i+2]) for i in (0, 2, 4, 6))
-        singleton = ids[-1]
+        ids = [f'lead-split-{i}' for i in range(9)] + ['lead-near-0', 'lead-near-1']
+        first, second, unknown, separate, neighbour = (frozenset(ids[i:i+2]) for i in (0, 2, 4, 6, 9))
+        singleton = ids[8]
         x, y = '00000000-0000-0000-0000-000000007901', '00000000-0000-0000-0000-000000007902'
         added_at = '2026-10-04'
         rows = [(ident, ident + '.png', str(self.root / (ident + '.png')), 120, 150, added_at, 'orig')
                 for ident in ids]
-        # 前六张看起来相同。后三张是另一组，只有最后一张有线索。
+        # 前六张看起来相同，按线索拆成三组。接下来三张是另一组，只有最后一张有线索。
+        # 最后两张离前六张 (1 - 0.85) / 2 = 0.075：比分组半径 0.07 远，自成一组；又在 0.08 以内，算「可能是同一人」。
         with sqlite3.connect(self.lib.source) as c:
             c.executemany("INSERT INTO assets VALUES (?,?,?,?,?,?,?,1,0)", rows)
             for i, ident in enumerate(ids):
                 vector = np.zeros(768, np.float32)
-                vector[2 if i < 6 else 3] = 1
+                if i < 6:
+                    vector[2] = 1
+                elif i < 9:
+                    vector[3] = 1
+                else:
+                    vector[[2, 4]] = .85, np.sqrt(1 - .85 ** 2)
                 c.execute("INSERT INTO embeddings VALUES (?,'ccip',?)", (ident, vector.tobytes()))
         with sqlite3.connect(self.lib.db) as c:
             duplicates = c.execute("SELECT uuid,grp,size,pos,grp_added,rep FROM duplicates").fetchall()
@@ -333,7 +339,7 @@ child.terminate();child.wait()
             op='import', rows=rows, labels=labels, duplicates=duplicates, realistic=[],
             new_ids={'ccip': {'synthetic_x': x, 'synthetic_y': y}}, indexed=added_at + ' 00:00:00'))
 
-        expected = {first: x, second: y, unknown: None, separate: None}
+        expected = {first: x, second: y, unknown: None, separate: None, neighbour: None}
         previous_ids = None
         for _ in range(2):
             # 相似扫描子类会把常规重分组请求改成 /api/similar。这个用例总是走真实的重分组入口。
@@ -350,6 +356,16 @@ child.terminate();child.wait()
             if previous_ids is not None:
                 self.assertEqual(group_ids, previous_ids)
             previous_ids = group_ids
+            # 子组按原组首张成员的顺序编号：指向 X 的、指向 Y 的、没有线索的。
+            self.assertLess(group_ids[first], group_ids[second])
+            self.assertLess(group_ids[second], group_ids[unknown])
+            # 同一长相团拆出的三组不互相提示「可能是同一人」，提示照旧指向另一个长相团。
+            near = {frozenset(g['members']): (g['near'], g['near_kind']) for g in groups}
+            for part in (first, second, unknown):
+                self.assertEqual(near[part], (group_ids[neighbour], 'look'), sorted(part))
+            self.assertEqual(near[neighbour][1], 'look')
+            self.assertIn(near[neighbour][0], {group_ids[part] for part in (first, second, unknown)})
+            self.assertEqual(near[separate], (None, None))
             for g in groups:
                 if g['lead']:
                     self.assertEqual(g['lead']['count'], g['size'])

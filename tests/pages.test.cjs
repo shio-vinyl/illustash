@@ -377,3 +377,38 @@ test('切换 NSFW 前发出的请求后回来，它的结果不画', async () =>
   assert.deepEqual(drawn, [['隐藏 NSFW 的结果']]);
   setNsfw('');
 });
+
+// 按线索拆出的组各有自己的组号（#790）：组页 #/g/<cid> 用注册表的查询参数读这一组，
+// 「下一组」按进入时的先后取还在的下一组。组页的读取和「下一组」在 ui/groups.js（0.4 H #713 重写整理页后）。
+test('a split group ID opens its own page and Next group follows the remaining order', async () => {
+  const tick = () => new Promise(resolve => setImmediate(resolve));
+  const {state, parseHash} = web.core();
+  const {viewOf} = await web.load('core/pages.js');
+  const {gridFilters} = await web.load('core/assets.js');
+  await web.load('ui/groups.js');
+  const clusters = [
+    {cid: 4, size: 2, members: ['a', 'b'], lead: {id: 'X'}, traits: ['blue eyes']},
+    {cid: 5, size: 2, members: ['c', 'd'], lead: {id: 'Y'}},
+    {cid: 6, size: 3, members: ['e', 'f', 'g'], lead: null},
+  ];
+  globalThis.location = {hash: '#/g/4'};
+  Object.assign(state, {route: parseHash(), nsfw: '', char: null});
+  const fetch = globalThis.fetch;
+  globalThis.fetch = async () => ({status: 200, ok: true, json: async () => ({clusters})});
+  try {
+    const view = viewOf(state.route);
+    await view.prepare(state.route);
+    assert.equal(gridFilters().pool, 'cluster');
+    assert.equal(gridFilters().cluster, '4');
+    assert.deepEqual(state.groupTraits, ['blue eyes']);
+    assert.ok(view.emptyNext(state.route).some(x => x.act === 'next-group' && /下一组/.test(x.label)));
+    clusters.shift();
+    view.emptyAct('next-group');
+    await tick(); await tick();
+    assert.equal(location.hash, '#/g/5');
+    state.route = parseHash();
+    assert.equal(gridFilters().cluster, '5');
+  } finally {
+    globalThis.fetch = fetch;
+  }
+});

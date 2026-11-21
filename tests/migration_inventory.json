@@ -7,7 +7,7 @@
 
  "crates/core/src/ccip_longtail.rs":"04f901a024fd2f26d4fc86486e6db7b8a7c43c046483f0974acc15ad736306b0",
 
- "crates/core/src/character_commands.rs":"3015bb02d76a7612004b4888e269ce4fac63955f0cee80e010ebb13e9d914507",
+ "crates/core/src/character_commands.rs":"562159c0d8990af2ca52d85e6b3f559a29f12fb6c1d6248b7d886d796f7656da",
 
  "crates/core/src/character_entities.rs":"5cb8eceface17854d3a2c727d12218b8d1834ac71837c1cb4b5a0f28ee6275dd",
 
@@ -401,7 +401,7 @@
 
  "native/terms/src/http_artists.rs":"2fec7a75db8c4448c9d442d256d5dc52ab19eab1c19be4f54a6b71ad94092577",
 
- "native/terms/src/http_browse.rs":"237aa16b5a97b34e9a3e06548b736eac2e69bef44dde01669a009dbe562fa487",
+ "native/terms/src/http_browse.rs":"8f0074250590f42edc0214b2f306facb618861cc9a4b44e1bc593e43fc8b9be6",
 
  "native/terms/src/http_characters.rs":"950b68d3b80befe3eb53ace5ceb2f9f61757100b75c3a22450905b5452c3e5c5",
 
@@ -413,7 +413,7 @@
 
  "native/terms/src/http_json.rs":"42ec65687fad69e430186543d3ef27b8141030e6694b07f683ee91f678478d6b",
 
- "native/terms/src/http_local.rs":"2d17081ecb52e61e45fded7d539b3c50734067aed41f930e711f0535fb1ab50d",
+ "native/terms/src/http_local.rs":"7c711f73ffdb6e95d8c01ae8ae4e2a7e3003f377f9a6414fc9d12002bd528c8c",
 
  "native/terms/src/http_read.rs":"82726c8c461a941f68b7d21cc286fbc246e88929ee52b7cd34c457f004e38fd3",
 

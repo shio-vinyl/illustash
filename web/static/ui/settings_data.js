@@ -7,7 +7,7 @@ import {state} from '../core/state.js';
 import {checkNow, pollIntegrity} from '../core/integrity.js';
 import {loadHuman} from '../core/human.js';
 import {saveAcceleration} from '../core/models.js';
-import {backupNow, clearCache, loadSettingsData} from '../core/settings.js';
+import {backupNow, clearCache, reloadSettings} from '../core/settings.js';
 import {toast} from './dom.js';
 import {renderHumanBlock} from './human.js';
 import {accelerationFell, accelerationHint, characterBaseButtons, characterBaseText, mirrorNote, modelsButtons, modelsDeleteButtons, modelsFileItems,
@@ -25,13 +25,14 @@ function integrityHint(g) {
     : t('上次检查：library.sqlite {library}，source.sqlite {source}', {library: when('library.sqlite'), source: when('source.sqlite')});
 }
 const m = s => s.models;
-// 整库备份：备份完 /api/settings 要重读（份数、最近一次、缩略图都在里面）。备份成功、重读失败时分别说。
+// 整库备份：备份完 /api/settings 要重读（份数、最近一次、缩略图都在里面），新发一次，不用备份前就在途的那份。备份成功、
+// 重读失败时分别说。
 async function backup() {
   let r;
   try { r = await backupNow(); } catch (e) { toast(e.message); return; }
   toast(t('备份完成：{name}', {name: r.path.split('/').pop()}));
-  await loadSettingsData().catch(() => {});
-  if (!state.settings) toast(t('备份完成，但没能读回备份份数：请重新打开设置页'));
+  try { await reloadSettings(); } catch { /* 下面照 state.settings 说明 */ }
+  if (!state.settings) { toast(t('备份完成，但没能读回备份份数：请重新打开设置页')); refreshSection(); }
 }
 
 export function build(main, scope) {

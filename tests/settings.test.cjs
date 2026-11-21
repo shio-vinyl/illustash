@@ -53,11 +53,7 @@ test('a failed card does not block others and remains retryable', async () => {
   assert.equal(c.state.names.loaded, true);
 });
 
-test('responses after navigating away update cached data without repainting', async () => {
-  const {c, renders} = harness(async () => ({kinds: []}));
-  const load = c.loadSettingsData(); c.state.route.page = 'library'; await load;
-  assert.equal(renders.length, 0);
-});
+// 离开设置页以后才回来的读取：走真的外壳（ui/settings.js），在 tests/settings_page.test.cjs。
 
 // 资料库 · 作品（#198，#711 改成作品卡）：作品树取代设置页的作品表。作品页签在 ui/works_tab.js。
 test('work cards follow the work tree, children under their parent, with counts, the watch switch and one notice', async () => {

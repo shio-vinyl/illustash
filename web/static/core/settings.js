@@ -11,44 +11,59 @@ const changed = listeners();
 export const onSettings = changed.on;
 
 // ---------- 设置页的数据 ----------
-let loading = null;
+let loading = null, settingsRead = 0;
 // 一次读齐页面还没有的部分（refresh 时读全部）。每部分到达时就通知（onSettings('data', {key, error})），有用的先显示，
-// 不用等慢的；为页面已经离开的图库发出的读取丢掉。
+// 不用等慢的；为页面已经离开的图库发出的读取丢掉。/api/settings 在这一批发出以后又由 reloadSettings 重读过的，这一批
+// 迟到的那份是旧的，不写。
 export function loadSettingsData(refresh = false) {
   if (loading) return loading;
-  const token = session.token;
+  const token = session.token, read = settingsRead;
   const missing = [['settings', '/api/settings'], ['fold', '/api/fold'], ['index', '/api/index'], ['names', '/api/names']]
     .filter(([key]) => refresh || !state[key]);
   if (!missing.length) return;
   loading = Promise.all(missing.map(async ([key, path]) => {
     let error = null;
-    try { const value = await shared(path); if (token !== session.token) return; state[key] = key === 'fold' ? value.kinds : value; }
-    catch (e) { if (token !== session.token) return; error = e; }
+    try {
+      const value = await shared(path); if (token !== session.token || key === 'settings' && read !== settingsRead) return;
+      state[key] = key === 'fold' ? value.kinds : value;
+    } catch (e) { if (token !== session.token) return; error = e; }
     await changed.emit('data', {key, error});
   })).finally(() => { loading = null; });
   return loading;
+}
+// 改动之后重读 /api/settings（整库备份以后，份数和最近一次都在里面）：总是新发一次，不复用改动之前就在途的读取（那份是
+// 改动之前的）。读到了通知 onSettings('data', {key: 'settings'})；读失败时抛出，state.settings 不变，由调用处说明。
+export async function reloadSettings() {
+  const token = session.token, read = ++settingsRead, value = await api('/api/settings');
+  if (token !== session.token || read !== settingsRead) return;
+  state.settings = value;
+  await changed.emit('data', {key: 'settings', error: null});
 }
 // 「设置 › 角色资料」两张卡片的数据重新读一次（进这一节时，#714 前在 ui/settings.js 里）。
 export const loadIndex = async () => { const token = session.token, value = await shared('/api/index'); if (token === session.token) setIndex(value); return value; };
 export const loadNames = async () => { const token = session.token, value = await shared('/api/names'); if (token === session.token) setNames(value); return value; };
 // 上次检查新角色时每个关注作品的情况（#561，GET /api/index/coverage）：本图库启用的数据包已经覆盖几个、自己补过几个、
 // 还缺几个。/api/index 的回复冻结，所以另读一次；检查或添加角色之后（检查时间或最近一条历史变了）重新读。返回是否读了新的。
-// 读成功了才记下键：读失败的同一次检查，下次进这一节或检查结束时还会再读；正在读的键不重复发。
-let coverage = null, coverageKey = '', coverageLoading = '';
+// 读成功了才记下键：读失败的同一次检查，下次进这一节或检查结束时还会再读。正在读的键不重复发，调用处等的是那一次读取：
+// 读取途中离开这一节再进来，新的这一节也能等到它读完（返回 true）再重画。
+let coverage = null, coverageKey = '', coverageLoading = null;
 export const indexCoverage = () => coverage;
-export async function loadCoverage(x = state.index, fresh = false) {
+export function loadCoverage(x = state.index, fresh = false) {
   const key = JSON.stringify([x?.check?.checked_at, x?.history?.[0]?.at]);
-  if ((!fresh && key === coverageKey) || key === coverageLoading) return false;
-  coverageLoading = key;
-  try { coverage = await shared('/api/index/coverage'); coverageKey = key; } catch { coverage = null; coverageKey = ''; }
-  finally { if (coverageLoading === key) coverageLoading = ''; }
-  return true;
+  if (coverageLoading?.key === key) return coverageLoading.done;
+  if (!fresh && key === coverageKey) return Promise.resolve(false);
+  const mine = {key, done: null};
+  mine.done = shared('/api/index/coverage').then(value => { coverage = value; coverageKey = key; }, () => { coverage = null; coverageKey = ''; })
+    .then(() => { if (coverageLoading === mine) coverageLoading = null; return true; });
+  coverageLoading = mine;
+  return mine.done;
 }
 // /api/settings 的最新回应；任务面板读到新的也经这里换上。
 export function setSettings(value) { state.settings = value; }
 // 启动时的开关；本次启动仍以 --no-* 参数为准。
 export async function saveStartup(body) { state.settings = await post('/api/startup', body); }
 export async function saveFold(kinds) { state.fold = (await post('/api/fold', {kinds})).kinds; }
+// 整库备份；之后的份数要由调用处 reloadSettings() 读回，读回之前 state.settings 为空（不显示备份前的份数）。
 export async function backupNow() { const r = await post('/api/backup', {}); state.settings = null; return r; }
 export async function clearCache() { const r = await post('/api/cache', {action: 'clear'}); state.settings = r; return r; }
 // 全应用共用（preferences.json，#173）：每个窗口和图库都跟着它；之后页面用新语言重新载入。
@@ -75,8 +90,13 @@ export async function saveModelApi(body) { mergeNames(await post('/api/names', {
 export const testModelApi = () => post('/api/names', {action: 'model_api_test'});
 
 // ---------- 图库（docs/LIBRARIES.md） ----------
+// 采用读到的图库列表：导出还在进行时接上进度轮询（启动时、进图库这一节、导出途中刷新了页面，都经这里）。
+function adoptLibraries(value) {
+  state.libraries = value;
+  if (value?.export?.status === 'running') pollExport();
+}
 export async function loadLibraries() {
-  try { state.libraries = await api('/api/libraries'); } catch { state.libraries = null; }
+  try { adoptLibraries(await api('/api/libraries')); } catch { state.libraries = null; }
   await changed.emit('libraries');
 }
 // 当前图库的 ID（library.json 的 id），给只属于一个图库的偏好做键（core/prefs.js 的 libraryPrefs，#523）。切换图库时
@@ -87,12 +107,24 @@ export const currentLibraryId = () => libraryId ??= api('/api/libraries').then(x
 // POST /api/libraries/<action>，带着发起请求的那个页面的 token：确认框可能比它的会话活得久。
 export const libraryRequest = (action, body = {}, token = session.token) =>
   api('/api/libraries/' + action, {method: 'POST', body: JSON.stringify(body), headers: {'X-CSRF-Token': token}});
-// 跟踪进行中的导出，最多一小时；同一时间只有一个轮询。读一次失败时保留上次的状态，退避以后接着读，读到终态才停。
+// 开始导出当前图库。POST 的回复就是导出的初始状态（running 和目标路径）：直接记下并接上轮询，不另读一次列表，紧接着的
+// 读取失败也不会把状态丢成空。
+export async function startExport() {
+  const ex = await libraryRequest('export');
+  if (state.libraries) state.libraries = {...state.libraries, export: ex};
+  if (ex?.status === 'running') pollExport();
+  await changed.emit('libraries');
+  return ex;
+}
+// 跟踪进行中的导出，从开始轮询算起最多一小时（按截止时间停，不按次数）；同一时间只有一个轮询。读一次失败时保留上次的
+// 状态，退避以后接着读（最长 15 秒一次），读到终态或到了截止时间才停。
+const EXPORT_WATCH_MS = 3600e3;
 let exporting = null;
 export function pollExport() {
   exporting ??= (async () => {
+    const until = Date.now() + EXPORT_WATCH_MS;
     let wait = 1500;
-    for (let i = 0; i < 2400 && state.libraries?.export?.status === 'running'; i++) {
+    while (state.libraries?.export?.status === 'running' && Date.now() < until) {
       await new Promise(r => setTimeout(r, wait));
       try { state.libraries = await api('/api/libraries'); wait = 1500; await changed.emit('libraries'); }
       catch { wait = Math.min(wait * 2, 15000); }
@@ -168,10 +200,12 @@ export function waitPixivLogin() {
 // 「下载并重启」（#279）由桌面外壳做，状态在 state.updates.install（不在桌面 App 里时为 null）：这里转达 download、cancel、
 // install，下载期间每秒读一次进度，下完或失败就停。
 // 下载期间读一次失败时不停：保留上次的状态，退避以后接着读（最长 15 秒一次），读到就照宿主的实际状态（ready、failed…）。
-let updatesAt = 0, updatesPending = null, installTimer = 0, installWait = 1000;
+// 下载计时器、任务面板和按钮都会请求 /api/updates：只采用比已采用的那次更晚发出的回复，先发后到的旧回复（还在
+// downloading）不让状态从 ready 倒退回去。
+let updatesAt = 0, updatesPending = null, installTimer = 0, installWait = 1000, updatesSent = 0, updatesTaken = 0;
 const watchInstall = () => {
   clearTimeout(installTimer);
-  installTimer = setTimeout(() => api('/api/updates').then(value => { installWait = 1000; adoptUpdates(value); }, () => {
+  installTimer = setTimeout(() => requestUpdates().then(() => { installWait = 1000; }, () => {
     installWait = Math.min(installWait * 2, 15000);
     if (state.updates?.install?.stage === 'downloading') watchInstall();
   }).finally(() => changed.emit('updates')), installWait);
@@ -182,9 +216,13 @@ const adoptUpdates = value => {
   if (value?.install?.stage === 'downloading') watchInstall();
   return value;
 };
-export async function updatesPost(body) {
-  return adoptUpdates(await api('/api/updates', {method: 'POST', body: JSON.stringify(body)}));
+// 发一次 GET 或 POST /api/updates；回复比已采用的旧时丢掉。返回采用以后的状态。
+async function requestUpdates(options) {
+  const mine = ++updatesSent, value = await api('/api/updates', options);
+  if (mine > updatesTaken) { updatesTaken = mine; adoptUpdates(value); }
+  return state.updates;
 }
+export const updatesPost = body => requestUpdates({method: 'POST', body: JSON.stringify(body)});
 // 手动检查：总会发出。
 export const checkUpdates = () => updatesPost({action: 'check'});
 // 由任务面板的定时调用：不时刷新缓存的状态，并运行到期的自动检查；完成时以 onSettings('updates') 通知，不管结果如何。
@@ -192,7 +230,7 @@ export function updatesTick() {
   if (updatesPending) return updatesPending;
   updatesPending = (async () => {
     // 正在下载更新时每次都读（上一次轮询可能失败过），否则十分钟读一次。
-    if (!state.updates || state.updates.install?.stage === 'downloading' || Date.now() - updatesAt > 600000) adoptUpdates(await api('/api/updates'));
+    if (!state.updates || state.updates.install?.stage === 'downloading' || Date.now() - updatesAt > 600000) await requestUpdates();
     if (state.updates.due) await updatesPost({action: 'check', auto: true});
   })().catch(() => {}).finally(() => { updatesPending = null; changed.emit('updates'); });
   return updatesPending;

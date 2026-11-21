@@ -90,6 +90,7 @@ class Element extends Node {
     this.dataset = new Proxy({}, {
       get: (o, k) => this.getAttribute('data-' + String(k).replace(/[A-Z]/g, c => '-' + c.toLowerCase())) ?? undefined,
       set: (o, k, v) => { this.setAttribute('data-' + String(k).replace(/[A-Z]/g, c => '-' + c.toLowerCase()), v); return true; },
+      deleteProperty: (o, k) => { this.removeAttribute('data-' + String(k).replace(/[A-Z]/g, c => '-' + c.toLowerCase())); return true; },
     });
     this.scrollTop = 0; this.clientWidth = 0; this.clientHeight = 0; this.rect = null;
   }

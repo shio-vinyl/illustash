@@ -8,7 +8,7 @@ import {t, tb, I18N} from '../core/i18n.js';
 import {esc, bytes, number, localTime, home} from '../core/format.js';
 import {state} from '../core/state.js';
 import {packDownloading, packRunning, packFinished, packDownloadFinished, loadPack, onPack, packAction, enablePack, withdrawPack,
-  declinePack, cancelPack, packOffer} from '../core/packs.js';
+  declinePack, cancelPack, packOffer, packChanged} from '../core/packs.js';
 import {toast} from './dom.js';
 import {confirmAction} from './dialog.js';
 
@@ -269,8 +269,8 @@ export function switchMessage(offer = packOffer(), x = current()) {
 }
 
 export async function runPack(what) {
-  // 导入的结果只留到下一个动作：启用、重新检查、撤回、删除以后不再列出（#559 走查）。
-  if (what !== 'import') importedHere = null;
+  // 导入的结果只留到下一个动作：启用、重新检查、撤回、删除、再导入一次以后不再列出（#559 走查）。
+  importedHere = null;
   try {
     if (what === 'download') await packAction('download');
     else if (what === 'offer-download') await packAction('download', packOffer()?.version);
@@ -279,10 +279,11 @@ export async function runPack(what) {
       if (!await confirmAction(switchMessage(offer), t('换成新版本'), t('换成新版本'))) return;
       await enable(offer.version);
     } else if (what === 'import') {
-      // 先登记再发：导入很快就到终态时，结果到达的那次重画就要列出来。关掉选择框算没导入。
-      importedHere = state.route;
+      // 宿主受理了这次导入（选了文件）才登记发起的那一页，并马上通知卡片重画：导入很快就到终态时结果立刻列出来。选择框
+      // 开着的时候不登记，等待中的重画不会列出上一次导入的结果；关掉选择框和请求失败都不登记。
+      const route = state.route;
       const r = await packAction('import');
-      if (r?.cancelled) importedHere = null;
+      if (!r?.cancelled) { importedHere = route; await packChanged(); }
     }
     else if (what === 'package-cancel') await packAction('cancel');
     else if (what === 'discard') {

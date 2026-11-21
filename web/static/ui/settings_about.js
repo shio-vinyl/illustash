@@ -6,7 +6,7 @@ import {readError} from '../core/session.js';
 import {checkUpdates, loadAbout} from '../core/settings.js';
 import {$, toast, error} from './dom.js';
 import {attr, make, refill, rich, text, tpl} from './el.js';
-import {replayGuide} from './guide.js';
+import {drawNudge, replayGuide} from './guide.js';
 import {openStatic} from './dialog.js';
 import {groups, refreshSection} from './settings_group.js';
 import {drawUpdateButton, updateAct, updateButtons, updateProgress, updateStarted, updatesHint, updatesTitle} from './updates.js';
@@ -40,14 +40,14 @@ async function help(act) {
   if (act === 'export') { try { downloadDiagnostic({...await diagnosticReport(), environment: env}); } catch (e) { error(readError(e)); } }
   if (act === 'logs') { try { await openDiagnosticLogs(); } catch { toast(t('无法打开日志所在文件夹')); } }
 }
-// 检查、下载、取消以后，侧栏的更新入口跟着变，不用等下一次通知。
+// 检查、下载、取消以后，侧栏的更新入口和导览里的更新提示跟着变，不用等下一次通知。
 async function update(act) {
   if (act !== 'check') await updateAct(act);
   else {
     try { const u = await checkUpdates(); toast(u.error ? tb(u.error) : u.newer ? t('有新版本 {version}', {version: u.latest}) : t('已是最新版本')); }
     catch (err) { toast(err.message); }
   }
-  drawUpdateButton();
+  drawUpdateButton(); drawNudge();
   refreshSection();
 }
 // 许可说明里的链接。

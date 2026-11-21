@@ -62,6 +62,8 @@ export const withdrawPack = () => send({action: 'withdraw'});
 export const declinePack = () => send({action: 'decline'});
 // 只在扫描阶段有效；写入阶段后端回 409。
 export const cancelPack = (id = state.pack?.task?.id) => send({action: 'cancel', id});
+// 状态没变、页面要按它重画时通知一次（ui/packs.js 登记了这一页发起的导入以后）：before 就是现在的状态，不算结束了什么。
+export const packChanged = () => changed.emit(state.pack);
 // 卡片上「有新版本」的那个版本（没有时为 null）。
 export const packOffer = (x = state.pack) => x?.offer || null;
 

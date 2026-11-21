@@ -117,7 +117,8 @@ export function wireSettings() {
   // 用一个监听接住（#432 ③-9，原来是三个）。
   document.addEventListener('click', e => { onNamesClick(e) || onUpdatesClick(e); });
   onSettings((what, detail) => {
-    if (what === 'data' && detail.error) error(readError(detail.error));
+    // 设置页数据的读取失败只在设置页还开着时报：离开以后才回来的失败不弹到别的页面上。
+    if (what === 'data' && detail.error && view?.scope.alive && onPage(state.route, 'settings')) error(readError(detail.error));
     if (what === 'libraries') {
       const cur = state.libraries?.info;
       $('brandLib').textContent = cur?.test ? t('测试·') + (cur.name.split(' · ').pop()) : '';

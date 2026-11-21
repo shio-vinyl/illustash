@@ -382,42 +382,69 @@ test('启用、撤回、删除、换成新版本都先确认；取消什么都�
     {action: 'download', version: '0.2'}]);
 });
 
-test('这个页面导入以后逐个列出所选文件的结果，包括离线包里的包目录；关掉选择框和别的动作以后不列', async () => {
-  const download = {kind: 'import', status: 'done', results: [{name: 'character-pack-0.2-offline.zip/packs.json', result: 'catalog'},
-    {name: 'old-offline.zip/packs.json', result: 'catalog_old'}, {name: 'bad-offline.zip/packs.json', result: 'catalog_invalid'},
-    {name: 'character-pack-0.2-offline.zip/wd-extension-v2.bin', result: 'accepted'}, {name: 'edited.bin', result: 'mismatch'},
-    {name: 'notes.txt', result: 'unknown'}, {name: 'again.bin', result: 'already'},
-    {name: 'character-pack-0.2-offline.zip/NOTICE.txt', result: 'extra'}]};
-  const imported = pack({current: READY, download});
-  const page = web.fakePage();
-  c.state.route = {page: 'settings', section: 'characters'};
-  c.wirePacks();
-  server([{body: imported}, {body: {cancelled: true}}, {body: imported}]);
-  const click = async act => {
-    c.runPack(act);
-    await new Promise(resolve => setTimeout(resolve, 10));
-  };
-  await click('enable');
-  assert.equal(results(imported), '', '别的动作以后不列');
-  await click('import');
-  assert.equal(results(imported), '', '关掉选择框不算导入');
-  await click('import');
-  const html = results(imported);
-  assert.match(html, /character-pack-0.2-offline.zip\/packs.json · 包目录，已读取/);
-  assert.match(html, /old-offline.zip\/packs.json · 包目录比本机的旧，没有采用/);
-  assert.match(html, /bad-offline.zip\/packs.json · 包目录签名不对，已拒绝/);
-  assert.match(html, /wd-extension-v2.bin · 已接收/);
-  assert.match(html, /edited.bin · SHA-256 不符，已拒绝/);
-  assert.match(html, /notes.txt · 不是角色资料包/);
-  assert.match(html, /again.bin · 已经有了/);
-  assert.doesNotMatch(html, /NOTICE/, '离线包随附的许可和说明不列（#643）');
-  assert.equal(results(pack({current: READY, download: {...download, results: download.results.filter(r => r.result === 'extra')}})), '');
+// 从「设置 › 角色资料」的资料包那一行点（#785 第 5、9 条）：断言这一节的文字，不直接调 runPack、不读结果函数。这一节随
+// 外壳订阅的通知更新（tests/settings_view.cjs），等待期间的刷新由测试补一次 update()（那是别处来的重画）。
+test('这个页面导入以后逐个列出所选文件的结果，包括离线包里的包目录；选择框开着、关掉、失败和别的动作以后不列', async () => {
+  const dom = require('./dom.cjs'), {view, toastNodes} = require('./settings_view.cjs');
+  dom.install(); toastNodes();
+  try {
+    const download = {kind: 'import', status: 'done', results: [{name: 'character-pack-0.2-offline.zip/packs.json', result: 'catalog'},
+      {name: 'old-offline.zip/packs.json', result: 'catalog_old'}, {name: 'bad-offline.zip/packs.json', result: 'catalog_invalid'},
+      {name: 'character-pack-0.2-offline.zip/wd-extension-v2.bin', result: 'accepted'}, {name: 'edited.bin', result: 'mismatch'},
+      {name: 'notes.txt', result: 'unknown'}, {name: 'again.bin', result: 'already'},
+      {name: 'character-pack-0.2-offline.zip/NOTICE.txt', result: 'extra'}]};
+    // 卡片上还留着上一次（别的窗口或上次打开时）导入的结果。
+    const earlier = pack({library: ENABLED, download: {kind: 'import', status: 'done', results: [{name: 'earlier.bin', result: 'mismatch'}]}});
+    const imported = pack({current: READY, library: ENABLED, download});
+    Object.assign(c.state, {pack: earlier, index: null, names: null, route: {page: 'settings', section: 'characters'}});
+    // 每个请求挂起，由测试决定什么时候回。
+    const calls = [];
+    globalThis.fetch = (path, options) => new Promise(resolve => {
+      calls.push({path, body: options?.body ? JSON.parse(options.body) : null,
+        reply: (body, status = 200) => resolve({status, ok: status < 400, headers: {get: () => null}, json: async () => body})});
+    });
+    const tick = async () => { for (let i = 0; i < 8; i++) await new Promise(resolve => setImmediate(resolve)); };
+    const v = (await view('characters'))();
+    const press = async label => { v.press('packStatus', label); await tick(); return calls.at(-1); };
+    assert.doesNotMatch(v.text, /earlier\.bin/, 'an import from elsewhere is not listed');
+    let call = await press('从文件导入…');
+    assert.deepEqual(call.body, {action: 'import'});
+    v.update();   // 选择框开着的时候设置页刷新了一次
+    assert.doesNotMatch(v.text, /earlier\.bin/, 'nothing is listed while the picker is open');
+    call.reply({cancelled: true}); await tick();
+    assert.doesNotMatch(v.text, /earlier\.bin/, '关掉选择框不算导入');
+    call = await press('从文件导入…');
+    call.reply({error: '读不了这个文件'}, 500); await tick();
+    v.update();
+    assert.doesNotMatch(v.text, /earlier\.bin/, 'a failed request does not list anything');
+    call = await press('从文件导入…');
+    call.reply(imported); await tick();
+    const text = v.text;
+    assert.match(text, /character-pack-0.2-offline.zip\/packs.json \| 包目录，已读取/);
+    assert.match(text, /old-offline.zip\/packs.json \| 包目录比本机的旧，没有采用/);
+    assert.match(text, /bad-offline.zip\/packs.json \| 包目录签名不对，已拒绝/);
+    assert.match(text, /wd-extension-v2.bin \| 已接收/);
+    assert.match(text, /edited.bin \| SHA-256 不符，已拒绝/);
+    assert.match(text, /notes.txt \| 不是角色资料包/);
+    assert.match(text, /again.bin \| 已经有了/);
+    assert.doesNotMatch(text, /NOTICE/, '离线包随附的许可和说明不列（#643）');
+    // 别的动作以后不列。
+    call = await press('重新检查');
+    assert.deepEqual(call.body, {action: 'enable'});
+    call.reply(imported); await tick();
+    assert.doesNotMatch(v.text, /edited\.bin/, '别的动作以后不列');
+    // 切到别的页面再回来（每次换页都是新的 route，外壳回来时重画）：不再列（#643）。卡片先回到能导入的样子。
+    c.state.pack = earlier; v.update();
+    call = await press('从文件导入…');
+    call.reply(imported); await tick();
+    assert.match(v.text, /edited\.bin/);
+    c.state.route = {page: 'settings', section: 'characters'}; v.update();
+    assert.doesNotMatch(v.text, /edited\.bin/);
+    v.dispose();
+  } finally { delete globalThis.fetch; dom.uninstall(); }
+  // 只有附带文件、或者不是导入的下载：没有可列的。
+  assert.equal(results(pack({current: READY, download: {kind: 'import', status: 'done', results: [{name: 'NOTICE.txt', result: 'extra'}]}})), '');
   assert.equal(results(pack({download: {kind: 'download', status: 'done', results: []}})), '');
-  // 切到别的页面再回来（每次换页都是新的 route）：不再列（#643）。
-  c.state.route = {page: 'settings', section: 'about'};
-  assert.equal(results(imported), '');
-  c.state.route = {page: 'settings', section: 'characters'};
-  assert.equal(results(imported), '');
 });
 
 test('任务面板的一项：有下载或任务时才列出，失败时打警告', () => {

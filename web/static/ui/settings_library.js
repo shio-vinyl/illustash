@@ -5,7 +5,7 @@ import {state} from '../core/state.js';
 import {REASONS, FOLD_OPTIONS} from '../core/labels.js';
 import {refreshMeta} from '../core/meta.js';
 import {SYNC_ACTIVE, syncLine, pollImports} from '../core/jobs.js';
-import {loadLibraries, pollExport, saveFold} from '../core/settings.js';
+import {loadLibraries, saveFold} from '../core/settings.js';
 import {toast} from './dom.js';
 import {groups, refreshSection, startupRow, taskRow, tiles} from './settings_group.js';
 import {librariesGroup} from './settings_libraries.js';
@@ -61,10 +61,7 @@ export function build(main, scope) {
   ], {scope});
   return {update: view.update, load};
 }
-// 进这一节读一次图库列表；读到导出还在进行（比如导出途中刷新了页面），接上进度轮询。
-async function load() {
-  await loadLibraries();
-  if (state.libraries?.export?.status === 'running') pollExport();
-}
+// 进这一节读一次图库列表；读到导出还在进行（比如导出途中刷新了页面），core/settings.js 采用时接上进度轮询。
+const load = () => loadLibraries();
 // 页面启动时调用一次：读图库列表（顶栏的图库名要用），接着看有没有在跑的导入。
 export function wireLibrary() { loadLibraries(); pollImports(); }

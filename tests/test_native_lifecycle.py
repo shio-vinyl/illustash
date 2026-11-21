@@ -25,7 +25,7 @@ import unittest
 from unittest.mock import patch
 from urllib.parse import urlencode
 
-from tests.fixed_expectations import Library, Expectations, RECORDED_TODAY, TERMS_VERSION, unclocked
+from tests.fixed_expectations import Library, Expectations, RECORDED_TODAY, TERMS_VERSION, unclocked, with_ambiguous_pool
 from tests.synthetic_source import source_fixture as fixture, synthetic_reference
 from tests.test_read_http import INTERRUPT, SPAWN, free_port, wait_until, wait_human_backup
 from tools import verify_read_http
@@ -256,7 +256,7 @@ class NativeLifecycleTest(unittest.TestCase):
         return response
 
     def pair(self, url, body=None, **kwargs):
-        left = NativeLifecycleTest.reference_response(self, url, body, **kwargs)
+        left = with_ambiguous_pool(url, NativeLifecycleTest.reference_response(self, url, body, **kwargs))
         right = self.request(url, body, **kwargs)
         self.assertIsNone(difference(left, right), (url, difference(left, right)))
         for header in HEADERS if right['status'] < 400 else ():

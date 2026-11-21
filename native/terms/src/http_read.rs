@@ -29,6 +29,7 @@ pub const CORE_ROUTES: &[&str] = &[
     "/api/galleries/covers",
     "/api/fold",
     "/api/review-pools",
+    "/api/ambiguous",
     "/api/characters",
     "/api/tagged",
     "/api/character/profile",
@@ -591,9 +592,11 @@ const BROWSE_ROUTES: &[&str] = &[
     "/api/calendar",
     "/api/fold",
     "/api/review-pools",
+    "/api/ambiguous",
 ];
 /// 会渲染名字的模块读取。计数、ID 以及原始的身份和偏好读取不渲染；它们的查询路径保持在本地。
 const NAMED_ROUTES: &[&str] = &[
+    "/api/ambiguous",
     "/api/assets",
     "/api/detail",
     "/api/home",

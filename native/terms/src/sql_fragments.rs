@@ -47,6 +47,8 @@ pub(crate) fn unrejected(a: &str) -> String {
 pub(crate) fn leads() -> String {
     format!("(SELECT v.* FROM {HINTS} v WHERE {})", unrejected("v"))
 }
+/// `asked` 里仍在七天暂缓期内的「以后再说」。
+pub(crate) const ASK_DEFERRED: &str = "answer='later' AND asked_at>=datetime('now','-7 days')";
 /// （`a.uuid`，`a.entity`）这一对还没有问过用户。
 pub(crate) fn unasked(a: &str) -> String {
     format!("NOT EXISTS(SELECT 1 FROM asked k WHERE k.uuid={a}.uuid AND k.entity={a}.entity)")

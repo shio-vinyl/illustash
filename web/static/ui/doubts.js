@@ -5,7 +5,8 @@
 //
 // - 答完的卡原地收起（ui/tidy_group.js 的 collapse，开了「减少动态效果」时直接消失），活页条上「可能认错」的数字先按本地算的
 //   滚下去，元数据回来再写真值。不重新加载，页面不跳。
-// - 写入期间这张卡锁着（按钮、图都点不动）；写成了才收起，后端拒绝或断连核对不到就放开，点选留着（ui/answer.js）。
+// - 写入期间这张卡锁着（按钮、图都点不动）；写成了才收起，后端拒绝或断连核对不到就放开，点选留着（ui/answer.js）。卡片过期
+//   （后端回 400）时重读队列。
 // - 卡按键复用（ui/keyed.js）：撤销、学习落定、大图里改了图以后重读，没变的卡留在原处，图不重新加载。同一路由上的几次重读只认
 //   最后发出的那次（page.seq）；重读不把点掉的图复位。
 // - 「点掉的是…」打开的角色选择器属于这一页：离开这一页时关掉；选的时候这张卡已经不在了或离开了这一页，就不写。
@@ -136,7 +137,8 @@ function doubtsView(scope) {
   async function write(c, body, ids) {
     if (page.busy.has(c.key)) return;
     lock(c, true);
-    const ok = await sendAnswer(body, scope);
+    // 卡片过期（400：这几张的备选归属已经变了，例如关了折叠以后同一组的副本分在两张卡上）：重读队列，不只在本地留着。
+    const ok = await sendAnswer(body, scope, {refused: e => { if (e.status === 400) load(true); }});
     lock(c, false);
     if (ok && scope.alive) shed(c, ids);
   }

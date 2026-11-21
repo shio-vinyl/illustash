@@ -1,9 +1,11 @@
 // 整理 › 可能认错（#787）的数据：机器已经算给角色 A、但另一个角色 B 的证据几乎一样强的图（ambiguous_claims），按（A，B）分组。
 // 读取、切成卡、各种回答的请求体。不碰 DOM，Node 里能直接测（tests/doubts.test.cjs）。画在 ui/doubts.js。
 //
-// 接口（#786）：GET /api/ambiguous?nsfw=… → {groups: [{a: {id, name}, b: {id, name}, count, items: [uuid…]}]}，items 新加入的在前、
-// 给全；只有看得见的图，7 天里对（图，A）答过「以后再说」的不列出。张数另在 /api/review-pools 里（core/rail.js 的 DOUBT_POOL，活页条用）。
-// 回答沿用 /api/ask/answer（kind=ambiguous，entity 是 A），和认一认一样一步一个撤销，见 doubtAnswer。
+// 接口（#786，PR #789）：GET /api/ambiguous?nsfw=… → {groups: [{a: {id, name}, b: {id, name}, count, items: [uuid…]}]}。组按张数从多到少，
+// 组内新加入的在前、给全（count === items.length）；只有看得见的图，7 天里对（图，A）答过「以后再说」的不列出。张数另在
+// /api/review-pools 末尾的 kind=ambiguous 一项里（core/rail.js 的 DOUBT_POOL，活页条用）。
+// 回答沿用 /api/ask/answer（kind=ambiguous，entity 是 A），和认一认一样一步一个撤销，见 doubtAnswer。提交时 A、B 已经不是这几张的
+// 候选对（卡片过期）时后端回 400，页面重读队列（ui/doubts.js）。
 import {askAnswer} from './days.js';
 import {api, post} from './session.js';
 

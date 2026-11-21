@@ -145,6 +145,21 @@ test('写入期间这张卡锁着，不会提交两次；后端拒绝时卡和�
   answer = null;
 });
 
+test('卡片过期（后端回 400）：重读队列，卡按新的队列画', async () => {
+  data = [{a: A, b: B, count: 2, items: ['u', 'v']}, {a: A, b: C, count: 1, items: ['w']}];
+  let reads = 0;
+  fetchImpl = path => { if (path.startsWith('/api/ambiguous')) reads++; return serve(path); };
+  state.pools = {ambiguous: 3};
+  await open();
+  answer = () => Promise.resolve({status: 400, ok: false, json: async () => ({error: '图片的备选归属已变更，请刷新'})});
+  data = [{a: A, b: C, count: 1, items: ['w']}];
+  const before = reads;
+  btn(cards()[0], 'none').dispatchEvent(dom.event('click')); await settle();
+  assert.equal(reads, before + 1, '重读了一次');
+  assert.deepEqual(cards().map(c => c.getAttribute('data-key')), ['ca|cc|w']);
+  answer = null;
+});
+
 test('重读：卡按键复用、点掉的图不复位；先发的读取晚到不覆盖', async () => {
   data = [{a: A, b: B, count: 2, items: ['u', 'v']}, {a: A, b: C, count: 1, items: ['w']}];
   fetchImpl = serve; state.pools = {ambiguous: 3};

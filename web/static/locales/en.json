@@ -1551,6 +1551,7 @@
   "随机抽查：{yes} 张是，{no} 张不是": "Spot check: {yes} yes, {no} no",
   "请选择要换成的角色": "Choose the character to move them to",
   "原角色归属已变化，请刷新图片": "The pictures' character has changed; refresh the pictures",
+  "图片的备选归属已变更，请刷新": "The alternative character for these pictures has changed; refresh",
   "检查完了仅适用于父角色": "Only a parent character can be marked as checked",
   "已将 {name} 标为已检查（{n} 张）": {
     "one": "Marked {name} as checked ({n} picture)",

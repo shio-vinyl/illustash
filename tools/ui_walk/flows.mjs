@@ -422,55 +422,60 @@ export const FLOWS = [
 
   {
     name: 'doubts',
-    title: '整理 › 可能认错：是 A、是 B、都不是、「点掉的是…」各答一次再撤销；「以后再说」之后这张卡不再出现；减少动态效果时卡直接消失（#787）',
+    title: '整理 › 可能认错：是 A、是 B、都不是、「点掉的是…」各答一次再撤销；减少动态效果时卡直接消失；「以后再说」之后这批不再出现（#787）',
     covers: ['#787'],
     async run(w, page) {
-      const cards = () => page.eval(`[...document.querySelectorAll('#groupsPage .doubt-card[data-key]:not([inert])')].map(c => c.dataset.key)`);
+      // 合成图库里有一对分不清的角色（WD 把 dahlia 的几张图同样认成了 ember，tools/ui_walk/fixture.py 的 ALSO），是一张卡。每种回答
+      // 答完都撤销，卡回来再答下一种；「以后再说」不进撤销，放在最后。
       const first = '#groupsPage .doubt-card[data-key]:not([inert])';
-      const ids = () => page.eval(`[...document.querySelectorAll(${JSON.stringify(first)})][0] ? [...[...document.querySelectorAll(${JSON.stringify(first)})][0]
-        .querySelectorAll('.judge-tile[data-peek]:not([inert])')].map(t => t.dataset.peek) : []`);
+      const cards = () => page.eval(`[...document.querySelectorAll(${JSON.stringify(first)})].map(c => c.dataset.key)`);
+      const ids = () => page.eval(`(() => { const c = document.querySelector(${JSON.stringify(first)});
+        return c ? [...c.querySelectorAll('.judge-tile[data-peek]:not([inert])')].map(t => t.dataset.peek) : []; })()`);
       const pool = () => stateOf(page, 'S.pools?.ambiguous ?? null');
-      let snap = await w.step('打开整理 › 可能认错', () => goto(page, '#/doubts'), {shot: true});
-      w.check('页头的整理页签里有「可能认错」', await page.eval(`[...document.querySelectorAll('#heading .seg a')].some(a => a.getAttribute('href') === '#/doubts' && a.getAttribute('aria-current') === 'page')`), snap.heading);
-      const start = await cards();
-      w.check('合成图库有可能认错的卡（至少五张，前四种回答和「以后再说」各用一张）', start.length >= 5, start);
-      if (start.length < 5) return;
+      const rail = () => page.eval(`Number((document.querySelector('#railItems .rail-item[data-key="doubts"] .rail-count')?.textContent || '').replace(/\\D/g, '') || 0)`);
+      const settled = async (want, test) => { let now = await want(); for (const end = Date.now() + 8000; Date.now() < end && !test(now);) { await sleep(400); now = await want(); } return now; };
+      let snap = await w.step('打开整理 › 可能认错', async p => { await p.eval(`location.hash = '#/doubts'`); await p.settle({quiet: 600}); }, {shot: true});
+      w.check('页头的整理页签里选中「可能认错」', await page.eval(`[...document.querySelectorAll('#heading .seg a')].some(a => a.getAttribute('href') === '#/doubts' && a.getAttribute('aria-current') === 'page')`), snap.heading);
+      const start = await cards(), pics = await ids(), total = await pool();
+      w.check('合成图库有一张可能认错的卡', start.length === 1 && pics.length > 1, {start, pics});
+      if (!start.length) return;
+      w.check('活页条「可能认错」的数字等于卡上的张数', await rail() === pics.length && total === pics.length, {rail: await rail(), total, pics: pics.length});
+      const key = start[0], was = await Promise.all(pics.map(u => assertionsOf(page, u)));
+      const names = await page.eval(`[...document.querySelector(${JSON.stringify(first)}).querySelectorAll('.tidy-q a')].map(a => a.textContent)`);
       for (const [act, label] of [['a', '是 A'], ['b', '是 B'], ['none', '都不是']]) {
-        const key = (await cards())[0], pics = await ids(), was = await Promise.all(pics.map(u => assertionsOf(page, u))), n = await pool();
-        await w.step(`第一张卡点「${label}」`, async p => { await p.click(`${first} [data-act="${act}"]`); await feedbackEnd(p); }, {shot: act === 'a'});
-        w.check(`「${label}」以后这张卡收起`, !(await cards()).includes(key), {key});
-        w.check(`「${label}」以后活页条的数字少了 ${pics.length}`, await pool() === n - pics.length, {n, now: await pool()});
+        await w.step(`点「${label}」`, async p => { await p.click(`${first} [data-act="${act}"]`); await feedbackEnd(p); }, {shot: act === 'a'});
+        w.check(`「${label}」以后卡收起`, !(await cards()).includes(key), {key});
+        w.check(`「${label}」以后写了人工结论`, !same(await Promise.all(pics.map(u => assertionsOf(page, u))), was), {pics});
+        w.check(`「${label}」以后活页条的数字是 0`, await settled(rail, n => n === 0) === 0, {rail: await rail()});
         await w.step('撤销', async p => { await p.click('#undoButton'); await feedbackEnd(p); });
-        let back = await cards();
-        for (const end = Date.now() + 8000; Date.now() < end && !back.includes(key);) { await sleep(400); back = await cards(); }
-        w.check(`撤销「${label}」以后这张卡回来`, back.includes(key), {key, back});
-        w.check(`撤销「${label}」以后人工结论还原`, same(await Promise.all(pics.map(u => assertionsOf(page, u))), was), {pics});
+        w.check(`撤销「${label}」以后卡回来`, (await settled(cards, c => c.includes(key))).includes(key), {key});
+        w.check(`撤销「${label}」以后人工结论还原（逐张逐项相同）`, same(await Promise.all(pics.map(u => assertionsOf(page, u))), was), {pics});
       }
       // 「点掉的是…」：改成第三个角色（不是 A 也不是 B）
-      const key = (await cards())[0], pics = await ids(), offId = pics[0], was = await assertionsOf(page, offId);
-      const names = await page.eval(`[...document.querySelector(${JSON.stringify(first)}).querySelectorAll('.tidy-q a')].map(a => a.textContent)`);
-      const third = w.config.fixture.chars.map(c => c.name).find(n => !names.includes(n));
-      await w.step('点掉第一张卡的第一张', p => p.click(`${first} .judge-tile[data-peek="${offId}"]`));
+      const offId = pics[0], third = w.config.fixture.chars.map(c => c.name).find(n => !names.includes(n));
+      await w.step('点掉第一张', p => p.click(`${first} .judge-tile[data-peek="${offId}"]`));
+      w.check('主按钮写「其余 N 张是 A」', /\d/.test(await page.eval(`document.querySelector(${JSON.stringify(first + ' [data-act="a"]')}).textContent`)), '');
       await w.step('点「点掉的是…」', p => p.click(`${first} [data-act="other"]`));
       w.check('角色选择器打开了', await page.waitFor(`document.getElementById('picker').open`, 3000), '');
       await w.step(`选 ${third}，回车`, async p => { await pickerFind(p, third); await p.key('Enter'); await feedbackEnd(p); }, {shot: true});
-      w.check(`点掉的那张记成 ${third}`, (await assertionsOf(page, offId)).some(a => a.name === third && a.status === 'confirmed'), {third});
-      w.check('卡还在，少了那一张', (await cards()).includes(key) && same(await ids(), pics.slice(1)), {pics});
+      w.check(`点掉的那张：A 记成不是、${third} 记成是`, (await assertionsOf(page, offId)).some(a => a.name === third && a.status === 'confirmed'), {third});
+      w.check('卡还在，少了那一张（其余按 UUID 比）', (await cards()).includes(key) && same(await ids(), pics.slice(1)), {pics});
       await w.step('撤销', async p => { await p.click('#undoButton'); await feedbackEnd(p); });
-      w.check('撤销以后那张的人工结论还原', same(await assertionsOf(page, offId), was), {was});
-      // 「以后再说」：这批不再出现（重新进这一页也不在）
-      const later = (await cards())[0];
-      await w.step('第一张卡点「以后再说」', async p => { await p.click(`${first} [data-act="later"]`); await feedbackEnd(p); });
-      w.check('「以后再说」以后这张卡收起', !(await cards()).includes(later), {later});
-      await w.step('去按组整理再回来', async () => { await goto(page, '#/groups'); await goto(page, '#/doubts'); });
-      w.check('重新进来，「以后再说」的那批不在', !(await cards()).includes(later), {later});
+      w.check('撤销以后那张回到卡上，人工结论还原', same(await settled(ids, x => x.length === pics.length), pics) && same(await assertionsOf(page, offId), was[0]), {pics});
       // 减少动态效果：卡直接消失（不等收起动画）
       await w.step('打开「减少动态效果」（模拟系统设置）', p => p.send('Emulation.setEmulatedMedia', {features: [{name: 'prefers-reduced-motion', value: 'reduce'}]}));
-      const gone = (await cards())[0];
       await w.step('点「是 A」', p => p.click(`${first} [data-act="a"]`));
-      w.check('卡在 150ms 内不在页面上了', await page.waitFor(`![...document.querySelectorAll('#groupsPage .doubt-card')].some(c => c.dataset.key === ${JSON.stringify(gone)})`, 150), {gone});
+      w.check('卡在 150ms 内就不在页面上了', await page.waitFor(`![...document.querySelectorAll('#groupsPage .doubt-card')].some(c => c.dataset.key === ${JSON.stringify(key)})`, 150, 10), {key});
       await feedbackEnd(page);
+      await w.step('撤销', async p => { await p.click('#undoButton'); await feedbackEnd(p); });
       await w.step('关掉「减少动态效果」', p => p.send('Emulation.setEmulatedMedia', {features: [{name: 'prefers-reduced-motion', value: ''}]}));
+      w.check('撤销以后卡回来', (await settled(cards, c => c.includes(key))).includes(key), {key});
+      // 「以后再说」：这批不再出现（重新进这一页也不在），也不进撤销
+      await w.step('点「以后再说」', async p => { await p.click(`${first} [data-act="later"]`); await p.settle({quiet: 800}); });
+      w.check('「以后再说」以后卡收起', !(await cards()).includes(key), {key});
+      await w.step('去按组整理再回来', async p => { await p.eval(`location.hash = '#/groups'`); await p.settle({quiet: 600}); await p.eval(`location.hash = '#/doubts'`); await p.settle({quiet: 800}); }, {shot: true});
+      w.check('重新进来，「以后再说」的那批不在，写着空状态', !(await cards()).length && await page.eval(`!!document.querySelector('#groupsPage .empty-state')`), '');
+      w.check('「以后再说」没有改人工结论', same(await Promise.all(pics.map(u => assertionsOf(page, u))), was), {pics});
     },
   },
 

@@ -56,14 +56,11 @@ function visibleOffsets() { const v = $('viewport'); return pagesBetween(rowStar
 // NSFW 筛选不同算不同的列表。
 const places = new Map(), PLACES_MAX = 30;
 const placeKey = route => `${hashFor(route)}|${state.nsfw}`;
-// 换页之前调用（ui/shell.js applyRoute），此时 state.route 和滚动位置还是要离开的那一页的。
+// 换页之前调用（ui/shell.js applyRoute），此时 state.route 和滚动位置还是要离开的那一页的。停在网格头部（角色页横幅）里时记像素位置 inHead。
 export function rememberPlace() {
   if (pageOf(state.route).panel || $('grid').hidden || !state.totalReady || !state.total) return;
-  const v = $('viewport'), row = rowAt(v.scrollTop), anchor = rowStart(row), key = placeKey(state.route);
+  const v = $('viewport'), row = rowAt(v.scrollTop), anchor = rowStart(row), key = placeKey(state.route), inHead = v.scrollTop < rowTop(0) ? v.scrollTop : null;
   places.delete(key);
-  // 还停在网格顶部的头部里（角色页的横幅，#712）：记下停在头部里的像素位置，回来时照它恢复；按第 0 行的行顶恢复会滚过
-  // 横幅（行顶含头部的高度）。
-  const inHead = v.scrollTop < rowTop(0) ? v.scrollTop : null;
   places.set(key, {anchor, within: Math.max(0, (v.scrollTop - rowTop(row)) / rowHeight(row)), inHead, end: visibleEnd(v), focused: state.focused, cursor: state.cursor});
   if (places.size > PLACES_MAX) places.delete(places.keys().next().value);
 }
@@ -77,7 +74,7 @@ function restorePlace(place) {
   layout();
   const row = rowOf(Math.min(place.anchor, state.total - 1));
   $('grid').style.height = `${rowTop(rowCount())}px`;
-  $('viewport').scrollTop = place.inHead ?? rowTop(row) + Math.min(place.within, 1) * rowHeight(row);
+  $('viewport').scrollTop = place.inHead ?? rowTop(row) + Math.min(place.within, 1) * rowHeight(row);   // 行顶含头部高度，头部里的不按行算
 }
 // 先取可见的几页，再一步换入数据：编辑之后不会闪出骨架。place 是 placeFor() 记下的位置：读那附近的几页并定位过去。
 export async function reload(reset = false, place = null) {

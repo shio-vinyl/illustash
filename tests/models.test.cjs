@@ -143,30 +143,27 @@ test('base index progress mentions waiting only during known initial setup', asy
 test('downloaded models can be deleted, but not while something uses them', () => {
   context.state.models = models({status: 'ready'});
   context.state.sync = {status: 'done'};
-  assert.match(context.deleteButton(), /data-models="delete" >删除已下载的模型</);
+  assert.deepEqual(context.modelsDeleteButtons(), [{act: 'delete', label: '删除已下载的模型', disabled: false, title: ''}]);
   context.state.sync = {status: 'recognising'};
-  assert.match(context.deleteButton(), /data-models="delete" disabled title="正在识别或下载，等它结束再删除"/);
+  assert.deepEqual(context.modelsDeleteButtons(), [{act: 'delete', label: '删除已下载的模型', disabled: true, title: '正在识别或下载，等它结束再删除'}]);
   context.state.sync = {status: 'done'};
-  assert.match(context.deleteButton(models({status: 'ready', job: {status: 'running'}})), /disabled/);
-  assert.equal(context.deleteButton(models({status: 'ready', on_demand: false})), '', 'models that came with the install stay');
-  assert.equal(context.deleteButton(models()), '', 'nothing to delete yet');
+  assert.equal(context.modelsDeleteButtons(models({status: 'ready', job: {status: 'running'}}))[0].disabled, true);
+  assert.deepEqual(context.modelsDeleteButtons(models({status: 'ready', on_demand: false})), [], 'models that came with the install stay');
+  assert.deepEqual(context.modelsDeleteButtons(models()), [], 'nothing to delete yet');
 });
 
 test('the acceleration switch shows only where there is an accelerator, and says when it fell back (#270)', () => {
-  assert.equal(context.accelerationLine(models()), '', 'an older host without the field');
-  assert.equal(context.accelerationLine(models({acceleration: {available: false, backend: null, on: true, last: {}}})), '');
+  assert.equal(context.accelerationHint(models()), '', 'an older host without the field');
+  assert.equal(context.accelerationHint(models({acceleration: {available: false, backend: null, on: true, last: {}}})), '');
   const on = models({acceleration: {available: true, backend: 'coreml', on: true, last: {}}});
-  assert.match(context.accelerationLine(on), /<b>使用 GPU 加速识别<\/b>/);
-  assert.match(context.accelerationLine(on), /Core ML 加速标签与角色特征/);
-  assert.match(context.accelerationLine(on), /data-acceleration checked/);
-  assert.doesNotMatch(context.accelerationLine(on), /<em>/);
+  assert.match(context.accelerationHint(on), /Core ML 加速标签与角色特征/);
+  assert.equal(context.accelerationFell(on), '');
   const off = models({acceleration: {available: true, backend: 'directml', on: false, last: {}}});
-  assert.match(context.accelerationLine(off), /用显卡计算/);
-  assert.match(context.accelerationLine(off), /data-acceleration >/);
+  assert.match(context.accelerationHint(off), /用显卡计算/);
   const fell = {ccip: {requested: 'coreml', used: 'cpu', reason: 'coreml <ccip>: failed', at: 1}};
-  assert.match(context.accelerationLine(models({acceleration: {available: true, backend: 'coreml', on: true, last: fell}})),
-    /<em>上次没能用上加速，已改用 CPU：coreml &lt;ccip&gt;: failed<\/em>/);
-  assert.doesNotMatch(context.accelerationLine(models({acceleration: {available: true, backend: 'coreml', on: false, last: fell}})), /<em>/,
+  assert.equal(context.accelerationFell(models({acceleration: {available: true, backend: 'coreml', on: true, last: fell}})),
+    '上次没能用上加速，已改用 CPU：coreml <ccip>: failed');
+  assert.equal(context.accelerationFell(models({acceleration: {available: true, backend: 'coreml', on: false, last: fell}})), '',
     'switched off: nothing to explain');
 });
 
@@ -196,13 +193,14 @@ test('基础角色索引（#607）：缺文件时提示和按钮按缺的是哪�
     assert.equal(context.finishedNote({status: 'failed', failed_file: base.file.path}, true, only),
       '识别模型已就位，开始识别；基础角色索引没能下载，可以在「设置 › 数据」里重试。');
     // 文件还没下载：这一行不出现，由上面的下载负责。
-    assert.equal(context.characterBaseLine(base), '');
-    assert.match(context.characterBaseLine({...base, available: true}), /已下载，这个图库还没启用.*data-models="base-enable"/s);
-    assert.match(context.characterBaseLine({...base, available: true, enabled: true}), /已启用，7,367 个角色.*data-models="base-withdraw"/s);
-    assert.match(context.characterBaseLine({...base, available: true, withdrawn: true}), /已撤回.*data-models="base-enable"/s);
-    assert.doesNotMatch(context.characterBaseLine({...base, available: true, enabled: true, running: true}), /data-models/);
-    assert.equal(context.characterBaseLine({...base, available: true, writable: false}), '');
-    assert.equal(context.characterBaseLine({...base, included: false}), '');
+    const line = b => [context.characterBaseText(b), context.characterBaseButtons(b).map(x => x.act).join()];
+    assert.deepEqual(line(base), ['', '']);
+    assert.deepEqual(line({...base, available: true}), ['基础角色索引：已下载，这个图库还没启用', 'base-enable']);
+    assert.deepEqual(line({...base, available: true, enabled: true}), ['基础角色索引：已启用，7,367 个角色', 'base-withdraw']);
+    assert.deepEqual(line({...base, available: true, withdrawn: true}), ['基础角色索引：已撤回', 'base-enable']);
+    assert.deepEqual(line({...base, available: true, enabled: true, running: true}), ['基础角色索引正在更新', '']);
+    assert.deepEqual(line({...base, available: true, writable: false}), ['', '']);
+    assert.deepEqual(line({...base, included: false}), ['', '']);
     // 首次准备时图库还没有识别结果，启用提示不说「0 张」。
     const {indexEndText} = web.core();
     assert.equal(indexEndText({status: 'done', kind: 'base', enabled: true, changed: 0}), '基础角色索引已启用');
@@ -231,7 +229,7 @@ test('a base index update keeps polling even when the general index task missed 
     await timers.get(timer)();
     assert.equal(context.state.characterBase.running, true);
     await timers.get(timer)();
-    assert.match(context.characterBaseLine(), /data-models="base-withdraw"/);
+    assert.deepEqual(context.characterBaseButtons().map(b => b.act), ['base-withdraw']);
     assert.equal(calls, 3);
     assert.equal(timers.size, 0);
   } finally {
@@ -269,7 +267,7 @@ test('a base index read waits for a pending activation before checking progress'
     assert.equal(context.state.characterBase.running, true);
     complete = true;
     await timers.get(timer)();
-    assert.match(context.characterBaseLine(), /data-models="base-withdraw"/);
+    assert.deepEqual(context.characterBaseButtons().map(b => b.act), ['base-withdraw']);
     assert.equal(timers.size, 0);
   } finally {
     Object.assign(globalThis, {fetch, setTimeout, clearTimeout});
@@ -331,17 +329,13 @@ test('repairing the WD acceleration file is offered only while acceleration is o
 });
 
 test('the mirror note mentions the WD acceleration file only where the platform has one (#375)', () => {
-  const {el} = web.fakePage();
   const file = (path, optional) => ({path, size: 1, sha256: '0'.repeat(64), optional});
-  context.state.models = models({files: [file('wd/model.onnx', false)]});
-  context.renderModelsCard();
-  assert.match(el('setModels').innerHTML, /先从这个地址下载，不行再换 ModelScope。/);
-  assert.doesNotMatch(el('setModels').innerHTML, /WD 加速文件/);
-  context.state.models = models({files: [file('wd/model.onnx', false), file('wd/model-coreml.onnx', true)]});
-  context.renderModelsCard();
-  assert.match(el('setModels').innerHTML, /原始模型先从这个地址下载.*WD 加速文件从项目的 GitHub Release 下载。/);
+  const plain = context.mirrorNote(models({files: [file('wd/model.onnx', false)]}));
+  assert.match(plain, /先从这个地址下载，不行再换 ModelScope。/);
+  assert.doesNotMatch(plain, /WD 加速文件/);
+  assert.match(context.mirrorNote(models({files: [file('wd/model.onnx', false), file('wd/model-coreml.onnx', true)]})),
+    /原始模型先从这个地址下载.*WD 加速文件从项目的 GitHub Release 下载。/);
 });
-
 test('the note when a job ends says both things in one toast, and calls the optional file the WD acceleration file (#375)', () => {
   const files = [{path: 'wd/model.onnx', size: 1, sha256: '0', optional: false}, {path: 'coreml/wd-swinv2-v3-v1.onnx', size: 1, sha256: '0', optional: true}];
   const ready = models({status: 'ready', files}), missing = models({files, missing: ['wd/model.onnx']});
@@ -374,7 +368,7 @@ test('fallbacks count only while acceleration is on and a reason was written (#3
   const settled = accel({ccip});
   assert.deepEqual(context.fallbacks(settled), {});
   assert.equal(context.modelsActions(settled), '');
-  assert.doesNotMatch(context.accelerationLine(settled), /<em>/);
+  assert.equal(context.accelerationFell(settled), '');
 });
 
 test('a sync that ends reads the models again, so the card follows the latest recognition (#375)', async () => {
@@ -410,8 +404,6 @@ test('a models button comes back after the file picker is cancelled or the reque
   };
   context.wireModels();
   await new Promise(done => setTimeout(done, 0));
-  const card = page.el('setModels'), drawn = card.innerHTML;
-  assert.match(drawn, /data-models="import"/);
   const press = async button => {
     for (const fn of clicks) fn({target: {closest: sel => sel === '[data-models]' ? button : null}});
     assert.equal(button.disabled, true, 'disabled while waiting');
@@ -425,7 +417,6 @@ test('a models button comes back after the file picker is cancelled or the reque
     const button = {dataset: {models: 'import'}, disabled: false};
     await press(button);
     assert.equal(button.disabled, false, `back after the request ${what}`);
-    assert.equal(card.innerHTML, drawn, 'nothing changed, so nothing was redrawn');
   }
   assert.equal(page.el('toastText').textContent, 'offline');
   delete globalThis.fetch;

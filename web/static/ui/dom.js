@@ -110,6 +110,10 @@ export async function busy(buttons, run) {
   for (const b of list) b.disabled = true;
   try { return await run(); } finally { for (const b of list) b.disabled = false; }
 }
+// 按钮的数据（[{act, label, primary, disabled, title}]，ui/rows.js 的 buttons 也是这个形状）拼成 HTML，给还在拼 HTML 的
+// 任务面板和向导横条用；attr 是放动作名的属性（data-models、data-pack…）。不能点时 title 写原因。
+export const buttonsHTML = (list, attr) => list.map(b => `<button class="${b.primary ? 'primary' : 'quiet'} small" ${attr}="${esc(b.act)}"`
+  + `${b.disabled ? ` disabled${b.title ? ` title="${esc(b.title)}"` : ''}` : ''}>${esc(b.label)}</button>`).join('');
 // 只替换 HTML 变了的部分，没变的封面不会重新加载。
 export function reconcileSections(container, sections, empty = t('没有匹配的角色')) {
   if (!sections.length) { container.innerHTML = `<p class="empty">${empty}</p>`; return; }

@@ -10,7 +10,7 @@ import {keyed} from './keyed.js';
 import {app} from './scope.js';
 import {createLayer} from './overlay.js';
 import {popOpen, showPop} from './pop.js';
-import {openLibrary} from './settings.js';
+import {openLibrary} from './settings_libraries.js';
 import {$, toast} from './dom.js';
 
 const POP = tpl`<div class="library-pop-in"><div class="library-now"><small data-t>当前图库</small><b data-ref="name"></b><span data-ref="path"></span></div>

@@ -1,6 +1,7 @@
 // 筛选条（#445）：图库、角色页和画廊页工具栏里的条件胶囊和「＋ 条件」选择器。条件怎么读写在 core/filters.js；
 // 这里只画胶囊、读名字、开选择器。胶囊的名字是链接：点一下在「含」和「不含」之间切换；× 去掉。图库页的标题和「?」
 // 也从这里读（#644）：旧的单值参数和条件数组两种写法，标题、说明和名字都一样。
+import {ownConditionOf} from '../core/galleries.js';
 import {loadWorkTree} from '../core/catalog.js';
 import {dayLabel, esc, number} from '../core/format.js';
 import {I18N, t} from '../core/i18n.js';
@@ -89,7 +90,9 @@ export function filterBar(r) {
   const when = x.from || x.to ? datesLabel(x.from, x.to) : x.day ? t('{day} 加入', {day: dayLabel(x.day)}) : '';
   const dates = when ? `<span class="variant-chip"><span>${esc(when)}</span><button data-drop-dates title="${t('去掉日期')}" aria-label="${t('去掉日期')}">×</button></span>` : '';
   const full = count(r) >= LIMIT;
-  return [...x.has.map(c => pill(c, false)), ...x.not.map(c => pill(c, true))].join('') + dates +
+  // 画廊页上定义这个画廊的那个条件（手选画廊的 gallery:<id>、收藏的 fav，#710）不画：它就是这一页，去掉它就不是这个画廊了。
+  const own = ownConditionOf(r);
+  return [...x.has.filter(c => c !== own).map(c => pill(c, false)), ...x.not.map(c => pill(c, true))].join('') + dates +
     `<div class="tag-control"><button id="condButton" class="quiet"${full ? ` disabled title="${t('最多 {n} 个条件', {n: LIMIT})}"` : ''}>＋ ${t('条件')}</button>` +
     `<div id="condPopover" class="menu menu-drop" hidden>` +
     `<input id="condSearch" type="search" spellcheck="false" autocorrect="off" autocapitalize="off" placeholder="${t('标签、角色、作品、画师、出处或年份')}" aria-label="${t('搜索条件')}">` +

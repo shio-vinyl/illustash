@@ -636,7 +636,11 @@ def _check_baseline(slot, state, only=None):
         pick = lambda s: {db: {t: s.get(db, {}).get(t) for t in tables} for db, tables in only.items()}
         state, want = pick(state), want if want is None else pick(want)
     if want is not None:
-        want, state = _without_retired_rows(_without_volatile(want)), _without_retired_rows(_without_volatile(state))
+        ignored_rows = RETIRED_ROWS
+        if test == 'tests.test_native_local_reads.NativeLocalReadsTest.test_names_configuration_coverage_and_accounts':
+            # #289：此合成包的旧密钥已改为随机引用。该测试单独断言原行消失、引用格式和 GET 尾号。
+            ignored_rows |= {('name_settings', 'deepseek_key'), ('name_settings', 'model_credential')}
+        want, state = (_without_retired_rows(_without_volatile(value), ignored_rows) for value in (want, state))
     if want == state:
         return True
     if want is None:
@@ -679,12 +683,12 @@ def _without_volatile(state):
 RETIRED_ROWS = frozenset({('name_settings', 'traffic_reserved')})
 
 
-def _without_retired_rows(state):
+def _without_retired_rows(state, ignored_rows=RETIRED_ROWS):
     out = {}
     for db, tables in state.items():
         out[db] = {}
         for name, table in tables.items():
-            keys = {key for table_name, key in RETIRED_ROWS if table_name == name}
+            keys = {key for table_name, key in ignored_rows if table_name == name}
             if keys:
                 table = {**table, 'rows': [row for row in table['rows'] if json.loads(row)[0] not in keys]}
             out[db][name] = table

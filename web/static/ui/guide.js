@@ -10,7 +10,7 @@ import {api, post, session} from '../core/session.js';
 import {allowNames, updatesPost, updatesTick} from '../core/settings.js';
 import {state} from '../core/state.js';
 import {$, toast, redraw, setDrawn, drawnHTML, busy} from './dom.js';
-import {drawUpdateButton, openRelease, selfUpdate, updateAct, updateActions, updateBar, updateStarted, updateStatus} from './settings.js';
+import {drawUpdateButton, openRelease, selfUpdate, updateAct, updateActions, updateBar, updateStarted, updateStatus} from './updates.js';
 import {taskList} from './tasks.js';
 import {createLayer} from './overlay.js';
 import {read, write} from './frame.js';

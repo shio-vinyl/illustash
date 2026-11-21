@@ -147,6 +147,89 @@ test('瀑布和马赛克：列宽为 0、尺寸未知、NaN 都不出错', () =>
   assert.equal(mosaic.boxes[0].w, .75 * 210, 'unknown size counts as 3:4, not a 0.5 sliver');
 });
 
+// ---------- 画廊的展示布局（#710） ----------
+test('固定种子：同一个种子每次一样，不同的种子不一样；哈希对同一个字符串不变', () => {
+  const a = L.seeded(7), b = L.seeded(7), c = L.seeded(8);
+  const take = f => Array.from({length: 5}, f);
+  assert.deepEqual(take(a), take(b));
+  assert.notDeepEqual(take(L.seeded(7)), take(c));
+  assert.ok(take(L.seeded(1)).every(x => x >= 0 && x < 1));
+  assert.equal(L.hashSeed('fav'), L.hashSeed('fav'));
+  assert.notEqual(L.hashSeed('3'), L.hashSeed('4'));
+});
+
+test('瀑布按行：放法和 masonry 一样；顶部随序号不减，每 columns 张一行，reach 是最高一张', () => {
+  const ratios = [1, .5, 2, 1, .75, 1.5, .6];
+  const packed = L.masonryRows(ratios.length, i => ratios[i], {width: 310, column: 100, gap: 5});
+  const plain = L.masonry(ratios, {width: 310, column: 100, gap: 5});
+  assert.equal(packed.columns, 3);
+  plain.boxes.forEach(b => assert.deepEqual([packed.x[b.i], packed.y[b.i], packed.w[b.i], packed.h[b.i]], [b.x, b.y, b.w, b.h]));
+  for (let i = 1; i < ratios.length; i++) assert.ok(packed.y[i] >= packed.y[i - 1]);
+  assert.equal(packed.rows, 3);
+  assert.deepEqual([...packed.starts.slice(0, 4)], [0, 3, 6, 7]);
+  assert.deepEqual([...packed.tops.slice(0, 4)], [0, 55, packed.y[6], plain.height]);
+  assert.equal(packed.reach, 200);
+  // 同一列的上一张、下一张；到头了停在原处。
+  assert.equal(L.masonryStep(packed, ratios.length, 0, 1), [...packed.col].findIndex((c, j) => j > 0 && c === packed.col[0]));
+  assert.equal(L.masonryStep(packed, ratios.length, 0, -1), 0);
+  // 复用上一次的数组；0 张时总高 0。
+  const again = L.masonryRows(2, () => 1, {width: 310, column: 100, gap: 5}, packed);
+  assert.equal(again.x, packed.x);
+  assert.equal(again.tops[again.rows], 100);
+  assert.equal(L.masonryRows(0, () => 1, {width: 310, column: 100}).tops[0], 0);
+});
+
+test('拼贴：同一个种子排得一样；角度在 ±7° 里，框不出左右边，行与行稍微叠上', () => {
+  const ratios = Array.from({length: 18}, (_, i) => [.75, 1, 1.4, .6][i % 4]);
+  const one = L.collage(ratios, {width: 1200, seed: 42}), two = L.collage(ratios, {width: 1200, seed: 42});
+  assert.deepEqual(one, two);
+  assert.notDeepEqual(L.collage(ratios, {width: 1200, seed: 43}).boxes, one.boxes);
+  assert.equal(one.boxes.length, 18);
+  assert.ok(one.boxes.every(b => Math.abs(b.rot) <= 7 && b.x >= 0 && b.x + b.w <= 1200 + 1e-9 && b.z >= 1 && b.z <= 9));
+  assert.ok(one.boxes.every(b => b.tape === null || (b.tape.at >= .3 && b.tape.at <= .7)));
+  // 1200 宽是 6 列；第二行的图从第一行最高那张的 84% 附近开始，所以会叠上一点。
+  const firstRowBottom = Math.max(...one.boxes.slice(0, 6).map(b => b.y + b.h));
+  assert.ok(Math.min(...one.boxes.slice(6, 12).map(b => b.y)) < firstRowBottom);
+  assert.ok(one.height >= Math.max(...one.boxes.map(b => b.y + b.h)) - 1e-9);
+  assert.deepEqual(L.collage([], {width: 800}), {boxes: [], height: 0});
+  assert.equal(L.collage([1, 1, 1], {width: 300, seed: 1}).boxes.length, 3);
+});
+
+test('杂志：宽时封面在左、导语和两张在右、下面一排带编号；窄时竖着排', () => {
+  const ratios = Array(9).fill(.75);
+  const wide = L.magazine(ratios, {width: 1200, gap: 16, lead: 96});
+  const roles = wide.boxes.map(b => b.role);
+  assert.deepEqual(roles.slice(0, 3), ['cover', 'side', 'side']);
+  assert.ok(roles.slice(3).every(r => r === 'row'));
+  const [cover, s1, s2] = wide.boxes;
+  assert.equal(cover.w, Math.round((1200 - 16) * .6));
+  assert.equal(s1.x, cover.w + 16);
+  assert.equal(s2.y + s2.h, cover.h);
+  assert.deepEqual(wide.lead, {x: cover.w + 16, y: 0, w: 1200 - cover.w - 16, h: 96});
+  assert.deepEqual(wide.boxes.slice(1).map(b => b.no), wide.boxes.slice(1).map((_, k) => k + 1));
+  const row = wide.boxes.filter(b => b.role === 'row');
+  assert.ok(row.every(b => b.y === row[0].y && b.h === row[0].h));
+  assert.ok(row.at(-1).x + row.at(-1).w <= 1200 + 1e-6);
+  const narrow = L.magazine(ratios, {width: 600, gap: 16, lead: 96});
+  assert.equal(narrow.boxes[0].w, 600);
+  assert.equal(narrow.lead.y, narrow.boxes[0].h + 16);
+  assert.equal(narrow.boxes[1].y, narrow.boxes[2].y);
+  assert.deepEqual(L.magazine([], {width: 600}), {boxes: [], lead: null, height: 0});
+  assert.deepEqual(L.magazine([1], {width: 1200}).boxes.map(b => b.role), ['cover']);
+});
+
+test('展厅：一排画框，高按档位轮换、宽按比例，中心在视线高度；墙宽算上两边留白', () => {
+  const {boxes, width} = L.hall([1, .5, 3], {height: 500, gap: 72, frame: 12, pad: 64});
+  assert.deepEqual(boxes.map(b => b.h), L.HALL_STEPS.slice(0, 3).map(s => 500 * s + 24));
+  assert.equal(boxes[0].w, 500 * L.HALL_STEPS[0] + 24);
+  assert.equal(boxes[1].w, 500 * L.HALL_STEPS[1] * .5 + 24);
+  assert.equal(boxes[2].w, 500 * L.HALL_STEPS[2] * 2.4 + 24, '全景图按上限 2.4 算');
+  boxes.forEach(b => assert.ok(Math.abs(b.y + b.h / 2 - 210) < 1e-9));
+  assert.equal(boxes[1].x, boxes[0].x + boxes[0].w + 72);
+  assert.equal(width, boxes[2].x + boxes[2].w + 64);
+  assert.deepEqual(L.hall([], {height: 500}), {boxes: [], width: 0});
+});
+
 test('一行（strip）：等高、按宽高比放到放不下为止，不拉满；未知按 3:4，超宽的截上限', () => {
   const four = L.strip([.7, .7, .7, .7], {height: 84, max: 288, gap: 4});
   assert.deepEqual(four.boxes.map(b => [b.i, b.x, b.w, b.h]), [[0, 0, 59, 84], [1, 63, 59, 84], [2, 126, 59, 84], [3, 189, 59, 84]]);

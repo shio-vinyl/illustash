@@ -1,4 +1,5 @@
-// 文件夹来源的位置操作。所有请求都带选择文件夹或确认候选之前的会话令牌。
+// 文件夹来源的位置操作（设置 › 图库的「这个文件夹搬到了…」「认回原图…」「撤销」，d 是 {folderMove} / {folderRecognize} /
+// {folderUndo, token}）。所有请求都带选择文件夹或确认候选之前的会话令牌。
 import {t} from '../core/i18n.js';
 import {esc, home, number} from '../core/format.js';
 import {session} from '../core/session.js';
@@ -8,16 +9,12 @@ import {pollSync} from '../core/jobs.js';
 import {confirmAction, openDialog} from './dialog.js';
 import {toast} from './dom.js';
 
-export function folderActions(source, change) {
-  const id = esc(source.id);
-  const result = change && (change.state === 'pending' ? t('等待核对新位置的文件') :
+// 认回或搬家之后的一句结果（设置 › 图库里那个文件夹下面的小字），没有时为空。
+export function folderResult(change) {
+  if (!change) return '';
+  return change.state === 'pending' ? t('等待核对新位置的文件') :
     change.from ? t('已认回 {kept} 张，新增 {added} 张，旧记录未认回 {missing} 张',
-      {kept: number(change.kept), added: number(change.new), missing: number(change.missing)}) : t('已认回 {n} 张', {n: number(change.kept)}));
-  const undo = change ? `<small>${esc(result)} <button class="quiet small" data-folder-undo="${id}"
-    data-token="${esc(change.token)}">${t('撤销')}</button></small>` : '';
-  return `${undo}<span class="set-actions">
-    <button class="quiet small" data-folder-move="${id}">${t('这个文件夹搬到了…')}</button>
-    <button class="quiet small" data-folder-recognize="${id}">${t('认回原图…')}</button></span>`;
+      {kept: number(change.kept), added: number(change.new), missing: number(change.missing)}) : t('已认回 {n} 张', {n: number(change.kept)});
 }
 
 function confirmMatches(files) {

@@ -488,6 +488,32 @@ class NativeFolderHTTPTest(unittest.TestCase):
         self.assertFalse(self.lib.source.with_suffix('.scan-pending.json').exists())
         self.assertFalse(self.sentinel.exists())
 
+    def test_native_library_new_folder_retries_content_change_with_journal_but_no_app_hash(self):
+        image(self.new_folder / 'a.png', 'red')
+        self.assertEqual(self.sync()['state']['status'], 'needs_recognition')
+        with sqlite3.connect(self.lib.db) as c:
+            asset = c.execute("SELECT uuid FROM assets WHERE filename='a.png'").fetchone()[0]
+            key = f'folder_hash:{asset}'
+            c.execute('DELETE FROM meta WHERE key=?', (key,))
+            c.execute("""CREATE TRIGGER fail_import BEFORE INSERT ON assets WHEN NEW.filename='a.png'
+                         BEGIN SELECT RAISE(ABORT,'synthetic content projection failure'); END""")
+        image(self.new_folder / 'a.png', 'yellow', (51, 31))
+        self.assertEqual(self.sync()['state']['status'], 'error')
+        with sqlite3.connect(self.lib.source) as c:
+            source_hash = c.execute('SELECT stable_hash FROM assets WHERE uuid=?', (asset,)).fetchone()[0]
+        journal = self.lib.source.with_suffix('.scan-pending.json')
+        self.assertEqual(json.loads(journal.read_text())[asset], source_hash)
+        with sqlite3.connect(self.lib.db) as c:
+            self.assertEqual(c.execute('SELECT width FROM assets WHERE uuid=?', (asset,)).fetchone()[0], 40)
+            self.assertIsNone(c.execute('SELECT value FROM meta WHERE key=?', (key,)).fetchone())
+            c.execute('DROP TRIGGER fail_import')
+        retried = self.sync()['state']
+        self.assertEqual((retried['status'], retried['found'], retried['imported']), ('needs_recognition', 0, 1))
+        with sqlite3.connect(self.lib.db) as c:
+            self.assertEqual(c.execute('SELECT width FROM assets WHERE uuid=?', (asset,)).fetchone()[0], 51)
+            self.assertEqual(c.execute('SELECT value FROM meta WHERE key=?', (key,)).fetchone()[0], source_hash)
+        self.assertFalse(journal.exists())
+
     @unittest.skipIf(os.name == 'nt', '固定期望录自 macOS：资产键序与文件元数据随平台不同')
     def test_native_library_new_folder_full_application_typed_rowid_projection_comparison(self):
         clone = self.root / 'reference-clone.pilib'

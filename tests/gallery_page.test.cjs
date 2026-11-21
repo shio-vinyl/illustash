@@ -17,6 +17,7 @@ before(async () => {
   globalThis.history = {state: null, replaceState() {}};
   grid = await web.load('ui/grid.js'); grid.wireGrid();
   shell = await web.load('ui/shell.js');
+  await web.load('ui/galleries.js');
   pages = await web.load('core/pages.js');
   ({state} = web.core());
 });
@@ -42,9 +43,9 @@ test('条件失效：原因只写在空状态里，下面给「删除画廊」�
   assert.deepEqual(web.emptyState(page.el('empty')), {fact: '条件失效：角色不存在', next: [{label: '删除画廊', act: 'delete-gallery'}]});
   assert.ok(!asked.some(p => p.startsWith('/api/assets/count')), '不为页头另数一次');
   shell.renderHeading();
-  const h = page.el('heading').innerHTML;
+  const h = web.headingText(page.el('heading'));
   assert.doesNotMatch(h, /条件失效/, '页头不再写一遍原因');
-  assert.match(h, /<p class="page-sub">0 张<\/p>/);
+  assert.match(h, /按条件.* · 0 张/);
 });
 
 test('别的失败照旧走错误条', async () => {
@@ -52,4 +53,24 @@ test('别的失败照旧走错误条', async () => {
   await grid.reload(true);
   assert.equal(page.el('errorBanner').hidden, false);
   assert.equal(page.el('errorBanner').textContent, '数据库忙');
+});
+
+test('展示页（#710）：同一个地址里连着换两次展示方式，先发的回复晚到也不盖掉后一次的', async () => {
+  const stage = await web.load('ui/gallery_stage.js'), shows = await web.load('core/gallery_shows.js'), {app} = await web.load('ui/scope.js');
+  const g = {id: 4, name: '合成', params: {has: '["tag:x"]'}, cover_manual: false, position: 0};
+  Object.assign(state, {galleries: [g], route: {page: 'showcase', id: '4'}});
+  const waiting = {};
+  globalThis.fetch = path => new Promise(done => { waiting[new URLSearchParams(path.split('?')[1]).get('limit')] = done; });
+  const items = n => Array.from({length: n}, (_, i) => ({uuid: 'u' + i, width: 3, height: 4}));
+  const scope = app.child('stage-test');
+  shows.chooseShow(4, 'magazine');
+  const first = stage.renderStage({scope});
+  shows.chooseShow(4, 'hall');
+  const second = stage.renderStage({samePage: true, scope});
+  waiting['12'](reply(200, {total: 12, items: items(12)}));
+  await second;
+  waiting['9'](reply(200, {total: 9, items: items(9)}));
+  await first;
+  assert.equal(stage.stageTotal(), 12, '舞台上是展厅那一次读到的');
+  scope.dispose();
 });

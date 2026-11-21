@@ -20,6 +20,7 @@ async function wired() {
   globalThis.localStorage = {getItem: k => store.has(k) ? store.get(k) : null, setItem: (k, v) => store.set(k, v), removeItem: k => store.delete(k)};
   ({state} = web.core());
   shell = await web.load('ui/shell.js'); grid = await web.load('ui/grid.js'); rows = await web.load('ui/grid_rows.js');
+  await web.load('ui/settings.js');   // 设置页登记在它自己的模块里（app.js 也加载它）
   globalThis.fetch = path => {
     const q = new URLSearchParams(path.split('?')[1] || '');
     let body = [];

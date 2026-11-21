@@ -1,13 +1,4 @@
 {
   "说明": "不稳定测试的隔离名单（#501）。名单里的测试照常运行，只在列出的平台上失败不计入结果，单列在「隔离名单中的失败」。到期的条目、找不到对应测试的条目让检查失败。规则见 AGENTS.md，格式见 tools/quarantine.py。",
-  "entries": [
-    {
-      "kind": "python",
-      "id": "test_native_library_upgrade.NativeLibraryUpgradeTest.test_desktop_upgrade_reports_its_stages_and_stays_alive_through_steps_that_cannot_report",
-      "platforms": ["macos"],
-      "issue": 746,
-      "added": "2026-11-19",
-      "expires": "2026-12-03"
-    }
-  ]
+  "entries": []
 }

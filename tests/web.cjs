@@ -88,7 +88,7 @@ function fakePage() {
   const nodes = new Map();
   const document = {
     getElementById: id => { if (!nodes.has(id)) nodes.set(id, new FakeElement('div', id)); return nodes.get(id); },
-    // <template>：ui/el.js 读 content.childNodes（真的解析），ui/dom.js 的 reconcileSections 读 content.firstElementChild.html（原文）。
+    // <template>：ui/el.js 读 content.childNodes（真的解析）；content.firstElementChild.html 留着原文。
     createElement: tag => tag === 'template' ? {set innerHTML(html) {
       const real = templateDocument().createElement('template');
       try { real.innerHTML = html; } catch {}

@@ -154,7 +154,7 @@ export function renderHeading() {
     h.innerHTML = `<hgroup class="heading-main"><h1 class="title-page">${title}${helpButton}</h1><p class="page-sub">${updating(sub)}</p>${helpPop}</hgroup>${links}`;
   }
   const sw = drawSwitches(r, view); if (sw) h.append(sw);
-  wireHelpTip(); view.wireHeading?.(h, r);
+  wireHelpTip();
 }
 
 // ---------- 工具栏 ----------

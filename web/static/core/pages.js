@@ -183,7 +183,6 @@ export const poolIs = (route, ...pools) => pools.includes(pageOf(route).pool);
 //                        藏起头部；数据变了（元数据重读）由部件自己在作用域上听 onMeta，不跟着页头重画
 //   headingHTML(r, ctx)  旧写法（存量）：[标题, 副标题, 右侧链接 HTML]，拼进 innerHTML。各页步骤改到哪页就迁到 head；「更多像这张的」
 //                        另用 drawHeading 自己画整个页头（也是存量）
-//   wireHeading(h, r)    headingHTML 画好之后给右侧的按钮挂上处理函数（旧写法；整理页 #713 之后没有页面再用，ui/shell.js 里的钩子待删）
 //   help(r), helpHint    标题旁「?」里的说明（一行一句）；helpHint 为真时再接上本页的 hint，一个「·」一行（#527）
 //   onMeta(info)         计数等元数据到达后重画什么；没有的页面重画工具栏
 //   emptyNext(r)         网格空了时空状态下面的去处（#386 的 2-12）：[{label, href}]（链接）或 [{label, act}]（按钮），

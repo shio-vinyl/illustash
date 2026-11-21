@@ -57,36 +57,6 @@ test('failed metadata refresh releases the in-flight request for retry', async (
   fail = false; await c.refreshMeta(); assert.equal(c.session.token, 'current');
 });
 
-class Element {
-  constructor() {this.children = []; this.dataset = {}; this.style = {}; this.classList = {toggle() {}}; this.moves = 0;}
-  get firstElementChild() {return this.children[0] || null;}
-  get nextElementSibling() {return this.parent?.children[this.parent.children.indexOf(this) + 1] || null;}
-  remove() {if (this.parent) {const a = this.parent.children; a.splice(a.indexOf(this), 1); this.parent = null;}}
-  insertBefore(el, before) {if (el === before) return; el.remove(); const i = before ? this.children.indexOf(before) : this.children.length; assert.ok(i >= 0); this.children.splice(i, 0, el); el.parent = this; this.moves++;}
-  replaceWith(el) {const p = this.parent; p.insertBefore(el, this); this.remove();}
-  setAttribute() {}
-  querySelector() {return {addEventListener() {}};}
-}
-function documentMock() {
-  return {createElement(type) {
-    if (type !== 'template') return new Element();
-    return {set innerHTML(value) {this.content = {firstElementChild: Object.assign(new Element(), {html: value})};}};
-  }};
-}
-// reconcileSections() 在 ui/dom.js（#199）。
-let reconcileSections;
-test.before(async () => { ({reconcileSections} = await web.load('ui/dom.js')); });
-test('section updates preserve unaffected nodes and support reorder/removal', () => {
-  globalThis.document = documentMock(); const c = {reconcileSections};
-  const root = new Element();
-  c.reconcileSections(root, [['a','A'],['b','B'],['c','C']]);
-  const [a,b,cc] = root.children; const before = root.moves;
-  c.reconcileSections(root, [['a','changed'],['b','B'],['c','C']]);
-  assert.notEqual(root.children[0], a); assert.equal(root.children[1], b); assert.equal(root.children[2], cc);
-  assert.equal(root.moves - before, 1);
-  c.reconcileSections(root, [['c','C'],['b','B']]);
-  assert.deepEqual(root.children, [cc,b]);
-});
 // 网格在 ui/grid.js，放在假页面上；它的定时器和读取由测试掌控。
 let grid, rows;
 test.before(async () => { grid = await web.load('ui/grid.js'); rows = await web.load('ui/grid_rows.js'); });

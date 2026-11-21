@@ -1,19 +1,19 @@
 // 活页条（#706）：一级入口（图库、资料库、画廊、整理）、二级层、底部的同步圆环和设置。全应用一直在的部件，挂在 app 作用域上，
 // 不随换页释放。数据（入口、地址落在哪一项、时间轴、钉住）在 core/rail.js；这里只画和动。
 //
-// 给各页的接口：
-//   provide(entry, fn)     换这个入口二级层的内容：fn() 返回项的列表（core/rail.js 开头写了项的字段），refresh 时重新调。
-//                          B 给四个入口都登记了默认的，各页步骤要接手时再登记一个（例如 E 的画廊封面）
+// 对外的接口：
 //   refresh(entry?)        数据变了，重画一个入口（不给就是全部）
 //   select(key)            在当前入口里选中某项（'' 不选），指示条滑过去
-//   selectDay(day)         C1：按天视图滚到某一天时调；那一天在时间轴里就选中它，否则选中它所在的月或年
-//   onPick(entry, fn)      点了二级项（或用 ⌥↑↓ 走到）：fn(item, event) 返回 true 表示自己处理了、不换地址（C1：已经在按天视图里时
+//   selectDay(day)         按天视图滚到某一天时调：那一天在时间轴里就选中它，否则选中它所在的月或年
+//   onPick(entry, fn)      点了二级项（或用 ⌥↑↓ 走到）：fn(item, event) 返回 true 表示自己处理了、不换地址（已经在按天视图里时
 //                          直接滚到 item.first 那一天），否则按项的链接走
-//   count(key, n)          H：改一个队列的数字（数字滚动）
-//   mode(name, items, hint) E：临时换成另一组项（拖放时换成画廊封面，hint 是上面的一句提示）；mode(null) 换回。项带 off 时变淡、不接收
+//   count(key, n)          改一个队列的数字（数字滚动；整理页答完一组时先按本地算的写）
+//   mode(name, items, hint) 临时换成另一组项（拖放时换成画廊封面，hint 是上面的一句提示）；mode(null) 换回。项带 off 时变淡、不接收
 //   railKey(e)             键盘（ui/grid.js 的键盘处理里调）：⌘1–4（Windows 上 Ctrl）切一级，⌥↑↓ 在二级里移动，
 //                          ⌥⇧↑↓ 挪动钉住的项；处理了返回 true
 //   railRoute(route)       换页时（ui/shell.js applyRoute）：点亮入口和项，收起窄窗口的抽屉，需要时重读时间轴
+// 文件内部：provide(entry, fn) 登记一个入口二级层的内容（fn() 返回项的列表，字段写在 core/rail.js 开头；四个入口都在 wireRail
+// 里登记，refresh 时重新调）。
 //
 // 动效（都经 ui/motion.js，「减少动态效果」时直接到终态）：切一级时标签带回弹滑过去（CSS 过渡，--dur-3、--ease-spring），
 // 旧的二级项依次退场、新的依次进场；悬停二级项时它探出来，相邻的项微微探出，旁边滑出预览卡（ui/rail_peek.js）；
@@ -128,7 +128,7 @@ function fill(entry) {
   list.items = items; list.keyed.set(items);
   if (entry === current && !temp) s.read(measure, MEASURE);
 }
-export function provide(entry, fn) { providers.set(entry, fn); fill(entry); }
+function provide(entry, fn) { providers.set(entry, fn); fill(entry); }
 export function refresh(entry) { for (const e of entry ? [entry] : providers.keys()) fill(e); if (!entry || entry === 'tidy') dot(); }
 export function onPick(entry, fn) { pickers.set(entry, fn); }
 

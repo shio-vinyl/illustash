@@ -54,7 +54,7 @@ Illustash 读取 macOS「照片」和本地文件夹中保存自 X、Pixiv 的�
 
 ![判断关系：标出两张图片的差异区域](docs/assets/readme/zh/compare.jpg)
 
-**后续计划**：多人图先检测出每个人物，再分别识别角色（[#456](https://github.com/shio-vinyl/illustash/issues/456)）；标记疑似 AI 生成的插画（[#184](https://github.com/shio-vinyl/illustash/issues/184)）。
+**后续计划**：标记疑似 AI 生成的插画（[#184](https://github.com/shio-vinyl/illustash/issues/184)）。
 
 ## 连接 Pixiv 和 X
 

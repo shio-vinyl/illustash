@@ -54,7 +54,7 @@ Recognition and sorting are done by the machine. You only confirm or correct res
 
 ![Compare: marking where two pictures differ](docs/assets/readme/en/compare.jpg)
 
-**Planned**: detecting each person in a group picture before recognizing them one by one ([#456](https://github.com/shio-vinyl/illustash/issues/456)); flagging illustrations that appear to be AI-generated ([#184](https://github.com/shio-vinyl/illustash/issues/184)).
+**Planned**: flagging illustrations that appear to be AI-generated ([#184](https://github.com/shio-vinyl/illustash/issues/184)).
 
 ## Pixiv and X integration
 

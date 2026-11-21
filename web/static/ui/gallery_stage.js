@@ -8,7 +8,7 @@
 // 每张图是一个按钮：点（或 Enter、Space）开详情卡片，双击看大图（列表借给详情和大图翻页：grid.js 的 showList）；按住拖动把
 // 图拖进画廊（ui/drag.js）。末尾「全部 N 张」换成显示全部图的那一种（ALL_SHOW，瀑布）并记住。不能选：选择和批量操作在瀑布、
 // 色彩里做。排版先量后改：读阶段量宽高、算框，写阶段写进去；页面的宽、视口的高变了重排（展厅的墙高跟着视口高）。
-import {number} from '../core/format.js';
+import {imageUrl, number} from '../core/format.js';
 import {t} from '../core/i18n.js';
 import {galleryHref, galleryOf, isFav, isManual, showcaseOf} from '../core/galleries.js';
 import {ALL_SHOW, chooseShow, showFor, showOf} from '../core/gallery_shows.js';
@@ -54,7 +54,7 @@ function piece(box) {
     css(el, 'z-index', b.z ? String(b.z) : null);
     if (role !== (b.role || '')) { if (role) cls(el, 'is-' + role, false); role = b.role || ''; if (role) cls(el, 'is-' + role, true); }
     el.dataset.id = x.uuid;
-    if (shown !== x.uuid) { shown = x.uuid; attr(refs.img, 'src', `/image?id=${encodeURIComponent(x.uuid)}&size=${b.w > 360 ? 'preview' : 'medium'}`); thumbs.mark(refs.img, x.uuid); }
+    if (shown !== x.uuid) { shown = x.uuid; attr(refs.img, 'src', imageUrl(x.uuid, b.w > 360 ? 'preview' : 'medium')); thumbs.mark(refs.img, x.uuid); }
     setTint(el, x.color || null);
     show(refs.tape, !!b.tape);
     if (b.tape) { css(refs.tape, 'left', `${Math.round(b.tape.at * 100)}%`); css(refs.tape, 'transform', `translateX(-50%) rotate(${b.tape.rot}deg)`); }

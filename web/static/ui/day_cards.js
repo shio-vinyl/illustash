@@ -15,8 +15,8 @@
 // 认一认收起时是一行：几张小图、问句、「不全是」「都对」。点「不全是」展开：图放大，点一张是「不是 TA」（再点改回），
 // Space 或长按看大图（data-peek，页面用 ui/detail.js 的 wirePeek 接）；底下是「以后再说」「都不是」「点掉的是…」和主按钮。
 // 主按钮随点掉的张数变：「都对」→「其余 N 张是」→ 全部点掉后是「都不是」，这时常驻的「都不是」不再画（#675）。
-import {SYNC_ACTIVE, syncBar, syncLine} from '../core/jobs.js';
-import {number, stamp} from '../core/format.js';
+import {SYNC_ACTIVE, syncBar, syncLine, syncTone} from '../core/jobs.js';
+import {imageUrl, number, stamp} from '../core/format.js';
 import {t} from '../core/i18n.js';
 import {charHash} from '../core/route.js';
 import {workLabel} from '../core/labels.js';
@@ -25,7 +25,6 @@ import {keyed} from './keyed.js';
 import {judgeCard} from './judge.js';
 import {thumbs} from './motion.js';
 import {scope} from './scope.js';
-import {thumbUrl} from './day.js';
 import {releaseImages} from './virtual.js';
 
 const SYNC = tpl`<button class="group day-card day-sync" type="button"><span class="avatar-ring day-ring" data-ref="ring" aria-hidden="true"><svg viewBox="0 0 20 20"><path
@@ -52,7 +51,7 @@ export function syncCard({open}) {
     // 圆环：进行中按进度，完成是满的；还没同步过（idle）、等待识别、出了问题都是空的。
     const part = active ? syncBar(sync, (done, total) => total ? Math.min(1, (done || 0) / total) : 0) || 0 : status === 'done' ? 1 : 0;
     css(refs.ring, '--p', String(Math.round(part * 100)));
-    cls(refs.ring, 'is-busy', active); cls(refs.ring, 'is-warn', ['error', 'interrupted', 'needs_recognition'].includes(status));
+    cls(refs.ring, 'is-busy', active); cls(refs.ring, 'is-warn', syncTone(status) === 'warn');
     show(refs.tick, status === 'done');
     text(refs.title, active ? t('正在同步') : TITLES[status]?.() || t('同步'));
     // 读不到同步状态（轮询失败、正在重试）：不把上一次读到的进度当成现在的，标题、圆环和副标题都这么写。
@@ -92,7 +91,7 @@ export function askCard({answer, other, later, retry}) {
     ]});
   refs.tiles.append(judge.el); refs.foot.append(judge.acts);
   const peek = keyed(refs.peek, {key: x => x.uuid, scope: s, create: x => {
-    const {el} = PEEK_IMG(); attr(el, 'src', thumbUrl(x.uuid)); thumbs.mark(el, x.uuid); return {el, update() {}, dispose() { releaseImages(el); }};
+    const {el} = PEEK_IMG(); attr(el, 'src', imageUrl(x.uuid)); thumbs.mark(el, x.uuid); return {el, update() {}, dispose() { releaseImages(el); }};
   }});
 
   function paint() {

@@ -12,6 +12,7 @@ import {t} from '../core/i18n.js';
 import {readError} from '../core/session.js';
 import {error} from './dom.js';
 import {make, show, text, tpl} from './el.js';
+import {icon} from './icons.js';
 
 const ICONS = {
   image: tpl`<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="15" rx="3"/><path d="m4.5 17 5-5 4 4 2.5-2.5 4 4"/><circle cx="15.5" cy="9" r="1.6"/></svg>`,
@@ -20,7 +21,7 @@ const ICONS = {
   gallery: tpl`<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="6" width="13" height="13" rx="2.5"/><path d="M7.5 3.5h10a3 3 0 0 1 3 3v10"/></svg>`,
   person: tpl`<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8.5" r="3.8"/><path d="M4.8 20c.8-3.8 3.6-5.8 7.2-5.8s6.4 2 7.2 5.8"/></svg>`,
   heart: tpl`<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19.6S4 14.9 4 9.4A4 4 0 0 1 12 7.5a4 4 0 0 1 8 1.9c0 5.5-8 10.2-8 10.2Z"/></svg>`,
-  search: tpl`<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/></svg>`,
+  search: () => ({el: icon('search')}),   // 和搜索框同一个放大镜
 };
 const EMPTY = tpl`<div class="empty-state"><span class="empty-icon" data-ref="icon"></span><p class="empty-fact" data-ref="fact"></p><p class="empty-note"
   data-ref="note"></p><div class="empty-next"

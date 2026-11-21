@@ -16,7 +16,7 @@
 //                            交给作用域（scope.add(wireLift(…))）。展示页（ui/gallery_stage.js）、按天视图、详情卡片的预览图用它
 //   lift(ids, e)             已经判断好要拖的（网格里按住已选中的图拖动）：从指针事件 e 的位置拿起
 // 看图器里不拿起（它盖住活页条，没处放），照旧只拖到别的应用（ui/viewer.js 的 wireDragOut）。
-import {number} from '../core/format.js';
+import {imageUrl, number} from '../core/format.js';
 import {t} from '../core/i18n.js';
 import {droppable, galleryOf} from '../core/galleries.js';
 import {pageOf} from '../core/pages.js';
@@ -56,7 +56,7 @@ export function lift(ids, e) {
   document.getSelection?.()?.removeAllRanges();   // 按住拖动时浏览器可能已经开始选文字
   const ghost = make('div', 'lift');
   ghost.setAttribute('aria-hidden', 'true');
-  for (const id of ids.slice(0, 3)) { const img = make('img'); img.alt = ''; img.src = `/image?id=${encodeURIComponent(id)}&size=thumb`; ghost.append(img); }
+  for (const id of ids.slice(0, 3)) { const img = make('img'); img.alt = ''; img.src = imageUrl(id); ghost.append(img); }
   if (ids.length > 1) ghost.append(make('b', 'drop-badge', number(ids.length)));
   document.body.append(ghost);
   live = {ids, ghost, x: e.clientX, y: e.clientY, from: {x: e.clientX, y: e.clientY}, target: null, focus: document.activeElement};

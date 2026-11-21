@@ -20,11 +20,11 @@
 //   people()           页头写角色数（视图选项）
 // 点图、双击图、点「+N 张」由页面在外层统一接（data-id、data-more），这里不挂。
 import {dayCells, fitChips} from '../core/days.js';
-import {dayLabel, imageUrl, number, thumbSize} from '../core/format.js';
-import {I18N, t} from '../core/i18n.js';
+import {coverUrl, dayLabel, imageUrl, number, thumbSize, weekdayShort} from '../core/format.js';
+import {t} from '../core/i18n.js';
 import {nameWithWork, workLabel} from '../core/labels.js';
 import {attr, cls, css, show, text, tpl} from './el.js';
-import {heartIcon} from './favorites.js';
+import {icon} from './icons.js';
 import {keyed} from './keyed.js';
 import {enter, exit, flip, thumbs} from './motion.js';
 import {scope} from './scope.js';
@@ -35,8 +35,6 @@ import {releaseImages} from './virtual.js';
 // 视图选项的缩略图大小（小、中、大）。样式里不另写这些高度，页头、芯片行、马赛克的高度都由这里写。
 const ROWS = [130, 160, 200];
 export const daySizes = (level = 1) => ({head: 56, chips: 40, rowHeight: ROWS[level] ?? ROWS[1], gap: 6, after: 36});
-// 缩略图的地址（认一认卡也用）。
-export const thumbUrl = imageUrl;
 
 const DAY = tpl`<section class="day"><header class="day-head" data-ref="head"><h2 class="title-page day-title" data-ref="title"></h2><span class="day-meta"
   data-ref="meta"></span><a class="day-grid" data-ref="grid"></a></header><div class="day-chars" data-ref="chars"><div class="day-chips" data-ref="chips"></div><button
@@ -47,8 +45,6 @@ const TILE = tpl`<button class="day-tile" type="button"><img data-ref="img" alt=
 const CHIP = tpl`<a class="chip day-chip"><img class="avatar" data-ref="img" alt="" loading="lazy" decoding="async"><span data-ref="name"></span><span class="chip-count" data-ref="n"></span></a>`;
 // 芯片之间的缝（css/library.css .day-chars 的 gap，--space-4）。
 const CHIP_GAP = 4;
-const WEEKDAY = new Intl.DateTimeFormat(I18N.locale, {weekday: 'short'});
-const weekday = day => { const [y, m, d] = day.split('-').map(Number); return WEEKDAY.format(new Date(y, m - 1, d)); };
 const SIZES = ['thumb', 'medium'];
 
 // ---------- 图块 ----------
@@ -56,7 +52,7 @@ const SIZES = ['thumb', 'medium'];
 // 缩略图档位按这张图画过的最大高度选，只升不降：图从大图挪成小图时地址不变，不重新读、不闪。
 function tileWidget(cell, ctx, s) {
   const {el, refs} = TILE(), ts = s.child('tile');
-  refs.heart.append(heartIcon());
+  refs.heart.append(icon('heart'));
   let box = null, size = -1;
   ts.on(refs.img, 'load', () => cls(el, 'is-in', true));
   function update(next) {
@@ -64,7 +60,7 @@ function tileWidget(cell, ctx, s) {
     el.dataset.id = item.uuid; thumbs.mark(refs.img, item.uuid);   // 看图器从这张 <img> 展开、缩回（#709）
     setTint(el, item.color);
     const want = SIZES.indexOf(thumbSize(b.h));
-    if (want > size) { size = want; cls(el, 'is-in', false); attr(refs.img, 'src', thumbUrl(item.uuid, SIZES[want])); }
+    if (want > size) { size = want; cls(el, 'is-in', false); attr(refs.img, 'src', imageUrl(item.uuid, SIZES[want])); }
     const top = hero ? item.memberships?.[0] : null;
     cls(el, 'poster', !!hero); show(refs.cap, !!top); text(refs.name, top?.name || ''); text(refs.work, top ? workLabel(top) : '');
     attr(el, 'title', (item.memberships || []).map(nameWithWork).join(t('、')) || null);
@@ -91,7 +87,7 @@ function chipWidget(c, ctx, day) {
   const update = x => {
     attr(el, 'href', ctx.href(day, x.id));
     const cover = ctx.cover(x.id);
-    attr(refs.img, 'src', cover ? thumbUrl(cover) : null);
+    attr(refs.img, 'src', coverUrl(cover));
     text(refs.name, x.name); text(refs.n, number(x.count));
     attr(el, 'title', nameWithWork(x));
   };
@@ -142,7 +138,7 @@ export function dayWidget(box, ctx, parent = null) {
     const g = next.g, sizes = ctx.sizes(), people = g.people || (g.characters || []).length;
     // 页头
     css(refs.head, 'height', sizes.head + 'px');
-    text(refs.meta, [weekday(day), t('{n} 张', {n: number(g.count)}), ...(ctx.people() && people ? [t('{n} 位角色', {n: number(people)})] : [])].join(' · '));
+    text(refs.meta, [weekdayShort(day), t('{n} 张', {n: number(g.count)}), ...(ctx.people() && people ? [t('{n} 位角色', {n: number(people)})] : [])].join(' · '));
     attr(refs.grid, 'href', ctx.href(day));
     // 同步时长了行的天，没画出来的张数写在这里（不盖在哪一张图上，那张图照样能点开，#757 复核第 3 条）。
     text(refs.grid, (next.hidden ? t('还有 {n} 张，在网格里看', {n: number(next.hidden)}) : t('在网格里看')) + ' ›');

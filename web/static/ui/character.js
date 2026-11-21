@@ -5,7 +5,7 @@
 // 由框架的 gridHead 钩子在进页和同一页又画一次时建好、更新；元数据重读（写入、撤销以后）时横幅自己在作用域上听 onMeta。
 // 数据在 core/character.js。工具栏（造型、可能也是 TA、可能认错、排序、选择）照旧由 ui/shell.js 画。
 import {loadCharacter, peopleOf} from '../core/character.js';
-import {imageUrl, localDate, number} from '../core/format.js';
+import {coverUrl, imageUrl, localDate, number} from '../core/format.js';
 import {t} from '../core/i18n.js';
 import {nameTip, workLabel} from '../core/labels.js';
 import {onMeta} from '../core/meta.js';
@@ -94,7 +94,7 @@ function charHero(scope) {
     route = r; c = char;
     const tagOnly = !!c.mascot;   // 只当标签：没有要复核的，所以没有检查、清扫、原创角色这些控件
     text(refs.name, c.name); attr(refs.name, 'title', nameTip(c));
-    attr(refs.avatar, 'src', c.cover ? imageUrl(c.cover) : null);
+    attr(refs.avatar, 'src', coverUrl(c.cover));
     show(refs.badge, tagOnly);
     attr(refs.badge, 'title', (c.mascot_origin === 'default' ? t('老师、博士、训练员这类没有固定形象的玩家化身和吉祥物默认只当标签。') : '') +
       t('不算角色：不出现在角色列表里，也不算多人图；图上仍挂着这个标签'));

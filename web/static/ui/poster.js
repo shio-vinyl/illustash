@@ -11,7 +11,7 @@
 // 比海报宽的图整张显示在主色底上（原来垫一张模糊的副本，每张海报一块显存，#683 去掉）。
 // 位置的缓动每帧一次，走作用域的帧任务（ui/frame.js），不直接调 requestAnimationFrame。
 import {posterPictures, recentOf} from '../core/catalog.js';
-import {imageUrl, number} from '../core/format.js';
+import {coverUrl, imageUrl, number} from '../core/format.js';
 import {composing} from '../core/keys.js';
 import {nameTip} from '../core/labels.js';
 import {charHash} from '../core/route.js';
@@ -198,7 +198,7 @@ export function personCard(first) {
   function update(x) {
     attr(el, 'href', x.href);
     attr(el, 'title', x.title || null);
-    attr(refs.img, 'src', x.cover ? imageUrl(x.cover) : null);
+    attr(refs.img, 'src', coverUrl(x.cover));
     setTint(refs.img, x.color);
     text(refs.name, x.name); text(refs.sub, x.sub || '');
   }

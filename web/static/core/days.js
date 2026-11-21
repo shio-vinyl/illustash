@@ -6,10 +6,10 @@
 // items（最多 18 张）, hero}；before 是排他的游标（上一批的 next），next 为空表示读到底了。marks=fav,color 让每张图带收藏和主色。
 import {addCondition} from './filters.js';
 import {I18N} from './i18n.js';
-import {FIT_MAX, FIT_MIN, dayMosaic} from './layout.js';
+import {DEFAULT_RATIO, aspect, clampRatio, dayMosaic} from './layout.js';
 import {libraryFilters} from './pages.js';
 import {viewRoute} from './rail.js';
-import {api, post} from './session.js';
+import {api} from './session.js';
 
 // 每张图带上收藏和主色（缩略图读完之前的占位色，#717）。
 export const DAY_MARKS = 'fav,color';
@@ -82,10 +82,6 @@ export function dayAfter(day) {
   const [y, m, d] = day.split('-').map(Number), next = new Date(Date.UTC(y, m - 1, d + 1));
   return next.toISOString().slice(0, 10);
 }
-// 今天（本地时间）是哪一天，'YYYY-MM-DD'。
-export function todayKey(now = new Date()) {
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-}
 // 读到的天里最早的一天和总张数（读到底以后写「最早的一张在 X 月 X 日加入 · 共 N 张」）。
 export function summary(days) {
   return {earliest: days.length ? days[days.length - 1].day : '', total: days.reduce((n, g) => n + (g.count || 0), 0)};
@@ -98,11 +94,10 @@ export function heroFirst(g, keep = '') {
   const items = g.items || [], pick = items.find(x => x.uuid === keep) || items.find(x => x.uuid === g.hero) || items[0];
   return pick ? [pick, ...items.filter(x => x !== pick)] : [];
 }
-const ratioOf = x => x.width > 0 && x.height > 0 ? x.width / x.height : 0;
 // 一天的格子：标准的马赛克（core/layout.js 的 dayMosaic）。返回 {cells, height, rows: 0}；每格 {item, box, hero, index, more}，
 // more 是盖在这一格上的「+N 张」：马赛克没画的（dayMosaic 的 more 已含这一格自己）加上这一天后端没给的张数。
 export function dayCells(g, {width, rowHeight, gap}, hero = '') {
-  const items = heroFirst(g, hero), laid = dayMosaic(items.map(ratioOf), {width, rowHeight, gap});
+  const items = heroFirst(g, hero), laid = dayMosaic(items.map(aspect), {width, rowHeight, gap});
   const unsent = Math.max(0, (g.count || 0) - items.length), last = laid.boxes.length - 1;
   const cells = laid.boxes.map((box, k) => ({item: items[box.i], box, hero: k === 0, index: k,
     more: k === last && (box.more || unsent) ? (box.more || 1) + unsent : 0}));
@@ -136,7 +131,7 @@ export function growCells(prev, old, g, {width, rowHeight, gap}, maxRows = 2) {
     const y = height + gap;
     let x = 0;
     for (const item of fresh) {
-      const w = Math.min(width, Math.min(FIT_MAX, Math.max(FIT_MIN, ratioOf(item) || .75)) * rowHeight);
+      const w = Math.min(width, clampRatio(aspect(item) || DEFAULT_RATIO) * rowHeight);
       if (x && x + w > width) break;
       cells.push({item, box: {x, y, w, h: rowHeight}, hero: false, index: cells.length, more: 0});
       x += w + gap;
@@ -204,5 +199,3 @@ export const ASK_SKIP = 50;
 export async function readAsk(nsfw, skip = [], {signal} = {}) {
   return (await api('/api/ask?' + new URLSearchParams({nsfw, skip: skip.slice(-ASK_SKIP).join(',')}), {signal})).batch || null;
 }
-// 「以后再说」：记下这一批问过了，不改图库，不进撤销。
-export const askLater = batch => post('/api/ask/answer', {entity: batch.entity, kind: batch.kind, later: batch.items.map(x => x.uuid)});

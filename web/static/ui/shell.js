@@ -11,7 +11,8 @@ import {queues, railAt, viewRoute} from '../core/rail.js';
 import {canGoBack, cleanup, defaultSort, go, hashFor, historyEntry, noteHistory, parseHash, reRoute, replaceRoute, setRoute, sortKey, stepHistory} from '../core/route.js';
 import {readError} from '../core/session.js';
 import {state} from '../core/state.js';
-import {$, error, helpTip, searchIcon, showArea, wireHelpTip} from './dom.js';
+import {$, error, helpTip, showArea, wireHelpTip} from './dom.js';
+import {searchHTML} from './icons.js';
 import {attr, cls, make, show, text, tpl} from './el.js';
 import {closeInspector} from './detail.js';
 import {closeViewer} from './viewer.js';
@@ -200,7 +201,7 @@ export function renderChrome() {
   }
 }
 // 图库一类页面的搜索框（网格、角色页、画廊、按天、日历）。
-const searchBox = r => `<div class="search-wrap">${searchIcon()}<input type="search" id="search" spellcheck="false" autocorrect="off" autocapitalize="off"`
+const searchBox = r => `<div class="search-wrap">${searchHTML()}<input type="search" id="search" spellcheck="false" autocorrect="off" autocapitalize="off"`
   + ` placeholder="${t('搜索角色、别名或文件名')}" aria-label="${t('搜索图库')}" value="${esc(r.q)}"><kbd>/</kbd></div>`;
 // 搜索词就地改进地址（不新增历史记录，换一个新的路由对象，旧回复认得出来），然后按新的筛选重画：网格页重读；自己渲染的页面（按天、日历）和筛选条上改了条件一样，
 // 收到 render({samePage: true})（筛选变了只有这一个入口，docs/WEB_V2.md「页面样板」）。活页条的时间轴跟着筛选重读。

@@ -42,6 +42,22 @@ test('启动开关保存失败：落定那一刻开关回到原值', async () =>
   v.dispose();
 });
 
+// 同步状态到圆点的口径只有一份（core/jobs.js 的 syncTone）：中断和出错、等待识别一样是警告色，和任务面板、按天视图的同步卡片一致。
+test('同步中断时「设置 › 图库」的同步圆点是警告色', async () => {
+  Object.assign(state, {settings: null, libraries: null, sync: {status: 'interrupted'}, syncHistory: [], exclInfo: {}, fold: []});
+  const calls = server(), v = (await view('library'))();
+  const dot = () => v.row('syncStatus').querySelector('.row-dot');
+  assert.equal(dot().getAttribute('data-dot'), 'warn');
+  for (const [status, tone] of [['error', 'warn'], ['needs_recognition', 'warn'], ['scanning', 'busy'], ['off', 'off'], ['done', null]]) {
+    state.sync = {status}; v.update();
+    assert.equal(dot().getAttribute('data-dot'), tone, status);
+  }
+  const {syncTone} = await web.load('core/jobs.js');
+  assert.deepEqual(['interrupted', 'error', 'needs_recognition', 'waiting', 'off', 'idle'].map(syncTone), ['warn', 'warn', 'warn', 'busy', 'off', '']);
+  await drain(calls);
+  v.dispose();
+});
+
 test('相似折叠快速连点两项：第二次保存的集合两项都有', async () => {
   Object.assign(state, {settings: null, libraries: null, sync: {status: 'idle'}, syncHistory: [], exclInfo: {}, fold: [], dupInfo: {groups: 0}});
   const calls = server(), v = (await view('library'))();

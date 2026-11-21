@@ -10,23 +10,14 @@
 import {api} from './session.js';
 
 const MONTH = /^(\d{4})-(0[1-9]|1[0-2])$/;
-const pad = n => String(n).padStart(2, '0');
 
 // 'YYYY-MM' → {year, month}（month 是 1–12）；格式不对时是 null。
 export function parseMonth(text) {
   const m = MONTH.exec(text || '');
   return m ? {year: Number(m[1]), month: Number(m[2])} : null;
 }
-export const formatMonth = (year, month) => `${year}-${pad(month)}`;
-// 本机日期的 'YYYY-MM-DD'（今天的格子按它标）；monthOf 取它的月份。
-export const localDay = (date = new Date()) => `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+// 日期键的月份（「YYYY-MM-DD」→「YYYY-MM」）。今天是 core/format.js 的 dayKey()。
 export const monthOf = day => String(day).slice(0, 7);
-// 往前（负数）或往后挪几个月。
-export function shiftMonth(text, delta) {
-  const p = parseMonth(text); if (!p) return null;
-  const k = p.year * 12 + p.month - 1 + delta;
-  return formatMonth(Math.floor(k / 12), k % 12 + 1);
-}
 
 // 当月出现过的角色：按样图里的角色数张数（同一张图里的同一个角色只算一次），多的在前，一样多时先出现的在前。
 // 只看样图（每天最多四张），所以是「这个月常见的人」，不是精确的张数；界面不写这些数。

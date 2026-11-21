@@ -361,7 +361,7 @@
   <p class="sg-lead">文本输入至少有九种长相；开关有两套；分段控件有三套。下面按“长什么样 → 在哪个界面出现”排。</p>
 
   <div class="sg-item"><header><h3>搜索框</h3><span class="sg-tag hand">手写</span><span class="sg-cls"><code>.search-wrap</code><code>.search-wrap.wide</code></span></header>
-    <p class="sg-src">来源：<code>ui/shell.js</code> renderChrome（图库搜索 <code>#search</code>，带 <kbd>/</kbd>）· <code>ui/catalog.js</code> castPop（作品弹层里）；资料库三个页签用新部件的 <code>.search</code>（<code>ui/catalog.js</code> searchField）；图标 <code>ui/dom.js</code> searchIcon()。</p>
+    <p class="sg-src">来源：<code>ui/shell.js</code> renderChrome（图库搜索 <code>#search</code>，带 <kbd>/</kbd>）· <code>ui/catalog.js</code> castPop（作品弹层里）；资料库三个页签用新部件的 <code>.search</code>（<code>ui/catalog.js</code> searchField）；图标 <code>ui/icons.js</code> 的 icon('search')（拼 HTML 的工具栏用 searchHTML()）。</p>
     <div class="sg-stage col">
       <div class="search-wrap"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="10" cy="10" r="6.5"/><path d="m15 15 5 5"/></svg><input type="search" placeholder="搜索角色、别名或文件名" aria-label="搜索图库"><kbd>/</kbd></div>
       <div class="search-wrap wide"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="10" cy="10" r="6.5"/><path d="m15 15 5 5"/></svg><input type="search" placeholder="搜索角色或作品" aria-label="搜索角色"></div>

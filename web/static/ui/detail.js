@@ -7,7 +7,8 @@
 import {t} from '../core/i18n.js';
 import {number} from '../core/format.js';
 import {leaves} from '../core/filters.js';
-import {adoptDetail, askAnswered, askBody, primaryOf, readCharStats, readDetail, setDetail, setQuestion} from '../core/detail.js';
+import {questionBody} from '../core/ask.js';
+import {adoptDetail, askAnswered, primaryOf, readCharStats, readDetail, setDetail, setQuestion} from '../core/detail.js';
 import {openFile, revealFile} from '../core/files.js';
 import {fetchChar} from '../core/meta.js';
 import {shownUuid} from '../core/modes.js';
@@ -96,7 +97,7 @@ function act(name, data, e, d) {
     case 'info': return toggleInfo();
     case 'like': return likeOne(ident);
     case 'copy': return inspect(data.id);
-    case 'ask': return answerAsk(data.how);
+    case 'ask': return answerQuestion(data.how);
     // 主角色是机器认出的：「没错」把它记成你确认的。在「可能认错」里确认了就离开这一页。
     case 'confirm': return mutate('/api/change', {ids: [ident], action: 'confirmed', entity: data.id}, !!state.route.doubt && state.route.char === data.id);
     case 'swap': return swapOne(d, ident, data.id);
@@ -140,12 +141,12 @@ export function pickAlternative(d, ident, i, also = false) {
   else mutate('/api/change', {ids: [ident], action: 'confirmed', entity: alt.id}, pageOf(state.route).lead);
 }
 // 「是 TA 吗？」的回答（Y、N，或点按钮），发到 /api/ask/answer 供学习。
-export function answerAsk(how) {
+export function answerQuestion(how) {
   const cur = state.question; if (!cur) return;
   askAnswered();
   // 随机抽查：回答过的图离开列表，所以详情移到下一张。
   if (poolIs(state.route, 'audit') && state.viewer < 0 && state.focused === cur.ident) { const i = indexOf(cur.ident); state.focused = state.items[i + 1]?.uuid || state.items[i - 1]?.uuid || null; }
-  mutate('/api/ask/answer', askBody(cur, how), how !== 'yes' && state.route.char === cur.q.entity, {advance: poolIs(state.route, 'audit')});
+  mutate('/api/ask/answer', questionBody(cur, how), how !== 'yes' && state.route.char === cur.q.entity, {advance: poolIs(state.route, 'audit')});
 }
 // 「更多像这张的」（#449）：去相似结果（core/like.js；结果页的标题在 ui/like.js）。在相似结果里再点，换成这一张作例图，比较方式不变。
 const likeOne = ident => go(likeRoute([ident], state.route.by));

@@ -140,8 +140,6 @@ export function reconcileSections(container, sections, empty = t('没有匹配�
   }
   for (const el of [...container.children]) if (!keep.has(el)) el.remove();
 }
-// 搜索框里的放大镜。
-export const searchIcon = () => '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="10" cy="10" r="6.5"/><path d="m15 15 5 5"/></svg>';
 // 页面停下时的横幅，以及工具栏的撤销按钮。页面启动时调用一次。
 export function wireDom() {
   // App 无法解码的图片（损坏的文件）：用一个朴素的占位，而不是浏览器的破图图标。

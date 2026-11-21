@@ -16,10 +16,11 @@
 // - 点图打开详情卡片，双击看大图，按住拖动放进画廊（ui/drag.js），点「+N 张」进网格看这一天；认一认的图 Space 或长按看大图
 //   （wireDays 登记一次）。
 import {FIRST_DAYS, MAX_DAYS, MORE_DAYS, dayAfter, dayAt, dayBoxes, dayCells, dayQuery, gridRoute, growCells, heroFirst, mergeDays, readDayPeople,
-  readDays, summary, todayKey} from '../core/days.js';
-import {dayLabel, number} from '../core/format.js';
+  readDays, summary} from '../core/days.js';
+import {dayKey, dayLabel, number} from '../core/format.js';
 import {t} from '../core/i18n.js';
 import {onJob} from '../core/jobs.js';
+import {avatarOf} from '../core/labels.js';
 import {PAGES, implement, libraryFilters, onPage} from '../core/pages.js';
 import {go, hashFor, historyEntry} from '../core/route.js';
 import {readError} from '../core/session.js';
@@ -75,14 +76,14 @@ function daysView(scope) {
   const ask = dayAsk(scope);
   refs.cards.append(sync.el, ask.el);
   // 「今天认出几位」只在最新一天是今天、而且没开筛选（NSFW 设置也算）时写：开着筛选时那是筛选结果的数，不是这次同步的。
-  const today = () => v.days[0]?.day === todayKey() && !Object.keys(libraryFilters(v.route || {})).length && !state.nsfw ? v.days[0] : null;
+  const today = () => v.days[0]?.day === dayKey() && !Object.keys(libraryFilters(v.route || {})).length && !state.nsfw ? v.days[0] : null;
   const paintSync = () => sync.update({sync: state.sync, today: today(), lost: state.syncLost});
 
   // ---------- 各天 ----------
   const ctx = {
     sizes, marks: () => viewOpts.marks, people: () => viewOpts.people,
     hero: day => v.heroes.get(day) || '', hold: (day, uuid) => { if (!v.heroes.has(day)) v.heroes.set(day, uuid); },
-    href: (day, char) => hashFor(gridRoute(v.route, day, char)), cover: id => state.charMap.get(id)?.cover,
+    href: (day, char) => hashFor(gridRoute(v.route, day, char)), cover: avatarOf,
     toggle, resized: (day, h) => { if (v.opened.get(day) !== h) { v.opened.set(day, h); layout(); } },
   };
   // 挂着的天：v.widgets 记着它们（详情卡片开着哪张时逐个标），摘掉时从里面去掉。从头读（筛选、搜索、NSFW 换了）时整个列表

@@ -9,7 +9,7 @@ import {workName} from '../core/catalog.js';
 import {charHash} from '../core/route.js';
 import {loadPack} from '../core/packs.js';
 import {readError} from '../core/session.js';
-import {INDEX_ACTIVE, NAMES_ACTIVE, indexLine, namesLine, indexAction, checkIndex, onJob, pollIndex, pollNamesSoon} from '../core/jobs.js';
+import {INDEX_ACTIVE, NAMES_ACTIVE, indexLine, indexTone, namesTone, namesLine, indexAction, checkIndex, onJob, pollIndex, pollNamesSoon} from '../core/jobs.js';
 import {loadIndex, loadNames, loadCoverage, indexCoverage, saveModelApi, testModelApi} from '../core/settings.js';
 import {confirmAction} from './dialog.js';
 import {toast} from './dom.js';
@@ -45,7 +45,7 @@ async function act(body) {
   catch (e) { toast(e.message); }
 }
 const historyItems = s => (s.index?.history || []).flatMap(h => h.characters.map(c => ({...c, at: h.at})));
-const indexDot = s => { const st = s.index?.state?.status; return indexBusy(s) ? 'busy' : st === 'error' ? 'warn' : st === 'off' ? 'off' : ''; };
+const indexDot = s => indexTone(s.index?.state?.status);
 const itemCoverage = x => t('数据包覆盖 {packs} 个 · 自己补过 {own} 个 · 还缺 {missing} 个', {packs: number(x.packs), own: number(x.own), missing: number(x.missing)});
 // 检查新角色的几行；收起时整段放进折叠区，展开时直接列在组里（同一份配置用两次，key 带前缀）。inst 是这一节的实例。
 const indexParts = (p, inst) => [
@@ -104,7 +104,7 @@ function modelAct(draft, act, snap = draft) {
   return done(body, sent, () => m.configured && !state.names?.model_api?.configured ? t('接口地址已更改，原来的 API key 已清除，请重新填写') : t('设置已保存'));
 }
 
-const namesDot = s => { const st = s.names?.state?.status; return NAMES_ACTIVE.includes(st) ? 'busy' : st === 'error' ? 'warn' : ['off', 'unauthorized'].includes(st) ? 'off' : ''; };
+const namesDot = s => namesTone(s.names?.state?.status);
 const counts = s => s.names?.counts;
 const countItems = s => [[t('角色'), 'characters'], [t('作品'), 'works'], [t('造型'), 'skins']].filter(([, k]) => counts(s)?.[k])
   .map(([label, k]) => ({k, label, ...counts(s)[k]}));

@@ -5,7 +5,7 @@
 // - 最下面一行「不算角色、只当标签：…」和「管理…」（#293）。
 // 页签的部件在进页面时建一次（castView），之后 update() 只按数据改；数据和排序在 core/catalog.js。各项都是链接，点了去角色页。
 import {BUCKETS, castRows, catalog, recentOf} from '../core/catalog.js';
-import {imageUrl, number} from '../core/format.js';
+import {coverUrl, number} from '../core/format.js';
 import {t} from '../core/i18n.js';
 import {nameTip} from '../core/labels.js';
 import {prefs} from '../core/prefs.js';
@@ -49,7 +49,7 @@ function ringItem(c) {
   const {el, refs} = RING();
   function update(x) {
     attr(el, 'href', charHash(x.c.id)); attr(el, 'title', nameTip(x.c));
-    attr(refs.img, 'src', x.c.cover ? imageUrl(x.c.cover) : null); setTint(refs.img, x.c.color);
+    attr(refs.img, 'src', coverUrl(x.c.cover)); setTint(refs.img, x.c.color);
     css(refs.ring, '--p', String(x.p));
     text(refs.plus, '+' + number(recentOf(x.c))); text(refs.name, x.c.name); text(refs.work, x.c.work_name || '');
   }
@@ -60,7 +60,7 @@ function chipItem(c) {
   const {el, refs} = CHIP();
   function update(x) {
     attr(el, 'href', charHash(x.id)); attr(el, 'title', nameTip(x));
-    attr(refs.img, 'src', x.cover ? imageUrl(x.cover) : null); setTint(refs.img, x.color);
+    attr(refs.img, 'src', coverUrl(x.cover)); setTint(refs.img, x.color);
     text(refs.name, x.name); text(refs.n, number(x.count));
   }
   update(c);
@@ -70,7 +70,7 @@ function rowItem(x) {
   const {el, refs} = ROW();
   function update({c, max}) {
     const a = catalog.activity.get(c.id), orig = c.tag && c.tag !== c.name ? c.tag.replaceAll('_', ' ') : '', skins = skinsOf(c);
-    attr(refs.who, 'href', charHash(c.id)); attr(refs.img, 'src', c.cover ? imageUrl(c.cover) : null); setTint(refs.img, c.color);
+    attr(refs.who, 'href', charHash(c.id)); attr(refs.img, 'src', coverUrl(c.cover)); setTint(refs.img, c.color);
     text(refs.name, c.name); text(refs.orig, orig); show(refs.orig, !!orig);
     text(refs.work, workOf(c) || '—');
     css(refs.bar, 'width', Math.max(4, Math.log(c.count + 1) / Math.log(max + 1) * 110) + 'px'); text(refs.count, number(c.count));

@@ -16,7 +16,7 @@ import {aspect, strip} from './layout.js';
 import {galleryHref, isFav, isManual, withFav} from './galleries.js';
 import {listeners} from './events.js';
 import {t} from './i18n.js';
-import {number} from './format.js';
+import {monthKey, number} from './format.js';
 import {libraryPrefs} from './prefs.js';
 import {CHARACTER, libraryFilters, onPage, pageOf, viewOf} from './pages.js';
 import {api} from './session.js';
@@ -183,7 +183,6 @@ export function railReveal({top, h, scroll, view, total}, center = false) {
 export const timeline = {items: [], params: '', months: new Map(), dirty: true, changed: listeners()};
 let timelineRun = null;
 const samples = list => (list || []).filter(x => x?.uuid).slice(0, 4).map(x => ({id: x.uuid, w: Number(x.width) || 0, h: Number(x.height) || 0}));
-const thisMonth = (now = new Date()) => `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 export function forgetTimeline() { timeline.dirty = true; }
 function daysOf(months) {
   const days = new Map();
@@ -193,7 +192,7 @@ function daysOf(months) {
   }
   return groupTimeline([...days.values()].sort((a, b) => b.day.localeCompare(a.day)));
 }
-export async function loadTimeline(route = state.route, {newest = false, month: start = thisMonth()} = {}) {
+export async function loadTimeline(route = state.route, {newest = false, month: start = monthKey()} = {}) {
   const base = {...libraryFilters(route), ...(state.nsfw ? {nsfw: state.nsfw} : {})}, key = JSON.stringify(base);
   const same = key === timeline.params;
   if (same && !timeline.dirty && !newest) return;

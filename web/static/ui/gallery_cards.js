@@ -2,7 +2,7 @@
 // 前几张图（拼贴散放、杂志一大两小、瀑布三列……，样式在 css/galleries.css 的 .gcard-prev.show-<id>），名字前面的小图标
 // 和副标题分出两种画廊：收藏是心形，手选画廊是图钉，按条件的是漏斗（截图给用户看过，#710）。
 // 页面的登记在 ui/galleries.js；数据在 core/galleries.js。
-import {number} from '../core/format.js';
+import {imageUrl, number} from '../core/format.js';
 import {t} from '../core/i18n.js';
 import {coversFor, galleryHref, isFav, isManual, previewOf, withFav} from '../core/galleries.js';
 import {loadShows, showFor, showOf} from '../core/gallery_shows.js';
@@ -10,7 +10,7 @@ import {readError} from '../core/session.js';
 import {state} from '../core/state.js';
 import {$, error} from './dom.js';
 import {attr, cls, show, text, tpl} from './el.js';
-import {heartIcon} from './favorites.js';
+import {icon} from './icons.js';
 import {newManual, reloadList} from './gallery_actions.js';
 import {keyed} from './keyed.js';
 import {thumbs} from './motion.js';
@@ -24,17 +24,13 @@ const PAGE = tpl`<div class="gallery-index"><div class="gcards" data-ref="grid">
 const CARD = tpl`<a class="gcard"><span class="gcard-prev" data-ref="prev"><img alt="" draggable="false" decoding="async"><img alt="" draggable="false" decoding="async"><img
   alt="" draggable="false" decoding="async"><img alt="" draggable="false" decoding="async"><img alt="" draggable="false" decoding="async"></span><span
   class="gcard-meta"><span class="gcard-kind" data-ref="kind" aria-hidden="true"></span><b data-ref="name"></b><small data-ref="sub"></small></span></a>`;
-const KIND = {
-  fav: () => ({el: heartIcon()}),
-  manual: tpl`<svg viewBox="0 0 20 20"><path d="M7.5 3.5h5l-.8 4.2 2.8 2.6v1.2H5.5v-1.2l2.8-2.6zM10 11.5v5"/></svg>`,
-  condition: tpl`<svg viewBox="0 0 20 20"><path d="M3.5 4.5h13l-5 6v5l-3-1.5v-3.5z"/></svg>`,
-};
+// 名字前面的小图标（ui/icons.js）：收藏是心形，手选画廊是图钉，按条件的是漏斗。
+const KIND = {fav: 'heart', manual: 'pin', condition: 'funnel'};
 const NEW = tpl`<div class="gcard gcard-new"><span class="gcard-prev"><span class="gcard-plus" aria-hidden="true"><svg viewBox="0 0 20 20"><path
   d="M10 4v12M4 10h12"/></svg></span><b data-t>新建画廊</b></span><span class="gcard-acts"><button class="btn"
   type="button" data-ref="manual" data-t>手选画廊…</button><a class="btn is-quiet" href="#/library" data-ref="cond" title="在图库里加上条件，点「保存为画廊」"
   data-t-attr="title" data-t>按条件…</a></span></div>`;
 const kindOf = g => isFav(g.id) ? 'fav' : isManual(g) ? 'manual' : 'condition';
-const src = (uuid, k) => `/image?id=${encodeURIComponent(uuid)}&size=${k ? 'thumb' : 'medium'}`;
 
 // 一张卡片。预览和张数由 fill() 读到以后写进来；读之前图位空着，底色是第一张图的主色（读到预览以后）。
 function card(g) {
@@ -44,7 +40,7 @@ function card(g) {
     const k = kindOf(x);
     attr(el, 'href', galleryHref(x.id));
     el.dataset.gallery = String(x.id);
-    if (kind !== k) { kind = k; refs.kind.replaceChildren(KIND[k]().el); el.dataset.kind = k; }
+    if (kind !== k) { kind = k; refs.kind.replaceChildren(icon(KIND[k])); el.dataset.kind = k; }
     attr(refs.prev, 'class', `gcard-prev show-${showOf(showFor(x.id)).id}`);
     text(refs.name, x.name);
     const p = x.preview, n = p?.error ? t('条件失效') : p ? t('{n} 张', {n: number(p.total)}) : '…';
@@ -53,7 +49,7 @@ function card(g) {
     const items = p?.items || [];
     imgs.forEach((img, i) => {
       const it = items[i];
-      attr(img, 'src', it ? src(it.uuid, i) : null);
+      attr(img, 'src', it ? imageUrl(it.uuid, i ? 'thumb' : 'medium') : null);   // 第一张大，其余小
       show(img, !!it);
       if (it) thumbs.mark(img, it.uuid);
     });

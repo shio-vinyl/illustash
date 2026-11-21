@@ -21,8 +21,8 @@
 import {ENTRIES, entryHref, forgetTimeline, galleryItems, itemForDay, loadPins, loadTimeline, movePin, noteLibraryView, pinItems, pins, queues, railAt,
   railEdges, railReveal, tidyWaiting, timeline, timelineHref} from '../core/rail.js';
 import {FAV, coversFor, favGallery, previewOf} from '../core/galleries.js';
-import {number} from '../core/format.js';
-import {I18N, t} from '../core/i18n.js';
+import {coverUrl, dayWithWeekday, monthLong, monthShort, number} from '../core/format.js';
+import {t} from '../core/i18n.js';
 import {composing} from '../core/keys.js';
 import {onJob} from '../core/jobs.js';
 import {pageOf} from '../core/pages.js';
@@ -35,25 +35,14 @@ import {animate, countTo, enter, exit, reduced} from './motion.js';
 import {buildPeek, followScroll, hover, hoveredItem} from './rail_peek.js';
 import {createLayer} from './overlay.js';
 import {$} from './dom.js';
-import {heartIcon} from './favorites.js';
+import {hasIcon, icon} from './icons.js';
 
 // 二级项是链接（读屏读成链接）；外层的 #railItems 是一组导航，不另设列表的角色。
 const ITEM = tpl`<a class="rail-item" draggable="false"><span class="rail-cover" data-ref="cover"><span class="rail-stack" data-ref="stack"><img data-ref="img2" alt=""
   draggable="false"></span><img data-ref="img" alt="" draggable="false" loading="lazy" decoding="async"><span class="rail-icon" data-ref="icon"></span></span><span
   class="rail-mark" data-ref="mark"></span><span class="rail-count" data-ref="count"></span><span class="rail-heart" data-ref="heart" hidden></span></a>`;
-// 整理各队列的图标（和原来侧栏的一样），以及没有封面的画廊（收藏还没有图、画廊的条件现在没有图）。
-const ICONS = {
-  unmatched: tpl`<svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="7.2"/><path d="M8 7.8a2.2 2.2 0 1 1 3 2c-.6.3-1 .8-1 1.4v.4M10 14.2v.1"/></svg>`,
-  // 可能认错（#787）：两个叠在一起的圆，是 A 还是 B。
-  doubts: tpl`<svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="7.6" cy="10" r="4.8"/><circle cx="12.4" cy="10" r="4.8"/></svg>`,
-  duplicates: tpl`<svg viewBox="0 0 20 20" aria-hidden="true"><rect x="3.5" y="6" width="9.5" height="11" rx="2"/><path d="M7 3h7.5A2.5 2.5 0 0 1 17 5.5V13"/></svg>`,
-  excluded: tpl`<svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="7.2"/><path d="M5 15 15 5"/></svg>`,
-  audit: tpl`<svg viewBox="0 0 20 20" aria-hidden="true"><rect x="4" y="3.5" width="12" height="14" rx="2"/><path d="M7.5 9.8 9.3 11.6 12.8 8"/></svg>`,
-  identity: tpl`<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 7h11l-3-3M16 13H5l3 3"/></svg>`,
-  fav: () => ({el: heartIcon()}),   // 心形只在 ui/favorites.js 画
-  gallery: tpl`<svg viewBox="0 0 20 20" aria-hidden="true"><rect x="3" y="4.5" width="14" height="11" rx="2"/><path d="m3.5 13.5 4-4 3 3 2-2 4 4"/></svg>`,
-};
-const iconOf = x => x.kind === 'queue' ? x.key : x.kind === 'gallery' && !x.cover ? (x.key === 'fav' ? 'fav' : 'gallery') : '';
+// 整理各队列的图标（和原来侧栏的一样，键就是队列的键），以及没有封面的画廊（收藏还没有图、画廊的条件现在没有图）。图形在 ui/icons.js。
+const iconOf = x => x.kind === 'queue' ? (hasIcon(x.key) ? x.key : '') : x.kind === 'gallery' && !x.cover ? (x.key === 'fav' ? 'heart' : 'gallery') : '';
 
 const s = app.child('rail');
 // 帧任务的令牌（#751）：活页条全应用只有一份，在模块顶层、在它自己的作用域上取，一种用途一个。
@@ -61,8 +50,6 @@ const MEASURE = s.key('rail:measure'), IND = s.key('rail:ind'), EDGES = s.key('r
 const REVEAL = s.key('rail:reveal'), FOCUS = s.key('rail:focus'), SCROLL = s.key('rail:scroll');
 const providers = new Map(), pickers = new Map(), lists = new Map();
 let current = '', selected = '', temp = null, pitch = 0, wired = false, swapping = 0;
-const monthName = new Intl.DateTimeFormat(I18N.locale, {month: 'short'});
-const thumb = id => id ? `/image?id=${encodeURIComponent(id)}&size=thumb` : '';
 const itemsOf = box => box ? [...box.children].filter(x => !x.inert) : [];
 const itemAt = (box, key) => itemsOf(box).find(x => x.dataset.key === key) || null;
 // 二级层可见的内容变了（换入口、换模式、收起抽屉）或悬停的项被摘掉：预览立刻收起，不留在新的那组上。
@@ -71,14 +58,14 @@ const dropHover = el => { if (!el || el === hoveredItem()) hover(null, {now: tru
 // ---------- 一项 ----------
 function mark(item) {
   if (item.kind === 'day') return String(Number(item.day.slice(8)));
-  if (item.kind === 'month') return monthName.format(new Date(Number(item.key.slice(2, 6)), Number(item.key.slice(7)) - 1, 1));
+  if (item.kind === 'month') return monthShort(item.key.slice(2));
   if (item.kind === 'year') return item.key.slice(2);
   if (item.kind === 'work') return [...(item.label || '')][0] || '';
   return '';
 }
 function itemWidget(item) {
   const {el, refs} = ITEM();
-  refs.heart.append(heartIcon());
+  refs.heart.append(icon('heart'));
   el.dataset.key = item.key; el.dataset.kind = item.kind;
   el.railCount = refs.count;
   const update = x => {
@@ -87,13 +74,13 @@ function itemWidget(item) {
     cls(el, 'is-round', !!x.round);
     // 拖图进画廊时（mode）不接收的项（按条件的画廊，#710）：变淡，读屏读作不可用。
     attr(el, 'aria-disabled', x.off ? 'true' : null); cls(el, 'is-off', !!x.off);
-    attr(refs.img, 'src', thumb(x.cover) || null); show(refs.img, !!x.cover);
-    attr(refs.img2, 'src', thumb(x.cover2) || null); show(refs.stack, x.kind === 'month' || x.kind === 'year');
+    attr(refs.img, 'src', coverUrl(x.cover)); show(refs.img, !!x.cover);
+    attr(refs.img2, 'src', coverUrl(x.cover2)); show(refs.stack, x.kind === 'month' || x.kind === 'year');
     text(refs.mark, mark(x)); show(refs.mark, !!mark(x));
     show(refs.heart, !!x.heart && !!x.cover);
-    const icon = iconOf(x);
-    if (refs.icon.dataset.icon !== icon) { refs.icon.dataset.icon = icon; refs.icon.replaceChildren(...(ICONS[icon] ? [ICONS[icon]().el] : [])); }
-    cls(el, 'is-icon', !!icon);
+    const name = iconOf(x);
+    if (refs.icon.dataset.icon !== name) { refs.icon.dataset.icon = name; refs.icon.replaceChildren(...(name ? [icon(name)] : [])); }
+    cls(el, 'is-icon', !!name);
     // 数字只给整理的队列；时间轴的张数写在悬停预览里。数字正在滚动（count）时不打断它，滚完由 count 写终值。
     const n = x.kind === 'queue' ? x.count : 0;
     if (!counting.has(refs.count)) text(refs.count, n ? number(n) : '');
@@ -391,12 +378,9 @@ export function wireRail() {
   }
 }
 // 时间轴每一项悬停时写什么：哪天（或哪个月、哪一年）、几张。
-const dayTitle = new Intl.DateTimeFormat(I18N.locale, {month: 'long', day: 'numeric', weekday: 'short'});
-const monthTitle = new Intl.DateTimeFormat(I18N.locale, {year: 'numeric', month: 'long'});
-const date = key => new Date(key + 'T00:00:00');
 function timelineLabel(x) {
-  if (x.kind === 'day') return dayTitle.format(date(x.day));
-  return x.kind === 'year' ? t('{year} 年', {year: x.key.slice(2)}) : monthTitle.format(date(x.key.slice(2) + '-01'));
+  if (x.kind === 'day') return dayWithWeekday(x.day);
+  return x.kind === 'year' ? t('{year} 年', {year: x.key.slice(2)}) : monthLong(x.key.slice(2));
 }
 function timelineMeta(x) {
   const n = t('{n} 张', {n: number(x.count)});

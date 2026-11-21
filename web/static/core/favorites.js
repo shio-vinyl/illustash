@@ -1,25 +1,20 @@
 // 收藏（#447）：不碰 DOM 的部分。收藏是一个人工标记，后端写在 /api/favorite，筛选条件是 has / not 里的 `fav`，列表、
 // 详情、按天视图带 marks=fav 时每张图多一个 `fav` 字段（口径：这张或同组任何一份收藏过）。画在哪、怎么写入在 ui/favorites.js
 // 和 ui/grid.js。可以在 Node 里单独测试（tests/favorites.test.cjs）。
+import {parseList} from './filters.js';
 import {state} from './state.js';
 
-// 读列表、详情时带上的参数（按天视图带 marks=fav,color，core/days.js）：回复里每张图多一个 fav。
-export const MARKS = {marks: 'fav'};
 // 网格卡片要的标记：收藏，再加上每张图的主色（读完之前的底色、悬停投影，#717）。首页、详情栏以后要主色时也用它。
 export const GRID_MARKS = {marks: 'fav,color'};
 export const FAV = 'fav';
 
-// 路由或查询参数里的 has / not：条件数组。地址和 /api/assets 的参数里是 JSON 字符串（#445），读成路由后可能已是数组。
-export function conditions(value) {
-  if (Array.isArray(value)) return value;
-  if (typeof value !== 'string' || !value) return [];
-  try { const list = JSON.parse(value); return Array.isArray(list) ? list : []; } catch { return []; }
-}
+// 路由或查询参数里的 has / not 是条件数组：地址和 /api/assets 的参数里是 JSON 字符串（#445），读成路由后可能已是数组，
+// 都用 core/filters.js 的 parseList 读。
 // 写入以后这张图是不是离开本页：「只看收藏」里取消，「不含收藏」里收藏。
-export const favLeaves = (add, route = state.route) => add ? conditions(route.not).includes(FAV) : conditions(route.has).includes(FAV);
+export const favLeaves = (add, route = state.route) => add ? parseList(route.not).includes(FAV) : parseList(route.has).includes(FAV);
 // 在一组查询参数的 key（has 或 not）里加一个条件，返回新的一组；参数里条件写成 JSON 字符串数组，同 /api/assets。
 export function withCondition(params, key, condition) {
-  const list = conditions(params[key]);
+  const list = parseList(params[key]);
   return list.includes(condition) ? {...params} : {...params, [key]: JSON.stringify([...list, condition])};
 }
 

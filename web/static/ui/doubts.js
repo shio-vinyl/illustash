@@ -14,8 +14,9 @@
 // - 换了 NSFW：旧卡先撤下再重读。
 import {CARD_MAX, doubtAnswer, doubtCards, doubtLater, loadDoubts, tally} from '../core/doubts.js';
 import {edits} from '../core/edits.js';
-import {imageUrl, number} from '../core/format.js';
+import {coverUrl, number} from '../core/format.js';
 import {t} from '../core/i18n.js';
+import {avatarOf} from '../core/labels.js';
 import {refreshMeta} from '../core/meta.js';
 import {implement, onPage} from '../core/pages.js';
 import {DOUBT_POOL} from '../core/rail.js';
@@ -51,8 +52,8 @@ const CARD = tpl`<section class="group tidy-group doubt-card">
   <div class="tidy-acts" data-ref="acts"></div>
 </section>`;
 
-// 角色的圆头像：角色目录里的封面（core/meta.js 读的摘要行）。
-const face = (img, c) => { const cover = state.charMap.get(c.id)?.cover; attr(img, 'src', cover ? imageUrl(cover) : null); };
+// 角色的圆头像。
+const face = (img, c) => attr(img, 'src', coverUrl(avatarOf(c.id)));
 const nameLink = c => { const a = make('a', '', c.name); a.href = charHash(c.id); return a; };
 
 // 一张卡：卡头两个圆头像、「是 A 还是 B？」和张数；下面一排方图；最下面是回答。

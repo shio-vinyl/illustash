@@ -34,3 +34,17 @@ test('thumbnail tier follows physical pixels', () => {
   assert.deepEqual([180, 261].map(px => thumbSize(px, .5)), ['thumb', 'medium']);
   assert.deepEqual([undefined, 0, NaN, .5, 1.5, 2].map(screenScale), [1, 1, 1, 1, 1.5, 2]);
 });
+
+// 日期的键（本机日期的「YYYY-MM-DD」「YYYY-MM」）和按键写的日期：读键按年月日构造，不经字符串解析（不受时区、夏令时影响）。
+test('date keys use the local date; formatted dates read the key as that local day', () => {
+  const {dayKey, monthKey, parseDay, weekdayShort, dayLong, monthName, monthShort, dayWithWeekday, monthLong} = web.core();
+  assert.equal(dayKey(new Date(2026, 0, 5, 23, 59)), '2026-01-05');
+  assert.equal(monthKey(new Date(2026, 0, 31, 23, 59)), '2026-01');
+  assert.deepEqual([parseDay('2026-03-08').getDate(), parseDay('2026-03-08').getHours(), parseDay('2026-03').getDate()], [8, 0, 1]);
+  assert.equal(weekdayShort('2024-01-01'), new Intl.DateTimeFormat('zh-CN', {weekday: 'short'}).format(new Date(2024, 0, 1)));
+  assert.equal(dayLong('2026-11-03'), '2026年11月3日');
+  assert.equal(monthName('2026-11'), '11 月');
+  assert.equal(monthShort('2026-03'), new Intl.DateTimeFormat('zh-CN', {month: 'short'}).format(new Date(2026, 2, 1)));
+  assert.equal(monthLong('2026-03'), '2026年3月');
+  assert.match(dayWithWeekday('2026-11-03'), /11月3日/);
+});

@@ -9,8 +9,8 @@
 //   不和「没有可问的」一样整张藏起来。
 // - 「点掉的是…」打开的角色选择器属于这一页（ui/answer.js 的 pickFor）：离开这一页时关掉；选的时候卡片已经换了一批或离开了这一页，
 //   就不写。
-import {askAnswer} from '../core/ask.js';
-import {askLater, readAsk} from '../core/days.js';
+import {askBody, askLater} from '../core/ask.js';
+import {readAsk} from '../core/days.js';
 import {edits} from '../core/edits.js';
 import {number} from '../core/format.js';
 import {t} from '../core/i18n.js';
@@ -58,7 +58,7 @@ export function dayAsk(scope, {pick: choose = openPicker} = {}) {
   }
   async function answer(how, off) {
     const b = batch; if (!b || busy || edits.busy) return;
-    if (!await write(askAnswer(b, how, off))) return;
+    if (!await write(askBody(b, how, off))) return;
     skip.push(b.entity);
     if (still(b)) next();
   }
@@ -69,7 +69,7 @@ export function dayAsk(scope, {pick: choose = openPicker} = {}) {
     pickFor(scope, {ids, exclude: [b.entity], sentence: e => t('把 {n} 张从 {from} 换成 {name}', {n: number(ids.length), from: b.name, name: e.name}),
       still: () => batch === b && !busy && onPage(state.route, 'days'),
       pick: async e => {
-        if (!await write(askAnswer(b, 'other', off, e.id))) return;
+        if (!await write(askBody(b, 'other', off, e.id))) return;
         if (!still(b)) { skip.push(b.entity); return; }   // 写的途中换了一批：剩下的几张不放回去
         const rest = b.items.filter(x => !off.has(x.uuid));
         if (rest.length) put({...b, items: rest}); else { skip.push(b.entity); next(); }

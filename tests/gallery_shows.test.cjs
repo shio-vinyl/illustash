@@ -120,6 +120,25 @@ test('列表卡片的预览：一次请求拿样图和张数；手动封面排�
   assert.deepEqual(await galleries.previewOf({id: 9, params: {has: '["work:gone"]'}}), {error: '作品不存在'});
 });
 
+// 画廊列表页（带页面作用域的 signal）和活页条的收藏封面（不带）共用一个预览请求：先发的一方离开页面中止时，只有它自己
+// 收到 AbortError，请求不中止，另一方照样拿到结果。
+test('共用的预览请求：一个调用方中止不连累另一个；请求不带调用方的 signal', async () => {
+  galleries.forgetCovers();
+  let done;
+  globalThis.fetch = (path, init = {}) => { calls.push({path, signal: init.signal}); return new Promise(r => { done = () => r(reply({total: 1, items: [{uuid: 'a'}]})); }); };
+  const page = new AbortController();
+  const fromPage = galleries.previewOf(condition, {signal: page.signal}), fromRail = galleries.previewOf(condition);
+  page.abort();
+  await assert.rejects(fromPage, e => e.name === 'AbortError');
+  done();
+  assert.deepEqual((await fromRail).items.map(x => x.uuid), ['a']);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].signal, undefined, '请求不带调用方的 signal');
+  const before = new AbortController(); before.abort();
+  await assert.rejects(galleries.previewOf(condition, {signal: before.signal}), e => e.name === 'AbortError');
+  assert.equal(calls.length, 1, '已缓存，不再请求');
+});
+
 test('#646：「更多像这张的」页上有条件也没有「保存为画廊」；图库上有', async () => {
   web.fakePage();
   globalThis.window = {addEventListener() {}};

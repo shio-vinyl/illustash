@@ -72,16 +72,29 @@ const query = (g, nsfw, extra = {}) => new URLSearchParams({...g.params, ...(nsf
 
 // 画廊列表卡片上的预览：前 n 张（带主色）和张数，一次请求。有手动封面时它排第一张（不在前 n 张里也补上）。
 // 回 {items, total} 或 {error}（条件失效）。同一画廊、同一 NSFW 设置只读一次，写入后 forgetCovers() 清掉。
+// 几个调用方共用一个请求（画廊列表页的卡片、活页条的收藏封面），所以请求不带任何调用方的 signal：signal 只让那个调用方
+// 不再等（收到 AbortError），请求照常读完、留在缓存里，别的调用方照样拿到结果。
 export const PREVIEW = 5;
 const previews = new Map();
 export function previewOf(g, {nsfw = state.nsfw, cover = null, signal} = {}) {
   const key = `${g.id}|${nsfw}|${cover || ''}`;
-  if (!previews.has(key)) previews.set(key, readPreview(g, nsfw, cover, signal).catch(e => { previews.delete(key); throw e; }));
-  return previews.get(key);
+  if (!previews.has(key)) previews.set(key, readPreview(g, nsfw, cover).catch(e => { previews.delete(key); throw e; }));
+  return waitFor(previews.get(key), signal);
 }
-async function readPreview(g, nsfw, cover, signal) {
+// 等一个共用的 promise；signal 中止时只是这一处不再等。
+function waitFor(promise, signal) {
+  if (!signal) return promise;
+  const stopped = () => signal.reason ?? Object.assign(new Error('aborted'), {name: 'AbortError'});
+  if (signal.aborted) { promise.catch(() => {}); return Promise.reject(stopped()); }   // 没人等的失败不算未处理
+  return new Promise((resolve, reject) => {
+    const stop = () => reject(stopped());
+    signal.addEventListener('abort', stop, {once: true});
+    promise.then(resolve, reject).finally(() => signal.removeEventListener('abort', stop));
+  });
+}
+async function readPreview(g, nsfw, cover) {
   let r;
-  try { r = await api('/api/assets?' + query(g, nsfw, {limit: PREVIEW, offset: 0, marks: 'color'}), {signal}); } catch (e) {
+  try { r = await api('/api/assets?' + query(g, nsfw, {limit: PREVIEW, offset: 0, marks: 'color'})); } catch (e) {
     if (e.status === 400) return {error: e.message};
     throw e;
   }

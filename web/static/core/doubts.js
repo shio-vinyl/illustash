@@ -6,8 +6,8 @@
 // /api/review-pools 末尾的 kind=ambiguous 一项里（core/rail.js 的 DOUBT_POOL，活页条用）。
 // 回答沿用 /api/ask/answer（kind=ambiguous，entity 是 A），和认一认一样一步一个撤销，见 doubtAnswer。提交时 A、B 已经不是这几张的
 // 候选对（卡片过期）时后端回 400，页面重读队列（ui/doubts.js）。
-import {askAnswer} from './ask.js';
-import {api, post} from './session.js';
+import {askBody, askLater} from './ask.js';
+import {api} from './session.js';
 
 /** 一张卡最多放几张图：图多的一对分成几张卡，回答只作用于卡上露出来的图。 */
 export const CARD_MAX = 16;
@@ -55,10 +55,10 @@ export function tally(cards) {
  */
 export function doubtAnswer(card, how, off, other = '') {
   const batch = {entity: card.a.id, kind: 'ambiguous', items: card.items}, all = new Set(card.items.map(x => x.uuid));
-  if (how === 'a') return askAnswer(batch, 'ok', off);
-  if (how === 'b') return askAnswer(batch, 'other', all, card.b.id);
-  if (how === 'none') return {...askAnswer(batch, 'none', off), also_no: card.b.id};
-  return askAnswer(batch, 'other', off, other);
+  if (how === 'a') return askBody(batch, 'ok', off);
+  if (how === 'b') return askBody(batch, 'other', all, card.b.id);
+  if (how === 'none') return {...askBody(batch, 'none', off), also_no: card.b.id};
+  return askBody(batch, 'other', off, other);
 }
 /** 以后再说：记下卡上这几张问过了（7 天里不再列出），不改图库，不进撤销。 */
-export const doubtLater = card => post('/api/ask/answer', {entity: card.a.id, kind: 'ambiguous', later: card.items.map(x => x.uuid)});
+export const doubtLater = card => askLater({entity: card.a.id, kind: 'ambiguous', items: card.items});

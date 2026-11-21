@@ -5,7 +5,7 @@
 // 新增一个页面要做什么，见 docs/WEB_UI_MAP.md「新增一个页面」。
 import {isMac} from './format.js';
 import {t} from './i18n.js';
-import {conditions as conditionLists, count as conditionCount, queryParams} from './filters.js';
+import {conditions as conditionLists, count as conditionCount, parseList, queryParams} from './filters.js';
 import {likeParams} from './like.js';
 import {showFor, showOf} from './gallery_shows.js';
 import {state} from './state.js';
@@ -52,11 +52,10 @@ export const narrowed = r => !!(r.q || r.tag || r.utag || r.check || r.doubt || 
 // 只按收藏筛选、没有别的条件的图库（#447、#679）：收藏的旧地址，core/route.js 把它改写到收藏画廊 #/gallery/fav（#710），
 // 所以运行时的路由不会是它。
 const NOT_FAV_ONLY = ['q', 'tag', 'utag', 'work', 'day', 'artist', 'char', 'from', 'to', 'like'];
-const asList = v => { if (Array.isArray(v)) return v; try { const x = JSON.parse(v || '[]'); return Array.isArray(x) ? x : []; } catch { return []; } };
 export function favoritesOnly(route = state.route) {
   if (route.page !== 'library' || NOT_FAV_ONLY.some(k => Array.isArray(route[k]) ? route[k].length : route[k])) return false;
-  const has = asList(route.has);
-  return has.length === 1 && has[0] === 'fav' && !asList(route.not).length;
+  const has = parseList(route.has);
+  return has.length === 1 && has[0] === 'fav' && !parseList(route.not).length;
 }
 // 图库的筛选（搜索词、组合条件、旧的单值参数）读成后端的查询参数：/api/assets、/api/home、/api/calendar 都接受同一组（#718）。
 // 按天、日历的取数把它带上（#707、#708）；网格另外带「更多像这张的」的例图（libraryBase.params）。不含 NSFW 设置：取数时另带

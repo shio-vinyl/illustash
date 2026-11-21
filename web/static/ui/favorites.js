@@ -5,14 +5,7 @@ import {exclusive} from '../core/edits.js';
 import {t} from '../core/i18n.js';
 import {post} from '../core/session.js';
 import {toast, written} from './dom.js';
-import {attr, tpl} from './el.js';
 
-// 心形的图形（路径）只在这里写一份（#751）：网格卡片、画廊卡片、活页条、按天视图的图块和详情卡片都用 heartIcon()，
-// 模板里留一个空的位置，克隆以后把它放进去。
-const HEART_PATH = 'M10 16.4S3.4 12.5 3.4 7.9A3.3 3.3 0 0 1 10 6.3a3.3 3.3 0 0 1 6.6 1.6c0 4.6-6.6 8.5-6.6 8.5Z';
-const HEART_ICON = tpl`<svg viewBox="0 0 20 20" aria-hidden="true"><path data-ref="path"/></svg>`;
-/** 一个心形图标节点（克隆模板再写上路径）。 */
-export function heartIcon() { const {el, refs} = HEART_ICON(); attr(refs.path, 'd', HEART_PATH); return el; }
 // 心形的提示：按下去会做什么。
 export const heartTip = on => on ? t('取消收藏（F）') : t('收藏（F）');
 

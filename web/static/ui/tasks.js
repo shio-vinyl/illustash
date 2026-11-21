@@ -6,7 +6,8 @@ import {esc, home, megabytes, number, stamp, localTime} from '../core/format.js'
 import {state} from '../core/state.js';
 import {readError} from '../core/session.js';
 import {dropTaskSettings, refreshTaskSettings, startSimilar} from '../core/tasks.js';
-import {SYNC_ACTIVE, INDEX_ACTIVE, NAMES_ACTIVE, SIMILAR_ACTIVE, PROV_ACTIVE, RUN_STATUS, onJob, syncLine, syncBar, syncDoneText, indexLine, indexEndText, resumeIndex, discardIndex,
+import {SYNC_ACTIVE, INDEX_ACTIVE, NAMES_ACTIVE, SIMILAR_ACTIVE, PROV_ACTIVE, RUN_STATUS, syncTone, indexTone, namesTone, onJob, syncLine, syncBar, syncDoneText,
+  indexLine, indexEndText, resumeIndex, discardIndex,
   namesLine, taskSimilar, pollSync, pollIndex, pollNames, loadProvenance, startSync, checkIndex, refreshNames, provenanceAction, PHOTOS_PRIVACY, photosHelp, photosRefused,
   importActive, importSummary, cancelImport, pollImports} from '../core/jobs.js';
 import {loadLibraries, updatesTick} from '../core/settings.js';
@@ -61,15 +62,15 @@ export function taskList() {
   const btn = (act, label, {attr = 'task', disabled = false, title = ''} = {}) => ({attr, act, label, disabled, title});
   const list = [
     {key: 'sync', name: folder ? t('文件夹同步') : t('照片同步'), busy: t('同步中'), active: SYNC_ACTIVE.includes(s.status), off: s.status === 'off', line: s.status === 'off' ? t('这次启动没有开同步') : syncLine(s),
-      warn: ['error', 'needs_recognition', 'interrupted'].includes(s.status), progress: syncBar(s, bar) || null, body: SYNC_ACTIVE.includes(s.status) ? '' : syncDamaged(state.syncDamaged),
+      warn: syncTone(s.status) === 'warn', progress: syncBar(s, bar) || null, body: SYNC_ACTIVE.includes(s.status) ? '' : syncDamaged(state.syncDamaged),
       buttons: [btn('sync', t('立即同步'), {disabled: SYNC_ACTIVE.includes(s.status) || s.status === 'off'})],
       log: state.syncHistory?.length ? [t('同步记录'), `<table class="settings-table"><tr><th>${t('时间')}</th><th>${t('新增')}</th><th>${t('移除', {context: 'column'})}</th><th>${t('导入')}</th><th>${t('失败')}</th></tr>${state.syncHistory.slice(0, 8).map(r => `<tr><td>${esc(stamp(r.started_at))}</td><td>${number(r.found)}</td><td>${number(r.removed)}</td><td>${number(r.imported)}</td><td>${number(r.failed)}</td></tr>`).join('')}</table>`] : null},
-    {key: 'index', name: t('检查新角色'), busy: t('检查新角色中'), active: INDEX_ACTIVE.includes(ix.status), line: state.index ? indexLine(ix, state.index.check) : '…', warn: ix.status === 'error',
+    {key: 'index', name: t('检查新角色'), busy: t('检查新角色中'), active: INDEX_ACTIVE.includes(ix.status), line: state.index ? indexLine(ix, state.index.check) : '…', warn: indexTone(ix.status) === 'warn',
       progress: INDEX_ACTIVE.includes(ix.status) || ix.status === 'paused' ? bar(ix.done, ix.total) : null, body: '',
       buttons: [btn('index', t('立即检查'), {disabled: INDEX_ACTIVE.includes(ix.status) || ix.status === 'off' || ix.status === 'paused' || !state.index?.watch?.works.length,
         title: ix.status === 'paused' ? t('先继续或放弃暂停的添加') : state.index?.watch?.works.length ? t('查关注作品在 Danbooru 上有没有新角色（只发送作品名）') : t('先在资料库里关注作品')})]},
     {key: 'names', name: t('角色名称'), busy: t('角色名称中'), active: NAMES_ACTIVE.includes(nm.status), off: nm.status === 'off',
-      line: namesLine(nm) + (nm.error ? t('：{reason}', {reason: tb(nm.error)}) : ''), warn: nm.status === 'error', progress: NAMES_ACTIVE.includes(nm.status) ? bar(nm.done, nm.total) : null,
+      line: namesLine(nm) + (nm.error ? t('：{reason}', {reason: tb(nm.error)}) : ''), warn: namesTone(nm.status) === 'warn', progress: NAMES_ACTIVE.includes(nm.status) ? bar(nm.done, nm.total) : null,
       body: '',
       buttons: [btn('names', t('重新获取'), {disabled: NAMES_ACTIVE.includes(nm.status) || nm.status === 'off' || !state.names, title: t('从 Bangumi 重新获取全部角色的中文名（只发送 tag 与作品名）')})]},
     {key: 'similar', name: t('相似图片'), busy: t('相似图片中'), active: SIMILAR_ACTIVE.includes(sim.status), off: sim.status === 'off', line: taskSimilar(sim), warn: sim.status === 'error',

@@ -21,7 +21,7 @@ import {drawEmpty} from './empty.js';
 import {railKey, railNsfw} from './rail.js';
 import {renderChrome, renderHeading} from './shell.js';
 import {lift, onPress} from './drag.js';
-import {answerAsk, closeInspector, closeViewer, ensureVisible, indexOf, inspect, noteFavorite, openViewer, peek, pickAlternative, showViewer, singleAction, step, zoomView} from './detail.js';
+import {answerQuestion, closeInspector, closeViewer, ensureVisible, indexOf, inspect, noteFavorite, openViewer, peek, pickAlternative, showViewer, singleAction, step, zoomView} from './detail.js';
 import {jumpToCharacter, openPicker} from './palette.js';
 import {inPopover, popoverOpen} from './overlay.js';
 import {FAV, favLeaves, isFav, markLocal, wantsAdd, withCondition} from '../core/favorites.js';
@@ -702,7 +702,7 @@ export function wireGrid() {
     const box = e.key === '/' && document.querySelector('#toolbar input[type=search]'); if (box) { e.preventDefault(); box.focus(); return; }
     const n = keySelection(), character = !!state.route.char;
     if ((key === 'y' || key === 'n') && !mod && !edits.busy && view.bar === 'audit' && n) { e.preventDefault(); bar.answerAudit(key === 'y'); return; }
-    if ((key === 'y' || key === 'n') && !mod && !edits.busy && state.question && [state.focused, m.viewer && state.viewerItem?.uuid].includes(state.question.ident)) { e.preventDefault(); answerAsk(key === 'y' ? 'yes' : 'no'); return; }
+    if ((key === 'y' || key === 'n') && !mod && !edits.busy && state.question && [state.focused, m.viewer && state.viewerItem?.uuid].includes(state.question.ident)) { e.preventDefault(); answerQuestion(key === 'y' ? 'yes' : 'no'); return; }
     if (edits.busy || !scope) return;
     // 按天视图（scope 'shown'）没有网格光标：下面的键只作用于详情栏或大图里那张，两者都没开时不响应；方向键只有 ← → 翻页，
     // ↑ ↓ 照常滚动页面。

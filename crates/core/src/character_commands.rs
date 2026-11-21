@@ -616,6 +616,7 @@ fn require_ambiguous_pair(c: &Connection, ids: &[String], entity: &str, rival: &
 }
 
 /// 问答快照存的 `asked` 列：拍快照（`ask_history`）和撤销时放回（`restore_ask_history`）都照这个次序。
+/// 这个次序已经写进图库里的撤销快照，只能在末尾追加列，不能重排或删列，否则旧快照会按错位解释。
 const ASKED_COLUMNS: [&str; 6] = ["uuid", "entity", "kind", "answer", "action_id", "asked_at"];
 
 /// 一步覆盖（图，角色）的问答之前 `asked` 里原来的那一行，包成撤销快照 `{"ask_history": […]}`；没有时为 `None`。

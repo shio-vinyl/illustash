@@ -10,8 +10,9 @@ use crate::{
 use rusqlite::{Connection, OpenFlags};
 use std::collections::HashMap;
 pub(crate) const ROUTES: &[&str] = &["/api/ask", "/api/similar", "/api/clusters"];
-/// 认一认自己的几种问题（`ask` 给出的 `kind`）。暂缓角色只看这几种问题里的「以后再说」：别处的「以后再说」
-/// （如「可能认错」的 `ambiguous`）只针对那一问，不让角色在认一认里消失。
+/// 认一认自己的几种问题（`ask` 给出的 `kind`）。角色级的七天暂缓只看这几种问题里的「以后再说」：别处的
+/// 「以后再说」（如「可能认错」的 `ambiguous`）只针对那一问，不触发角色级暂缓。单张图照旧不分 `kind`
+/// 按「问过」处理（`unasked`），同一张图不会在认一认里再问一遍。
 const ASK_KINDS: &str = "'hint','seed','sample'";
 fn get<'a>(q: &'a HashMap<String, String>, k: &str) -> &'a str {
     q.get(k).map(String::as_str).unwrap_or("")

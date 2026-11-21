@@ -7,7 +7,7 @@
 
  "crates/core/src/ccip_longtail.rs":"04f901a024fd2f26d4fc86486e6db7b8a7c43c046483f0974acc15ad736306b0",
 
- "crates/core/src/character_commands.rs":"4da830c766efeb00c13aeb56e4c88c6dafd97d70950f1b007e7905171b35e79b",
+ "crates/core/src/character_commands.rs":"562159c0d8990af2ca52d85e6b3f559a29f12fb6c1d6248b7d886d796f7656da",
 
  "crates/core/src/character_entities.rs":"5cb8eceface17854d3a2c727d12218b8d1834ac71837c1cb4b5a0f28ee6275dd",
 
@@ -413,7 +413,7 @@
 
  "native/terms/src/http_json.rs":"42ec65687fad69e430186543d3ef27b8141030e6694b07f683ee91f678478d6b",
 
- "native/terms/src/http_local.rs":"39f5604ebc26dc246ab6212893ec1bbba45e33772a92f58381b6e1e840807dc2",
+ "native/terms/src/http_local.rs":"7c711f73ffdb6e95d8c01ae8ae4e2a7e3003f377f9a6414fc9d12002bd528c8c",
 
  "native/terms/src/http_read.rs":"82726c8c461a941f68b7d21cc286fbc246e88929ee52b7cd34c457f004e38fd3",
 

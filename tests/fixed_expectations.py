@@ -154,6 +154,7 @@ class Expectations:
         self.entries = data['tests'].get(self.test)
         if self.entries is None and not isinstance(test, type):
             # 平台专用的子类（如 Windows 上的 OpenBLAS 运行）重放父类的录制。
+            definer = None   # 定义这个测试方法的父类所在模块：父类的测试也没录制时，共用准备值从那里取
             for parent in kind.__mro__[1:]:
                 if not (isinstance(parent, type) and issubclass(parent, unittest.TestCase)) \
                         or parent is unittest.TestCase:
@@ -168,6 +169,13 @@ class Expectations:
                     self.module, self.test, data = name, key, found
                     self.entries = found['tests'][key]
                     break
+                if definer is None and test._testMethodName in parent.__dict__:
+                    definer = name, key, found
+            else:
+                if definer is not None and test._testMethodName not in kind.__dict__:
+                    # 父类里新加、没录制的测试（如 #792 的拆组）：照它在父类模块里运行时那样取共用准备值，
+                    # 不取子类模块的（只含平台专用子类的模块往往一条录制也没有）。
+                    self.module, self.test, data = definer
         if self.entries is None:
             # 从未录制过：只在录制平台以外的平台上运行的测试，或者不用参考值的测试。
             # 它共用的准备阶段的值取自本模块第一个录制过的测试（同样的合成包和种子）。

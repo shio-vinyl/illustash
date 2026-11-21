@@ -9,6 +9,7 @@ import {attr, show, text, tpl} from './el.js';
 import {keyed} from './keyed.js';
 import {app} from './scope.js';
 import {createLayer} from './overlay.js';
+import {popOpen, showPop} from './pop.js';
 import {openLibrary} from './settings_libraries.js';
 import {$, toast} from './dom.js';
 
@@ -43,10 +44,10 @@ function draw() {
   if (!$('libraryPop').contains(body.el)) $('libraryPop').replaceChildren(body.el);
 }
 function setOpen(open, reason) {
-  $('libraryPop').hidden = !open; attr($('brand'), 'aria-expanded', String(open));
+  showPop($('libraryPop'), open); attr($('brand'), 'aria-expanded', String(open));
   if (!open) { layer.close(reason); return; }
   draw(); layer.open();
-  loadLibraries().then(() => { if (!$('libraryPop').hidden) draw(); }, () => {});   // 读不到就照已有的列表画
+  loadLibraries().then(() => { if (popOpen($('libraryPop'))) draw(); }, () => {});   // 读不到就照已有的列表画
 }
 async function choose() {
   setOpen(false);
@@ -57,7 +58,7 @@ async function choose() {
 
 // 页面启动时调用一次。
 export function wireLibraryPop() {
-  s.on($('brand'), 'click', () => setOpen($('libraryPop').hidden));
+  s.on($('brand'), 'click', () => setOpen(!popOpen($('libraryPop'))));
   body = POP();
   rows = keyed(body.refs.rows, {key: l => l.path, create: libraryRow, scope: s});
   s.on(body.refs.choose, 'click', choose);

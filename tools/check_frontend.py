@@ -21,7 +21,7 @@ tools/check_architecture.py 对 crate 依赖方向的检查。规则（说明见
  14 css-selector         不写类名子串选择器（[class*=] 一类）和后代形式的 :has()（:has(.x)；:has(> .x)、:has(+ .x) 可以）（#469）
  15 css-var              var(--名) 必须有定义：在 css/tokens.css，或在 JS_VARIABLES 登记的「由 JS 写的变量」里；只有 app.css 还认同一个文件里的
                          旧局部变量（--gutter）。css/ 下不认局部变量，所以 `--x: 13px` 绕不过规则 8、13（硬规则）
- 16 backdrop-filter      backdrop-filter 只写在 css/base.css 的玻璃表面（.glass、.glass-bar）
+ 16 backdrop-filter      backdrop-filter 只写在 css/base.css 的玻璃表面（.glass、.glass-bar、对话框背后的 .glass-scrim::backdrop）
  17 css-compat           Safari 17.0 没有的 CSS 能力只写在登记的增强块里：探测它的 @supports（测不出来的写成 @starting-style 这类块本身），
                          块前面紧挨着写明退路的注释（@supports not (…) 不算）；CSS 嵌套、相对颜色语法和 ::backdrop 里的 var() 不用（硬规则）
  18 css-layer            css/ 下的文件整个写在自己的 @layer 里（硬规则）：tokens.css 在 tokens，base.css 在 base，overlays.css 在 overlays，其余在 pages
@@ -1060,9 +1060,22 @@ JS_VARIABLES = {
     '--w': 'ui/like.js 例图条的宽度',
     '--at': 'ui/rail.js 活页条标签停在第几个一级入口（css/rail.css 的 .rail-tab）',
 }
-# 规则 16：可以写 backdrop-filter 的地方。
+# 规则 16：可以写 backdrop-filter 的地方：base.css 里落在这几种玻璃表面上的选择器（最后一节是它们，前面可以带
+# `:root[data-reduce-transparency]` 这类条件，降低透明度时关掉模糊用）。.glass-scrim::backdrop 是对话框背后的模糊（#715）。
 GLASS_FILE = 'css/base.css'
-GLASS_SELECTORS = frozenset({'.glass', '.glass-bar'})
+GLASS_SELECTORS = frozenset({'.glass', '.glass-bar', '.glass-scrim::backdrop'})
+
+
+# 玻璃选择器前面只允许这一个前缀：桌面外壳注入的「降低透明度」根属性（#755）。别的前缀（`.card .glass`）不放行。
+GLASS_PREFIXES = frozenset({':root[data-reduce-transparency]'})
+
+
+def _glass_selector(prelude):
+    """选择器列表里每一项都是玻璃表面本身，或前缀是「降低透明度」的根属性。"""
+    def ok(part):
+        bits = part.split()
+        return bool(bits) and bits[-1] in GLASS_SELECTORS and (len(bits) == 1 or (len(bits) == 2 and bits[0] in GLASS_PREFIXES))
+    return all(ok(part) for part in prelude.split(',') if part.strip())
 # 规则 14
 CLASS_SUBSTRING_RE = re.compile(r'\[\s*class\s*[*^$|]=')
 HAS_RE = re.compile(r':has\(\s*(.)')
@@ -1204,9 +1217,9 @@ def structure_issues(path, raw):
     for index, prop, value, line in decls:
         if prop in ('backdrop-filter', '-webkit-backdrop-filter'):
             selector = blocks[index].prelude
-            if not (path == GLASS_FILE and selector in GLASS_SELECTORS):
+            if not (path == GLASS_FILE and _glass_selector(selector)):
                 found.append(('backdrop-filter', f'{path}: backdrop-filter', line, f'{selector} {{ {prop}: {value[:40]} }}',
-                              '改用 css/base.css 的 .glass 或 .glass-bar'))
+                              '改用 css/base.css 的 .glass、.glass-bar（对话框背后用 .glass-scrim）'))
     # 规则 17
     def enhanced(chain, probe):
         """chain 里有探测 probe 的 @supports（或 probe 为 None 时 chain 的某一块就是那个能力的块），并且那一块前面写了退路。"""

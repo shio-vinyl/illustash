@@ -3,6 +3,7 @@
 // [文字, 执行, 提示?]，假值跳过；点一项先关菜单再执行。
 import {attr, make, tpl} from './el.js';
 import {createLayer} from './overlay.js';
+import {popOpen, showPop} from './pop.js';
 
 const MORE = tpl`<div class="tag-control"><button type="button" data-ref="button" title="更多操作" aria-label="更多操作" data-t-attr="title aria-label"
   aria-haspopup="menu" aria-expanded="false">⋯</button><div class="menu menu-drop more-menu" data-ref="menu" hidden></div></div>`;
@@ -15,7 +16,7 @@ export function moreMenu({id, menuId, items, button = 'btn is-quiet'}) {
   const layer = createLayer({kind: 'popover', id, el: () => refs.menu, anchor: () => refs.button, menu: true, focusIn: 'first',
     onDismiss: reason => set(false, reason)});
   function set(open, reason) {
-    refs.menu.hidden = !open;
+    showPop(refs.menu, open);   // 关的时候播完退场再 hidden（#715）
     attr(refs.button, 'aria-expanded', open ? 'true' : 'false');
     if (open) layer.open(); else layer.close(reason);
   }
@@ -27,8 +28,9 @@ export function moreMenu({id, menuId, items, button = 'btn is-quiet'}) {
     return b;
   }
   refs.button.onclick = () => {
-    if (refs.menu.hidden) refs.menu.replaceChildren(...items().filter(Boolean).map(item));
-    set(refs.menu.hidden);
+    const open = !popOpen(refs.menu);
+    if (open) refs.menu.replaceChildren(...items().filter(Boolean).map(item));
+    set(open);
   };
   return {el, close: reason => set(false, reason), dispose() { set(false); el.remove(); }};
 }

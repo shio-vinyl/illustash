@@ -4,19 +4,25 @@ import {diagnosticLine} from '../core/diagnostics.js';
 import {t, tb} from '../core/i18n.js';
 import {esc, home, megabytes, number, stamp, localTime} from '../core/format.js';
 import {state} from '../core/state.js';
-import {api, post, shared, readError} from '../core/session.js';
+import {readError} from '../core/session.js';
+import {dropTaskSettings, refreshTaskSettings, startSimilar} from '../core/tasks.js';
 import {SYNC_ACTIVE, INDEX_ACTIVE, NAMES_ACTIVE, SIMILAR_ACTIVE, PROV_ACTIVE, RUN_STATUS, onJob, syncLine, syncBar, syncDoneText, indexLine, indexEndText, resumeIndex, discardIndex,
   namesLine, taskSimilar, pollSync, pollIndex, pollNames, loadProvenance, startSync, checkIndex, refreshNames, provenanceAction, PHOTOS_PRIVACY, photosHelp, photosRefused,
   importActive, importSummary, cancelImport, pollImports} from '../core/jobs.js';
-import {loadLibraries, setSettings, updatesTick} from '../core/settings.js';
-import {$, toast, error, fold, wireFolds, redraw, setDrawn, busy} from './dom.js';
+import {loadLibraries, updatesTick} from '../core/settings.js';
+import {$, toast, error, fold, redraw, busy} from './dom.js';
+import {attr, make, rich, show, text, tpl} from './el.js';
+import {keyed} from './keyed.js';
+import {app} from './scope.js';
+import {taskRow} from './task_row.js';
 import {confirmAction} from './dialog.js';
 import {createLayer} from './overlay.js';
+import {showPop} from './pop.js';
 import {openIndexAdd} from './catalog.js';
-import {modelsLine, modelsBar, modelsActions} from './models.js';
+import {modelsLine, modelsButtons, modelsProgress, runModels} from './models.js';
 import {cancelExport, exportActive, exportLine, loadFiles, onFiles, revealExport, revealLabel} from '../core/files.js';
 import {loadModels, onModels} from '../core/models.js';
-import {packTask} from './packs.js';
+import {packTask, runPack} from './packs.js';
 import {loadPack, onPack} from '../core/packs.js';
 // 「开始」先显示有哪些内容会离开本机；授权只覆盖这一次运行。
 let provenanceArmed = false;
@@ -45,54 +51,62 @@ function provenanceBars(s) {
 // ---------- 任务面板（#199）：所有后台任务的进度、确认和手动运行集中在一处 ----------
 // 每个任务保留自己的接口和轮询；这里只是把它们汇到一起。有任务在运行时，它的轮询每 2 s 自己重新排上；否则由一个慢的
 // 定时调用（面板打开时变快）发现在别处启动的任务。
-export const taskPanel = {open: false, timer: 0, settingsAt: 0};
+export const taskPanel = {open: false, timer: 0};
 export function taskList() {
   const s = state.sync, ix = state.index?.state || {}, nm = state.names?.state || {}, sim = state.settings?.tasks?.similar || {status: 'off'};
   const pv = state.provenance, ps = pv?.state || {}, ex = state.libraries?.export || {};
   const folder = !(state.settings?.package?.sources || state.libraries?.info?.sources || []).some(x => x.kind === 'photos');
-  const bar = (done, total) => total ? `<div class="progress"><span style="width:${Math.min(100, Math.round((done || 0) / total * 100))}%"></span></div>` : '';
+  // 进度 {done, total}，没有总数时 null；按钮 [{attr, act, label, primary, disabled, title}]，attr 是分派用的 data-* 名（ui/task_row.js）。
+  const bar = (done, total) => total ? {done: done || 0, total} : null;
+  const btn = (act, label, {attr = 'task', disabled = false, title = ''} = {}) => ({attr, act, label, disabled, title});
   const list = [
     {key: 'sync', name: folder ? t('文件夹同步') : t('照片同步'), busy: t('同步中'), active: SYNC_ACTIVE.includes(s.status), off: s.status === 'off', line: s.status === 'off' ? t('这次启动没有开同步') : syncLine(s),
-      warn: ['error', 'needs_recognition', 'interrupted'].includes(s.status), body: syncBar(s, bar) + (SYNC_ACTIVE.includes(s.status) ? '' : syncDamaged(state.syncDamaged)),
-      action: `<button class="quiet small" data-task="sync" ${SYNC_ACTIVE.includes(s.status) || s.status === 'off' ? 'disabled' : ''}>${t('立即同步')}</button>`,
+      warn: ['error', 'needs_recognition', 'interrupted'].includes(s.status), progress: syncBar(s, bar) || null, body: SYNC_ACTIVE.includes(s.status) ? '' : syncDamaged(state.syncDamaged),
+      buttons: [btn('sync', t('立即同步'), {disabled: SYNC_ACTIVE.includes(s.status) || s.status === 'off'})],
       log: state.syncHistory?.length ? [t('同步记录'), `<table class="settings-table"><tr><th>${t('时间')}</th><th>${t('新增')}</th><th>${t('移除', {context: 'column'})}</th><th>${t('导入')}</th><th>${t('失败')}</th></tr>${state.syncHistory.slice(0, 8).map(r => `<tr><td>${esc(stamp(r.started_at))}</td><td>${number(r.found)}</td><td>${number(r.removed)}</td><td>${number(r.imported)}</td><td>${number(r.failed)}</td></tr>`).join('')}</table>`] : null},
     {key: 'index', name: t('检查新角色'), busy: t('检查新角色中'), active: INDEX_ACTIVE.includes(ix.status), line: state.index ? indexLine(ix, state.index.check) : '…', warn: ix.status === 'error',
-      body: INDEX_ACTIVE.includes(ix.status) || ix.status === 'paused' ? bar(ix.done, ix.total) : '',
-      action: `<button class="quiet small" data-task="index" ${INDEX_ACTIVE.includes(ix.status) || ix.status === 'off' || ix.status === 'paused' || !state.index?.watch?.works.length ? 'disabled' : ''} title="${ix.status === 'paused' ? t('先继续或放弃暂停的添加') : state.index?.watch?.works.length ? t('查关注作品在 Danbooru 上有没有新角色（只发送作品名）') : t('先在资料库里关注作品')}">${t('立即检查')}</button>`},
-    {key: 'names', name: t('角色名称'), busy: t('角色名称中'), active: NAMES_ACTIVE.includes(nm.status), off: nm.status === 'off', line: namesLine(nm) + (nm.error ? t('：{reason}', {reason: tb(nm.error)}) : ''), warn: nm.status === 'error', body: NAMES_ACTIVE.includes(nm.status) ? bar(nm.done, nm.total) : '',
-      action: `<button class="quiet small" data-task="names" ${NAMES_ACTIVE.includes(nm.status) || nm.status === 'off' || !state.names ? 'disabled' : ''} title="${t('从 Bangumi 重新获取全部角色的中文名（只发送 tag 与作品名）')}">${t('重新获取')}</button>`},
-    {key: 'similar', name: t('相似图片'), busy: t('相似图片中'), active: SIMILAR_ACTIVE.includes(sim.status), off: sim.status === 'off', line: taskSimilar(sim), warn: sim.status === 'error', body: SIMILAR_ACTIVE.includes(sim.status) ? bar(sim.done, sim.total) : '',
-      action: `<button class="quiet small" data-task="similar" ${SIMILAR_ACTIVE.includes(sim.status) || sim.status === 'off' ? 'disabled' : ''}>${t('重新检查')}</button>`},
+      progress: INDEX_ACTIVE.includes(ix.status) || ix.status === 'paused' ? bar(ix.done, ix.total) : null, body: '',
+      buttons: [btn('index', t('立即检查'), {disabled: INDEX_ACTIVE.includes(ix.status) || ix.status === 'off' || ix.status === 'paused' || !state.index?.watch?.works.length,
+        title: ix.status === 'paused' ? t('先继续或放弃暂停的添加') : state.index?.watch?.works.length ? t('查关注作品在 Danbooru 上有没有新角色（只发送作品名）') : t('先在资料库里关注作品')})]},
+    {key: 'names', name: t('角色名称'), busy: t('角色名称中'), active: NAMES_ACTIVE.includes(nm.status), off: nm.status === 'off',
+      line: namesLine(nm) + (nm.error ? t('：{reason}', {reason: tb(nm.error)}) : ''), warn: nm.status === 'error', progress: NAMES_ACTIVE.includes(nm.status) ? bar(nm.done, nm.total) : null,
+      body: '',
+      buttons: [btn('names', t('重新获取'), {disabled: NAMES_ACTIVE.includes(nm.status) || nm.status === 'off' || !state.names, title: t('从 Bangumi 重新获取全部角色的中文名（只发送 tag 与作品名）')})]},
+    {key: 'similar', name: t('相似图片'), busy: t('相似图片中'), active: SIMILAR_ACTIVE.includes(sim.status), off: sim.status === 'off', line: taskSimilar(sim), warn: sim.status === 'error',
+      progress: SIMILAR_ACTIVE.includes(sim.status) ? bar(sim.done, sim.total) : null, body: '',
+      buttons: [btn('similar', t('重新检查'), {disabled: SIMILAR_ACTIVE.includes(sim.status) || sim.status === 'off'})]},
   ];
   if (pv?.available) list.push({key: 'provenance', name: t('找回画师'), busy: t('找回画师中'), active: PROV_ACTIVE.includes(ps.status), warn: ps.status === 'failed',
     line: ps.status === 'stopping' ? t('正在停止…') : PROV_ACTIVE.includes(ps.status) ? t('正在查找 · 第 {step}/{steps} 步', {step: (ps.index || 0) + 1, steps: ps.total || 1}) + (ps.text ? ' · ' + tb(ps.text) : '')
       : ps.status === 'failed' ? t('上次出错：{reason}', {reason: tb(ps.reason || '')}) : pv.runs?.[0] ? t('上次 {time} · 新找到 {n}', {time: localTime(pv.runs[0].started_at), n: number(pv.runs[0].found || 0)}) : t('还没有查过'),
     body: PROV_ACTIVE.includes(ps.status) ? provenanceBars(ps) + (ps.side ? `<p class="task-side">${t('同时进行')} · ${esc(tb(ps.side.name || ps.side.step))}${ps.side.text ? ' · ' + esc(tb(ps.side.text)) : ''}</p>${provenanceBars({progress: ps.side.progress})}` : '') : '',
-    action: PROV_ACTIVE.includes(ps.status) ? `<button class="quiet small" data-prov="stop" ${ps.status === 'stopping' ? 'disabled' : ''}>${t('停止')}</button>` : provenanceArmed ? '' : `<button class="quiet small" data-prov="arm">${t('开始…')}</button>`,
+    progress: null,
+    buttons: PROV_ACTIVE.includes(ps.status) ? [btn('stop', t('停止'), {attr: 'prov', disabled: ps.status === 'stopping'})] : provenanceArmed ? [] : [btn('arm', t('开始…'), {attr: 'prov'})],
     log: pv.runs?.length ? [t('运行记录'), `<table class="settings-table"><tr><th>${t('开始')}</th><th>${t('方式')}</th><th>${t('新找到')}</th><th>${t('流量')}</th><th>${t('结果')}</th></tr>${pv.runs.slice(0, 8).map(r => `<tr><td>${esc(localTime(r.started_at))}</td><td>${r.kind === 'new' ? t('同步后') : r.kind === 'full' ? t('手动') : t('命令行')}</td><td>${number(r.found || 0)}</td><td>${(r.traffic_mb || 0).toFixed(1)} MB</td><td title="${esc(tb(r.reason || ''))}">${RUN_STATUS[r.status] || esc(r.status)}</td></tr>`).join('')}</table>`] : null});
   // 没带模型的安装（#168）：在模型就位之前，以及下载或导入进行期间。
   const m = state.models;
   if (m?.on_demand && (m.status !== 'ready' || m.job?.status === 'running')) list.push({key: 'models', name: t('识别模型'), busy: m.job?.kind === 'import' ? t('导入识别模型中') : t('下载识别模型中'),
-    active: m.job?.status === 'running', warn: m.job?.status === 'failed', line: modelsLine(m), body: modelsBar(m), action: modelsActions(m, true)});
+    active: m.job?.status === 'running', warn: m.job?.status === 'failed', line: modelsLine(m), progress: modelsProgress(m), body: '',
+    buttons: modelsButtons(m, true).map(b => ({...b, attr: 'models'}))});
   // 角色数据包（#550、#559）：每个包一项，下载或导入、启用、撤回共用，运行中和结束后都列出来。
   const packs = [packTask()].filter(Boolean);
   list.push(...packs);
   if (['running', 'done', 'error'].includes(ex.status)) list.push({key: 'export', name: t('导出图库'), busy: t('导出图库中'), active: ex.status === 'running', warn: ex.status === 'error',
-    line: ex.status === 'running' ? t('正在导出…') : ex.status === 'done' ? t('已导出 {mb} MB', {mb: megabytes(ex.bytes)}) : t('导出失败：{error}', {error: tb(ex.error || '')}), body: '', action: ''});
+    line: ex.status === 'running' ? t('正在导出…') : ex.status === 'done' ? t('已导出 {mb} MB', {mb: megabytes(ex.bytes)}) : t('导出失败：{error}', {error: tb(ex.error || '')}), progress: null, body: '',
+    buttons: []});
   // 选中的图导出到文件夹（#450）：运行中可以取消，结束后可以打开那个文件夹。
   const fx = state.files?.export;
   if (['running', 'done', 'error', 'cancelled'].includes(fx?.status)) {
-    const action = exportActive() ? `<button class="quiet small" data-task="export-cancel">${t('取消导出')}</button>`
-      : fx.status !== 'error' ? `<button class="quiet small" data-task="export-reveal">${revealLabel()}</button>` : '';
+    const buttons = exportActive() ? [btn('export-cancel', t('取消导出'))] : fx.status !== 'error' ? [btn('export-reveal', revealLabel())] : [];
     list.push({key: 'files', name: t('导出图片'), busy: t('导出图片中'), active: exportActive(), warn: fx.status === 'error',
-      line: exportLine(fx), body: exportActive() ? bar(fx.done, fx.total) : '', action});
+      line: exportLine(fx), progress: exportActive() ? bar(fx.done, fx.total) : null, body: '', buttons});
   }
   // 导入（图库归档、识别结果、人工结论共用一个槽；#386 的 2-37）：和导出一样，运行中、结束后都在这里有一行，运行时可以取消。
   const im = state.importTask;
   if (['running', 'stopping', 'done', 'error', 'cancelled'].includes(im?.status)) list.push({key: 'import',
     name: im.kind === 'recognition' ? t('导入识别结果') : im.kind === 'human_conclusions' ? t('导入人工结论') : t('导入图库'), busy: t('导入中'),
-    active: importActive(), warn: im.status === 'error', line: importSummary(im), body: '',
-    action: im.status === 'running' ? `<button class="quiet small" data-task="import-cancel">${t('取消导入')}</button>` : ''});
+    active: importActive(), warn: im.status === 'error', line: importSummary(im), progress: null, body: '',
+    buttons: im.status === 'running' ? [btn('import-cancel', t('取消导入'))] : []});
   const diagnoses = {sync: s, index: ix, names: nm, similar: sim, provenance: ps, models: m?.job, export: ex, import: im, ...Object.fromEntries(packs.map(p => [p.key, p]))};
   for (const task of list) {
     const note = diagnosticLine(diagnoses[task.key]?.diagnostic);
@@ -116,8 +130,26 @@ function taskAsks() {
   return asks;
 }
 // 自动运行的开关在设置的哪几节（#386 的 2-37）：同步和相似图片在「图库」，检查新角色和角色名称在「角色资料」，
-// 找回画师在「画师」。
-const footLink = (section, label) => `<a class="link" href="#/settings/${section}">${label}</a>`;
+// 找回画师在「画师」（底部那句的三个链接）。
+// 面板的外壳只建一次（标题、「等你确认」、任务列表、底部的设置链接），任务一行一个部件（ui/task_row.js），按 key 复用：
+// 轮询时值没变不动 DOM，焦点、展开的记录和正在按的按钮都留在原处；进行中的排到前面时只挪节点。
+const SHELL = tpl`<div class="task-shell"><div class="task-top"><h2 class="title-section" data-t>任务</h2><button class="icon" data-task="close" data-ref="close">×</button></div>
+  <h6 data-ref="asksHead" data-t hidden>等你确认</h6><div class="task-asks" data-ref="asks" hidden></div>
+  <h6 data-ref="head"></h6><div class="task-group" data-ref="list"></div><p class="task-foot" data-ref="foot"></p></div>`;
+let shell = null, rows = null;
+function footLink(section, label) { const a = make('a', 'link', label); a.href = `#/settings/${section}`; return a; }
+function panelShell(pop) {
+  if (!shell) {
+    shell = SHELL();
+    const {refs} = shell;
+    attr(refs.close, 'aria-label', t('关闭'));
+    refs.foot.append(rich(t('各任务是否自动运行，在设置的{library}、{characters}、{artists}里改。'),
+      {library: footLink('library', t('图库')), characters: footLink('characters', t('角色资料')), artists: footLink('artists', t('画师'))}));
+    rows = keyed(refs.list, {key: task => task.key, create: taskRow, scope: app});   // 面板全应用常驻
+  }
+  if (!pop.contains(shell.el)) pop.replaceChildren(shell.el);
+  return shell.refs;
+}
 // renderTasks 和 taskPanel 也 导出给样式清单页调用（tools/styleguide/live.js，#352）：改名或改参数时，tools/check_styleguide.py 会报出来。
 export function renderTasks() {
   const list = taskList(), active = list.filter(t => t.active), warn = list.some(t => t.warn), asks = taskAsks();
@@ -127,32 +159,27 @@ export function renderTasks() {
   button.title = active.length ? active.map(task => t('{name}：{line}', {name: task.name, line: task.line})).join('\n') : asks.length ? t('有事等你确认') : warn ? t('有任务出错了') : t('任务：同步、检查新角色、找回画师…');
   badge.hidden = !asks.length && !warn; badge.className = 'task-badge' + (warn && !asks.length ? ' warn' : '');
   if (!taskPanel.open) return;
-  const order = [...active, ...list.filter(t => !t.active)];
-  const html = `<div class="task-top"><h2>${t('任务')}</h2><button class="icon" data-task="close" aria-label="${t('关闭')}">×</button></div>
-    ${asks.length ? `<h6>${t('等你确认')}</h6><div class="task-asks">${asks.join('')}</div>` : ''}
-    <h6>${active.length ? t('进行中与其他任务') : t('全部任务')}</h6><div class="view-group task-group">${order.map(task => `<div class="task-item${task.active ? ' on' : ''}">
-      <div class="task-main"><span class="local-dot${task.active ? ' busy' : task.warn ? ' warn' : task.off ? ' off' : ''}"></span><span class="task-text"><b>${task.name}</b><small>${esc(task.line)}</small></span>${task.action}</div>
-      ${task.body ? `<div class="task-body">${task.body}</div>` : ''}${task.log ? fold('task-' + task.key, task.log[0], task.log[1]) : ''}</div>`).join('')}</div>
-    <p class="task-foot">${t('各任务是否自动运行，在设置的{library}、{characters}、{artists}里改。',
-      {library: footLink('library', t('图库')), characters: footLink('characters', t('角色资料')), artists: footLink('artists', t('画师'))})}</p>`;
-  const pop = $('taskPanel');
-  // 任务运行期间会轮询：只在有变化时重画，这样点击绝不会因为按钮被替换而丢失。
-  // 焦点在面板里时，重画后放回同一个按钮（按 data-task／data-prov 找），找不到就放在面板上，不掉到页面上（#422）。
-  const had = pop.contains(document.activeElement) ? document.activeElement : null;
-  const key = had && ['task', 'prov', 'pack'].map(k => had.dataset?.[k] ? `[data-${k}="${had.dataset[k]}"]` : '').find(Boolean);
-  if (!redraw(pop, html)) return;
-  wireFolds(pop);
-  if (had && !pop.contains(document.activeElement)) (key && pop.querySelector(key) || pop).focus({preventScroll: true});
+  const pop = $('taskPanel'), refs = panelShell(pop), had = pop.contains(document.activeElement);
+  // 「等你确认」的几张卡片还是拼好的 HTML（授权说明、按钮），内容变了才重画。
+  show(refs.asksHead, asks.length > 0); show(refs.asks, asks.length > 0);
+  redraw(refs.asks, asks.join(''));
+  text(refs.head, active.length ? t('进行中与其他任务') : t('全部任务'));
+  rows.set([...active, ...list.filter(t => !t.active)]);
+  // 焦点所在的按钮被换掉了（动作变了、卡片重画了）：放回面板上，不掉到 body，Tab 接着在面板里走（#422）。
+  if (had && !pop.contains(document.activeElement)) pop.focus({preventScroll: true});
 }
+// 每一轮一个序号：快速关开时可能有两轮在途，只有最后开始的那一轮重画和续排，不会留下两条计时器。
+let tickSeq = 0, readFailed = '';
 export async function taskTick() {
+  const mine = ++tickSeq;
   clearTimeout(taskPanel.timer);
   const jobs = [pollSync(), pollIndex(), pollNames(), loadProvenance()];
   // 模型下载时有自己的轮询；这里发现在另一个窗口里启动的下载。
   if (taskPanel.open || !state.models) jobs.push(loadModels());
   // 角色资料包同样：运行中有自己的轮询，这里发现别处开始的下载或任务。
   if (taskPanel.open || !state.pack) jobs.push(loadPack());
-  // 相似任务的状态随 /api/settings 一起来，它还要测量缓存：只在有人看时才读。
-  if (taskPanel.open && Date.now() - taskPanel.settingsAt > (SIMILAR_ACTIVE.includes(state.settings?.tasks?.similar?.status) ? 2500 : 15000)) { taskPanel.settingsAt = Date.now(); jobs.push(shared('/api/settings').then(s => { setSettings(s); }).catch(e => error(readError(e)))); }
+  // 相似任务的状态随 /api/settings 一起来（core/tasks.js 按时隔补读）：只在有人看时才读。
+  if (taskPanel.open) { const read = refreshTaskSettings(); if (read) jobs.push(read.then(settingsRead, settingsFailed)); }
   // 面板开着时发现在别的窗口里启动的导入；运行中的导入有自己的轮询。
   if (taskPanel.open && !importActive()) jobs.push(pollImports());
   // 用图动作的状态（#450）：第一次读来知道能不能拖出；面板开着时发现在别的窗口里开始的导出，运行中的导出有自己的轮询。
@@ -160,18 +187,37 @@ export async function taskTick() {
   // 面板打开后读一次图库列表（同步任务的名字和导出的进度）。
   if (taskPanel.open && !state.libraries) jobs.push(loadLibraries());
   await Promise.allSettled(jobs);
+  if (mine !== tickSeq) return;
   renderTasks();
   updatesTick();
   taskPanel.timer = setTimeout(taskTick, taskPanel.open ? 3000 : 30000);
+}
+// 补读设置失败写的横幅，读成功后只清掉自己写的那一句（别处写的错误留着）。
+function settingsFailed(e) { if (!taskPanel.open) return; readFailed = readError(e); error(readFailed); }
+function settingsRead(fresh) {
+  if (fresh && readFailed && $('errorBanner')?.textContent === readFailed) error('');
+  readFailed = '';
 }
 // 任务面板是非模态浮层：Esc、点外关闭由浮层管理器（ui/overlay.js）统一处理；它上面再开对话框时，对话框先关。
 // 它在页面的最后，Tab 从「任务」按钮走不过去：打开时焦点移到面板上，Esc 或 × 关闭后回到打开它的按钮（#422）。
 const taskLayer = createLayer({kind: 'popover', id: 'tasks', el: () => $('taskPanel'), anchor: () => $('taskButton'), focusIn: 'self', onDismiss: reason => toggleTasks(false, reason)});
 export function toggleTasks(open = !taskPanel.open, reason) {
-  taskPanel.open = open; $('taskPanel').hidden = !open;
+  taskPanel.open = open; showPop($('taskPanel'), open);
   $('taskButton').setAttribute('aria-expanded', open); $('taskButton').classList.toggle('on', open);
-  if (open) { taskLayer.open(); setDrawn($('taskPanel')); renderTasks(); taskTick(); }
-  else { provenanceArmed = false; taskLayer.close(reason); }
+  if (open) { taskLayer.open(); renderTasks(); taskTick(); }
+  else { provenanceArmed = false; dropTaskSettings(); taskLayer.close(reason); }
+}
+// 找回画师的按钮。「开始」先显示有哪些内容会离开本机；授权只覆盖这一次运行：联网的「授权并开始」只在授权卡片还开着时
+// 才发 allow_network（面板关掉、取消以后旧按钮发不出授权）。
+async function provenance(b) {
+  const act = b.dataset.prov;
+  if (act === 'arm' || act === 'cancel') { provenanceArmed = act === 'arm'; renderTasks(); return; }
+  const body = {action: act};
+  if (act === 'start') {
+    if (!provenanceArmed) { renderTasks(); return; }
+    body.allow_network = b.dataset.network === '1'; provenanceArmed = false;
+  }
+  await busy(b, () => provenanceAction(body).catch(err => toast(err.message)));
 }
 // 面板的处理函数。页面启动时调用一次。
 export function wireTasks() {
@@ -184,17 +230,16 @@ export function wireTasks() {
     if (job === 'index' && change.ended && indexEndText(state.index.state)) toast(indexEndText(state.index.state));
     renderTasks();
   });
-  $('taskPanel').addEventListener('click', async e => {
-    const b = e.target.closest('[data-prov]'); if (!b) return;
-    // 「开始」先显示有哪些内容会离开本机；授权只覆盖这一次运行。
-    if (b.dataset.prov === 'arm' || b.dataset.prov === 'cancel') { provenanceArmed = b.dataset.prov === 'arm'; renderTasks(); return; }
-    const body = {action: b.dataset.prov};
-    if (b.dataset.prov === 'start') { body.allow_network = b.dataset.network === '1'; provenanceArmed = false; }
-    await busy(b, () => provenanceAction(body).catch(err => toast(err.message)));
-  });
   $('taskButton').onclick = e => { e.stopPropagation(); toggleTasks(); };
+  // 面板里的按钮都在这里按 data-* 分派（#714）：task、prov 是这个文件自己的，pack、models 直接调 runPack、runModels。
+  // 退场中的面板已经 inert（ui/motion.js）点不到；关着时迟到的点击也不处理。
   $('taskPanel').addEventListener('click', async e => {
     e.stopPropagation();
+    if (!taskPanel.open) return;
+    const own = e.target.closest('[data-pack],[data-models]');
+    if (own) { if (!own.disabled) busy(own, () => own.dataset.pack ? runPack(own.dataset.pack) : runModels(own.dataset.models)); return; }
+    const p = e.target.closest('[data-prov]');
+    if (p) { provenance(p); return; }
     const b = e.target.closest('[data-task]'); if (!b) { if (e.target.closest('a[href]')) toggleTasks(false); return; }
     const act = b.dataset.task;
     if (act === 'close') { toggleTasks(false); return; }
@@ -211,7 +256,7 @@ export function wireTasks() {
         else if (act === 'export-cancel') await cancelExport();
         else if (act === 'export-reveal') await revealExport();
         else if (act === 'names') { await refreshNames(); toast(t('已开始重新获取角色名称')); }
-        else if (act === 'similar') { await post('/api/similar', {}); setSettings(await api('/api/settings')); }
+        else if (act === 'similar') await startSimilar();
       } catch (err) { toast(err.message); }
       return true;
     });

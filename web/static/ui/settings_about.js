@@ -7,7 +7,7 @@ import {checkUpdates, loadAbout} from '../core/settings.js';
 import {$, toast, error} from './dom.js';
 import {attr, make, refill, rich, text, tpl} from './el.js';
 import {replayGuide} from './guide.js';
-import {openModal} from './overlay.js';
+import {openStatic} from './dialog.js';
 import {groups, refreshSection} from './settings_group.js';
 import {drawUpdateButton, updateAct, updateButtons, updateProgress, updateStarted, updatesHint, updatesTitle} from './updates.js';
 
@@ -32,7 +32,7 @@ const environment = a => !a ? [] : [[t('应用'), a.name], [t('版本'), version
 async function help(act) {
   const env = Object.fromEntries(environment(state.about));
   if (act === 'guide') return replayGuide();
-  if (act === 'keys') return openModal($('help'), {backdropClose: true, id: 'help'});
+  if (act === 'keys') return openStatic($('help'), {backdropClose: true, id: 'help'});
   if (act === 'copy') {
     try { await navigator.clipboard.writeText(diagnosticText({...await diagnosticReport(), environment: env})); toast(t('诊断信息已复制')); }
     catch { toast(t('无法访问剪贴板，请导出诊断信息')); }

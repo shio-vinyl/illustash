@@ -95,7 +95,7 @@ test('任务面板：有下载或任务时才列出，失败时打警告', () =>
   assert.equal(running.name, '角色资料包');
   assert.equal(running.active, true);
   assert.equal(running.line, '正在检查 3 / 12 张');
-  assert.match(running.action, /data-pack="cancel"/);
+  assert.deepEqual(running.buttons.map(b => [b.attr, b.act]), [['pack', 'cancel']]);
   state.pack = {...READY, task: {id: 't', kind: 'withdraw', status: 'failed', message: '磁盘已满', diagnostic: {id: 'D-1', stored: true}}};
   const failed = tasks.taskList().find(x => x.key === 'pack');
   assert.equal(failed.warn, true);

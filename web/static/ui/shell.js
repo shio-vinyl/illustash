@@ -87,7 +87,7 @@ const panelScroll = new Map();
 // 旧的写法 headingHTML（返回 HTML 字符串）是存量，各页步骤改到哪页就迁到 head；drawHeading（整个页头自己画）也是。
 const HEAD = tpl`<hgroup class="heading-main"><h1 class="title-page"><span data-ref="title"></span><button class="icon small" id="pageHelp" data-ref="help"
   title="这一页的说明" aria-label="这一页的说明" data-t-attr="title aria-label" aria-expanded="false" aria-controls="pageHelpPop" hidden>?</button></h1><p
-  class="page-sub" data-ref="line"><span data-ref="sub"></span><strong data-ref="alert"></strong></p><div id="pageHelpPop" class="menu menu-drop" role="dialog"
+  class="page-sub" data-ref="line"><span data-ref="sub"></span><strong data-ref="alert"></strong></p><div id="pageHelpPop" class="menu menu-drop glass" role="dialog"
   aria-label="这一页的说明" data-t-attr="aria-label" tabindex="-1" data-ref="pop" hidden></div></hgroup>`;
 let head = null, actions = null, tucked = false;   // 建一次，之后只改变了的地方（模块载入时不建节点）
 // 页头的标题这会儿藏不藏（角色页：横幅上已经写着名字，横幅的名字滚出视口以后才显示，#712）。由那一页调，离开时调回 false。

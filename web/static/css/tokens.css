@@ -16,7 +16,7 @@
   --atag-open-bg:#eef0fbf2;--atag-open-ink:#3a3f86;--atag-open-ring:#6f76c966;--atag-yes-bg:#e9f6eef2;--atag-yes-ink:#2f7a4f;--atag-no-bg:#fbeceaf2;
   --atag-no-ink:#a8453d;--hint-bg:#fffffff0;--hint-ink:#282b64;--hint-ring:#282b6455;--hint-bg-hover:#282b64;--glass-chip:rgba(255,255,255,.8);
   /* 浮层表面：磨砂条、提示条、菜单分组、启动页 */
-  --glass-head:rgba(255,255,255,.88);--bar-bg:rgba(24,24,30,.86);--toast-bg:rgba(24,24,30,.88);--menu-group:var(--sheet);
+  --glass-head:rgba(255,255,255,.88);--capsule-bg:#18181e;--menu-group:var(--sheet);
   --splash-bg:radial-gradient(120% 90% at 50% 42%,#fff 0%,#f6f5fd 55%,#ecebf9 100%);
   /* 控件状态：开关、分段控件、悬停、徽标、滚动条 */
   --switch-off:#d4d4da;--view-sw-off:rgba(var(--sh),.14);--seg-on:var(--sheet);--wash-hover:rgba(var(--sh),.03);--chip-hover:#e0e0e5;--palette-hover:#e2e2e7;
@@ -30,12 +30,15 @@
   /* 0.4 新增（#705）：新部件的强调色底（亮色比 --accent-btn 略深，白字到 4.6:1）和底上的文字；海报上的文字阴影与压暗渐变；浮层的磨砂玻璃（没有 backdrop-filter 时用 solid） */
   --accent-fill:#676bcd;--on-accent:#fff;--image-text-shadow:0 1px 8px rgba(12,12,18,.3);--scrim:linear-gradient(180deg,rgba(12,12,18,0) 35%,rgba(12,12,18,.62));
   --glass-surface:rgba(255,255,255,.72);--glass-solid:rgba(255,255,255,.96);
+  /* 浮层（#715）：对话框和导览背后的压暗（画成对话框自己的大扩散阴影，::backdrop 里不能用 var()）；提示条、选择栏这类深色条上的字和按钮底，
+     亮暗主题里都是深底，只写这一套 */
+  --dialog-dim:rgba(20,20,30,.22);--tour-dim:rgba(14,14,24,.46);--capsule-ink:#fff;--capsule-btn:rgba(255,255,255,.12);--capsule-btn-hover:rgba(255,255,255,.2);--capsule-muted:rgba(255,255,255,.55);--capsule-armed:#ffb4a8;--capsule-note:#ffcf99;
   /* 看图器（#709）：亮暗主题里都是深底，只在这里写一套 */
   --viewer-bg:#121215;--viewer-ink:#e4e4e9;--viewer-muted:#a3a3ad;--viewer-chip:rgba(255,255,255,.08);--viewer-chip-hover:rgba(255,255,255,.16);--viewer-line:rgba(255,255,255,.2);
   /* 图的主色（#705）：由 ui/tint.js 的 setTint() 写进元素的 --tint 并加 .tint，派生的底色在文件末尾的 .tint 块里算；没写时是中性色 */
   --tint:#9a9aa6}
 /* 暗色主题：html[data-theme=dark]，由 theme.js 设置；颜色成对写在这里，规则里只引用变量。 */
-:root[data-theme=dark]{--tour-dim:rgba(0,0,0,.66);
+:root[data-theme=dark]{--tour-dim:rgba(0,0,0,.66);--dialog-dim:rgba(0,0,0,.45);
   --canvas:#1d1d21;--sheet:#28282d;--ink:#eeeef2;--ink2:#c8c8d0;--muted:#9a9aa3;--faint:#6d6d76;--line:#3a3a41;--hair:rgba(255,255,255,.09);--soft:#323238;
   --accent:#a1a4f3;--accent-btn:#8286e6;--accent-soft:#35375f;--accent-ink:#c0c2ff;--warn:#f0a04b;--r18:#ff6b8f;--r18-soft:#48262f;--sh:0,0,0;
   --sheet-shadow:0 0 0 1px var(--hair),0 12px 32px -16px rgba(0,0,0,.45);
@@ -48,7 +51,7 @@
   --atag-no-bg:rgba(110,46,42,.85);--atag-no-ink:#f6d8d4;--hint-bg:rgba(46,46,52,.9);--hint-ink:var(--accent-ink);--hint-ring:var(--accent);
   --hint-bg-hover:var(--accent-btn);--glass-chip:rgba(46,46,52,.82);
   /* 浮层表面：磨砂条、提示条、菜单分组、启动页 */
-  --glass-head:rgba(40,40,45,.88);--bar-bg:rgba(58,58,66,.9);--toast-bg:rgba(58,58,66,.94);--menu-group:#34343a;
+  --glass-head:rgba(40,40,45,.88);--capsule-bg:#3a3a42;--menu-group:#34343a;
   --splash-bg:radial-gradient(120% 90% at 50% 42%,#2b2b33 0%,#222227 55%,#1b1b1f 100%);
   /* 控件状态：开关、分段控件、悬停、徽标、滚动条 */
   --switch-off:#46464e;--view-sw-off:rgba(255,255,255,.16);--seg-on:#42424a;--wash-hover:rgba(255,255,255,.04);--chip-hover:var(--soft);--palette-hover:var(--soft);

@@ -19,17 +19,18 @@
 .group{padding:var(--space-16);border-radius:var(--radius-12);background:var(--soft)}
 
 /* ---- 胶囊控件：按钮（主要 / 普通 / 安静）、芯片、分段、搜索框 ---- */
-.btn,.chip,.seg>button,.seg>a{display:inline-flex;align-items:center;justify-content:center;gap:var(--space-6);margin:0;border:0;border-radius:var(--radius-pill);
+.btn,.dialog-actions>button,.chip,.seg>button,.seg>a{display:inline-flex;align-items:center;justify-content:center;gap:var(--space-6);margin:0;border:0;border-radius:var(--radius-pill);
   font:inherit;font-size:var(--fs-12);line-height:1;white-space:nowrap;text-decoration:none;box-shadow:none;
   transition:background-color var(--dur-1) var(--ease),color var(--dur-1) var(--ease),box-shadow var(--dur-1) var(--ease)}
-.btn{height:var(--h-32);padding:0 var(--space-14);background:var(--soft);color:var(--ink2);font-weight:var(--fw-600);cursor:pointer}
-.btn:hover{background:var(--chip-hover);color:var(--ink)}
-.btn.is-primary{background:var(--accent-fill);color:var(--on-accent)}
-.btn.is-primary:hover{background:var(--accent-fill);filter:var(--btn-hover-filter)}
+/* openDialog 操作区里的按钮（调用方传 .primary / .quiet）和 .btn 是同一个样子：.quiet 就是默认的 .btn（#715） */
+.btn,.dialog-actions>button{height:var(--h-32);padding:0 var(--space-14);background:var(--soft);color:var(--ink2);font-weight:var(--fw-600);cursor:pointer}
+.btn:hover,.dialog-actions>button:hover{background:var(--chip-hover);color:var(--ink)}
+.btn.is-primary,.dialog-actions>button.primary{background:var(--accent-fill);color:var(--on-accent)}
+.btn.is-primary:hover,.dialog-actions>button.primary:hover{background:var(--accent-fill);filter:var(--btn-hover-filter)}
 .btn.is-quiet{background:transparent}
 .btn.is-quiet:hover{background:var(--wash-hover)}
 .btn.is-small{height:var(--h-28);padding:0 var(--space-12)}
-.btn:disabled,.btn[aria-disabled=true]{opacity:.5;cursor:default;filter:none}
+.btn:disabled,.btn[aria-disabled=true],.dialog-actions>button:disabled{opacity:.5;cursor:default;filter:none}
 .btn svg,.chip svg,.seg>button svg,.seg>a svg{width:15px;height:15px;flex:none;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
 .chip{height:var(--h-28);padding:0 var(--space-12);background:var(--soft);color:var(--ink2);font-weight:var(--fw-400)}
 button.chip,a.chip{cursor:pointer}
@@ -60,7 +61,7 @@ button.chip:hover,a.chip:hover{background:var(--chip-hover);color:var(--ink)}
 .search>input::placeholder{color:var(--muted)}
 .search>kbd{padding:var(--space-1) var(--space-6);border:0;border-radius:var(--radius-4);background:var(--sheet);color:var(--muted);font:inherit;font-size:var(--fs-11)}
 .search:focus-within{box-shadow:0 0 0 2px var(--accent)}
-.btn:focus-visible,.chip:focus-visible,.seg>button:focus-visible,.seg>a:focus-visible,.glass-bar>button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.btn:focus-visible,.dialog-actions>button:focus-visible,.chip:focus-visible,.seg>button:focus-visible,.seg>a:focus-visible,.glass-bar>button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 
 /* ---- 页头：大标题 + 副标题 + 右侧控件组，下面最多一行工具。大标题就是 .title-page，不另起一套 ---- */
 .page-head{display:flex;align-items:flex-end;gap:var(--space-16);padding:var(--space-24) 0 var(--space-14)}
@@ -154,12 +155,19 @@ a.poster:hover>img,button.poster:hover>img{transform:scale(1.04)}
 @supports (backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px)){
   .glass{background:var(--glass-surface);-webkit-backdrop-filter:blur(26px) saturate(1.7);backdrop-filter:blur(26px) saturate(1.7)}
   .glass-bar{background:var(--glass-surface);-webkit-backdrop-filter:blur(14px) saturate(1.6);backdrop-filter:blur(14px) saturate(1.6)}
+  /* 对话框背后（#715）：页面轻轻糊一点，压暗由对话框自己的大扩散阴影画（css/overlays.css）。::backdrop 里不用 var()（规则 17）。 */
+  .glass-scrim::backdrop{-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px)}
 }
-/* 系统要求降低透明度时不用模糊、用不透明底（Safari 还不认这个媒体查询，在那里不生效；规则 16 只许在 .glass、.glass-bar 上写模糊） */
+/* 系统要求降低透明度时不用模糊、用不透明底（规则 16 只许在玻璃表面上写模糊）。WebKit 17 不认这个媒体查询，桌面外壳在 <html> 上
+   写 data-reduce-transparency（#755）：两条并列，哪条成立都退。 */
 @media (prefers-reduced-transparency:reduce){
-  .glass{background:var(--glass-solid);-webkit-backdrop-filter:none;backdrop-filter:none}
-  .glass-bar{background:var(--glass-solid);-webkit-backdrop-filter:none;backdrop-filter:none}
+  .glass{background:var(--sheet);-webkit-backdrop-filter:none;backdrop-filter:none}
+  .glass-bar{background:var(--sheet);-webkit-backdrop-filter:none;backdrop-filter:none}
+  .glass-scrim::backdrop{-webkit-backdrop-filter:none;backdrop-filter:none}
 }
+:root[data-reduce-transparency] .glass{background:var(--sheet);-webkit-backdrop-filter:none;backdrop-filter:none}
+:root[data-reduce-transparency] .glass-bar{background:var(--sheet);-webkit-backdrop-filter:none;backdrop-filter:none}
+:root[data-reduce-transparency] .glass-scrim::backdrop{-webkit-backdrop-filter:none;backdrop-filter:none}
 /* 浮在横幅图上的玻璃按钮（.btn.glass：作品页、角色页的返回、标为已检查、⋯）：照样是胶囊，链接不带下划线 */
 .btn.glass{border-radius:var(--radius-pill);text-decoration:none}
 .glass-bar>button{display:grid;place-items:center;width:28px;height:var(--h-28);margin:0;padding:0;border:0;border-radius:var(--radius-pill);background:transparent;color:inherit;

@@ -717,6 +717,12 @@ class FrontendArchitectureTest(unittest.TestCase):
     def test_backdrop_filter_only_on_glass(self):
         self.assertPage('backdrop-filter', '.card{backdrop-filter:blur(8px)}', 'css/library.css: backdrop-filter', '.glass', '显存')
         self.assertPage('backdrop-filter', '.glass-card{-webkit-backdrop-filter:blur(8px)}', 'css/base.css: backdrop-filter', file='css/base.css')
+        # 玻璃选择器前面只许「降低透明度」的根属性（#755），别的前缀不放行
+        self.assertPage('backdrop-filter', '.card .glass{backdrop-filter:blur(8px)}', 'css/base.css: backdrop-filter', file='css/base.css')
+        with Tree() as tree:
+            tree.replace('css/base.css', '@layer base{\n', '@layer base{\n.glass,.glass-scrim::backdrop{backdrop-filter:blur(4px)}\n'
+                         ':root[data-reduce-transparency] .glass{backdrop-filter:none}\n')
+            self.assertEqual([e for e in tree.errors() if 'backdrop-filter' in e], [])
         with Tree() as tree:
             tree.append('app.css', '\n.new-thing{backdrop-filter:blur(4px)}\n')
             self.assertViolation(tree, 'backdrop-filter', 'app.css: backdrop-filter')

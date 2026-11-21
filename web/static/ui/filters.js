@@ -15,6 +15,7 @@ import {listNav} from './combo.js';
 import {openDialog} from './dialog.js';
 import {$, charOption, toast} from './dom.js';
 import {createLayer} from './overlay.js';
+import {popOpen, showPop} from './pop.js';
 
 // ---------- 条件的文字 ----------
 // 角色、作品、画师、画面标签的名字第一次用到时去读；读到后只换胶囊和标题上的那段文字（整条工具栏重画会打断正在输入的
@@ -103,15 +104,15 @@ export function wireFilterBar(r) {
   const bar = $('toolbar');
   for (const b of bar.querySelectorAll('[data-drop]')) b.onclick = () => go(dropCondition(r, b.dataset.drop));
   bar.querySelector('[data-drop-dates]')?.addEventListener('click', () => go(setDates(r)));
-  $('condButton').onclick = () => { setMenu($('condPopover').hidden); if (!$('condPopover').hidden) { userTags = null; $('condSearch').focus(); loadOptions(); } };
+  $('condButton').onclick = () => { const open = !popOpen($('condPopover')); setMenu(open); if (open) { userTags = null; $('condSearch').focus(); loadOptions(); } };
   onTyped($('condSearch'), loadOptions, 120);
   // 焦点留在搜索框里：↑ ↓ 在选项之间循环，↵ 或点击加上这个条件，Esc 关菜单、焦点回到按钮（同标签菜单，#432）。
-  nav = listNav($('condSearch'), $('condOptions'), {shown: () => !$('condPopover').hidden, count: () => options.length, pick: i => choose(options[i])});
+  nav = listNav($('condSearch'), $('condOptions'), {shown: () => popOpen($('condPopover')), count: () => options.length, pick: i => choose(options[i])});
 }
 // 选择器是非模态浮层，Esc、点外关闭由浮层管理器处理；元素随工具栏重画换掉，所以按 id 找。
 const layer = createLayer({kind: 'popover', id: 'condition-menu', el: () => $('condPopover'), anchor: () => $('condButton'), focusIn: 'first', onDismiss: reason => setMenu(false, reason)});
 function setMenu(open, reason) {
-  const el = $('condPopover'); if (el) el.hidden = !open;
+  showPop($('condPopover'), open);
   if (open) layer.open(); else layer.close(reason);
 }
 let nav = null, options = [], userTags = null;

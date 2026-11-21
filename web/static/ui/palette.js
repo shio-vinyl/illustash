@@ -15,8 +15,7 @@ import {currentLibraryId, remoteNames, remoteNote} from '../core/settings.js';
 import {state} from '../core/state.js';
 import {refreshLocalLinks} from './catalog.js';
 import {$, charOption, namesAllowButton, toast, written} from './dom.js';
-import {openDialog} from './dialog.js';
-import {openModal} from './overlay.js';
+import {closeModal, openDialog, openStatic} from './dialog.js';
 import {combo, listNav} from './combo.js';
 import {mutate, reload} from './grid.js';
 import {renderHeading} from './shell.js';
@@ -42,7 +41,7 @@ export async function openPicker(opts) {
   const p = palette = {...opts, list: [], index: 0, generation: 0, staged: [], recent: libraryPrefs('')};
   renderStaged(); renderSubject(opts);
   $('pickerSearch').value = ''; $('pickerSearch').placeholder = opts.placeholder || t('输入角色 tag 或别名…');
-  openModal($('picker'), {backdropClose: true, id: 'picker'}); $('pickerSearch').focus();
+  openStatic($('picker'), {backdropClose: true, id: 'picker', onDismiss: () => { if (palette === p) palette = null; }}); $('pickerSearch').focus();
   p.recent = await recentIn();
   if (palette === p) await paletteSearch();
 }
@@ -59,7 +58,7 @@ async function paletteSearch() {
     if (rest.length) sections.push({label: t('我的标签'), items: rest.map(x => ({tag: x.tag, name: x.tag, hint: t('{n} 张', {n: number(x.count)}), counted: true}))});
     if (q) {
       let wd; try { wd = await api('/api/general-tags?q=' + encodeURIComponent(q)); } catch (e) { if (gen === p.generation && palette === p) renderPalette([{label: t('本地标签'), items: [], note: readError(e)}], q); return; }
-      if (gen !== p.generation) return;
+      if (gen !== p.generation || palette !== p) return;   // 换了一次搜索，或面板已经关了
       const known = new Set(state.userTags.map(x => x.tag));
       if (wd.length) sections.push({label: t('采纳 WD 通用标签'), items: wd.filter(tag => !known.has(tag)).slice(0, 8).map(tag => ({tag, name: tag, hint: t('机器词表，采纳后成为你的标签')}))});
       if (!known.has(q) && !wd.includes(q)) sections.push({label: '', items: [{tag: q, name: q, create: q, hint: t('新建标签')}]});
@@ -67,7 +66,7 @@ async function paletteSearch() {
   } else if (p.items) sections = [{label: '', items: p.items.filter(e => !q || e.name.toLowerCase().includes(q.toLowerCase()))}];
   else if (q) {
     let list; try { list = await api('/api/entities?q=' + encodeURIComponent(q)); } catch (e) { if (gen === p.generation && palette === p) renderPalette([{label: t('本地角色'), items: [], note: readError(e)}], q); return; }
-    if (gen !== p.generation) return;
+    if (gen !== p.generation || palette !== p) return;   // 换了一次搜索，或面板已经关了
     const items = list.filter(e => !(p.exclude || []).includes(e.id)).map(e => ({...e, hint: e.matched ? t('别名：{name}', {name: e.matched}) : '', count: e.count}));
     sections = [{label: '', items}];
     if (!p.jump) {
@@ -91,7 +90,7 @@ async function paletteSearch() {
   } else {
     if (p.suggest) {
       let sug; try { sug = await post('/api/suggest', p.suggest); } catch (e) { if (gen === p.generation && palette === p) renderPalette([{label: t('本地候选'), items: [], note: readError(e)}], q); return; }
-      if (gen !== p.generation) return;
+      if (gen !== p.generation || palette !== p) return;   // 换了一次搜索，或面板已经关了
       if (sug.length) sections.push({label: t('也可能是'), items: sug.filter(e => !(p.exclude || []).includes(e.id)).map(e => ({...e, hint: e.count > 1 ? t('{n} 张的机器候选', {n: number(e.count)}) : t('机器候选'), counted: e.count > 1}))});
     }
     const seen = new Set(sections.flatMap(s => s.items.map(e => e.id)));
@@ -100,9 +99,10 @@ async function paletteSearch() {
     const top = state.chars.filter(e => !seen.has(e.id) && !(p.exclude || []).includes(e.id)).slice(0, 8);
     if (top.length) sections.push({label: t('常用'), items: top});
   }
-  renderPalette(sections, q);
+  if (palette === p) renderPalette(sections, q);
 }
 function renderPalette(sections, q, keep = false) {
+  if (!palette) return;   // 面板在退场中（Esc 时已经作废）：迟到的结果不写
   const p = palette, current = keep ? p.list[pickerNav.index] : null;
   p.list = sections.flatMap(s => s.items);
   pickerNav.index = current ? Math.max(0, p.list.indexOf(current)) : 0;
@@ -171,16 +171,20 @@ async function choose(i, more = false, explicit = false) {
     if (more) { if (e) stage(e); return; }
     const list = finalList(e, explicit || p.touched); if (!list.length) return;
     const entities = [];
-    try { for (const x of list) entities.push(await resolveEntity(x)); } catch (err) { toast(err.message); return; }
-    palette = null; $('picker').close(); p.pick(entities); return;
+    // 一个个建：每个回来都核对面板还是这一次的，关掉以后剩下的不再发（不多建角色）
+    try {
+      for (const x of list) { entities.push(await resolveEntity(x)); if (palette !== p) return; }
+    } catch (err) { if (palette === p) toast(err.message); return; }
+    palette = null; closeModal($('picker')); p.pick(entities); return;
   }
   if (!e) return;
   if (p.tagMode) {
     if (!e.remove) remember(p.recent, 'tagPicks', e.tag, tag => tag === e.tag);
-    palette = null; $('picker').close(); p.pick(e); return;
+    palette = null; closeModal($('picker')); p.pick(e); return;
   }
-  let entity; try { entity = await resolveEntity(e); } catch (err) { toast(err.message); return; }
-  palette = null; $('picker').close(); p.pick(entity);
+  let entity; try { entity = await resolveEntity(e); } catch (err) { if (palette === p) toast(err.message); return; }
+  if (palette !== p) return;
+  palette = null; closeModal($('picker')); p.pick(entity);
 }
 export function mergeCharacter(c) {
   openPicker({title: t('把 {name} 合并到…', {name: c.name}), placeholder: t('输入同一个人的另一个角色'), jump: true, exclude: [c.id],
@@ -208,7 +212,7 @@ export async function splitOc(c) {
   const d = $('ocSplitDialog'), body = $('ocSplitBody');
   $('ocSplitTitle').textContent = t('按相似细分 · {name}', {name: c.name});
   body.innerHTML = `<p class="muted-note">${t('正在比较长相…')}</p>`;
-  openModal(d, {backdropClose: true, id: 'oc-split'});
+  openStatic(d, {backdropClose: true, id: 'oc-split'});
   let r; try { r = await api('/api/oc/groups?' + new URLSearchParams({entity: c.id})); } catch (e) { body.innerHTML = `<p class="muted-note">${esc(readError(e))}</p>`; return; }
   const grouped = r.groups.reduce((n, g) => n + g.length, 0);
   body.innerHTML = `<p class="muted-note">${t('{n} 张里有 {groups} 组长得像（共 {grouped} 张）；其余的不像任何一张，留在这里。', {n: number(r.total), groups: number(r.groups.length), grouped: number(grouped)})}</p>` +
@@ -252,7 +256,7 @@ export async function editProfile(c) {
     || !!q('#pfWork') && q('#pfWork').value !== (draft.work?.label || '');
   const d = openDialog({title: t('编辑资料'), body, backdropClose: false, focus: !p.label_only && !p.tag ? '#pfTag' : '#pfName', dirty: () => Object.keys(changes()).length > 1 || typed(),
     actions: `<button type="button" class="quiet" data-close>${t('取消')}</button><button class="primary" id="pfSave">${t('保存')}</button>`});
-  const close = () => d.close();
+  const close = () => closeModal(d);
   const q = sel => d.querySelector(sel);
   const aliases = () => { q('#pfAliases').innerHTML = draft.aliases.map((a, i) => `<button type="button" class="staged-chip" data-a="${i}" title="${t('移除')}">${esc(a)} ×</button>`).join(''); };
   q('#pfAliases').onclick = e => { const b = e.target.closest('[data-a]'); if (b) { draft.aliases.splice(Number(b.dataset.a), 1); aliases(); } };
@@ -309,7 +313,7 @@ export async function openLocalLinks() {
 `;
   const d = openDialog({title: t('关联自建角色'), body, backdropClose: false,
     actions: `<button type="button" class="quiet" data-close>${t('关闭')}</button>${links.length ? '<button class="primary" id="llApply"></button>' : ''}`});
-  const close = () => d.close();
+  const close = () => closeModal(d);
   const count = () => { const n = d.querySelectorAll('[data-link]:checked').length; if ($('llApply')) { $('llApply').textContent = t('关联选中的 {n} 个', {n: number(n)}); $('llApply').disabled = !n; } };
   d.addEventListener('change', count);
   count();
@@ -343,12 +347,15 @@ function editCharacterFlag(path, body) {
   });
 }
 // ---------- 选中图片之间的关系（relate，native/terms/src/research_compute/relations.rs） ----------
+// 每次打开一个序号，关掉时作废：迟到的回复（成功或失败）只写给它自己那一次，不盖掉下一组选图的结论（#715）。
+let relateSeq = 0;
 export async function openRelate(ids) {
-  const d = $('relateDialog');
+  const d = $('relateDialog'), seq = ++relateSeq, current = () => seq === relateSeq;
   $('relateTitle').textContent = t('{n} 张图的关系', {n: number(ids.length)});
   $('relateBody').innerHTML = `<p class="muted-note">${t('正在逐对比较…')}</p>`;
-  openModal(d, {backdropClose: true, id: 'relate'});
-  let r; try { r = await post('/api/relate', {ids}); } catch (e) { $('relateBody').innerHTML = `<p class="muted-note">${esc(readError(e))}</p>`; return; }
+  openStatic(d, {backdropClose: true, id: 'relate', onDismiss: () => { if (current()) relateSeq++; }});
+  let r; try { r = await post('/api/relate', {ids}); } catch (e) { if (current()) $('relateBody').innerHTML = `<p class="muted-note">${esc(readError(e))}</p>`; return; }
+  if (!current()) return;
   const no = u => ids.indexOf(u) + 1;
   const figure = (u, boxes) => `<figure class="rel-fig"><div class="rel-img"><img src="/image?id=${encodeURIComponent(u)}&size=medium" alt="">${boxes.map(b =>
     `<i class="${b.match ? 'match' : 'diff'}" style="left:${(b.x * 100).toFixed(2)}%;top:${(b.y * 100).toFixed(2)}%;width:${(b.w * 100).toFixed(2)}%;height:${(b.h * 100).toFixed(2)}%"></i>`).join('')}<span class="rel-no">${no(u)}</span></div>
@@ -375,8 +382,8 @@ export function wirePalette() {
     more: e => { if (/^[1-9]$/.test(e.key) && !$('pickerSearch').value) { e.preventDefault(); choose(Number(e.key) - 1, false, true); } }});
   $('pickerStaged').addEventListener('click', e => { const b = e.target.closest('[data-unstage]'); if (b && palette) stage(palette.staged[Number(b.dataset.unstage)]); });
   $('picker').addEventListener('close', () => { palette = null; });
-  $('ocSplitClose').onclick = () => $('ocSplitDialog').close();
-  $('relateClose').onclick = () => $('relateDialog').close();
+  $('ocSplitClose').onclick = () => closeModal($('ocSplitDialog'));
+  $('relateClose').onclick = () => { relateSeq++; closeModal($('relateDialog')); };
 
   $('jumpButton').onclick = jumpToCharacter;
 }

@@ -11,11 +11,12 @@ import {remoteNames, remoteNote} from '../core/settings.js';
 import {catalogChanged, loadTagged, loadWorkTree, loadLocalLinks, castWorks, PSEUDO_NOTES, WORK_NAMES, workName, loadIndex, searchWorks, saveWatch, watchTarget,
   saveWork} from '../core/catalog.js';
 import {$, toast, toastMore, error, namesAllowButton, searchIcon} from './dom.js';
-import {chooseWork, openDialog} from './dialog.js';
+import {chooseWork, openDialog, openStatic} from './dialog.js';
 import {attr, make, prop, tpl} from './el.js';
-import {createLayer, openModal} from './overlay.js';
+import {createLayer} from './overlay.js';
 import {openPicker, toggleMascot} from './palette.js';
 import {combo} from './combo.js';
+import {exit} from './motion.js';
 import {charHash, go} from '../core/route.js';
 import {fetchChar, refreshMeta} from '../core/meta.js';
 
@@ -36,6 +37,7 @@ function setPop(on, reason) {
   if (button) button.setAttribute('aria-expanded', String(on));
   if (box) {
     if (on) { box.innerHTML = castPop(castWorks()); popLayer.open(); $('castPopQ')?.focus(); }
+    else if ($('castPop')) exit($('castPop'), {to: 'scale'});   // 播完退场再摘掉（#715）；再打开时整块换掉，不等它
     else box.replaceChildren();
   }
   if (!on) popLayer.close(reason);
@@ -46,9 +48,10 @@ export function allWorksButton() {
   button.id = 'castAll'; button.type = 'button'; button.setAttribute('aria-expanded', 'false'); host.id = 'castPopHost';
   wrap.append(button, host);
   button.onclick = () => setPop(!pop.open);
-  host.addEventListener('click', e => { const w = e.target.closest('[data-tab]'); if (w) { setPop(false, 'silent'); go({page: 'work', id: w.dataset.tab}); } });
+  // 退场中的旧弹层已经 inert（ui/motion.js）；迟到的事件也按 pop.open 再挡一次，不导航、不把正在退场的节点换成新列表。
+  host.addEventListener('click', e => { const w = pop.open && e.target.closest('[data-tab]'); if (w) { setPop(false, 'silent'); go({page: 'work', id: w.dataset.tab}); } });
   onTyped(host, e => {
-    if (e.target.id !== 'castPopQ') return;
+    if (e.target.id !== 'castPopQ' || !pop.open) return;
     pop.q = e.target.value; const pos = e.target.selectionStart;
     host.innerHTML = castPop(castWorks()); const i = $('castPopQ'); i?.focus(); i?.setSelectionRange(pos, pos);
   });
@@ -57,7 +60,7 @@ export function allWorksButton() {
 // 导出给样式清单页调用（tools/styleguide/live.js，#352）：改名或改参数时，tools/check_styleguide.py 会报出来。
 export function castPop(works) {
   const q = pop.q.trim().toLowerCase(), list = works.filter(w => !q || w.name.toLowerCase().includes(q));
-  return `<div class="menu cast-pop" id="castPop"><div class="search-wrap">${searchIcon()}<input type="search" id="castPopQ" placeholder="${t('在 {n} 部作品里找', {n: number(works.filter(w => !w.pseudo).length)})}" value="${esc(pop.q)}" autocomplete="off"></div>
+  return `<div class="menu glass cast-pop" id="castPop"><div class="search-wrap">${searchIcon()}<input type="search" id="castPopQ" placeholder="${t('在 {n} 部作品里找', {n: number(works.filter(w => !w.pseudo).length)})}" value="${esc(pop.q)}" autocomplete="off"></div>
     <div class="cast-wcols">${list.map(w => `<button class="cast-wrow${w.pseudo ? ' pseudo' : ''}" data-tab="${esc(w.key)}"${w.pseudo ? ` title="${esc(PSEUDO_NOTES[w.key])}"` : ''}>${avatar(w.chars[0], 20)}<span>${esc(w.name)}</span><small>${number(w.images)}</small></button>`).join('') || `<p class="muted-note">${t('没有匹配的作品')}</p>`}</div></div>`;
 }
 
@@ -83,7 +86,7 @@ export async function openTagged() {
   });
   d.querySelector('#taggedAdd').onclick = () => openPicker({title: t('把一个角色设为只当标签'), jump: true, exclude: (state.tagged || []).map(x => x.id),
     sentence: e => t('{name} 不再算角色，只当标签', {name: e.name}),
-    pick: async e => { await toggleMascot({id: e.id, name: e.name, mascot: false}); await refresh(); if (!d.open) openModal(d, {backdropClose: true, id: 'tagged'}); }});
+    pick: async e => { await toggleMascot({id: e.id, name: e.name, mascot: false}); await refresh(); if (!d.open) openStatic(d, {backdropClose: true, id: 'tagged'}); }});
   list();
   refresh();
 }

@@ -9,6 +9,7 @@ import {workLabel} from '../core/labels.js';
 import {AREAS, pageOf} from '../core/pages.js';
 import {state} from '../core/state.js';
 import {createLayer} from './overlay.js';
+import {popOpen, showPop} from './pop.js';
 export const $ = id => document.getElementById(id);
 // 主区切换：显示 area（core/pages.js 登记的主区，默认是当前页的），隐藏其余几个。网格的空状态跟着网格：换到别的主区时
 // 收起，回到网格时由 reload 按读到的结果显示。
@@ -28,7 +29,7 @@ export const emptyLink = (href, label) => `<a class="quiet link" href="${href}">
 const helpLayer = createLayer({kind: 'popover', id: 'page-help', el: () => $('pageHelpPop'), anchor: () => $('pageHelp'), focusIn: 'self',
   onDismiss: reason => showHelp(false, reason)});
 function showHelp(open, reason) {
-  const pop = $('pageHelpPop'); if (pop) pop.hidden = !open;
+  showPop($('pageHelpPop'), open);
   $('pageHelp')?.setAttribute('aria-expanded', open); $('pageHelp')?.classList.toggle('on', open);
   if (open) helpLayer.open(); else helpLayer.close(reason);
 }
@@ -36,10 +37,10 @@ export function helpTip(lines) {
   if (!lines?.length) return ['', ''];
   const label = t('这一页的说明');
   return [`<button class="icon small" id="pageHelp" title="${label}" aria-label="${label}" aria-expanded="false" aria-controls="pageHelpPop">?</button>`,
-    `<div id="pageHelpPop" class="menu menu-drop" role="dialog" aria-label="${label}" tabindex="-1" hidden>${lines.map(x => `<p>${x}</p>`).join('')}</div>`];
+    `<div id="pageHelpPop" class="menu glass menu-drop" role="dialog" aria-label="${label}" tabindex="-1" hidden>${lines.map(x => `<p>${x}</p>`).join('')}</div>`];
 }
 // 标题画好之后调一次：给「?」挂上开关。
-export function wireHelpTip() { const b = $('pageHelp'); if (b) b.onclick = () => showHelp($('pageHelpPop').hidden); }
+export function wireHelpTip() { const b = $('pageHelp'); if (b) b.onclick = () => showHelp(!popOpen($('pageHelpPop'))); }
 // 帮助文字和提示用 ⌘ 写；其他系统显示 Ctrl。
 export function platformHints(root, mac = isMac) {
   if (mac) return;
@@ -48,24 +49,26 @@ export function platformHints(root, mac = isMac) {
   for (const el of root.querySelectorAll('[title]')) el.title = platformText(el.title, mac);
 }
 let toastTimer;
+// 提示条靠 translateX(-50%) 居中，退场只淡出（#715）。
+const hideToast = () => showPop($('toast'), false, {to: 'fade'});
 export function toast(message, withUndo = false) {
-  $('toastText').textContent = message; $('toastUndo').hidden = !withUndo; $('toastAct').hidden = true; $('toast').hidden = false;
-  clearTimeout(toastTimer); toastTimer = setTimeout(() => { $('toast').hidden = true; }, withUndo ? 6000 : 3500);
+  $('toastText').textContent = message; $('toastUndo').hidden = !withUndo; $('toastAct').hidden = true; showPop($('toast'), true);
+  clearTimeout(toastTimer); toastTimer = setTimeout(hideToast, withUndo ? 6000 : 3500);
 }
 // 给正在显示的 toast 追加一点：再补几个字，可选再加一个按钮（如对刚设好的角色所属作品「关注」，#293）。toast 随后会多
 // 停留一会儿。
 // 一次可撤销的写入成功之后（#432 ③-7）：撤销指向这一步，toast 写明做了什么并带「撤销」。text 默认是后端给这一步的名字。
 export function written(undo, text = tb(undo.label)) { setLatest(undo); toast(text, true); }
 export function toastMore(text, label = '', run = null) {
-  if ($('toast').hidden) return;
+  if (!popOpen($('toast'))) return;
   $('toastText').textContent += text;
-  const b = $('toastAct'); b.hidden = !label; b.textContent = label; b.onclick = () => { $('toast').hidden = true; run(); };
-  clearTimeout(toastTimer); toastTimer = setTimeout(() => { $('toast').hidden = true; }, 9000);
+  const b = $('toastAct'); b.hidden = !label; b.textContent = label; b.onclick = () => { hideToast(); run(); };
+  clearTimeout(toastTimer); toastTimer = setTimeout(hideToast, 9000);
 }
 // 指针停在 toast 上时它不消失；它的撤销按钮运行 undo()。
 export function wireToast(undo) {
   $('toast').addEventListener('mouseenter', () => clearTimeout(toastTimer));
-  $('toast').addEventListener('mouseleave', () => { toastTimer = setTimeout(() => { $('toast').hidden = true; }, 2500); });
+  $('toast').addEventListener('mouseleave', () => { toastTimer = setTimeout(hideToast, 2500); });
   $('toastUndo').onclick = () => undo();
 }
 // 角色选项里的名字（#294、#678）：名字后面跟作品小字。「跳到角色」等命令面板（ui/palette.js）和筛选条「＋ 条件」
@@ -76,8 +79,9 @@ export function error(message) { if (session.stale) return; $('errorBanner').tex
 export function readFailure(node, e) { if (node) { node.hidden = false; node.innerHTML = `<p class="empty" role="alert">${esc(readError(e))}</p>`; } }
 // 可折叠的块，展开或收起的状态在重新渲染和重新载入后保留。
 export const fold = (key, summary, body) => `<details class="more" data-fold-key="${key}"${prefs.get('settingsOpen', {})[key] ? ' open' : ''}><summary>${summary}</summary><div class="more-body">${body}</div></details>`;
+// 只有 fold() 生成的 <details> 带 data-fold-key，按属性找就够；不写元素名，测试用的假 DOM（tests/dom.cjs）不认带元素名的属性选择器。
 export function wireFolds(root) {
-  for (const d of root.querySelectorAll('details[data-fold-key]')) {
+  for (const d of root.querySelectorAll('[data-fold-key]')) {
     if (d.dataset.foldWired) continue;
     d.dataset.foldWired = '1';
     d.ontoggle = () => { const o = prefs.get('settingsOpen', {}); if (d.open) o[d.dataset.foldKey] = true; else delete o[d.dataset.foldKey]; prefs.set('settingsOpen', o); };
@@ -100,13 +104,20 @@ export function setDrawn(el, html = null) { if (html === null) drawn.delete(el);
 export const drawnHTML = el => drawn.get(el);
 // 按钮忙碌（#429）：等待期间禁用，结束后一定恢复，不管是成功、取消（关掉系统选择框或确认框）还是失败。不能靠重画来
 // 恢复：内容没变时 redraw 不会重画，按钮就一直是灰的。等待中按钮被重画换掉的，恢复的是已经不在页面上的旧按钮。
+// 按钮的 disabled 由两件事共同决定：本地点了还没回来（busy），和数据说它不能点（setDisabled，例如任务已经在跑）。
+// busy 收尾时回到数据说的样子，不一律启用；数据在忙的期间变了，也等收尾时一起写（#715）。
+const pressed = new WeakSet(), wanted = new WeakMap();
+export function setDisabled(b, disabled) {
+  wanted.set(b, !!disabled);
+  if (!pressed.has(b) && b.disabled !== !!disabled) b.disabled = !!disabled;
+}
 export async function busy(buttons, run) {
   const list = [buttons].flat();
-  for (const b of list) b.disabled = true;
-  try { return await run(); } finally { for (const b of list) b.disabled = false; }
+  for (const b of list) { if (!wanted.has(b)) wanted.set(b, false); pressed.add(b); b.disabled = true; }
+  try { return await run(); } finally { for (const b of list) { pressed.delete(b); b.disabled = wanted.get(b); } }
 }
 // 按钮的数据（[{act, label, primary, disabled, title}]，ui/rows.js 的 buttons 也是这个形状）拼成 HTML，给还在拼 HTML 的
-// 任务面板和向导横条用；attr 是放动作名的属性（data-models、data-pack…）。不能点时 title 写原因。
+// 向导横条和更新提示用；attr 是放动作名的属性（data-models、data-pack…）。不能点时 title 写原因。
 export const buttonsHTML = (list, attr) => list.map(b => `<button class="${b.primary ? 'primary' : 'quiet'} small" ${attr}="${esc(b.act)}"`
   + `${b.disabled ? ` disabled${b.title ? ` title="${esc(b.title)}"` : ''}` : ''}>${esc(b.label)}</button>`).join('');
 // 只替换 HTML 变了的部分，没变的封面不会重新加载。

@@ -128,6 +128,7 @@ class Element extends Node {
   focus() { current.activeElement = this; }
   blur() { if (current.activeElement === this) current.activeElement = current.body; }
   get innerHTML() { return this.childNodes.map(serialize).join(''); }
+  get outerHTML() { return serialize(this); }
   set innerHTML(html) {
     writes++;
     const target = this.localName === 'template' ? (this.content = new Fragment()) : this;
@@ -145,6 +146,8 @@ function matcher(selector) {
 }
 function serialize(n) {
   if (n.nodeType === 3) return n.data.replace(/&/g, '&amp;').replace(/</g, '&lt;');
+  // tests/web.cjs 的 fakePage 建的元素（ui/el.js 的 make 经它的 createElement）挂进了这里的树：按标签、data-* 和文字写出来
+  if (!n.attrs) { const tag = String(n.tagName || 'div').toLowerCase(); return `<${tag}${Object.entries(n.dataset || {}).map(([k, v]) => ` data-${k}="${v}"`).join('')}>${n.textContent || ''}</${tag}>`; }
   const attrs = [...n.attrs].map(([k, v]) => v === '' ? ` ${k}` : ` ${k}="${v.replace(/"/g, '&quot;')}"`).join('');
   return `<${n.localName}${attrs}>` + (VOID.has(n.localName) ? '' : n.childNodes.map(serialize).join('') + `</${n.localName}>`);
 }

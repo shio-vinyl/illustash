@@ -10,6 +10,7 @@ import {inspect} from './detail.js';
 import {renderGrid, zoomFromSlider, zoomSlider} from './grid.js';
 import {layout} from './grid_rows.js';
 import {createLayer} from './overlay.js';
+import {popOpen, showPop} from './pop.js';
 
 function applyViewClasses() {
   const b = document.body.classList;
@@ -71,8 +72,8 @@ function afterViewChange(relayout) {
 // 打开时焦点进第一项，↑ ↓ 在各项之间移动（#422）。
 const viewLayer = createLayer({kind: 'popover', id: 'view-options', el: () => $('viewPopover'), anchor: () => $('viewButton'), menu: true, focusIn: 'first',
   onDismiss: reason => toggleViewPop(false, reason)});
-function toggleViewPop(open = $('viewPopover').hidden, reason) {
-  $('viewPopover').hidden = !open; $('viewButton').classList.toggle('on', open); $('viewButton').setAttribute('aria-expanded', open);
+function toggleViewPop(open = !popOpen($('viewPopover')), reason) {
+  showPop($('viewPopover'), open); $('viewButton').classList.toggle('on', open); $('viewButton').setAttribute('aria-expanded', open);
   if (open) { renderViewPop(); viewLayer.open(); } else viewLayer.close(reason);
 }
 

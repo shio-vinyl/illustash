@@ -32,8 +32,8 @@ test('the task button is usable immediately after cancelled confirmation', async
   // 页面自己的对话框（ui/dialog.js），一显示就取消。
   let asked = 0;
   document.body.append = d => { asked++; d.showModal = () => { d.returnValue = 'cancel'; d.onclose(); }; };
-  const {wireTasks} = await web.load('ui/tasks.js');
-  wireTasks();
+  const {wireTasks, taskPanel} = await web.load('ui/tasks.js');
+  wireTasks(); taskPanel.open = true;   // 关着的面板不处理迟到的点击（#715）
   const button = {dataset: {task: 'index'}, disabled: false};
   for (const click of el('taskPanel').listeners.click) await click({stopPropagation() {}, target: {closest: selector => selector === '[data-task]' ? button : null}});
   assert.equal(asked, 1);

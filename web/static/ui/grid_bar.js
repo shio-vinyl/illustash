@@ -19,6 +19,7 @@ import {openExport} from './files.js';
 import {favoriteSelection, isSelected, markDetailKeys, mutate, openTagPicker, quitSelecting, reload, selCount, selectionIds, selectionPayload, setArmed, setBar} from './grid.js';
 import {make} from './el.js';
 import {galleryAction, galleryButtons} from './gallery_bar.js';
+import {showPop} from './pop.js';
 import {markOc, newIds, openPicker, openRelate, targets} from './palette.js';
 
 // 一个按钮：act 是分派用的名字（runBarAction 按它分支），label 是文字，primary 是主按钮，key 是键标，tip 是悬停提示，off 有值时
@@ -29,7 +30,8 @@ const armed = (act, again, normal) => state.armed === act ? again : normal;
 
 function render() {
   const n = selCount(), bar = $('selectionBar'), r = state.route, kind = viewOf(r).bar;   // 选择栏的种类由页面登记
-  bar.hidden = !n; markDetailKeys(); if (!n) { setArmed(null); return; }
+  // 靠 translateX(-50%) 居中，退场只淡出（#715）
+  showPop(bar, n > 0, {to: 'fade'}); markDetailKeys(); if (!n) { setArmed(null); return; }
   const clear = make('button', 'icon', '×'); clear.id = 'clearSel'; clear.title = t('取消选择（Esc）'); clear.onclick = quitSelecting;
   const count = make('span', 'sel-count', state.sel.all ? t('已选全部 {n} 张', {n: number(n)}) : t('已选 {n} 张', {n: number(n)}));
   const nodes = [clear, count, make('div', 'bar-divider')];
@@ -114,11 +116,17 @@ function selectedChars() {
 }
 // 把选中的图从 from 换成别的角色：角色页换掉本页的角色，默认选择栏换掉选中的图共同的角色。exclude 是候选里不列的角色
 // （图上本来就有的）。
-function swapSelected(from, exclude = [from.id]) {
-  const n = selCount(), payload = {...selectionPayload(), confirm: n > 500};
+// fixed：点下按钮时定下的 {n, sel, payload}（#715）。「换掉哪个角色？」先选一个再开这一步，中间选区变了也照旧写那一次选的图。
+function swapSelected(from, exclude = [from.id], fixed = fixedSelection()) {
+  const {n, sel, payload} = fixed;
   openPicker({title: t('把 {n} 张换成…', {n: number(n)}), sentence: e => t('把 {n} 张从 {from} 换成 {name}', {n: number(n), from: from.name, name: e.name}),
-    exclude, suggest: selectionPayload(), multi: true,
+    exclude, suggest: sel, multi: true,
     pick: list => mutate('/api/reassign', {...payload, old: from.id, new: newIds(list)}, state.route.char === from.id)});
+}
+// 选区在点下按钮的这一刻定下来：命令面板开着、请求在途、分两步选时选区再变，写进去的仍是这一次选的图（#715）。
+function fixedSelection() {
+  const n = selCount(), sel = selectionPayload();
+  return {n, sel, payload: {...sel, confirm: n > 500}};
 }
 function needsArm(key) {
   if (selCount() <= 500 || state.armed === key) return false;
@@ -131,11 +139,11 @@ async function answerAudit(yes) {
   if (ids.length) mutate('/api/audit/answer', {ids, ...(yes ? {yes: ids} : {no: ids})}, false, {advance: true});
 }
 function runBarAction(act) {
-  const n = selCount(), r = state.route; if (!n || edits.busy) return;
-  const payload = () => ({...selectionPayload(), confirm: n > 500});
+  const r = state.route, fixed = fixedSelection(), {n, sel} = fixed; if (!n || edits.busy) return;
+  const payload = () => fixed.payload;
   if (galleryAction(act, n, payload)) return;
   if (act === 'audit_yes' || act === 'audit_no') { answerAudit(act === 'audit_yes'); return; }
-  if (act === 'export') { openExport(selectionPayload(), n); return; }
+  if (act === 'export') { openExport(sel, n); return; }
   if (act === 'like') { if (!state.sel.all) go(likeRoute([...state.sel.ids])); return; }
   if (act === 'findartist') {
     const sel = state.sel;
@@ -148,19 +156,19 @@ function runBarAction(act) {
   else if (act === 'isme') { if (!needsArm('isme')) mutate('/api/change', {...payload(), action: 'confirmed', entity: r.char}, true); }
   else if (act === 'exclude' || act === 'include') { if (!needsArm(act)) mutate('/api/curate', {...payload(), action: act}, true); }
   else if (act === 'resume') { if (!needsArm('resume')) mutate('/api/change', {...payload(), action: 'resume'}, true); }
-  else if (act === 'swap') swapSelected({id: r.char, name: state.char?.name});
+  else if (act === 'swap') swapSelected({id: r.char, name: state.char?.name}, [r.char], fixed);
   else if (act === 'replace') {
     const chars = selectedChars();
     if (!chars) toast(t('全选时请进入角色页换成'));
     else if (!chars.all.size) runBarAction('assign');
     else if (!chars.common.length) toast(t('所选图片没有共同的角色'));
-    else if (chars.common.length === 1) swapSelected(chars.common[0], chars.common.map(m => m.id));
+    else if (chars.common.length === 1) swapSelected(chars.common[0], chars.common.map(m => m.id), fixed);
     // 第二个面板等这一个的 close 事件之后再开：在那之前浮层管理器还把它算作开着，同一个对话框不会再打开。
     else openPicker({title: t('换掉哪个角色？'), items: chars.common, subject: selectionIds(), sentence: e => t('把 {n} 张的 {name} 换掉', {n: number(n), name: e.name}),
-      pick: e => $('picker').addEventListener('close', () => swapSelected(e, chars.common.map(m => m.id)), {once: true})});
+      pick: e => $('picker').addEventListener('close', () => swapSelected(e, chars.common.map(m => m.id), fixed), {once: true})});
   }
   else if (act === 'also') openPicker({title: t('这 {n} 张也是…', {n: number(n)}), sentence: e => t('给 {n} 张加上 {name}', {n: number(n), name: e.name}),
-    exclude: [r.char], suggest: selectionPayload(), multi: true,
+    exclude: [r.char], suggest: sel, multi: true,
     pick: list => mutate('/api/change', {...payload(), action: 'confirmed', ...targets(list)}, false)});
   else if (act === 'assign') {
     // 默认选择栏（图库、重复、相似组）里选中的图已有角色时，按钮是「加角色…」，原有的角色保留；否则是给还没有角色的图设角色（#423）。
@@ -169,7 +177,7 @@ function runBarAction(act) {
     const stays = viewOf(r).bar === 'default';
     const chars = stays ? selectedChars() : {all: new Map()}, adding = !chars || chars.all.size > 0;
     openPicker({title: adding ? t('给 {n} 张加角色', {n: number(n)}) : t('把 {n} 张设为…', {n: number(n)}),
-      sentence: e => adding ? t('给 {n} 张加上 {name}', {n: number(n), name: e.name}) : t('把 {n} 张设为 {name}', {n: number(n), name: e.name}), suggest: selectionPayload(), multi: true,
+      sentence: e => adding ? t('给 {n} 张加上 {name}', {n: number(n), name: e.name}) : t('把 {n} 张设为 {name}', {n: number(n), name: e.name}), suggest: sel, multi: true,
       pick: list => mutate('/api/change', {...payload(), action: 'confirmed', ...targets(list)}, !stays)});
   }
   else if (act === 'oc') markOc(payload(), true);

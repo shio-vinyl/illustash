@@ -346,3 +346,32 @@ test('图的颜色只经 setTint 写：同时写 --tint 和 .tint，没有颜色
   assert.deepEqual(props, {});
   assert.equal(el.classList.contains('tint'), false);
 });
+
+// 弹出层的开合（ui/pop.js，#715）：关的时候播完退场才 hidden；退场中算「已经在关」，再点一下是开，开的时候接手、不闪。
+test('showPop 关：播完退场才 hidden，期间 popOpen 为假；再开取消退场；exit 的 done 由调用方收尾', async () => {
+  const pop = await web.load('ui/pop.js');
+  const el = node(); el.hidden = false;
+  pop.showPop(el, false);
+  assert.equal(el.hidden, false, '退场还在播'); assert.equal(pop.popOpen(el), false); assert.equal(motion.exitingNow(el), true);
+  pop.showPop(el, true);
+  assert.equal(animations[0].state, 'cancelled'); assert.equal(el.hidden, false); assert.equal(pop.popOpen(el), true);
+  pop.showPop(el, false); animations[1].end(); await new Promise(r => setTimeout(r, 0));
+  assert.equal(el.hidden, true); assert.equal(pop.popOpen(el), false);
+  assert.equal(animations[1].keyframes.at(-1).transform, 'scale(.97)');
+  const toast = node(); toast.hidden = false; pop.showPop(toast, false, {to: 'fade'});
+  assert.equal(animations[2].keyframes.at(-1).transform, undefined, '靠 transform 居中的只淡出');
+  let closed = 0; const d = node();
+  const done = motion.exit(d, {done: () => { closed++; }}); animations[3].end(); await done;
+  assert.equal(closed, 1); assert.equal(d.hidden, false, 'done 接手以后不摘、不藏');
+});
+test('退场一开始就 inert，收尾和重开时只去掉自己设的那份（#715）', async () => {
+  const pop = await web.load('ui/pop.js');
+  const el = node(); el.hidden = false;
+  pop.showPop(el, false); assert.equal(el.inert, true, '退场中点不动');
+  pop.showPop(el, true); assert.equal(el.inert, false, '重开还原');
+  pop.showPop(el, false); animations.at(-1).end(); await new Promise(r => setTimeout(r, 0));
+  assert.equal(el.hidden, true); assert.equal(el.inert, false, '藏好以后还原，下次打开不是 inert 的');
+  const held = node(); held.hidden = false; held.inert = true;   // 浮层管理器设的
+  pop.showPop(held, false); pop.showPop(held, true);
+  assert.equal(held.inert, true, '别人设的不动');
+});

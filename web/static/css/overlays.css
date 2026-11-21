@@ -1,4 +1,102 @@
-/* 浮层与全局部件：对话框、任务面板、提示条、菜单、选择栏、引导。归 0.4 第 J 步（浮层与全局部件，#715）；A2（#705）只建了文件和层，规则由那一步写。
-   只用 css/tokens.css 的令牌和 css/base.css 的公共部件；重写一块，就删掉 app.css 里对应的旧规则。 */
+/* 浮层与全局部件（0.4 第 J 步，#715）：弹出层、对话框、命令面板、提示条、引导、任务面板。A2（#705）建了文件和层，规则由 J 写。
+   只用 css/tokens.css 的令牌和 css/base.css 的公共部件；重写一块，就删掉 app.css 里对应的旧规则。
+   - 两种表面：弹出层（菜单、视图选项、任务面板、页面说明、清单）圆角 12、--shadow-pop，磨砂由元素上的 .glass 给（规则 16 只许
+     写在那里）；对话框（openDialog 的 .modal、命令面板、几个静态对话框）圆角 18、--shadow-dialog、--sheet 底。
+   - 这一层高于 legacy：这里只写表面（底色、圆角、阴影、开合动画、字号），位置和尺寸留在 app.css 各自的类上，免得盖掉
+     .more-menu、dialog.relate 这类细化（层的先后压过选择器的权重）。
+   - 开合：进场是这里的 CSS 动画（hidden 去掉、dialog 打开时 display 变回来就重播）；退场由 ui/pop.js、ui/dialog.js 的 closeModal
+     用 Web Animations 播（ui/motion.js），--dur-1，比进场短。「减少动态效果」时令牌里的时长是 0。 */
 @layer overlays{
+
+@keyframes ov-pop{from{opacity:0;transform:scale(.96)}}
+@keyframes ov-dialog{from{opacity:0;transform:translateY(6px) scale(.97)}}
+@keyframes ov-toast{from{opacity:0;transform:translate(-50%,14px) scale(.96)}}
+
+/* ---- 弹出层 ---- */
+.menu{border-radius:var(--radius-12);color:var(--ink);box-shadow:var(--shadow-pop);animation:ov-pop var(--dur-2) var(--ease)}
+/* 没加 .glass 的菜单（别的页面拼的）用不透明的 --sheet，降低透明度时也不用变；加了的底色、磨砂和退路由 .glass 给 */
+.menu:not(.glass){background:var(--sheet)}
+.menu-item{border-radius:var(--radius-8)}
+.menu-item:hover{background:var(--wash-hover)}
+/* 候选菜单里 ↑↓ 停在的那一项：「选中」一种画法，和 .palette-item.on 一样 */
+.menu-item.on{background:var(--accent-soft)}
+.menu-drop input{border-radius:var(--radius-pill)}
+.view-pop h6,.task-pop h6{font-size:var(--fs-11);font-weight:var(--fw-600)}
+
+/* ---- 对话框：压暗是自己的大扩散阴影，和对话框一起淡入淡出；页面在 ::backdrop 后面轻轻糊一点（css/base.css 的 .glass-scrim） ---- */
+dialog{border:0;border-radius:var(--radius-18);background:var(--sheet);color:var(--ink);box-shadow:var(--shadow-dialog),0 0 0 200vmax var(--dialog-dim)}
+dialog::backdrop{background:transparent}
+dialog[open]{animation:ov-dialog var(--dur-2) var(--ease)}
+/* 标题用 .title-section，操作区的按钮和 .btn 共用 css/base.css 的规则 */
+.dialog-actions{gap:var(--space-8)}
+.modal .field input,.modal .field select{border-radius:var(--radius-8)}
+.modal .dialog-lead{border-radius:var(--radius-12)}
+
+/* ---- 命令面板（⌘K、角色选择器） ---- */
+#pickerSearch{font-size:var(--fs-20);background:transparent}
+.palette-item{border-radius:var(--radius-8)}
+.palette-item.on,.palette-item.staged{background:var(--accent-soft)}
+.palette-item img,.palette-glyph,#pickerSubject img{border-radius:var(--radius-8)}
+.palette-name{font-size:var(--fs-13)}
+.palette-add{border-radius:var(--radius-8)}
+
+/* ---- 提示条：深色胶囊（--capsule-* 令牌，选择栏共用；不磨砂，底色不透明，降低透明度时不用变），从下面弹一下上来（--ease-spring 只给这类「弹一下」），淡出 ---- */
+.toast{border-radius:var(--radius-pill);background:var(--capsule-bg);color:var(--capsule-ink);box-shadow:var(--shadow-pop);font-weight:var(--fw-600);animation:ov-toast var(--dur-2) var(--ease-spring)}
+.toast-undo{border-radius:var(--radius-pill);background:var(--capsule-btn);color:var(--capsule-ink);font-weight:var(--fw-600)}
+.toast-undo:hover{background:var(--capsule-btn-hover)}
+
+/* ---- 引导：导览气泡用对话框的表面，提示卡和清单用弹出层的表面 ---- */
+.tour-hole{border-radius:var(--radius-12)}
+.tour-bubble{border-radius:var(--radius-18);box-shadow:var(--shadow-dialog);animation:ov-dialog var(--dur-2) var(--ease)}
+.tour-title{margin-bottom:var(--space-6)}
+.tour-foot>button{border-radius:var(--radius-pill)}
+.nudge{border-radius:var(--radius-18);box-shadow:var(--shadow-pop)}
+.nudge-acts>button,.update-acts>button{border-radius:var(--radius-pill)}
+.cl-pill{border-radius:var(--radius-pill);box-shadow:var(--shadow-pop);font-weight:var(--fw-600)}
+.cl-panel{border-radius:var(--radius-12);box-shadow:var(--shadow-pop);animation:ov-pop var(--dur-2) var(--ease)}
+.cl-check{font-size:var(--fs-11);color:var(--on-accent)}
+
+/* ---- 任务面板：一个任务一行（状态点、名称、状态行、一个按钮；进度条和详情在下面），进行中的那行浅强调色底 ---- */
+.task-top{display:flex;align-items:center;justify-content:space-between;margin:0 var(--space-4) var(--space-8)}
+.task-pop h6{margin:var(--space-12) var(--space-6) var(--space-6);color:var(--muted);letter-spacing:.2px}
+.task-group{display:grid;gap:var(--space-2)}
+/* 一个可收缩的列：里面一行很长、不能断开的文字（损坏图片的路径）显示省略号，不把这一行撑得比面板还宽、把按钮挤出视野 */
+.task-item{display:grid;grid-template-columns:minmax(0,1fr);gap:var(--space-8);padding:var(--space-10) var(--space-12);border-radius:var(--radius-12);
+  transition:background-color var(--dur-2) var(--ease)}
+.task-item.on{background:var(--accent-soft)}
+.task-main{display:flex;align-items:center;gap:var(--space-10);font-size:var(--fs-12)}
+.task-acts{display:flex;gap:var(--space-6);flex:none}
+/* 进度条（ui/task_row.js）：只改 transform，不改宽度 */
+.task-bar{display:block;height:4px;border-radius:var(--radius-pill);background:var(--soft);overflow:hidden}
+.task-bar>span{display:block;height:100%;background:var(--accent);transform-origin:left center;transition:transform var(--dur-2) var(--ease)}
+.task-item.on .task-bar{background:var(--sheet)}
+.task-text{flex:1;min-width:0;display:grid;gap:var(--space-2)}
+.task-text b{font-weight:var(--fw-600)}
+.task-text small{font-size:var(--fs-11);color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.task-item .local-dot{flex:none;width:8px;height:8px;background:var(--ok)}
+.task-item .local-dot.busy{background:var(--warn)}
+.task-item .local-dot.warn{background:var(--bad)}
+.task-item .local-dot.off{background:var(--faint)}
+.task-side{margin:var(--space-6) 0 var(--space-2);font-size:var(--fs-11);color:var(--muted)}
+.task-item details.more{margin:0;font-size:var(--fs-12)}
+.task-item details.more .settings-table{margin-top:var(--space-4)}
+.task-asks{display:grid;gap:var(--space-8)}
+.task-ask{display:flex;align-items:center;gap:var(--space-10);flex-wrap:wrap;padding:var(--space-10) var(--space-12);border-radius:var(--radius-12);
+  background:var(--accent-soft);color:var(--accent-ink);font-size:var(--fs-12)}
+.task-ask>span{flex:1;min-width:0}
+.task-ask button{border-radius:var(--radius-pill)}
+.task-ask.prov-confirm{display:block;margin:0;border:0;background:var(--tone-warn-bg);color:var(--ink)}
+.task-foot{margin:var(--space-12) var(--space-6) 0;font-size:var(--fs-11);color:var(--muted)}
+
+/* ---- 选择栏：和提示条同一种深色胶囊，结构归 ui/grid_bar.js（C2）；进场弹一下，退场淡出（ui/pop.js） ---- */
+.selection-bar{border:0;border-radius:var(--radius-pill);padding:var(--space-6) var(--space-6) var(--space-6) var(--space-14);background:var(--capsule-bg);color:var(--capsule-ink);
+  box-shadow:var(--shadow-pop);animation:ov-toast var(--dur-2) var(--ease-spring)}
+.selection-bar .quiet,.selection-bar .icon,.selection-bar .primary{border-radius:var(--radius-pill)}
+.selection-bar .quiet,.selection-bar .icon{color:var(--capsule-ink)}
+.selection-bar .quiet:hover,.selection-bar .icon:hover{background:var(--capsule-btn)}
+.selection-bar kbd{background:transparent;box-shadow:none;color:var(--capsule-muted);padding:0}
+.selection-bar .quiet.armed{color:var(--capsule-armed)}
+.sel-count{color:var(--capsule-ink);font-weight:var(--fw-600)}
+.bar-divider{background:var(--capsule-btn-hover)}
+.bar-note{color:var(--capsule-note)}
 }

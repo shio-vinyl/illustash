@@ -1279,12 +1279,14 @@ fn ambiguous_queue(seen: &str) -> String {
              AND k.kind='ambiguous' AND {ASK_DEFERRED})"
     )
 }
-fn ambiguous_claims(c: &Connection, nsfw: &str) -> Result<Json> {
+/// `/api/ambiguous`：按（A，B）分组的「可能认错」。组按张数从多到少，同张数按 A、B 的 ID；组内新加入的在前，
+/// 同一入库时间按 uuid 升序，和 `/api/assets` 默认的「最新」排序（`a.added_at DESC,a.uuid`）同一个次序。
+fn ambiguous_groups(c: &Connection, nsfw: &str) -> Result<Json> {
     let seen = format!("{}{}", visible("a"), rating("a", nsfw)?);
     let queue = ambiguous_queue(&seen);
     let sql = format!(
         "SELECT m.entity,entity_name(m.entity) AS name,m.rival,entity_name(m.rival) AS rival_name,
-                count(*) AS count,json_group_array(m.uuid ORDER BY a.added_at DESC,m.uuid DESC) AS ids
+                count(*) AS count,json_group_array(m.uuid ORDER BY a.added_at DESC,m.uuid) AS ids
          {queue}
          GROUP BY m.entity,m.rival
          ORDER BY count DESC,m.entity,m.rival"
@@ -1576,7 +1578,7 @@ pub fn read(c: &Connection, context: &LibraryContext, path: &str, q: &HashMap<St
             Json::object([("kinds", kinds)])
         }
         "/api/review-pools" => pools(c, value(q, "nsfw"))?,
-        "/api/ambiguous" => ambiguous_claims(c, value(q, "nsfw"))?,
+        "/api/ambiguous" => ambiguous_groups(c, value(q, "nsfw"))?,
         "/api/galleries" => crate::app_galleries::read(c, value(q, "nsfw"))?,
         "/api/galleries/covers" => crate::app_galleries::covers(c, context, value(q, "nsfw"), value(q, "ids"))?,
         "/api/detail" => {

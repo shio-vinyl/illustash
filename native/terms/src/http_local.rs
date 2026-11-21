@@ -10,6 +10,10 @@ use crate::{
 use rusqlite::{Connection, OpenFlags};
 use std::collections::HashMap;
 pub(crate) const ROUTES: &[&str] = &["/api/ask", "/api/similar", "/api/clusters"];
+/// 认一认自己的几种问题（`ask` 给出的 `kind`）。角色级的七天暂缓只看这几种问题里的「以后再说」：别处的
+/// 「以后再说」（如「可能认错」的 `ambiguous`）只针对那一问，不触发角色级暂缓。单张图照旧不分 `kind`
+/// 按「问过」处理（`unasked`），同一张图不会在认一认里再问一遍。
+const ASK_KINDS: &str = "'hint','seed','sample'";
 fn get<'a>(q: &'a HashMap<String, String>, k: &str) -> &'a str {
     q.get(k).map(String::as_str).unwrap_or("")
 }
@@ -55,7 +59,7 @@ fn ask(c: &Connection, nsfw: &str, skip: &[&str]) -> Result<Json> {
     }
     let seen = format!("{}{}", visible("m"), rating("m", nsfw)?);
     let hints = proto_hints("w.uuid,w.entity,w.score");
-    let rest = format!("SELECT DISTINCT entity FROM asked WHERE {ASK_DEFERRED}");
+    let rest = format!("SELECT DISTINCT entity FROM asked WHERE kind IN ({ASK_KINDS}) AND {ASK_DEFERRED}");
     let wanted = |r: &Json| !skip.contains(&r.field("entity").text());
     let counted = format!(
         "SELECT h.entity,count(*) AS n

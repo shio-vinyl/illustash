@@ -137,6 +137,10 @@ export const FLOWS = [
       await page.waitFor(backText, 4000);
       const fromCatalog = await page.eval(backText);
       w.check('返回：从资料库进来写「资料库」', fromCatalog === '资料库' || fromCatalog === 'Catalog', fromCatalog);
+      // 第二次进来回到上次离开的位置（#402）：上次停在横幅里，这次也停在横幅里，不会一进来就滚到横幅下面（#716 走查发现）。
+      await page.waitFor(`document.querySelector('#grid .card[data-id]')`, 4000);
+      const top = await page.eval(`document.getElementById('viewport').scrollTop`);
+      w.check('回到角色页：停在横幅里，没有滚过横幅', top === 0, `scrollTop=${top}`);
     },
   },
   {

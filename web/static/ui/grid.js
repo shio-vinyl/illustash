@@ -61,7 +61,10 @@ export function rememberPlace() {
   if (pageOf(state.route).panel || $('grid').hidden || !state.totalReady || !state.total) return;
   const v = $('viewport'), row = rowAt(v.scrollTop), anchor = rowStart(row), key = placeKey(state.route);
   places.delete(key);
-  places.set(key, {anchor, within: Math.max(0, (v.scrollTop - rowTop(row)) / rowHeight(row)), end: visibleEnd(v), focused: state.focused, cursor: state.cursor});
+  // 还停在网格顶部的头部里（角色页的横幅，#712）：记下停在头部里的像素位置，回来时照它恢复；按第 0 行的行顶恢复会滚过
+  // 横幅（行顶含头部的高度）。
+  const inHead = v.scrollTop < rowTop(0) ? v.scrollTop : null;
+  places.set(key, {anchor, within: Math.max(0, (v.scrollTop - rowTop(row)) / rowHeight(row)), inHead, end: visibleEnd(v), focused: state.focused, cursor: state.cursor});
   if (places.size > PLACES_MAX) places.delete(places.keys().next().value);
 }
 export const placeFor = route => places.get(placeKey(route)) || null;
@@ -74,7 +77,7 @@ function restorePlace(place) {
   layout();
   const row = rowOf(Math.min(place.anchor, state.total - 1));
   $('grid').style.height = `${rowTop(rowCount())}px`;
-  $('viewport').scrollTop = rowTop(row) + Math.min(place.within, 1) * rowHeight(row);
+  $('viewport').scrollTop = place.inHead ?? rowTop(row) + Math.min(place.within, 1) * rowHeight(row);
 }
 // 先取可见的几页，再一步换入数据：编辑之后不会闪出骨架。place 是 placeFor() 记下的位置：读那附近的几页并定位过去。
 export async function reload(reset = false, place = null) {

@@ -807,7 +807,6 @@ export async function updateAct(act) {
   return true;
 }
 
-
 // 新图库表单里输入的内容随输入保存，这样卡片在后台刷新时不会丢失任何东西。
 export function onLibraryInput(e) {
   if (e.target.id === 'libName') libForm.name = e.target.value;

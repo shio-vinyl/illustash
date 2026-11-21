@@ -115,7 +115,7 @@
 
  "crates/core/src/schema.rs":"5ced88a21b7ede0da61d04846600d7bb63d650a7504e4ca14e2ed89eea69188f",
 
- "crates/core/src/store.rs":"359adce05ae8dd383981c4c8c23edee6615e2d395e7b8b97731021529a08798c",
+ "crates/core/src/store.rs":"029d08d26dffea9c3bdd7b15175dc7d557be70f8f0a75d62a8f5f3ff44eb3e8c",
 
  "crates/core/src/strict_json.rs":"dc1bf3fd4e0ceb6316af6a95ab00915c52ffdd8fd759544326f371df39e67da6",
 
@@ -235,7 +235,7 @@
 
  "native/terms/src/app_colors/palette.rs":"db2645476768766de99d58ee7fbb4ade268a75cbf2d0fb55cfe1dd65511e1412",
 
- "native/terms/src/app_commands.rs":"039c843feb0c0c9eb7aba20a3aafc4d43481a560d4b6f20abc13dfb417089c8f",
+ "native/terms/src/app_commands.rs":"bac3fd7f900847949704933b001fe642dc7ab40e830dc7eb3da29f392c9b0f72",
 
  "native/terms/src/app_create.rs":"2aef717d28a0848a50396c75309436a232223ae37f883e47d71462362c15fc44",
 
@@ -257,7 +257,7 @@
 
  "native/terms/src/app_galleries.rs":"4432eeddd6c8b9e5ba616471f0f9dd0ed391670914c9b783945cf94caef423f4",
 
- "native/terms/src/app_http.rs":"3157d94f8a4bb85c54e14356d297823d46554602ca3ecf98c1c843145b4ddb01",
+ "native/terms/src/app_http.rs":"bc94ccb8a046cacee5ade4934ba4496dfe8e1ff1e9752901b113c178e3c7eeae",
 
  "native/terms/src/app_human_conclusions.rs":"37bd5770a1bce2e3686a3a478b0925ddcfa11eaa81bf1f85023c57ed6cc8126b",
 
@@ -345,7 +345,7 @@
 
  "native/terms/src/app_resources.rs":"d691ec21499b906972a02d49a21790f2a301c34eb4dea0bd9c301675dd9e2c0a",
 
- "native/terms/src/app_service.rs":"6194963920bf6e7abea64cb945689c6089d52129f08539f45bba95353b88fb33",
+ "native/terms/src/app_service.rs":"1fa1ed83fc0fe56ad66996887c79195ae79813b5c3daf69bb01136f938ee7b95",
 
  "native/terms/src/app_settings.rs":"20f5eb9c25a3a14920b85b48e75186564c5e01f6129cca02b06b2f63d60b2c41",
 
@@ -357,7 +357,7 @@
 
  "native/terms/src/app_sources.rs":"185979b4e3d72ddcd243bcc670b5c981fe3291b56cbf6f87c47dc5080b97828e",
 
- "native/terms/src/app_sync.rs":"5f9500a8f51fba12bf09c15abee6cd82e1c4238f38dc09297d5da36356984821",
+ "native/terms/src/app_sync.rs":"93d04db4cfd1934719b9edbbc42074d30cfa6ca03c3de7306c7cee0a08e6a410",
 
  "native/terms/src/app_tasks.rs":"3a2653f069763b5c2d5f50580679a064e21b1f048a530a886829d483871ba400",
 
@@ -375,7 +375,7 @@
 
  "native/terms/src/character_index.rs":"651b7b073d4c5d3890af7b02991b1e5865c6b2da69de8d7c260f046716ae27fb",
 
- "native/terms/src/cli.rs":"2bb9b730889371a0d91edfc1396aade791556ece3c7c104cf139b373b8e09846",
+ "native/terms/src/cli.rs":"e0d18aa06f9f075b696cd769acf574bf729ea25a7fda26ec2061a4a406ee4cc6",
 
  "native/terms/src/desktop_shell.rs":"ca45e16a710be1bfef8ff4c269852fd69869a829fc22dec1c679155763953ca6",
 
@@ -405,7 +405,7 @@
 
  "native/terms/src/http_example_search.rs":"1b479b900eac347f73924504558a886153a06eaeb74c0b2d5e5cb28a1a758994",
 
- "native/terms/src/http_host_get.rs":"0822c28279b46643a344e7bacd2ab85bb4d9dba6a5096231a95c4111054da486",
+ "native/terms/src/http_host_get.rs":"d8a116f588c837683f675a2ee1ede40c8e8553f86ddab1ae96c98b210d3811b7",
 
  "native/terms/src/http_host_post.rs":"ba14c2d98125c59717673fb22a554748fd7c3eab785463bac9e12fa58960251e",
 

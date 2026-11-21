@@ -468,6 +468,16 @@ fn change(c: &Connection, args: &Value) -> Result<Value> {
 
 // ---- answer / answer_audit ----
 
+/// 一次回答怎么记 `no` 里的图。A 是请求的 `entity`，B 是对手角色：解析请求时是请求里的值，核对之后是角色 ID。
+enum Mode<B> {
+    /// 只回答 A：`yes` 是 A，`no` 不是 A。
+    Plain,
+    /// 「是 B」「点掉的是…」（`switch`）：`no` 不是 A，是 B。
+    Swap(B),
+    /// 「可能认错」的「都不是」（`also_no`）：`no` 既不是 A，也不是 B，和 A 的否定是同一步。
+    AlsoNo(B),
+}
+
 fn answer(c: &Connection, args: &Value) -> Result<Value> {
     let kind = text(&args["kind"], "回答格式不正确")?;
     if !matches!(kind, "ambiguous" | "seed" | "sample" | "audit" | "hint") {
@@ -481,33 +491,48 @@ fn answer(c: &Connection, args: &Value) -> Result<Value> {
     if total == 0 || total > 60 || unique.len() != total {
         return invalid("回答格式不正确");
     }
-    let switch = args.get("switch").filter(|v| !v.is_null());
-    if switch.is_some() && (no.is_empty() || !yes.is_empty()) {
-        return invalid("回答格式不正确");
-    }
+    // 读库之前拒绝混合请求：`switch` 要非空的 `no`、空的 `yes`；`also_no` 只用于「可能认错」，整张卡单独提交，
+    // 只带 `no`。
+    let given = |key: &str| args.get(key).filter(|v| !v.is_null());
+    let mode = match (given("switch"), given("also_no")) {
+        (None, None) => Mode::Plain,
+        (Some(b), None) if !no.is_empty() && yes.is_empty() => Mode::Swap(b),
+        (None, Some(b)) if kind == "ambiguous" && !no.is_empty() && yes.is_empty() && later.is_empty() => {
+            Mode::AlsoNo(b)
+        }
+        _ => return invalid("回答格式不正确"),
+    };
     let (entity, parent) = require_entity(c, &args["entity"])?;
     if parent.is_some() {
         return invalid("请选择父角色");
     }
-    let other = match switch {
-        Some(s) => {
-            let (other, parent) = require_entity(c, s)?;
-            if parent.is_some() || other == entity {
-                return invalid("请选择不同的父角色");
-            }
-            Some(other)
+    let rival = |b: &Value| -> Result<String> {
+        let (b, parent) = require_entity(c, b)?;
+        if parent.is_some() || b == entity {
+            return invalid("请选择不同的父角色");
         }
-        None => None,
+        Ok(b)
+    };
+    let mode = match mode {
+        Mode::Plain => Mode::Plain,
+        Mode::Swap(b) => Mode::Swap(rival(b)?),
+        Mode::AlsoNo(b) => Mode::AlsoNo(rival(b)?),
     };
     let mut writes: Vec<(Vec<String>, String, &str)> = Vec::new();
     for (asked, status) in [(&yes, "confirmed"), (&no, "rejected")] {
-        if !asked.is_empty() {
-            let once = resolve_ids(c, &json!(asked), true, false)?;
-            let scope = resolve_ids(c, &json!(once), true, true)?;
-            writes.push((scope.clone(), entity.clone(), status));
-            if status == "rejected" {
-                if let Some(other) = &other {
-                    writes.push((scope, other.clone(), "confirmed"));
+        if asked.is_empty() {
+            continue;
+        }
+        let once = resolve_ids(c, &json!(asked), true, false)?;
+        let scope = resolve_ids(c, &json!(once), true, true)?;
+        writes.push((scope.clone(), entity.clone(), status));
+        if status == "rejected" {
+            match &mode {
+                Mode::Plain => {}
+                Mode::Swap(b) => writes.push((scope, b.clone(), "confirmed")),
+                Mode::AlsoNo(b) => {
+                    require_ambiguous_pair(c, &once, &entity, b)?;
+                    writes.push((scope, b.clone(), "rejected"));
                 }
             }
         }
@@ -520,18 +545,28 @@ fn answer(c: &Connection, args: &Value) -> Result<Value> {
                 before.push(snapshot(c, ident, Some(e))?);
             }
         }
-        let mut shown = Shown::new();
-        let action = if yes.is_empty() {
-            match &other {
-                Some(o) => {
-                    let (name, other) = (shown.name(c, &entity)?, shown.name(c, o)?);
-                    begin_counted(c, UndoLabel::Swap, no.len(), &name, &other)?
+        // 只有「都不是」在撤销时放回它覆盖的旧问答；别的回答撤销后照旧只删掉这一步的问答。
+        if let Mode::AlsoNo(b) = &mode {
+            for ident in &no {
+                for e in [&entity, b] {
+                    before.extend(ask_history(c, ident, e)?);
                 }
-                None => begin_counted(c, UndoLabel::Remove, no.len(), &shown.name(c, &entity)?, "")?,
+            }
+        }
+        let mut shown = Shown::new();
+        let name = shown.name(c, &entity)?;
+        let action = if yes.is_empty() {
+            match &mode {
+                Mode::Plain => begin_counted(c, UndoLabel::Remove, no.len(), &name, "")?,
+                Mode::Swap(b) => begin_counted(c, UndoLabel::Swap, no.len(), &name, &shown.name(c, b)?)?,
+                Mode::AlsoNo(b) => {
+                    let both = format!("{name}、{}", shown.name(c, b)?);
+                    begin_counted(c, UndoLabel::Remove, no.len(), &both, "")?
+                }
             }
         } else {
             // 写成整句，页面才能逐句翻译（web/static/i18n.js tb()）。
-            let (n, name) = (yes.len(), shown.name(c, &entity)?);
+            let n = yes.len();
             begin_action(
                 c,
                 &match no.len() {
@@ -557,12 +592,50 @@ fn answer(c: &Connection, args: &Value) -> Result<Value> {
     }
     let mut put =
         c.prepare_cached("INSERT OR REPLACE INTO asked(uuid,entity,kind,answer,action_id) VALUES (?,?,?,?,?)")?;
-    for (ids, answer) in [(&yes, "yes"), (&no, "no"), (&later, "later")] {
+    let mut answers = vec![(&yes, entity.as_str(), "yes"), (&no, &entity, "no"), (&later, &entity, "later")];
+    if let Mode::AlsoNo(b) = &mode {
+        answers.push((&no, b, "no"));
+    }
+    for (ids, e, answer) in answers {
         for i in ids {
-            put.execute(params![i, entity, kind, answer, if answer != "later" { step } else { None }])?;
+            put.execute(params![i, e, kind, answer, if answer != "later" { step } else { None }])?;
         }
     }
     Ok(json!({"action": step}))
+}
+
+/// 卡片可能在另一次裁决或识别刷新后过期，核对原选区上的有向角色对。
+fn require_ambiguous_pair(c: &Connection, ids: &[String], entity: &str, rival: &str) -> Result<()> {
+    let mut stmt = c.prepare_cached("SELECT 1 FROM ambiguous_claims WHERE uuid=? AND entity=? AND rival=?")?;
+    for id in ids {
+        if stmt.query_row(params![id, entity, rival], |_| Ok(())).optional()?.is_none() {
+            return invalid("图片的备选归属已变更，请刷新");
+        }
+    }
+    Ok(())
+}
+
+/// 问答快照存的 `asked` 列：拍快照（`ask_history`）和撤销时放回（`restore_ask_history`）都照这个次序。
+/// 这个次序已经写进图库里的撤销快照，只能在末尾追加列，不能重排或删列，否则旧快照会按错位解释。
+const ASKED_COLUMNS: [&str; 6] = ["uuid", "entity", "kind", "answer", "action_id", "asked_at"];
+
+/// 一步覆盖（图，角色）的问答之前 `asked` 里原来的那一行，包成撤销快照 `{"ask_history": […]}`；没有时为 `None`。
+fn ask_history(c: &Connection, uuid: &str, entity: &str) -> Result<Option<Value>> {
+    let sql = format!("SELECT {} FROM asked WHERE uuid=? AND entity=?", ASKED_COLUMNS.join(","));
+    let row = row_json(c, &sql, &[&uuid, &entity])?;
+    Ok((!row.is_null()).then(|| json!({"ask_history": row})))
+}
+
+/// 撤销时放回 `ask_history` 存下的一行。这一步之后同一对又记下的问答（只会是不进撤销的「以后再说」）保留。
+fn restore_ask_history(c: &Connection, row: &Value) -> Result<()> {
+    let row = row
+        .as_array()
+        .filter(|row| row.len() == ASKED_COLUMNS.len())
+        .ok_or_else(|| Error::invalid("问答快照不完整"))?;
+    let marks = ["?"; ASKED_COLUMNS.len()].join(",");
+    let sql = format!("INSERT OR IGNORE INTO asked({}) VALUES ({marks})", ASKED_COLUMNS.join(","));
+    c.prepare_cached(&sql)?.execute(rusqlite::params_from_iter(row.iter().map(sql_value)))?;
+    Ok(())
 }
 
 fn answer_audit(c: &Connection, args: &Value) -> Result<Value> {
@@ -830,11 +903,14 @@ fn shape(item: &Value) -> Option<&'static str> {
     None
 }
 
-/// 两种角色标记的快照始于 v2 信封，裸列表不认这两种形状。
+/// v2 信封新增的快照形状，裸列表不认。
 fn edit_shape(item: &Value) -> Option<&'static str> {
-    ["character_kind", "character_mascot"].into_iter().find(|key| has_keys(item, &[*key]))
+    ["character_kind", "character_mascot", "ask_history"].into_iter().find(|key| has_keys(item, &[*key]))
 }
 
+/// 撤销一步角色步骤（`args["action"]`），在调用方的事务里执行。它必须是最近一个没撤销的步骤，否则是冲突；
+/// 不归角色核心（见 [`owns`]）或有认不出的快照形状时拒绝。先删掉这一步记下的问答，再按快照恢复：每张图的结论、
+/// 暂缓和身份范围，以及这一步覆盖的旧问答；合并、身份关系、锚点、资料和角色结构交给各自的撤销。
 pub fn undo(c: &Connection, args: &Value) -> Result<Value> {
     let id = args["action"].as_i64().ok_or_else(|| Error::Invalid("步骤 ID 不正确".into()))?;
     let last: Option<i64> =
@@ -880,6 +956,7 @@ pub fn undo(c: &Connection, args: &Value) -> Result<Value> {
                 profile_links_changed |= crate::character_profile::undo(c, &item["profile"])?;
                 profile = true;
             }
+            Some("ask_history") => restore_ask_history(c, &item["ask_history"])?,
             Some("character_kind") => crate::character_structure::undo_kind(c, &item["character_kind"])?,
             Some("character_mascot") => crate::character_structure::undo_mascot(c, &item["character_mascot"])?,
             _ => return invalid("未知或混合撤销形状"),

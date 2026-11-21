@@ -5,7 +5,8 @@ use crate::{
     http_json::Json,
     http_read::{display, flag, python_int, rows, strings, trim, typed_rows},
     sql_fragments::{
-        hybrid, leads, learnable, proto_hints, rating, unasked, unclaimed, unfolded, visible, HINTS, NSFW_RATINGS,
+        hybrid, leads, learnable, proto_hints, rating, unasked, unclaimed, unfolded, visible, ASK_DEFERRED, HINTS,
+        NSFW_RATINGS,
     },
     Error, Result,
 };
@@ -1269,6 +1270,40 @@ fn copies(c: &Connection, id: &str) -> Result<Json> {
     }
     Ok(Json::Array(copies))
 }
+/// 整理队列和活页条计数共用的归属集合。暂缓只影响这一张与当前角色的组合。
+fn ambiguous_queue(seen: &str) -> String {
+    format!(
+        "FROM ambiguous_claims m JOIN assets a ON a.uuid=m.uuid
+         WHERE {seen} AND NOT EXISTS(
+           SELECT 1 FROM asked k WHERE k.uuid=m.uuid AND k.entity=m.entity
+             AND k.kind='ambiguous' AND {ASK_DEFERRED})"
+    )
+}
+/// `/api/ambiguous`：按（A，B）分组的「可能认错」。组按张数从多到少，同张数按 A、B 的 ID；组内新加入的在前，
+/// 同一入库时间按 uuid 升序，和 `/api/assets` 默认的「最新」排序（`a.added_at DESC,a.uuid`）同一个次序。
+fn ambiguous_groups(c: &Connection, nsfw: &str) -> Result<Json> {
+    let seen = format!("{}{}", visible("a"), rating("a", nsfw)?);
+    let queue = ambiguous_queue(&seen);
+    let sql = format!(
+        "SELECT m.entity,entity_name(m.entity) AS name,m.rival,entity_name(m.rival) AS rival_name,
+                count(*) AS count,json_group_array(m.uuid ORDER BY a.added_at DESC,m.uuid) AS ids
+         {queue}
+         GROUP BY m.entity,m.rival
+         ORDER BY count DESC,m.entity,m.rival"
+    );
+    let groups: Vec<_> = rows(c, &sql, &[])?
+        .into_iter()
+        .map(|row| {
+            Ok(Json::object([
+                ("a", Json::object([("id", get(&row, "entity")), ("name", get(&row, "name"))])),
+                ("b", Json::object([("id", get(&row, "rival")), ("name", get(&row, "rival_name"))])),
+                ("count", get(&row, "count")),
+                ("items", crate::http_json::parse_python(row.field("ids").text())?),
+            ]))
+        })
+        .collect::<Result<_>>()?;
+    Ok(Json::object([("groups", Json::Array(groups))]))
+}
 fn pools(c: &Connection, nsfw: &str) -> Result<Json> {
     let r = rating("a", nsfw)?;
     let seen = format!("{}{r}", visible("a"));
@@ -1305,6 +1340,7 @@ fn pools(c: &Connection, nsfw: &str) -> Result<Json> {
     );
     let pending = count(c, &pending, &[])?;
     let audit = count(c, &format!("SELECT count(*) FROM assets a WHERE {} AND {seen}", audit_open("a")), &[])?;
+    let ambiguous = count(c, &format!("SELECT count(*) {}", ambiguous_queue(&seen)), &[])?;
     let basic = |kind: &str, name: &str, n: Json, cover: Json| {
         Json::object([("kind", kind.into()), ("name", name.into()), ("count", n), ("cover", cover)])
     };
@@ -1329,6 +1365,7 @@ fn pools(c: &Connection, nsfw: &str) -> Result<Json> {
         basic("pending", "待确认", pending.into(), null()),
         basic("recent", "新加入", recent.into(), null()),
         basic("audit", "随机抽查", audit.into(), null()),
+        basic("ambiguous", "可能认错", ambiguous.into(), null()),
     ]))
 }
 fn home(c: &Connection, context: &LibraryContext, q: &HashMap<String, String>) -> Result<Json> {
@@ -1541,6 +1578,7 @@ pub fn read(c: &Connection, context: &LibraryContext, path: &str, q: &HashMap<St
             Json::object([("kinds", kinds)])
         }
         "/api/review-pools" => pools(c, value(q, "nsfw"))?,
+        "/api/ambiguous" => ambiguous_groups(c, value(q, "nsfw"))?,
         "/api/galleries" => crate::app_galleries::read(c, value(q, "nsfw"))?,
         "/api/galleries/covers" => crate::app_galleries::covers(c, context, value(q, "nsfw"), value(q, "ids"))?,
         "/api/detail" => {

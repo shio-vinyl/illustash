@@ -14,7 +14,7 @@ WD 证据由 `native/terms/src/app_migrate.rs` 的 `deliver_wd` 从 source.sqlit
 
 ## 2. 视图与写路径
 
-- `asset_tags`、`general_hits`、`asset_rating` 是核心之上同名同形的视图（`crates/core/src/legacy_labels.rs` 的 `VIEWS`），浏览和角色判定 SQL 照旧按这三个名字读；视图 join `assets`，图移除后自动消失。它们不是物理表，不能当作已退役的表删掉（[TERMS_SCHEMA.md](TERMS_SCHEMA.md) 第 13 节）。SQLite 不能给视图建索引。
+- `asset_tags`、`general_hits`、`asset_rating` 是核心之上同名同形的视图（`crates/core/src/legacy_labels.rs` 的 `VIEWS`），由浏览筛选和角色判定读取。视图连接 `assets`，图库移除图片后相应结果随之消失。分页补用户标签时，只读取当前页的有效裁决，见[性能参考](TERMS_PERFORMANCE.md#普通图库分页与计数)。视图的兼容用途见 [TERMS_SCHEMA.md](TERMS_SCHEMA.md) 第 13 节。
 - 用户标签：`POST /api/tag`（`native/terms/src/app_commands.rs`）解析目标（含重复组扩展），按名字找到或新建用户概念（`legacy_labels::concept_by_name`），写裁决和一步 `actions`；文案不变。撤销：核心自己的步骤和切换前的 `{uuid, tag, had}` 旧步骤都由核心撤（归属规则见 [TERMS_SCHEMA.md](TERMS_SCHEMA.md) 第 4 节）。
 - 同步和识别导入新图：先把新图的 WD 结果交给核心（`--new-assets` 语义：图还没进应用库 `assets` 也先登记，见 [EVIDENCE_PACKAGES.md](EVIDENCE_PACKAGES.md) 第 2 节），再在应用事务里重算单人图、线索图和角色归属，通过视图已能看到新图。
 

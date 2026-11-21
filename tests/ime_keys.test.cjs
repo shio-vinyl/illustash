@@ -76,6 +76,7 @@ test('全局快捷键：组字时不触发；普通按键照常', () => {
   const handlers = [];
   page.document.addEventListener = (type, fn) => { if (type === 'keydown') handlers.push(fn); };
   const searchBox = page.el('search');
+  page.document.querySelector = sel => sel === '#toolbar input[type=search]' ? searchBox : null;
   let focused = 0;
   searchBox.focus = () => { focused++; };
   grid.wireGrid();

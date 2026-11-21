@@ -27,6 +27,9 @@ pub(crate) fn request(c: &mut Connection, context: &LibraryContext, path: &str, 
             args[key] = if character_commands::truthy(&input[key]) { input[key].clone() } else { json!([]) };
         }
         args["kind"] = input.get("kind").cloned().unwrap_or(json!("seed"));
+        if op == "answer" {
+            args["also_no"] = argument(body.get("also_no"));
+        }
     }
     if op == "reassign" {
         args["old_entity"] = input["old"].clone();

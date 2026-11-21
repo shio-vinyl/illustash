@@ -72,7 +72,7 @@ button.chip:hover,a.chip:hover{background:var(--chip-hover);color:var(--ink)}
    右边是全局的控件组；下面是 #toolbar（.page-tools），空的时候藏起来 */
 .content>.page-head{flex:none;align-items:center;gap:var(--space-12);padding:var(--space-20) 0 var(--space-12)}
 .page-head>.page-heading{display:flex;flex:1;align-items:center;flex-wrap:wrap;gap:var(--space-12);min-width:0}
-.page-head .page-sub:empty{display:none}
+.page-head .page-sub:empty,.page-head .title-page:empty{display:none}
 /* 窄的时候标题截成一行加省略号，不被挤成一个字一行 */
 .page-heading>.heading-main{min-width:0}
 .page-heading .title-page{overflow:hidden;white-space:nowrap;text-overflow:ellipsis;overflow-wrap:normal}
@@ -86,6 +86,7 @@ body.handed-off{-webkit-user-select:none;user-select:none}
 .empty-state>.empty-icon{display:grid;place-items:center;width:96px;height:96px;margin-bottom:6px;border-radius:var(--radius-round);background:var(--soft);color:var(--muted)}
 .empty-icon>svg{width:42px;height:42px;fill:none;stroke:currentColor;stroke-width:1.3;stroke-linecap:round;stroke-linejoin:round}
 .empty-state>.empty-fact{max-width:420px;margin:0;color:var(--ink);font-size:var(--fs-20);font-weight:var(--fw-750);letter-spacing:-.02em;line-height:1.3}
+.empty-state>.empty-note{max-width:420px;margin:0;color:var(--muted);font-size:var(--fs-13)}
 
 /* ---- 海报：满版图 + 渐变压暗 + 白字。读图之前是图的主色（--tint-soft） ---- */
 .poster{position:relative;display:block;overflow:hidden;isolation:isolate;aspect-ratio:3/4;border-radius:var(--radius-12);background:var(--tint-soft);color:var(--on-image);

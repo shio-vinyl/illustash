@@ -59,30 +59,30 @@ test('responses after navigating away update cached data without repainting', as
   assert.equal(renders.length, 0);
 });
 
-// 资料库 · 作品（#198）：作品树取代设置页的作品表。书架在 ui/catalog.js。
-async function shelfHarness(works, watch = []) {
-  const root = {className: '', innerHTML: '', querySelectorAll: () => [], setAttribute() {}, addEventListener() {}};
-  const catalog = await web.load('ui/catalog.js'), {state} = web.core();
-  Object.assign(state, {route: {page: 'characters', section: 'works'}, chars: [{work_id: 'a'}, {work_id: 'a'}, {work_id: 'b'}],
-    index: {works, watch: {works: watch, pending_tags: []}, check: {missing: [{copyright: 'tag_a'}]}}});
-  globalThis.document = {getElementById: () => root, activeElement: null};
-  return {c: catalog, root};
-}
-test('work tree lists children under their parent, with counts and the watch switch', async () => {
+// 资料库 · 作品（#198，#711 改成作品卡）：作品树取代设置页的作品表。作品页签在 ui/works_tab.js。
+test('work cards follow the work tree, children under their parent, with counts, the watch switch and one notice', async () => {
+  const {worksView, worksFilter: shelf} = await web.load('ui/works_tab.js'), scopes = await web.load('ui/scope.js'), {state} = web.core();
+  web.fakePage();
   const works = [{id: 'b', name: 'child', parent_id: 'a', count: 1, watchable: false},
     {id: 'a', name: 'parent', parent_id: null, count: 9, tag: 'tag_a', watchable: true},
     {id: 'c', name: 'orphan', parent_id: 'gone', count: 3, status: 'pending', watchable: false}];
-  const {c, root} = await shelfHarness(works, ['a']);
-  c.drawShelf();
-  const html = root.innerHTML, order = ['parent', 'child', 'orphan'].map(n => html.indexOf(`<b>${n}</b>`));
-  assert.deepEqual([...order].sort((x, y) => x - y), order);
-  assert.match(html, /style="--depth:1"[^]*<b>child<\/b>/);
-  assert.match(html, /data-watch="a" checked/);
-  assert.match(html, /data-watch="b"\s+disabled/);
-  assert.match(html, /\+1 个新角色/);
-  assert.match(html, /链接待确认/);
-  c.shelf.filter = 'watched'; c.drawShelf();
-  assert.ok(root.innerHTML.includes('<b>parent</b>') && !root.innerHTML.includes('<b>child</b>'));
+  Object.assign(state, {route: {page: 'characters', section: 'works'}, workTree: [],
+    chars: [{id: 'x', name: 'x', work_id: 'a', count: 2}, {id: 'y', name: 'y', work_id: 'a', count: 1}, {id: 'z', name: 'z', work_id: 'b', count: 1}],
+    index: {works, watch: {works: ['a'], pending_tags: []}, check: {missing: [{copyright: 'tag_a'}]}}});
+  Object.assign(shelf, {q: '', filter: 'all'});
+  const view = worksView(scopes.scope('works'), {open() {}});
+  view.update();
+  const cards = () => view.el.querySelectorAll('.cat-work');
+  assert.deepEqual(cards().map(c => c.querySelector('.cat-work-name').textContent), ['parent', 'child', 'orphan']);
+  assert.equal(cards()[0].querySelector('small').textContent, '2 位角色 · 9 张');
+  assert.equal(cards()[0].querySelector('.cat-watch').firstChild.checked, true);
+  assert.equal(cards()[1].querySelector('.cat-watch').firstChild.checked, false);
+  const notice = view.el.querySelector('.cat-notice');
+  assert.equal(notice.hidden, false);
+  assert.match(notice.textContent, /1 部作品的 Danbooru 链接待确认/);
+  assert.match(notice.textContent, /上次检查发现 1 个还没收录的角色/);
+  shelf.filter = 'watched'; view.update();
+  assert.deepEqual(cards().map(c => c.querySelector('.cat-work-name').textContent), ['parent']);
 });
 
 // 索引的轮询在 core/jobs.js；它在任务面板之外重画什么，由 ui/effects.js 的 afterJob() 决定（接法与 app.js 相同）：

@@ -94,6 +94,9 @@ const list = [
         : conditions(r).includes(`gallery:${r.id}`) ? t('这个画廊还没有图。把图拖到活页条上的画廊封面，或者在选择栏里点「放进画廊…」。') : libraryBase.empty(r, ctx)},
   {name: 'showcase', prefix: 'showcase', area: 'groupsPage', panel: true, keys: 'shown', click: 'own', entry: 'galleries', toolbar: 'none', emptyIcon: 'gallery', stage: true},
   {name: 'characters', sections: true, area: 'charIndex', panel: true, click: 'own', entry: 'catalog', toolbar: 'index', directory: true, guideTick: 'look', emptyIcon: 'person'},
+  // 作品页（#711）：#/w/<作品键>，从资料库的作品卡、活页条钉住的作品进来；和资料库共用主区。原创角色、未归作品（oc、other）也有这一页，
+  // 只是没有关注、钉住和编辑。
+  {name: 'work', prefix: 'w', area: 'charIndex', panel: true, click: 'own', entry: 'catalog', toolbar: 'none', directory: true, emptyIcon: 'person'},
   {name: 'settings', sections: true, area: 'settingsPage', panel: true, click: 'own', entry: 'settings', toolbar: 'none'},
   // 整理（#706）：未识别、可能认错（#787）、重复、已排除四个页签（tabs 是页签组），随机抽查、身份整理有题时出现在二级层。各页签原来的子页保留。
   {name: 'unmatched', sortPref: 'sortUnmatched', area: 'grid', panel: false, click: 'cleanup', entry: 'tidy', item: 'unmatched', lead: true, tabs: 'unmatched', tab: 'all',
@@ -172,6 +175,8 @@ export const poolIs = (route, ...pools) => pools.includes(pageOf(route).pool);
 //   prepare(route)       进入本页前要先读的数据；返回 false 表示已经导航走了
 //   head(r, {n})         页头：{title, sub?, alert?, actions?}。title、sub、alert 是纯文字（shell 用 ui/el.js 写），actions 是这一页的按钮节点
 //                        （处理函数直接挂在节点上）。sub 只放数量和状态，alert 是必须一眼看到的警告（加粗，接在 sub 后面）
+//   switches(r)          页头里的分段切换（框架画，链接写法的 .seg）：{label, list: [{label, href, on, n?}]}；资料库的三个页签用它（#711）
+//   tools(r)             工具栏是 'index' 的页面：这一页自己建好的工具栏节点（建一次，换页签时换一个），框架只放进 #toolbar（#711）
 //   headingHTML(r, ctx)  旧写法（存量）：[标题, 副标题, 右侧链接 HTML]，拼进 innerHTML。各页步骤改到哪页就迁到 head；角色页、画廊页、
 //                        「更多像这张的」另用 drawHeading 自己画整个页头（也是存量）
 //   wireHeading(h, r)    headingHTML 画好之后给右侧的按钮挂上处理函数（旧写法；整理页 #713 之后没有页面再用，ui/shell.js 里的钩子待删）

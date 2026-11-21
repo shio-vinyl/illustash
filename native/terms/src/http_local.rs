@@ -4,14 +4,12 @@ use crate::{
     http::LibraryContext,
     http_json::Json,
     http_read::{display, rows},
-    sql_fragments::{learnable, proto_hints, rating, unasked, unrejected, visible, HINTS},
+    sql_fragments::{learnable, proto_hints, rating, unasked, unrejected, visible, ASK_DEFERRED, HINTS},
     Error, Result,
 };
 use rusqlite::{Connection, OpenFlags};
 use std::collections::HashMap;
 pub(crate) const ROUTES: &[&str] = &["/api/ask", "/api/similar", "/api/clusters"];
-/// 最近一周内用户要求以后再问的身份。
-const REST: &str = "SELECT DISTINCT entity FROM asked WHERE answer='later' AND asked_at>=datetime('now','-7 days')";
 fn get<'a>(q: &'a HashMap<String, String>, k: &str) -> &'a str {
     q.get(k).map(String::as_str).unwrap_or("")
 }
@@ -57,12 +55,13 @@ fn ask(c: &Connection, nsfw: &str, skip: &[&str]) -> Result<Json> {
     }
     let seen = format!("{}{}", visible("m"), rating("m", nsfw)?);
     let hints = proto_hints("w.uuid,w.entity,w.score");
+    let rest = format!("SELECT DISTINCT entity FROM asked WHERE {ASK_DEFERRED}");
     let wanted = |r: &Json| !skip.contains(&r.field("entity").text());
     let counted = format!(
         "SELECT h.entity,count(*) AS n
          FROM ({hints}) h
          JOIN assets m ON m.uuid=h.uuid
-         WHERE {seen} AND h.entity NOT IN ({REST})
+         WHERE {seen} AND h.entity NOT IN ({rest})
          GROUP BY h.entity
          HAVING n>=2
          ORDER BY n DESC"
@@ -76,7 +75,7 @@ fn ask(c: &Connection, nsfw: &str, skip: &[&str]) -> Result<Json> {
                (SELECT count(*) FROM memberships x WHERE x.entity=m.entity AND x.status='confirmed') AS conf
              FROM memberships m
              JOIN single_assets o ON o.uuid=m.uuid
-             WHERE m.status='machine' AND {seen} AND {unasked} AND {learnable} AND m.entity NOT IN ({REST})
+             WHERE m.status='machine' AND {seen} AND {unasked} AND {learnable} AND m.entity NOT IN ({rest})
              GROUP BY m.entity
              HAVING n>=2",
             unasked = unasked("m"),

@@ -12,8 +12,6 @@ import {queues, railAt, viewRoute} from '../core/rail.js';
 import {canGoBack, cleanup, defaultSort, go, hashFor, historyEntry, noteHistory, parseHash, reRoute, replaceRoute, setRoute, sortKey, stepHistory} from '../core/route.js';
 import {readError} from '../core/session.js';
 import {state} from '../core/state.js';
-import {cast, createWork, drawCast, drawShelf, openTagged, searchIndex, shelf} from './catalog.js';
-import {dirDrawn, dirToolbar, onDir, wireDirToolbar} from './artist_dir.js';
 import {$, error, helpTip, searchIcon, showArea, wireHelpTip, workSmall} from './dom.js';
 import {attr, make, show, text, tpl} from './el.js';
 import {closeInspector} from './detail.js';
@@ -107,6 +105,7 @@ function drawHead(h, {title = '', sub = '', alert = '', actions: buttons = []} =
 // 图库三种视图之间、整理四个页签之间的分段切换。是链接（换地址），选中的那个 aria-current。图库的切换只在活页条落在「图库」时画
 // （收藏、作品页虽然也是网格，活页条在画廊、资料库下，没有这个切换）。
 function switches(r, view) {
+  if (view.switches) return view.switches(r);   // 页面自己声明的分段切换（资料库的三个页签，#711）
   if (view.view && railAt(r).entry === 'library') {
     const label = {days: t('按天'), grid: t('网格'), calendar: t('日历')};
     return {label: t('视图'), list: ['days', 'grid', 'calendar'].map(v => ({label: label[v], href: hashFor(viewRoute(r, v)), on: view.view === v}))};
@@ -184,7 +183,8 @@ export function renderChrome() {
   bar.hidden = view.toolbar === 'none';
   if (view.toolbar === 'none') { bar.replaceChildren(); return; }
   if (view.toolbar === 'tabs') { bar.innerHTML = tabs; return; }
-  if (view.toolbar === 'index') { indexToolbar(r, bar); return; }
+  // 资料库（#711）：工具栏上的节点由页面自己建一次（ui/catalog_page.js 的 tools），这里只放进来。
+  if (view.toolbar === 'index') { bar.replaceChildren(view.tools?.(r) || ''); return; }
   // 按天、日历（'filters'）：只有搜索框和筛选条（三种视图共用筛选，#703 第 2 问），没有排序、选择和显示方式。
   const filtersOnly = view.toolbar === 'filters';
   const tagPage = !!(r.char && state.char?.mascot);
@@ -232,23 +232,6 @@ function wireSearch(r) {
     railRoute(state.route);
   }, 250);
 }
-// 资料库的工具栏：「角色」「画师」用来浏览，「作品」用来管理；各自搜索自己的列表。画师的工具栏在 ui/artist_dir.js（#448）。
-// 资料库那一步（#711）会把它挪进 ui/catalog.js。
-function indexToolbar(r, bar) {
-  const works = r.section === 'works';
-  const views = `<div class="segmented lib-views" role="tablist" aria-label="${t('资料库')}">${[['', t('角色')], ['works', t('作品')], ['artists', t('画师')]].map(([v, label]) => `<a role="tab" href="#/characters${v ? '/' + v : ''}" class="${(r.section || '') === v ? 'on' : ''}" aria-selected="${(r.section || '') === v}">${label}</a>`).join('')}</div>`;
-  if (r.section === 'artists') { bar.innerHTML = views + dirToolbar(); wireDirToolbar(); return; }
-  bar.innerHTML = views + `<div class="search-wrap wide">${searchIcon()}<input type="search" id="charSearch" spellcheck="false" autocorrect="off" autocapitalize="off" value="${esc(works ? shelf.q : '')}" placeholder="${works ? t('搜索作品') : t('搜索角色或作品')}" aria-label="${works ? t('搜索作品') : t('搜索角色')}"></div><div class="spacer"></div>` +
-    (works ? `<button class="quiet" id="newWork">${t('新建作品')}</button>` : `<button class="quiet" id="taggedButton" title="${t('不算角色、只当标签的吉祥物和玩家化身')}">${t('只当标签')}${state.tagged?.length ? ` <small>${number(state.tagged.length)}</small>` : ''}</button><div class="segmented" id="charMode">${[['shelf', t('书架')], ['list', t('列表')]].map(([v, label]) => `<button data-mode="${v}" class="${cast.mode === v ? 'on' : ''}">${label}</button>`).join('')}</div>`);
-  if (works) {
-    onTyped($('charSearch'), e => { shelf.q = e.target.value; drawShelf(); });
-    $('newWork').onclick = createWork;
-    return;
-  }
-  onTyped($('charSearch'), searchIndex, 200);
-  $('taggedButton').onclick = openTagged;
-  for (const b of $('charMode').children) b.onclick = () => { cast.mode = b.dataset.mode; prefs.set('castMode', cast.mode); for (const x of $('charMode').children) x.classList.toggle('on', x === b); drawCast(); };
-}
 const FIT_ICONS = {
   square: '<svg viewBox="0 0 20 20" aria-hidden="true"><rect x="3" y="3" width="6" height="6" rx="1.5"/><rect x="11" y="3" width="6" height="6" rx="1.5"/><rect x="3" y="11" width="6" height="6" rx="1.5"/><rect x="11" y="11" width="6" height="6" rx="1.5"/></svg>',
   fit: '<svg viewBox="0 0 20 20" aria-hidden="true"><rect x="2.5" y="3.5" width="9" height="5.5" rx="1.5"/><rect x="13" y="3.5" width="4.5" height="5.5" rx="1.5"/><rect x="2.5" y="11" width="4.5" height="5.5" rx="1.5"/><rect x="8.5" y="11" width="9" height="5.5" rx="1.5"/></svg>',
@@ -258,7 +241,6 @@ const FIT_ICONS = {
 export function wireShell() {
   onMeta(metaShown);
   wireGalleries();
-  dirDrawn.on(() => { if (onDir(state.route)) renderHeading(); });
   // 后退（#526）：标题左边的「‹」（只在能后退时显示）、Alt+← 或 ⌘[（键盘处理在 ui/grid.js）、鼠标侧键，都走
   // core/route.js 的 stepHistory，只在这个图库的页面之间走。鼠标侧键在 mouseup 时拦下浏览器自己的后退，否则
   // 它会退出图库页面。

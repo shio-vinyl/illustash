@@ -53,6 +53,17 @@ def fixed_values(name):
     return values
 
 
+def with_ambiguous_pool(url, response):
+    """#786：这些合成图库没有可能认错的图，在旧响应末尾精确追加这一个池。"""
+    if url.split('?', 1)[0] != '/api/review-pools' or response['status'] != 200:
+        return response
+    pool = {'kind': 'ambiguous', 'name': '可能认错', 'count': 0, 'cover': None}
+    body = response['body']
+    assert body.endswith(b']')
+    body = body[:-1] + b', ' + json.dumps(pool, ensure_ascii=False).encode() + b']'
+    return {**response, 'body': body, 'headers': {**response['headers'], 'Content-Length': str(len(body))}}
+
+
 def unclocked(value):
     """把 str 或 bytes 里形似时钟的文本遮盖掉。"""
     if isinstance(value, str):

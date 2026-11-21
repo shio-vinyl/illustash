@@ -80,13 +80,15 @@ export function virtual(viewport, content, {create, margin = 1, scope: parent = 
       if (!byKey.has(key)) unmount(key, entry);
       else if (!keep.has(byKey.get(key)) && !focusedIn(entry.comp.el)) unmount(key, entry);
     }
+    let placed = null;   // 已挂节点按序号排好的表：这一轮第一次要挂新节点时才建
     for (const k of [...want].sort((a, b) => a - b)) {
       const box = boxes[k];
       let entry = mounted.get(box.key);
       if (!entry) {
+        placed ||= order();
         const comp = create(box);
         comp.el.style.position = 'absolute'; comp.el.style.left = '0px'; comp.el.style.top = '0px';
-        entry = {comp, box: null}; mounted.set(box.key, entry); content.insertBefore(comp.el, after(k));
+        entry = {comp, box: null}; mounted.set(box.key, entry); content.insertBefore(comp.el, after(placed, k));
       } else if (entry.box !== box) entry.comp.update?.(box);
       if (entry.box !== box) position(entry.comp.el, box, entry.box);
       entry.box = box;
@@ -98,14 +100,21 @@ export function virtual(viewport, content, {create, margin = 1, scope: parent = 
     }
   }
 
-  // 第 k 个框的节点该插在谁前面：已挂节点里框的序号比 k 大的、最小的那个。
-  function after(k) {
-    let best = null, at = Infinity;
+  // 新节点插在谁前面：已挂节点里框的序号比 k 大的、最小的那个（#751：二分查找，不每挂一个都把已挂的扫一遍）。
+  // order() 在这一轮挂第一个新节点之前，把已挂、还在 content 里的节点按框的序号排好：[[序号, 节点], …]。这一轮按序号从小
+  // 往大挂，新挂的序号都比后面要挂的小，不会是后面那些的答案，所以这张表这一轮里不用更新。
+  function order() {
+    const list = [];
     for (const [key, entry] of mounted) {
       const j = byKey.get(key);
-      if (j > k && j < at && entry.comp.el.parentNode === content) { at = j; best = entry.comp.el; }
+      if (j !== undefined && entry.comp.el.parentNode === content) list.push([j, entry.comp.el]);
     }
-    return best;
+    return list.sort((a, b) => a[0] - b[0]);
+  }
+  function after(list, k) {
+    let lo = 0, hi = list.length;
+    while (lo < hi) { const mid = (lo + hi) >> 1; if (list[mid][0] > k) hi = mid; else lo = mid + 1; }
+    return list[lo]?.[1] ?? null;
   }
 
   function position(el, box, before) {

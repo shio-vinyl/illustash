@@ -9,13 +9,11 @@ const BINARY: &str = env!("CARGO_BIN_EXE_illustash-terms");
 
 fn cli(root: &Path, args: &[&str], path: &Path, input: Option<&Value>) -> Value {
     use std::io::Write;
-    let mut child = isolated_command(root, Path::new(BINARY))
-        .args(args)
-        .arg(path)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .spawn()
-        .unwrap();
+    let mut command = isolated_command(root, Path::new(BINARY));
+    if args.first() == Some(&"library-scan") {
+        command.env("ILLUSTASH_SYNC_TIMING", "1");
+    }
+    let mut child = command.args(args).arg(path).stdin(Stdio::piped()).stdout(Stdio::piped()).spawn().unwrap();
     if let Some(value) = input {
         child.stdin.take().unwrap().write_all(value.to_string().as_bytes()).unwrap();
     }
@@ -179,8 +177,7 @@ fn benchmark() {
     if cfg!(debug_assertions) {
         panic!("需用 release 编译");
     }
-    let size: usize = std::env::var("ILLUSTASH_BENCH_IMAGES").unwrap_or_else(|_| "100000".into()).parse().unwrap();
-    assert!(size >= 100);
+    let size = size();
     let (_sandbox, root, _) = materialize(&json!({"input":{}}), "scale");
     let (package, photos) = seed(&root, size);
     let (host, origin, token) =
@@ -217,9 +214,60 @@ fn benchmark() {
         cli(&root, &["names-project", "--db"], &package.join("library.sqlite"), None)
     });
     assert!(names["shown"].as_u64().unwrap() > 0, "{names}");
-    for (metric, delta) in [("sync_unchanged", 0), ("sync_added", NEW)] {
+    bench_sync(size, &package, &photos, "sync", |delta| {
+        let result = cli(&root, &["library-scan", "--library"], &package, None);
+        assert_eq!(result, json!({"added":delta,"removed":0,"pending":0}));
+    });
+}
+
+fn size() -> usize {
+    let size: usize = std::env::var("ILLUSTASH_BENCH_IMAGES").unwrap_or_else(|_| "100000".into()).parse().unwrap();
+    assert!(size >= 100);
+    size
+}
+
+#[test]
+#[ignore = "显式运行已打开图库的 HTTP 同步基准"]
+fn sync_http() {
+    if cfg!(debug_assertions) {
+        panic!("需用 release 编译");
+    }
+    let size = size();
+    let (_sandbox, root, _) = materialize(&json!({"input":{}}), "scale_sync");
+    let (package, photos) = seed(&root, size);
+    let (_host, origin, token) = launch(&root, &package, "scale_sync", false, Path::new(BINARY));
+    let sync = |body: Option<&Value>| {
+        let (status, value, _) = request_json(&origin, "/api/sync", body, &token);
+        assert_eq!(status, 200, "{value}");
+        value
+    };
+    bench_sync(size, &package, &photos, "sync_http", |delta| {
+        assert_eq!(sync(Some(&json!({})))["started"], true);
+        let start = Instant::now();
+        loop {
+            let status = sync(None);
+            let state = &status["state"];
+            match state["status"].as_str().unwrap() {
+                "scanning" | "importing" | "recognizing" => {}
+                "done" => {
+                    assert_eq!(state["found"], delta);
+                    assert_eq!(state["imported"], delta);
+                    assert_eq!(state["removed"], 0);
+                    assert_eq!(state["total"], 0);
+                    break;
+                }
+                _ => panic!("{status}"),
+            }
+            assert!(start.elapsed() < wait::limit(), "sync timeout: {status}");
+            thread::sleep(Duration::from_millis(50));
+        }
+    });
+}
+
+fn bench_sync(size: usize, package: &Path, photos: &Path, name: &str, run: impl Fn(usize)) {
+    for (metric, delta) in [("unchanged", 0), ("added", NEW)] {
         if delta > 0 {
-            add_photos(&photos, size + 1, size + NEW);
+            add_photos(photos, size + 1, size + NEW);
             let c = Connection::open(package.join("source.sqlite")).unwrap();
             // 模拟已有识别结果的新增照片，使同步测到接收和投影，绕开模型推理吞吐。
             for i in size + 1..=size + NEW {
@@ -230,8 +278,7 @@ fn benchmark() {
                 .unwrap();
             }
         }
-        let result = measured(size, metric, 1, || cli(&root, &["library-scan", "--library"], &package, None));
-        assert_eq!(result, json!({"added":delta,"removed":0,"pending":0}));
+        measured(size, &format!("{name}_{metric}"), 1, || run(delta));
         let c = Connection::open(package.join("library.sqlite")).unwrap();
         let counts: (usize, usize, String) = c
             .query_row("SELECT found,imported,status FROM sync_runs ORDER BY id DESC LIMIT 1", [], |r| {

@@ -72,26 +72,7 @@ pub(crate) fn duplicates(c: &Connection, src: &Connection, assets: &[Value]) -> 
     let mut shape = HashMap::new();
     for r in assets {
         let id = r[0].as_str().ok_or_else(|| Error::Schema("无效资产 id".into()))?;
-        shape.insert(
-            id.to_owned(),
-            (r[5].as_str().unwrap_or("").to_owned(), r[3].as_i64().unwrap_or(0) * r[4].as_i64().unwrap_or(0)),
-        );
-    }
-    let mut groups = Groups::default();
-    let mut first = HashMap::<String, String>::new();
-    let mut hashes = HashMap::<String, String>::new();
-    if src.prepare("SELECT stable_hash FROM assets LIMIT 0").is_ok() {
-        for r in rows(src, "SELECT uuid,stable_hash FROM assets WHERE coalesce(stable_hash,'')<>''")? {
-            let (u, key) = (
-                r[0].as_str().expect("validated internal text field"),
-                r[1].as_str().expect("validated internal text field"),
-            );
-            if shape.contains_key(u) {
-                hashes.insert(u.into(), key.into());
-                let prev = first.entry(key.into()).or_insert_with(|| u.into());
-                groups.join(u, prev);
-            }
-        }
+        shape.insert(id, (r[5].as_str().unwrap_or(""), r[3].as_i64().unwrap_or(0) * r[4].as_i64().unwrap_or(0)));
     }
     let kinds: Option<String> =
         c.query_row("SELECT value FROM prefs WHERE key='fold_kinds'", [], |r| r.get(0)).optional()?;
@@ -99,14 +80,49 @@ pub(crate) fn duplicates(c: &Connection, src: &Connection, assets: &[Value]) -> 
         Some(k) => serde_json::from_str(&k).map_err(|e| Error::Invalid(e.to_string()))?,
         None => json!(["identical", "duplicate"]),
     };
+    let mut linked = HashSet::new();
+    let mut edges = Vec::new();
     for r in rows(c, "SELECT a,b,kind FROM relations")? {
         let (a, b) = (
             r[0].as_str().expect("validated internal text field"),
             r[1].as_str().expect("validated internal text field"),
         );
-        if kinds.as_array().is_some_and(|k| k.contains(&r[2])) && shape.contains_key(a) && shape.contains_key(b) {
-            groups.join(a, b);
+        if !kinds.as_array().is_some_and(|k| k.contains(&r[2])) {
+            continue;
         }
+        if let (Some((&a, _)), Some((&b, _))) = (shape.get_key_value(a), shape.get_key_value(b)) {
+            edges.push((a, b));
+            linked.extend([a, b]);
+        }
+    }
+    let mut source_hashes = Vec::new();
+    if src.prepare("SELECT stable_hash FROM assets LIMIT 0").is_ok() {
+        let mut query = src.prepare("SELECT uuid,stable_hash FROM assets WHERE coalesce(stable_hash,'')<>''")?;
+        let mut rows = query.query([])?;
+        while let Some(row) = rows.next()? {
+            let id: String = row.get(0)?;
+            if let Some((&id, _)) = shape.get_key_value(id.as_str()) {
+                source_hashes.push((id, row.get::<_, String>(1)?));
+            }
+        }
+    }
+    let mut first = HashMap::new();
+    for (id, key) in &source_hashes {
+        let (first_id, repeated) = first.entry(key.as_str()).or_insert((*id, false));
+        *repeated |= *id != *first_id;
+    }
+    let mut groups = Groups::default();
+    let mut hashes = HashMap::new();
+    // 孤立且哈希唯一的图片不会形成副本组。仍按源库行顺序加入其余图片，维持分组的插入次序。
+    for (id, key) in &source_hashes {
+        let (first_id, repeated) = first[key.as_str()];
+        if repeated || linked.contains(id) {
+            groups.join(id, first_id);
+            hashes.insert(*id, key.as_str());
+        }
+    }
+    for (a, b) in edges {
+        groups.join(a, b);
     }
     let mut out = Vec::new();
     for mut g in groups.grouped() {
@@ -115,24 +131,27 @@ pub(crate) fn duplicates(c: &Connection, src: &Connection, assets: &[Value]) -> 
         }
         let key = g
             .iter()
-            .filter_map(|u| hashes.get(u))
+            .filter_map(|u| hashes.get(u.as_str()))
             .min()
-            .cloned()
+            .map(|key| (*key).to_owned())
             .unwrap_or_else(|| format!("sim:{}", g.iter().min().expect("app_migrate_data internal invariant")));
-        g.sort_by_key(|u| (shape[u].0.clone(), u.clone()));
+        g.sort_by(|a, b| (shape[a.as_str()].0, a).cmp(&(shape[b.as_str()].0, b)));
         let rep = g
             .iter()
-            .min_by_key(|u| (-shape[*u].1, shape[*u].0.clone(), (*u).clone()))
-            .expect("app_migrate_data internal invariant")
-            .clone();
+            .min_by(|a, b| {
+                let (a_stamp, a_area) = shape[a.as_str()];
+                let (b_stamp, b_area) = shape[b.as_str()];
+                (-a_area, a_stamp, a).cmp(&(-b_area, b_stamp, b))
+            })
+            .expect("app_migrate_data internal invariant");
         for (pos, u) in g.iter().enumerate() {
             out.push(json!([
                 u,
                 key,
                 g.len(),
                 pos + 1,
-                shape[g.last().expect("app_migrate_data internal invariant")].0,
-                u == &rep
+                shape[g.last().expect("app_migrate_data internal invariant").as_str()].0,
+                u == rep
             ]));
         }
     }
@@ -173,4 +192,47 @@ pub(crate) fn early_groups(c: &Connection, src: &Connection) -> Result<()> {
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn duplicate_groups_keep_order_and_keys_from_hashes_and_relations() -> Result<()> {
+        let app = Connection::open_in_memory()?;
+        app.execute_batch(
+            "CREATE TABLE prefs(key TEXT,value TEXT);
+             CREATE TABLE relations(a TEXT,b TEXT,kind TEXT);
+             INSERT INTO relations VALUES ('b','c','duplicate'), ('d','e','duplicate'),
+                 ('f','a','crop'), ('b','absent','identical');",
+        )?;
+        let src = Connection::open_in_memory()?;
+        src.execute_batch(
+            "CREATE TABLE assets(uuid TEXT,stable_hash TEXT);
+             INSERT INTO assets VALUES ('f','01'), ('c','02'), ('a','09'), ('b','09'), ('absent','00');",
+        )?;
+        let assets = [
+            json!(["a", null, null, 4, 4, "2026-01", null]),
+            json!(["b", null, null, 4, 4, "2026-02", null]),
+            json!(["c", null, null, 5, 5, "2026-01", null]),
+            json!(["d", null, null, 4, 4, "2026-02", null]),
+            json!(["e", null, null, 4, 4, "2026-01", null]),
+            json!(["f", null, null, 4, 4, "2026-01", null]),
+        ];
+        let only_relations =
+            [json!(["e", "sim:d", 2, 1, "2026-02", true]), json!(["d", "sim:d", 2, 2, "2026-02", false])];
+        assert_eq!(
+            duplicates(&app, &src, &assets)?,
+            [
+                json!(["a", "02", 3, 1, "2026-02", false]),
+                json!(["c", "02", 3, 2, "2026-02", true]),
+                json!(["b", "02", 3, 3, "2026-02", false]),
+                only_relations[0].clone(),
+                only_relations[1].clone(),
+            ]
+        );
+        assert_eq!(duplicates(&app, &src, &assets[2..])?, only_relations);
+        Ok(())
+    }
 }

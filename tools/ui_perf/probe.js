@@ -32,7 +32,7 @@
       watch: () => $('grid')},
     galleryColor: {prepare: () => perfGallery('color'), ready: () => !!document.querySelector('#grid .card[data-id] img'), scroller: viewport,
       watch: () => $('grid')},
-    characters: {hash: '#/characters', ready: () => !!document.querySelector('#charIndex .cast-poster img'), scroller: viewport,
+    characters: {hash: '#/characters', ready: () => !!document.querySelector('#charIndex .cast-poster img, #charIndex .cat-poster img'), scroller: viewport,
       watch: () => $('charIndex')},
     viewer: {
       hash: '#/library', ready: () => !!document.querySelector('#grid .card[data-id] img'), scroller: viewport, watch: () => $('viewer'),

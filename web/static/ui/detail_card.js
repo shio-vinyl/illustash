@@ -18,6 +18,7 @@ import {unreadableText} from '../core/jobs.js';
 import {charHash, filterRoute, hashFor} from '../core/route.js';
 import {state} from '../core/state.js';
 import {artistBlock} from './artists.js';
+import {heartIcon} from './favorites.js';
 import {canReveal, revealLabel} from '../core/files.js';
 import {attr, cls, make, refill, rich, show, text, tpl} from './el.js';
 import {monthBars} from './month_bars.js';
@@ -193,8 +194,7 @@ const CARD = tpl`<article class="dc is-empty" aria-busy="false">
         <svg viewBox="0 0 20 20" aria-hidden="true"><path d="m12 4.5-5.5 5.5 5.5 5.5"/></svg></button>
       <button type="button" data-act="nav" data-step="1" aria-label="下一张" title="下一张（→）" data-t-attr="aria-label title">
         <svg viewBox="0 0 20 20" aria-hidden="true"><path d="m8 4.5 5.5 5.5L8 15.5"/></svg></button></div>
-    <div class="glass-bar dc-bar is-end"><button type="button" class="fav-toggle" data-act="fav" data-ref="fav" aria-pressed="false">
-        <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 16.4S3.4 12.5 3.4 7.9A3.3 3.3 0 0 1 10 6.3a3.3 3.3 0 0 1 6.6 1.6c0 4.6-6.6 8.5-6.6 8.5Z"/></svg></button>
+    <div class="glass-bar dc-bar is-end"><button type="button" class="fav-toggle" data-act="fav" data-ref="fav" aria-pressed="false"></button>
       <button type="button" data-act="expand" aria-label="大图" title="大图（Space）" data-t-attr="aria-label title">
         <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M12 3.5h4.5V8M8 16.5H3.5V12M16.5 3.5 11 9M3.5 16.5 9 11"/></svg></button>
       <button type="button" data-act="close" aria-label="关闭详情" title="关闭（Esc）" data-t-attr="aria-label title">
@@ -216,6 +216,7 @@ const CARD = tpl`<article class="dc is-empty" aria-busy="false">
 /** 详情卡片。on 是 {act(name, data, event, d), artist: {verdict, find, findMore}}，见文件头和 ui/detail.js 的 mount。 */
 export function detailCard(on) {
   const {el, refs} = CARD(), s = app.child('detail-card');
+  refs.fav.append(heartIcon());
   const ask = askBar(), who = identities({scope: s}), artists = artistBlock(on.artist, s);
   refs.askSlot.replaceWith(ask.el); refs.whoSlot.replaceWith(who.el); refs.artistSlot.replaceWith(artists.el);
   s.add(ask);   // who、artists 的作用域是 s 的子作用域，跟着释放

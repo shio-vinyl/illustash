@@ -35,12 +35,12 @@ import {animate, countTo, enter, exit, reduced} from './motion.js';
 import {buildPeek, followScroll, hover, hoveredItem} from './rail_peek.js';
 import {createLayer} from './overlay.js';
 import {$} from './dom.js';
+import {heartIcon} from './favorites.js';
 
 // 二级项是链接（读屏读成链接）；外层的 #railItems 是一组导航，不另设列表的角色。
 const ITEM = tpl`<a class="rail-item" draggable="false"><span class="rail-cover" data-ref="cover"><span class="rail-stack" data-ref="stack"><img data-ref="img2" alt=""
   draggable="false"></span><img data-ref="img" alt="" draggable="false" loading="lazy" decoding="async"><span class="rail-icon" data-ref="icon"></span></span><span
-  class="rail-mark" data-ref="mark"></span><span class="rail-count" data-ref="count"></span><span class="rail-heart" data-ref="heart" hidden><svg viewBox="0 0 20 20"
-  aria-hidden="true"><path d="M10 16.4S3.4 12.5 3.4 7.9A3.3 3.3 0 0 1 10 6.3a3.3 3.3 0 0 1 6.6 1.6c0 4.6-6.6 8.5-6.6 8.5Z"/></svg></span></a>`;
+  class="rail-mark" data-ref="mark"></span><span class="rail-count" data-ref="count"></span><span class="rail-heart" data-ref="heart" hidden></span></a>`;
 // 整理各队列的图标（和原来侧栏的一样），以及没有封面的画廊（收藏还没有图、画廊的条件现在没有图）。
 const ICONS = {
   unmatched: tpl`<svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="7.2"/><path d="M8 7.8a2.2 2.2 0 1 1 3 2c-.6.3-1 .8-1 1.4v.4M10 14.2v.1"/></svg>`,
@@ -50,7 +50,7 @@ const ICONS = {
   excluded: tpl`<svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="7.2"/><path d="M5 15 15 5"/></svg>`,
   audit: tpl`<svg viewBox="0 0 20 20" aria-hidden="true"><rect x="4" y="3.5" width="12" height="14" rx="2"/><path d="M7.5 9.8 9.3 11.6 12.8 8"/></svg>`,
   identity: tpl`<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 7h11l-3-3M16 13H5l3 3"/></svg>`,
-  fav: tpl`<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 16.4S3.4 12.5 3.4 7.9A3.3 3.3 0 0 1 10 6.3a3.3 3.3 0 0 1 6.6 1.6c0 4.6-6.6 8.5-6.6 8.5Z"/></svg>`,
+  fav: () => ({el: heartIcon()}),   // 心形只在 ui/favorites.js 画
   gallery: tpl`<svg viewBox="0 0 20 20" aria-hidden="true"><rect x="3" y="4.5" width="14" height="11" rx="2"/><path d="m3.5 13.5 4-4 3 3 2-2 4 4"/></svg>`,
 };
 const iconOf = x => x.kind === 'queue' ? x.key : x.kind === 'gallery' && !x.cover ? (x.key === 'fav' ? 'fav' : 'gallery') : '';
@@ -78,6 +78,7 @@ function mark(item) {
 }
 function itemWidget(item) {
   const {el, refs} = ITEM();
+  refs.heart.append(heartIcon());
   el.dataset.key = item.key; el.dataset.kind = item.kind;
   el.railCount = refs.count;
   const update = x => {

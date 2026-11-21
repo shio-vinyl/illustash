@@ -24,6 +24,7 @@ import {dayLabel, imageUrl, number, thumbSize} from '../core/format.js';
 import {I18N, t} from '../core/i18n.js';
 import {nameWithWork, workLabel} from '../core/labels.js';
 import {attr, cls, css, show, text, tpl} from './el.js';
+import {heartIcon} from './favorites.js';
 import {keyed} from './keyed.js';
 import {enter, exit, flip, thumbs} from './motion.js';
 import {scope} from './scope.js';
@@ -41,8 +42,8 @@ const DAY = tpl`<section class="day"><header class="day-head" data-ref="head"><h
   data-ref="meta"></span><a class="day-grid" data-ref="grid"></a></header><div class="day-chars" data-ref="chars"><div class="day-chips" data-ref="chips"></div><button
   class="chip day-more" type="button" data-ref="more" aria-expanded="false"></button></div><div class="day-mosaic" data-ref="mosaic"></div></section>`;
 const TILE = tpl`<button class="day-tile" type="button"><img data-ref="img" alt="" draggable="false" decoding="async"><span class="poster-cap" data-ref="cap"><b data-ref="name"></b><small
-  data-ref="work"></small></span><span class="day-heart" data-ref="heart" aria-hidden="true"><svg viewBox="0 0 20 20"><path d="M10 16.4S3.4 12.5 3.4 7.9A3.3 3.3 0 0 1 10 6.3a3.3
-  3.3 0 0 1 6.6 1.6c0 4.6-6.6 8.5-6.6 8.5Z"/></svg></span><span class="day-dup" data-ref="dup"></span><span class="day-plus" data-ref="plus"></span></button>`;
+  data-ref="work"></small></span><span class="day-heart" data-ref="heart" aria-hidden="true"></span><span class="day-dup" data-ref="dup"></span><span class="day-plus"
+  data-ref="plus"></span></button>`;
 const CHIP = tpl`<a class="chip day-chip"><img class="avatar" data-ref="img" alt="" loading="lazy" decoding="async"><span data-ref="name"></span><span class="chip-count" data-ref="n"></span></a>`;
 // 芯片之间的缝（css/library.css .day-chars 的 gap，--space-4）。
 const CHIP_GAP = 4;
@@ -55,6 +56,7 @@ const SIZES = ['thumb', 'medium'];
 // 缩略图档位按这张图画过的最大高度选，只升不降：图从大图挪成小图时地址不变，不重新读、不闪。
 function tileWidget(cell, ctx, s) {
   const {el, refs} = TILE(), ts = s.child('tile');
+  refs.heart.append(heartIcon());
   let box = null, size = -1;
   ts.on(refs.img, 'load', () => cls(el, 'is-in', true));
   function update(next) {

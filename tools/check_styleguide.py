@@ -23,6 +23,7 @@ AGENTS.md 要求写界面前先看这页、照它复用类名，所以它一过�
 from html.parser import HTMLParser
 from pathlib import Path
 import argparse
+import functools
 import importlib.util
 import re
 import sys
@@ -56,12 +57,13 @@ def _census_module():
 CENSUS = _census_module()
 
 
+@functools.lru_cache(maxsize=128)
 def selector_classes(css_text):
     """CSS 里所有选择器出现过的类名（含 @media 里的规则；声明体里的值不算）。"""
     found = set()
     for selector, _, _ in CENSUS.parse_rules(CENSUS.strip_comments(css_text)):
         found.update(_CLASS_IN_SELECTOR.findall(re.sub(r'\[[^\]]*\]', '', selector)))
-    return found
+    return frozenset(found)
 
 
 def _compounds(part):
@@ -163,10 +165,16 @@ def _lines(lines):
     return shown + (f' 等 {len(unique)} 处' if len(unique) > 6 else '')
 
 
+@functools.lru_cache(maxsize=16)
+def _expected_census(css_items):
+    # 统计包括所有样式的字节指纹，缓存键保留原文与读取顺序。
+    return CENSUS.render(dict(css_items))
+
+
 def check_census(root):
     path = root / GUIDE / 'census.js'
     raw = CENSUS.read_files(root)
-    expected = CENSUS.render(raw)
+    expected = _expected_census(tuple(raw.items()))
     if not path.is_file():
         return [f'[样式清单 · census] 缺少 {GUIDE}/census.js。改法：{CENSUS_FIX}。']
     actual = path.read_bytes().decode('utf-8')

@@ -36,7 +36,8 @@ import {state} from './state.js';
 //   sortPref   改了排序记在哪个偏好里（core/route.js 的 sortKey）；不写就是这页自己的「sort.<页面名>」
 //   pool/params 后端 /api/assets 的 pool 参数，以及该页其余查询参数
 //   bar        选择栏的种类；同时决定 S／X／Y／N 几个快捷键在这页是否生效
-//   card       卡片上额外的角标
+//   hint       底栏的操作提示（网格页由 ui/grid.js 写，面板页在进页和同一页又画一次时由 ui/shell.js 的 applyRoute 写）
+//   card      卡片上额外的角标
 //   directory  需要完整的角色目录（不是摘要行）
 //   guideTick  进入本页算上手清单的哪一步
 //   gallery    画廊的网格页（#445）：地址总带着条件，不带查询时按保存的条件打开；gridLayout(r) 是这个画廊的展示方式要的分行
@@ -76,7 +77,8 @@ const libraryBase = {
 
 const list = [
   // 图库的三种视图（#706）：按天（原来的首页，#677）、网格（原来的图库）、日历。打开 App 落在按天。
-  {name: 'days', root: true, area: 'homePage', panel: true, keys: 'shown', click: 'own', entry: 'library', view: 'days', filters: true, toolbar: 'filters', emptyIcon: 'image'},
+  {name: 'days', root: true, area: 'homePage', panel: true, keys: 'shown', click: 'own', entry: 'library', view: 'days', filters: true, toolbar: 'filters', emptyIcon: 'image',
+    hint: () => t('点图片看详情 · 点角色名只看 TA')},
   {name: 'library', ...libraryBase, click: 'browse', sortPref: 'sortLibrary', emptyIcon: 'image'},
   {name: 'calendar', area: 'calendarPage', panel: true, click: 'own', entry: 'library', view: 'calendar', filters: true, toolbar: 'filters', emptyIcon: 'calendar'},
   // 画廊（#445、#710）：全部画廊（收藏在最前），和一个画廊。一个画廊按它的展示方式（core/gallery_shows.js）落在两页之一：

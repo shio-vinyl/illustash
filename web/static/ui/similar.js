@@ -15,17 +15,16 @@ import {RELATION_KINDS, RELATION_NAMES} from '../core/labels.js';
 import {cellTiles} from '../core/layout.js';
 import {implement} from '../core/pages.js';
 import {go, hashFor} from '../core/route.js';
-import {readError} from '../core/session.js';
 import {state} from '../core/state.js';
 import {loadSimilar, readSimilarSeen, scanSimilar, setSimilarSeen} from '../core/tidy.js';
 import {gridFilters as filters, listIds} from '../core/assets.js';
-import {$, error, toast, written} from './dom.js';
+import {$, toast, written} from './dom.js';
 import {attr, cls, css, make, refill, show, text, tpl} from './el.js';
-import {drawEmpty} from './empty.js';
+import {drawEmpty, showFailure} from './empty.js';
 import {keyed} from './keyed.js';
 import {openRelate} from './palette.js';
 import {renderHeading} from './shell.js';
-import {clearFooter, drawFailure} from './tidy_group.js';
+import {latest, pageView} from './page_view.js';
 import {releaseImages} from './virtual.js';
 
 const PAGE = 40;
@@ -76,8 +75,7 @@ function similarCard(g) {
 function similarView(scope) {
   const {el, refs} = VIEW();
   $('groupsPage').replaceChildren(el);
-  clearFooter();
-  const page = {scope, groups: [], others: 0, status: {}, shown: PAGE, loaded: false, seq: 0};
+  const page = {scope, groups: [], others: 0, status: {}, shown: PAGE, loaded: false}, begin = latest(scope);
   const list = keyed(refs.list, {key: g => g.gid, create: similarCard, scope});
   function draw(route) {
     const {groups, others, status: s} = page, kind = route.kind || '', seen = route.seen === '1';
@@ -106,32 +104,27 @@ function similarView(scope) {
     // 空状态按内容的签名重画：检查进行中每 3 秒重读，内容没变就不动（焦点在链接上时不丢）。
     const fact = seen ? t('没有看过的组。') : others ? t('相似的组都看过了。') : busy ? t('还在检查，找到的组会陆续出现。') : t('没有找到相似的图。');
     const next = seen ? [{label: t('回到相似的图'), href: '#/similar'}] : others ? [{label: t('看过的 {n} 组', {n: number(others)}), href: hashFor({page: 'similar', kind, seen: '1'})}] : [];
-    refill(refs.empty, JSON.stringify([fact, next]), () => { drawEmpty(refs.empty, {icon: 'check', fact, next}); return [...refs.empty.childNodes]; });
+    drawEmpty(refs.empty, {icon: 'check', fact, next});
   }
   // keep：轮询、撤销、学习落定以后重读，留在已显示的组数；不给是换了关系类型、看过的组或 NSFW，从前 40 组开始。
   async function load(keep = false) {
-    const route = state.route, kind = route.kind || '', seen = route.seen === '1', seq = ++page.seq;
-    const fresh = () => scope.alive && state.route === route && seq === page.seq;
+    const route = state.route, kind = route.kind || '', seen = route.seen === '1', fresh = begin(route);
     let result;
-    try { result = await loadSimilar({kind, nsfw: state.nsfw}, scope.signal); } catch (e) {
-      if (!fresh()) return;
-      if (page.loaded) error(readError(e)); else { show(refs.empty, true); refill(refs.empty, 'fail', () => { drawFailure(refs.empty, e); return [...refs.empty.childNodes]; }); }
-      return;
-    }
+    try { result = await loadSimilar({kind, nsfw: state.nsfw}, scope.signal); } catch (e) { if (fresh()) showFailure(refs.empty, e, {loaded: page.loaded}); return; }
     if (!fresh()) return;
     const groups = result.groups.filter(g => !!g.seen === seen);
     Object.assign(page, {groups, others: result.groups.length - groups.length, status: result.state, loaded: true});
     if (!keep) page.shown = PAGE;
     draw(route);
     // 只有最后一次读取续轮询：期间又发了别的读取，就由那一次接着排。
-    if (SIMILAR_ACTIVE.includes(result.state.status)) scope.timeout(() => { if (seq === page.seq && state.route === route) load(true); }, 3000);
+    if (SIMILAR_ACTIVE.includes(result.state.status)) scope.timeout(() => { if (fresh()) load(true); }, 3000);
   }
   scope.on(refs.more, 'click', () => { page.shown += PAGE; draw(state.route); });
   scope.on(refs.empty, 'click', e => { if (e.target.closest('[data-empty="retry"]')) load(); });
   scope.on(refs.scan, 'click', async () => { try { await scanSimilar(); scope.timeout(() => load(true), 800); } catch (e) { toast(e.message); } });
   return {scope, load, page};
 }
-let view = null;
+const view = pageView(similarView);
 
 // ---------- 相似组 N（#/s/<id>，网格页）的「看过了」（#427） ----------
 // 进入前读一次这组算不算看过、看得到几张。读不到就不显示按钮，不挡住这一页。
@@ -171,8 +164,8 @@ async function toggleSeen() {
 
 implement({
   // 撤销之后重画（#386 的 2-41）：撤销的可能就是「看过了」。撤销、学习落定后按组比对、留在已显示的组数（#601）。
-  similar: {render: ({samePage, scope}) => { if (!samePage || !view?.scope.alive) view = similarView(scope); return view.load(); },
-    refresh: why => { if (why === 'undo' || why === 'learned') return view?.load(true); if (why === 'nsfw') return view?.load(); }},
+  similar: {render: o => view.enter(o).load(),
+    refresh: why => { if (why === 'undo' || why === 'learned') return view.get()?.load(true); if (why === 'nsfw') return view.get()?.load(); }},
   sgroup: {prepare: readSeen, head: (r, {n}) => ({title: t('相似组 {id}', {id: r.id}), sub: t('{n} 张', {n}), actions: sgroupActions()}),
     // 改动、撤销、同步之后组里看得到的张数可能变了，重读一次，免得点「看过了」时张数对不上。
     refresh: async why => { if (why !== 'view' && why !== 'ask') { const route = state.route; if (await readSeen(route) !== false) renderHeading(); } }},

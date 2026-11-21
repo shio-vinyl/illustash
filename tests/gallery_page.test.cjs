@@ -74,3 +74,30 @@ test('展示页（#710）：同一个地址里连着换两次展示方式，先�
   assert.equal(stage.stageTotal(), 12, '舞台上是展厅那一次读到的');
   scope.dispose();
 });
+
+// 全部画廊（页面样板第 5 条）：写入以后预览作废、在同一路由上重读。先发的那次的预览后回来，不把旧的张数画回去。
+test('全部画廊：同一路由先后读两次，先发的那次的预览后回来，不画', async () => {
+  const cards = await web.load('ui/gallery_cards.js'), galleries = await web.load('core/galleries.js'), {app} = await web.load('ui/scope.js');
+  const g = {id: 5, name: '合成', params: {has: '["tag:x"]'}, cover_manual: false, position: 0};
+  Object.assign(state, {galleries: [g], route: {page: 'galleries'}});
+  const previews = [];
+  globalThis.fetch = path => path.startsWith('/api/assets') ? new Promise(done => previews.push({path, done}))
+    : Promise.resolve(path.startsWith('/api/galleries') ? reply(200, [g]) : reply(200, {}));
+  const tick = () => new Promise(r => setTimeout(r, 0));
+  galleries.forgetCovers();
+  const scope = app.child('galleries-test');
+  const first = cards.renderIndex({scope});
+  for (let i = 0; i < 5 && previews.length < 2; i++) await tick();
+  assert.equal(previews.length, 2, '收藏和这个画廊各读一次预览');
+  galleries.forgetCovers();   // 写入以后（ui/gallery_actions.js 的 write）
+  const second = cards.refreshIndex();
+  for (let i = 0; i < 5 && previews.length < 4; i++) await tick();
+  assert.equal(previews.length, 4);
+  for (const p of previews.slice(2)) p.done(reply(200, {total: 2, items: []}));
+  await second;
+  for (const p of previews.slice(0, 2)) p.done(reply(200, {total: 1, items: []}));
+  await first;
+  const sub = page.el('groupsPage').children.at(-1).querySelectorAll('small').map(s => s.textContent);
+  assert.ok(sub.length >= 2 && sub.every(s => /2 张/.test(s)), `画的是后发的那次：${sub.join(' / ')}`);
+  scope.dispose();
+});

@@ -28,6 +28,7 @@ import {attr, cls, css, show, text, tpl} from './el.js';
 import {drawEmpty} from './empty.js';
 import {keyed} from './keyed.js';
 import {enter, thumbs} from './motion.js';
+import {latest, pageView} from './page_view.js';
 import {setTint} from './tint.js';
 import {releaseImages} from './virtual.js';
 
@@ -199,26 +200,26 @@ function calendarPage(scope) {
     onMonth: month => go({...viewRoute(state.route, 'calendar'), at: `${month}-01`})});
   $('calendarPage').replaceChildren(view.el);
   // 上一次读到的 {key, data}：只是刷新（同步、写入之后）时先留着它，读完再换，格子不先闪成空的。
+  // 同一路由上的几次重读（同步、写入、撤销）只认最后发出的那次。
   let last = null;
+  const begin = latest(scope);
   return {scope, el: view.el, async load(route) {
     const month = monthAt(route), params = {...libraryFilters(route), ...(state.nsfw ? {nsfw: state.nsfw} : {})}, key = JSON.stringify([month, params]);
+    const fresh = begin(route);
     view.update({month, data: last?.key === key ? last.data : null});
     let data;
-    try { data = await readMonth(month, params, {signal: scope.signal}); } catch (e) { if (scope.alive && state.route === route) error(readError(e)); return; }
-    if (!scope.alive || state.route !== route) return;
+    try { data = await readMonth(month, params, {signal: scope.signal}); } catch (e) { if (fresh()) error(readError(e)); return; }
+    if (!fresh()) return;
     last = {key, data};
     view.update({month, data});
   }};
 }
-let page = null;
+const page = pageView(calendarPage);
 implement({calendar: {
   // 刚进这一页（或作用域已经释放）才建，内容淡入；同一页又画一次（翻月、筛选变了）只按新地址重读、更新格子。
-  render: ({samePage, scope}) => {
-    if (!samePage || !page?.scope.alive) page = calendarPage(scope);
-    return page.load(state.route);
-  },
+  render: o => page.enter(o).load(state.route),
   // 同步、写入、撤销、NSFW 设置变了：重读这个月。
-  refresh: () => page?.scope.alive ? page.load(state.route) : undefined,
+  refresh: () => page.get()?.load(state.route),
   head: () => ({title: t('图库')}),
   help: () => [t('每天一格，格子里是那天加入的图。点一天去按天看那一天。')],
 }});

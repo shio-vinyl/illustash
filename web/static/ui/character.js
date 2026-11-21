@@ -19,6 +19,7 @@ import {$, error} from './dom.js';
 import {attr, show, text, tpl} from './el.js';
 import {gridHead, sweep} from './grid.js';
 import {moreMenu} from './more_menu.js';
+import {pageView} from './page_view.js';
 import {editProfile, mergeCharacter, toggleMascot, toggleOc} from './palette.js';
 import {tuckHeading} from './shell.js';
 import {setTint} from './tint.js';
@@ -136,18 +137,14 @@ function menuItems(c) {
   ];
 }
 
-let hero = null;
+// 横幅建在页面作用域的子作用域上：pageView 按横幅自己的作用域判断死活。
+const hero = pageView(scope => charHero(scope.child('character-hero')));
 implement({character: {
   // 页头：小标题（名字和张数），横幅上的名字看得见时藏着。
   head: () => ({title: state.char?.name || '', sub: state.char ? t('{n} 张', {n: number(state.char.count)}) : ''}),
   // 刚进这一页（或横幅的作用域已经释放）才建；同一页又画一次（换造型、只看未检查……）只按新地址更新。
   gridHead: ({samePage, scope}) => {
     if (!state.char) return;
-    if (!samePage || !hero?.scope.alive) {
-      const made = charHero(scope.child('character-hero'));
-      made.scope.add(() => { if (hero === made) hero = null; });
-      hero = made;
-    }
-    hero.update(state.route, state.char);
+    hero.enter({samePage, scope}).update(state.route, state.char);
   },
 }});

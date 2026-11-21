@@ -14,6 +14,7 @@ import {heartIcon} from './favorites.js';
 import {newManual, reloadList} from './gallery_actions.js';
 import {keyed} from './keyed.js';
 import {thumbs} from './motion.js';
+import {latest, pageView} from './page_view.js';
 import {renderHeading} from './shell.js';
 import {setTint} from './tint.js';
 
@@ -63,24 +64,25 @@ function card(g) {
   return {el, update, dispose() {}};
 }
 
-// 这一页的部件：进页面时在页面作用域上建一次。之后 load() 只重读列表和预览、更新卡片。
-let view = null;
+// 这一页的部件：进页面时在页面作用域上建一次。之后 load() 只重读列表和预览、更新卡片。同一路由上的几次重读（写入、撤销）
+// 只认最后发出的那次：先发的晚到，不把旧的列表和预览画回去。
 function indexView(scope) {
   const {el, refs} = PAGE();
   $('groupsPage').replaceChildren(el);
   const list = keyed(refs.list, {key: g => String(g.id), create: card, scope});
-  const fresh = NEW();
-  refs.grid.append(fresh.el);
-  fresh.refs.manual.onclick = async () => { const g = await newManual(); if (g) location.hash = galleryHref(g.id); };
+  const adder = NEW();
+  refs.grid.append(adder.el);
+  adder.refs.manual.onclick = async () => { const g = await newManual(); if (g) location.hash = galleryHref(g.id); };
   // 画廊 id → 读到的预览 {items, total} 或 {error}。刷新时留着旧的，新的读到一张换一张；只有 NSFW 设置变了才先清掉（该藏的图马上藏起来）。
   const previews = new Map();
   let previewsNsfw = null;
+  const begin = latest(scope);
   const draw = () => list.set(withFav().map(g => ({...g, preview: previews.get(String(g.id))})));
   return {scope, async load(route) {
-    const nsfw = state.nsfw, here = () => scope.alive && state.route === route && state.nsfw === nsfw;
+    const nsfw = state.nsfw, fresh = begin(route, () => state.nsfw === nsfw);
     if (previewsNsfw !== nsfw) { previews.clear(); previewsNsfw = nsfw; }
-    try { await Promise.all([reloadList(), loadShows()]); } catch (e) { if (here()) error(readError(e)); return; }
-    if (!here()) return;
+    try { await Promise.all([reloadList(), loadShows()]); } catch (e) { if (fresh()) error(readError(e)); return; }
+    if (!fresh()) return;
     draw();
     renderHeading();   // 页头的画廊数
     const all = withFav();
@@ -88,16 +90,14 @@ function indexView(scope) {
     try { covers = await coversFor((state.galleries || []).filter(g => g.cover_manual).map(g => g.id)); } catch { covers = {}; }
     await Promise.all(all.map(async g => {
       let p;
-      try { p = await previewOf(g, {nsfw, cover: g.cover_manual ? covers[g.id] : null, signal: scope.signal}); } catch (e) { if (e.name !== 'AbortError' && here()) error(readError(e)); return; }
-      if (!here()) return;
+      try { p = await previewOf(g, {nsfw, cover: g.cover_manual ? covers[g.id] : null, signal: scope.signal}); } catch (e) { if (e.name !== 'AbortError' && fresh()) error(readError(e)); return; }
+      if (!fresh()) return;
       previews.set(String(g.id), p); draw();
     }));
   }};
 }
+const view = pageView(indexView);
 // render({samePage, scope})：刚进这一页才建；同一页又画一次只重读（docs/WEB_V2.md「页面样板」）。
-export function renderIndex({samePage, scope} = {}) {
-  if (!samePage || !view?.scope.alive) view = indexView(scope);
-  return view.load(state.route);
-}
+export const renderIndex = (o = {}) => view.enter(o).load(state.route);
 // 写入、撤销、切换 NSFW 之后：重读列表和预览，卡片就地更新。
-export function refreshIndex() { return view?.scope.alive ? view.load(state.route) : null; }
+export const refreshIndex = () => view.get()?.load(state.route) ?? null;

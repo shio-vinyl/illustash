@@ -73,6 +73,8 @@ export async function applyRoute() {
   // 网格页顶上跟着滚动的头部（角色页的横幅，#712）：进页和同一页又画一次时交给这一页（core/pages.js 的 gridHead）。
   viewOf(route, state.char).gridHead?.({samePage, scope});
   if (!page.render) { await reload(true, placeFor(route)); return; }   // 没有自己渲染入口的页面是网格页
+  // 面板页的底栏：选择栏藏起来，张数清空（要写的页面读到数据以后自己写），提示写注册表的 hint。网格页的由 reload 写。
+  $('selectionBar').hidden = true; $('resultCount').textContent = ''; $('hint').textContent = page.hint?.(route) || '';
   const drawn = page.render({samePage, restore: saved !== undefined, scope});
   if (saved === undefined) return;
   await drawn;

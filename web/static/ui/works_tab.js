@@ -30,7 +30,6 @@ const TOOLS = tpl`<div class="cat-tools"><span class="cat-tools-group"><span dat
 export function worksView(s, {open}) {
   const {el, refs} = VIEW(), tools = TOOLS(), watch = watchAddField(), search = searchField(t('搜索作品'));
   tools.refs.watch.replaceWith(watch.el); tools.refs.q.replaceWith(search.el);
-  let lastEmpty = '';
   const cards = keyed(refs.cards, {key: x => x.id, create: workCards(s, {open}), scope: s});
   onTyped(search.input, () => { worksFilter.q = search.input.value; update(); });
   s.on(tools.refs.create, 'click', createWork);
@@ -73,9 +72,7 @@ export function worksView(s, {open}) {
     cards.set(rows.map(([w]) => ({id: w.id, name: w.name, count: w.count, tag: w.tag, watchable: w.watchable, status: w.status,
       chars: groups.get(String(w.id))?.chars || [], covers: workCovers(w.id), watched: watched.has(w.id)})));
     show(refs.empty, !rows.length);
-    const empty = rows.length ? '' : x.works.length ? 'none' : 'zero';
-    if (empty && empty !== lastEmpty) drawEmpty(refs.empty, empty === 'none' ? {icon: 'search', fact: t('没有符合条件的作品。')} : {icon: 'gallery', fact: t('还没有作品。')});
-    lastEmpty = empty;
+    if (!rows.length) drawEmpty(refs.empty, x.works.length ? {icon: 'search', fact: t('没有符合条件的作品。')} : {icon: 'gallery', fact: t('还没有作品。')});
   }
   return {el, tools: tools.el, update};
 }

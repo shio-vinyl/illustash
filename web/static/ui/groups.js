@@ -15,14 +15,15 @@ import {state} from '../core/state.js';
 import {groupOrder, loadClusters, minus, nearText, nextGroupId, regroup} from '../core/tidy.js';
 import {$, error, toast} from './dom.js';
 import {attr, make, refill, rich, show, text, tpl} from './el.js';
-import {drawEmpty} from './empty.js';
+import {drawEmpty, showFailure} from './empty.js';
 import {keyed} from './keyed.js';
 import {mutate} from './grid.js';
 import {markOc, openPicker, targets} from './palette.js';
 import {count} from './rail.js';
 import {pickFor} from './answer.js';
 import {judgeCard} from './judge.js';
-import {clearFooter, collapse, drawFailure, leaving, revealThumb, setPeekList, tidyGroup} from './tidy_group.js';
+import {latest, pageView} from './page_view.js';
+import {collapse, leaving, revealThumb, setPeekList, tidyGroup} from './tidy_group.js';
 
 const PAGE = 40;
 const VIEW = tpl`<div class="tidy-page">
@@ -76,9 +77,8 @@ function groupCard(page, g) {
 function groupsView(scope) {
   const {el, refs} = VIEW();
   $('groupsPage').replaceChildren(el);
-  clearFooter();
   // pick：打开角色选择器（测试换成自己的）。
-  const page = {scope, list: [], learner: null, shown: PAGE, off: new Map(), loaded: false, seq: 0, pick: openPicker};
+  const page = {scope, list: [], learner: null, shown: PAGE, off: new Map(), loaded: false, pick: openPicker}, begin = latest(scope);
   const list = keyed(refs.list, {key: g => g.cid, create: g => groupCard(page, g), exit: collapse, scope});
   function draw() {
     const all = page.list, images = all.reduce((n, g) => n + g.size, 0), named = all.filter(g => g.lead).length;
@@ -92,23 +92,15 @@ function groupsView(scope) {
     text(refs.more, t('再显示 {n} 组', {n: number(Math.min(PAGE, all.length - page.shown))}));
     const empty = page.loaded && !all.length, any = !!state.pools.unmatched;
     show(refs.empty, empty);
-    if (empty) refill(refs.empty, any ? 'some' : 'none', () => {
-      drawEmpty(refs.empty, {icon: 'check', fact: any ? t('没有成组的未识别图。') : t('没有未识别的图。'),
-        next: any ? [{label: t('全部未识别'), href: '#/unmatched'}] : [{label: t('去图库'), href: '#/library'}]});
-      return [...refs.empty.childNodes];
-    });
+    if (empty) drawEmpty(refs.empty, {icon: 'check', fact: any ? t('没有成组的未识别图。') : t('没有未识别的图。'),
+      next: any ? [{label: t('全部未识别'), href: '#/unmatched'}] : [{label: t('去图库'), href: '#/library'}]});
   }
   // keep：重读以后留在已显示的组数和排除的图（撤销、学习落定、大图里改了图）；不给是刚进来或换了 NSFW，从前 40 组开始。
-  // 同一路由上的几次重读只认最后发出的那次（seq）：先发的晚到，不把点掉的图和已显示的组数复位。
+  // 同一路由上的几次重读只认最后发出的那次（latest）：先发的晚到，不把点掉的图和已显示的组数复位。
   async function load(keep = false) {
-    const route = state.route, nsfw = state.nsfw, seq = ++page.seq;
-    const fresh = () => scope.alive && state.route === route && nsfw === state.nsfw && seq === page.seq;
+    const nsfw = state.nsfw, fresh = begin(state.route, () => nsfw === state.nsfw);
     let result;
-    try { result = await loadClusters(nsfw, scope.signal); } catch (e) {
-      if (!fresh()) return;
-      if (page.loaded) error(readError(e)); else { show(refs.empty, true); refill(refs.empty, 'fail', () => { drawFailure(refs.empty, e); return [...refs.empty.childNodes]; }); }
-      return;
-    }
+    try { result = await loadClusters(nsfw, scope.signal); } catch (e) { if (fresh()) showFailure(refs.empty, e, {loaded: page.loaded}); return; }
     if (!fresh()) return;
     page.list = groupOrder(result.clusters); page.learner = result.learner; page.loaded = true;
     if (!keep) { page.shown = PAGE; page.off = new Map(); }
@@ -160,7 +152,7 @@ function groupsView(scope) {
   return {scope, load, done, shed, page};
 }
 
-let view = null;
+const view = pageView(groupsView);
 
 // 「下一组」：重读分组，取原来排在这组后面、还在的第一组；后面都没了就取最前面那组；一组都没了回到按组整理。
 // 读的时候离开了这一组就不带人走。
@@ -175,8 +167,8 @@ async function nextGroup() {
 implement({
   // 在这页开的大图里改了图（'edit' 时大图还开着）：重读分组，免得组里还留着已经设了角色、跳过或排除的图。组头按钮的写入
   // 不走这里，它们自己把答过的组收起。
-  groups: {render: ({samePage, scope}) => { if (!samePage || !view?.scope.alive) view = groupsView(scope); return view.load(); }, reveal: revealThumb,
-    refresh: why => { if (why === 'undo' || why === 'learned' || why === 'edit' && state.viewer >= 0) return view?.load(true); if (why === 'nsfw') return view?.load(); }},
+  groups: {render: o => view.enter(o).load(), reveal: revealThumb,
+    refresh: why => { if (why === 'undo' || why === 'learned' || why === 'edit' && state.viewer >= 0) return view.get()?.load(true); if (why === 'nsfw') return view.get()?.load(); }},
   // 一组图的页面（#/g/<id>，网格页）要先读分组：标题里相近的一组和这组的特征，以及空了时「下一组」的先后。
   group: {prepare: async route => {
     let result; try { result = await loadClusters(state.nsfw); } catch (e) { if (state.route === route) error(readError(e)); return false; }
@@ -190,4 +182,4 @@ implement({
   emptyAct: act => { if (act === 'next-group') nextGroup(); }},
 });
 // 测试用：当前这一页（tests/tidy.test.cjs 用它模拟「这组答完了」）。
-export const current = () => view;
+export const current = () => view.get();

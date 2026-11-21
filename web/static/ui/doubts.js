@@ -8,7 +8,7 @@
 // - 写入期间这张卡锁着（按钮、图都点不动）；写成了才收起，后端拒绝或断连核对不到就放开，点选留着（ui/answer.js）。卡片过期
 //   （后端回 400）时重读队列。
 // - 卡按键复用（ui/keyed.js）：撤销、学习落定、大图里改了图以后重读，没变的卡留在原处，图不重新加载。同一路由上的几次重读只认
-//   最后发出的那次（page.seq）；重读不把点掉的图复位。
+//   最后发出的那次（ui/page_view.js 的 latest）；重读不把点掉的图复位。
 // - 「点掉的是…」打开的角色选择器属于这一页（ui/answer.js 的 pickFor）：离开这一页时关掉；选的时候这张卡已经不在了或离开了这一页，
 //   就不写。另一项修改还在写时，回答和「点掉的是…」都不发，提示一句。
 // - 换了 NSFW：旧卡先撤下再重读。
@@ -24,14 +24,15 @@ import {readError} from '../core/session.js';
 import {state} from '../core/state.js';
 import {minus} from '../core/tidy.js';
 import {pickFor, sendAnswer} from './answer.js';
-import {$, error, toast} from './dom.js';
+import {$, toast} from './dom.js';
 import {attr, make, refill, rich, show, text, tpl} from './el.js';
-import {drawEmpty} from './empty.js';
+import {drawEmpty, showFailure} from './empty.js';
 import {judgeCard} from './judge.js';
 import {keyed} from './keyed.js';
 import {openPicker} from './palette.js';
 import {count} from './rail.js';
-import {clearFooter, collapse, drawFailure, leaving, revealThumb, setPeekList} from './tidy_group.js';
+import {latest, pageView} from './page_view.js';
+import {collapse, leaving, revealThumb, setPeekList} from './tidy_group.js';
 
 // 先显示几张卡，「再显示」每次多几张。
 const PAGE = 20;
@@ -90,9 +91,8 @@ function doubtCard(page, c) {
 function doubtsView(scope) {
   const {el, refs} = VIEW();
   $('groupsPage').replaceChildren(el);
-  clearFooter();
   // pick：打开角色选择器（测试换成自己的）。
-  const page = {scope, cards: [], shown: PAGE, off: new Map(), busy: new Set(), loaded: false, seq: 0, pick: openPicker};
+  const page = {scope, cards: [], shown: PAGE, off: new Map(), busy: new Set(), loaded: false, pick: openPicker}, begin = latest(scope);
   const list = keyed(refs.list, {key: c => c.key, create: c => doubtCard(page, c), exit: collapse, scope});
 
   function draw() {
@@ -103,22 +103,14 @@ function doubtsView(scope) {
     text(refs.more, t('再显示 {n} 张卡', {n: number(Math.min(PAGE, page.cards.length - page.shown))}));
     const empty = page.loaded && !page.cards.length, rest = !!state.pools.unmatched;
     show(refs.empty, empty);
-    if (empty) refill(refs.empty, rest ? 'some' : 'none', () => {
-      drawEmpty(refs.empty, {icon: 'check', fact: t('没有可能认错的图。'),
-        next: rest ? [{label: t('去未识别'), href: '#/groups'}] : [{label: t('去图库'), href: '#/library'}]});
-      return [...refs.empty.childNodes];
-    });
+    if (empty) drawEmpty(refs.empty, {icon: 'check', fact: t('没有可能认错的图。'),
+      next: rest ? [{label: t('去未识别'), href: '#/groups'}] : [{label: t('去图库'), href: '#/library'}]});
   }
   // keep：重读以后留在已显示的卡数和点掉的图（撤销、学习落定、大图里改了图）；不给是刚进来或换了 NSFW，从前几张卡开始。
   async function load(keep = false) {
-    const route = state.route, nsfw = state.nsfw, seq = ++page.seq;
-    const fresh = () => scope.alive && state.route === route && nsfw === state.nsfw && seq === page.seq;
+    const nsfw = state.nsfw, fresh = begin(state.route, () => nsfw === state.nsfw);
     let groups;
-    try { groups = await loadDoubts(nsfw, scope.signal); } catch (e) {
-      if (!fresh()) return;
-      if (page.loaded) error(readError(e)); else { show(refs.empty, true); refill(refs.empty, 'fail', () => { drawFailure(refs.empty, e); return [...refs.empty.childNodes]; }); }
-      return;
-    }
+    try { groups = await loadDoubts(nsfw, scope.signal); } catch (e) { if (fresh()) showFailure(refs.empty, e, {loaded: page.loaded}); return; }
     if (!fresh()) return;
     page.cards = doubtCards(groups); page.loaded = true;
     if (!keep) { page.shown = PAGE; page.off = new Map(); }
@@ -184,12 +176,16 @@ function doubtsView(scope) {
   return {scope, load, clear, page};
 }
 
-let view = null;
+const view = pageView(doubtsView);
 
 implement({
   // 在这页开的大图里改了图（'edit' 时大图还开着）：重读，免得卡上还留着已经改过的图。卡上按钮的写入不走这里，它们自己收起。
-  doubts: {render: ({samePage, scope}) => { if (!samePage || !view?.scope.alive) view = doubtsView(scope); return view.load(); }, reveal: revealThumb,
-    refresh: why => { if (why === 'undo' || why === 'learned' || why === 'edit' && state.viewer >= 0) return view?.load(true); if (why === 'nsfw') { view?.clear(); return view?.load(); } }},
+  doubts: {render: o => view.enter(o).load(), reveal: revealThumb,
+    refresh: why => {
+      const v = view.get();
+      if (why === 'undo' || why === 'learned' || why === 'edit' && state.viewer >= 0) return v?.load(true);
+      if (why === 'nsfw') { v?.clear(); return v?.load(); }
+    }},
 });
 // 测试用：当前这一页。
-export const current = () => view;
+export const current = () => view.get();

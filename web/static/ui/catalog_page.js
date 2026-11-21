@@ -70,8 +70,6 @@ function indexView(s) {
     const tab = section();
     show(refs.cast, tab === ''); show(refs.works, tab === 'works'); show(refs.artists, tab === 'artists');
     show(refs.error, false);
-    // 底栏的张数和操作提示是网格页的，资料库不用（#711）。
-    for (const id of ['resultCount', 'hint']) if ($(id)) text($(id), '');
   }
   async function enterCast(route) {
     cast.list = null; value(q.input, '');

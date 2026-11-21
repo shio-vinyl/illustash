@@ -9,15 +9,14 @@ import {AUDIT_METHODS} from '../core/labels.js';
 import {implement} from '../core/pages.js';
 import {prefs} from '../core/prefs.js';
 import {hashFor} from '../core/route.js';
-import {readError} from '../core/session.js';
-import {state} from '../core/state.js';
 import {artistVerdict, auditMethod, auditTally, loadArtistAudit} from '../core/tidy.js';
-import {$, error, toast, written} from './dom.js';
+import {$, toast, written} from './dom.js';
 import {attr, cls, make, refill, show, text, tpl} from './el.js';
-import {drawEmpty} from './empty.js';
+import {drawEmpty, showFailure} from './empty.js';
 import {keyed} from './keyed.js';
 import {renderHeading} from './shell.js';
-import {clearFooter, drawFailure, setPeekList} from './tidy_group.js';
+import {latest, pageView} from './page_view.js';
+import {setPeekList} from './tidy_group.js';
 import {peekAt} from './viewer.js';
 
 const VIEW = tpl`<div class="tidy-page">
@@ -82,31 +81,22 @@ function auditItem(it, i) {
 function auditView(scope) {
   const {el, refs} = VIEW();
   $('groupsPage').replaceChildren(el);
-  clearFooter();
-  const page = {scope, items: [], loaded: false, seq: 0};
+  const page = {scope, items: [], loaded: false}, begin = latest(scope);
   setPeekList(refs.list, () => page.items.map(x => x.uuid));
   const list = keyed(refs.list, {key: x => x.uuid, create: auditItem, scope});
   const stat = (big, label, small, title = '') => {
     const s = STAT(); text(s.refs.big, big); text(s.refs.label, label); text(s.refs.small, small); if (title) s.el.title = title; return s.el;
   };
   async function load() {
-    const route = state.route, n = Number(prefs.get('artistAuditN', 50)) || 50, seq = ++page.seq;
-    const fresh = () => scope.alive && state.route === route && seq === page.seq;
+    const n = Number(prefs.get('artistAuditN', 50)) || 50, fresh = begin();
     let d;
-    try { d = await loadArtistAudit(n, scope.signal); } catch (e) {
-      if (!fresh()) return;
-      if (page.loaded) error(readError(e)); else { show(refs.empty, true); refill(refs.empty, 'fail', () => { drawFailure(refs.empty, e); return [...refs.empty.childNodes]; }); }
-      return;
-    }
+    try { d = await loadArtistAudit(n, scope.signal); } catch (e) { if (fresh()) showFailure(refs.empty, e, {loaded: page.loaded}); return; }
     if (!fresh()) return;
     page.items = d.items; page.loaded = true;
     const none = !d.items.length;
     show(refs.stats, !none); show(refs.about, !none); show(refs.empty, none);
     // 还没有找回画师的图：一句事实，去设置里的「画师」（找回画师在那里开）。
-    if (none) refill(refs.empty, 'none', () => {
-      drawEmpty(refs.empty, {icon: 'person', fact: t('还没有找回画师的图。'), next: [{label: t('画师'), href: '#/settings/artists'}]});
-      return [...refs.empty.childNodes];
-    });
+    if (none) drawEmpty(refs.empty, {icon: 'person', fact: t('还没有找回画师的图。'), next: [{label: t('画师'), href: '#/settings/artists'}]});
     const tl = auditTally(d.items), pct = (x, places) => x.done ? (x.yes / x.done * 100).toFixed(places) + '%' : '—';
     refill(refs.stats, JSON.stringify(tl), () => [
       stat(tl.accuracy === null ? '—' : (tl.accuracy * 100).toFixed(1) + '%', t('准确率'), t('目标 ≥ 95%')),
@@ -132,10 +122,10 @@ function auditView(scope) {
   scope.on(refs.more, 'click', () => { prefs.set('artistAuditN', (Number(prefs.get('artistAuditN', 50)) || 50) + 10); load(); });
   return {scope, load, page};
 }
-let view = null;
+const view = pageView(auditView);
 
 implement({
   // 画师抽查不按 NSFW 筛选（固定的一批随机图）：切换 NSFW 只重画标题里的提醒（#386 的 2-35）。
-  'artist-audit': {render: ({samePage, scope}) => { if (!samePage || !view?.scope.alive) view = auditView(scope); return view.load(); },
-    refresh: why => { if (why === 'undo') return view?.load(); if (why === 'nsfw') renderHeading(); }},
+  'artist-audit': {render: o => view.enter(o).load(),
+    refresh: why => { if (why === 'undo') return view.get()?.load(); if (why === 'nsfw') renderHeading(); }},
 });

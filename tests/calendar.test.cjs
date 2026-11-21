@@ -157,3 +157,21 @@ test('方向键按日期在有图的格子之间挪，跳过空格子；输入�
   assert.ok(!key(cell('2026-11-03'), 'ArrowRight', {isComposing: true}));
   pageScope.dispose();
 });
+
+// 页面样板第 5 条：同步、写入之后的重读用的是同一个路由对象。先后两次读，先发的那次后回来，不画（只认最后发出的那次）。
+test('同一路由先后读两次，先发的那次后回来，不画', async () => {
+  const {PAGES} = await web.load('core/pages.js'), {state} = web.core();
+  const box = document.createElement('div'); box.setAttribute('id', 'calendarPage'); document.body.append(box);
+  const waiting = [];
+  globalThis.fetch = () => new Promise(done => waiting.push(body => done({ok: true, status: 200, json: async () => body})));
+  state.route = {page: 'calendar', at: '2026-11-10', has: [], not: []};
+  const scope = S.page('calendar');
+  const first = PAGES.calendar.render({samePage: false, scope});
+  const second = PAGES.calendar.refresh('sync');
+  assert.equal(waiting.length, 2);
+  waiting[1](reply); await second;
+  waiting[0]({...reply, total: 99}); await first;
+  assert.match(box.querySelector('hgroup').children[1].textContent, /13 张/, '画的是后发的那次');
+  S.page('library');
+  box.remove();
+});

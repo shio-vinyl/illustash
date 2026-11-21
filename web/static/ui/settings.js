@@ -18,6 +18,7 @@ import {closeInspector} from './detail.js';
 import {undo} from './grid.js';
 import {drawGuide, drawNudge} from './guide.js';
 import {onHumanClick, wireHuman} from './human.js';
+import {pageView} from './page_view.js';
 import {onRefresh} from './settings_group.js';
 import {drawUpdateButton, selfUpdate, setTasksBusy, updateAct} from './updates.js';
 import {taskList} from './tasks.js';
@@ -42,8 +43,7 @@ const SECTIONS = [
 export const settingsSection = () => SECTIONS.find(s => s[0] === state.route.section) || SECTIONS[0];
 
 // ---------- 页面 ----------
-// view：这一页的部件（导航和当前一节），建在页面作用域上；换节时只换节的那一块。
-let view = null;
+// 这一页的部件（导航和当前一节），建在页面作用域上；换节时只换节的那一块。
 function buildPage(scope) {
   const page = make('div', 'set-page'), nav = make('nav', 'set-nav'), main = make('div', 'set-main');
   attr(nav, 'aria-label', t('设置'));
@@ -57,33 +57,35 @@ function buildPage(scope) {
   for (const on of [onSettings, onPack, onModels, onIntegrity, onJob]) scope.add(on(refreshSettings));
   return {scope, main, links, id: null, section: null, part: null};
 }
-function showSection(id) {
+const view = pageView(buildPage);
+function showSection(v, id) {
   const mod = SECTIONS.find(s => s[0] === id)[3];
-  for (const [key, a] of view.links) attr(a, 'aria-current', key === id ? 'page' : null);
-  if (view.id === id) return false;
-  view.section?.dispose();
-  view.main.replaceChildren();
-  view.id = id;
-  view.section = view.scope.child('settings-' + id);
-  view.part = mod.build(view.main, view.section);
+  for (const [key, a] of v.links) attr(a, 'aria-current', key === id ? 'page' : null);
+  if (v.id === id) return false;
+  v.section?.dispose();
+  v.main.replaceChildren();
+  v.id = id;
+  v.section = v.scope.child('settings-' + id);
+  v.part = mod.build(v.main, v.section);
   $('viewport').scrollTop = 0;
   return true;
 }
 // 当前这一节按最新的状态更新（值没变的地方不动 DOM，焦点和打了一半的字都不丢）。
 export function refreshSettings() {
-  if (!view?.scope.alive || !onPage(state.route, 'settings')) return;
-  view.part?.update(state);
+  const v = view.get();
+  if (!v || !onPage(state.route, 'settings')) return;
+  v.part?.update(state);
 }
 onRefresh(refreshSettings);
-function render({samePage, scope}) {
-  closeInspector(); $('selectionBar').hidden = true; $('resultCount').textContent = ''; $('hint').textContent = '';
-  if (!samePage || !view?.scope.alive) view = buildPage(scope);
+function render(o) {
+  closeInspector();
+  const v = view.enter(o), samePage = !!o.samePage;
   const [id] = settingsSection();
-  const entered = showSection(id);
+  const entered = showSection(v, id);
   // 进这一页时整页重读；同一页里换节只补还没有的。
   loadSettingsData(!samePage);
   if (id === 'network' || id === 'about') updatesTick();
-  if (entered || !samePage) view.part.load?.(!samePage);
+  if (entered || !samePage) v.part.load?.(!samePage);
   refreshSettings();
 }
 
@@ -118,7 +120,7 @@ export function wireSettings() {
   document.addEventListener('click', e => { onNamesClick(e) || onUpdatesClick(e); });
   onSettings((what, detail) => {
     // 设置页数据的读取失败只在设置页还开着时报：离开以后才回来的失败不弹到别的页面上。
-    if (what === 'data' && detail.error && view?.scope.alive && onPage(state.route, 'settings')) error(readError(detail.error));
+    if (what === 'data' && detail.error && view.get() && onPage(state.route, 'settings')) error(readError(detail.error));
     if (what === 'libraries') {
       const cur = state.libraries?.info;
       $('brandLib').textContent = cur?.test ? t('测试·') + (cur.name.split(' · ').pop()) : '';

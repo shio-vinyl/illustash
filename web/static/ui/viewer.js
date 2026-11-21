@@ -46,6 +46,7 @@ let hooks = null;
 export function bindViewer(h) { hooks = h; }
 
 const s = app.child('viewer');
+const PREPARE = s.key('viewer:prepare'), ZOOM = s.key('viewer:zoom'), BOX = s.key('viewer:box');   // 帧任务的令牌（#751）
 const view = {scale: 1, x: 0, y: 0};
 let slots = [], current = null, bar = null, closing = 0, backdrop = null;
 let shownReady = Promise.resolve();   // 最近一次换图时当前那张预览图解码的 promise（openViewer 等它再展开）
@@ -102,7 +103,7 @@ function arrange(item, i) {
     for (const slot of slots) cls(slot.el, 'is-current', slot === cur);
     current = cur; resetView();
   }
-  s.write(prepare, 'viewer:prepare');
+  s.write(prepare, PREPARE);
   return ready;
 }
 // 下一帧：左右邻居放进另外两张槽并预解码，再远一张只预读、不占槽；当前那张开始读原图，解码好了由 load 盖上去。
@@ -138,7 +139,7 @@ function applyView() {
     if (!current) return;
     css(current.zoom, 'transform', view.scale === 1 && !view.x && !view.y ? null : `translate(${view.x}px, ${view.y}px) scale(${view.scale})`);
     cls($('viewerStage'), 'zoomed', view.scale > 1.01);
-  }, 'viewer:zoom');
+  }, ZOOM);
 }
 /** 以 (cx, cy)（视口坐标）为中心缩放 factor 倍。放大上限是原图的两倍像素和 2 倍里大的那个。 */
 export function zoomView(factor, cx, cy) {
@@ -332,7 +333,7 @@ export function wireViewer() {
     if (b.tagName === 'A') e.preventDefault();
     hooks.act(b.dataset.act, b.dataset, e, bar.d);
   });
-  if (typeof ResizeObserver === 'function') s.observe(new ResizeObserver(() => s.read(() => { stageBox = stage.getBoundingClientRect(); }, 'viewer:box'))).observe(stage);
+  if (typeof ResizeObserver === 'function') s.observe(new ResizeObserver(() => s.read(() => { stageBox = stage.getBoundingClientRect(); }, BOX))).observe(stage);
   for (const x of slots) s.on(x.high, 'load', () => { if (x === current) noteSize(); });
   s.on(stage, 'wheel', e => {
     e.preventDefault();

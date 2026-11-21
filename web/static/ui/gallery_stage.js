@@ -68,6 +68,7 @@ function piece(box) {
 let view = null;
 function stageView(scope) {
   const {el, refs} = PAGE();
+  const LAYOUT = scope.key('stage:layout'), PAINT = scope.key('stage:paint');   // 帧任务的令牌（#751）
   $('groupsPage').replaceChildren(el);
   const pieces = keyed(refs.stage, {key: b => b.item.uuid, create: piece, scope});
   let data = null, kind = '', g = null, loads = 0;
@@ -76,7 +77,7 @@ function stageView(scope) {
     if (!data?.items?.length || !g) return;
     const width = el.clientWidth, height = Math.max(380, Math.min(560, $('viewport').clientHeight - 220));
     const got = STAGES[kind].boxes(data.items.map(aspect), {width, height}, g), items = data.items;
-    scope.write(() => paint(got, items), 'stage:paint');
+    scope.write(() => paint(got, items), PAINT);
   }
   function paint(got, items) {
     css(refs.stage, 'height', `${Math.ceil(got.height)}px`);
@@ -91,7 +92,7 @@ function stageView(scope) {
     show(refs.foot, !data.error && data.total > got.boxes.length);
   }
   if (typeof ResizeObserver === 'function') {
-    const watch = scope.observe(new ResizeObserver(() => scope.read(layout, 'stage:layout')));
+    const watch = scope.observe(new ResizeObserver(() => scope.read(layout, LAYOUT)));
     watch.observe(el); watch.observe($('viewport'));
   }
   // 点图开详情，双击看大图；按住拖动是拖进画廊（拖过以后吞掉那次点击）。
@@ -122,7 +123,7 @@ function stageView(scope) {
     show(refs.stage, !!items.length);
     show(refs.empty, !items.length);
     cls(el, 'is-empty', !items.length);
-    if (!items.length) { drawEmpty(refs.empty, emptyOf(g, got, nsfw)); show(refs.foot, false); } else scope.read(layout, 'stage:layout');
+    if (!items.length) { drawEmpty(refs.empty, emptyOf(g, got, nsfw)); show(refs.foot, false); } else scope.read(layout, LAYOUT);
     renderHeading();   // 页头的张数
   }};
 }

@@ -57,9 +57,6 @@ const DOW = tpl`<span></span>`;
 const TILE_GAP = 2.5;
 // 月份标题旁最多几个头像。
 const FACES = 8;
-// 帧任务的键带上部件自己的编号（#751）：同时有两个日历时各排各的。
-let views = 0;
-
 const imageUrl = (uuid, size) => `/image?id=${encodeURIComponent(uuid)}&size=${size}`;
 const monthTitle = (year, month) => I18N.language === 'zh-CN' ? t('{m} 月', {m: month})
   : new Intl.DateTimeFormat(I18N.locale, {month: 'long'}).format(new Date(year, month - 1, 1));
@@ -123,7 +120,8 @@ function face(s) {
  * @returns {{el: HTMLElement, update: (props: {month: string, data: object|null}) => void, dispose: () => void}}
  */
 export function calendarView({scope: parent, dayHref, onMonth, empty, weekStart = 1}) {
-  const s = parent.child('calendar'), {el, refs} = VIEW(), id = `calendar:${views++}`;
+  const s = parent.child('calendar'), {el, refs} = VIEW();
+  const MEASURE = s.key('calendar:measure'), DRAW = s.key('calendar:draw');   // 帧任务的令牌：每个日历各取各的（#751）
   let props = {month: '', data: null}, width = 0, shown = '';
   // keyed 只给复用的部件调 update，新建的在这里先画一次。
   const made = make => item => { const comp = make(); comp.update(item); return comp; };
@@ -149,9 +147,9 @@ export function calendarView({scope: parent, dayHref, onMonth, empty, weekStart 
   // 格宽决定缩略图的档位：量一次，变了再画。
   const measure = () => {
     const w = refs.grid.clientWidth / 7;
-    if (Math.abs(w - width) >= 1) { width = w; s.write(draw, `${id}:draw`); }
+    if (Math.abs(w - width) >= 1) { width = w; s.write(draw, DRAW); }
   };
-  if (typeof ResizeObserver === 'function') s.observe(new ResizeObserver(() => s.read(measure, `${id}:measure`))).observe(refs.grid);
+  if (typeof ResizeObserver === 'function') s.observe(new ResizeObserver(() => s.read(measure, MEASURE))).observe(refs.grid);
 
   function draw() {
     const {month, data} = props, p = parseMonth(month);

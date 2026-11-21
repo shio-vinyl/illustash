@@ -55,6 +55,9 @@ let view = null;
 // 这一页的部件：进页面时在页面作用域上建一次。
 function daysView(scope) {
   const {el, refs} = PAGE(), viewport = $('viewport');
+  // 帧任务的令牌（#751）：在这一页的作用域上取，一种用途一个。
+  const LAYOUT = scope.key('days:layout'), WIDTH = scope.key('days:width'), SCROLL = scope.key('days:scroll');
+  const SELECT = scope.key('days:select'), MORE = scope.key('days:more');
   $('homePage').replaceChildren(el);
   // failed：从头读或接着读失败了（挡住接着读）；stale：同步、改动之后的重读失败了（'newest' 或 'around'，画面留着，「重试」重做它）。
   // jump：这一次跳转的凭据（target 是要去的那天，读失败后「重试」接着往那里读）。peopleRead：每天正在读的名单（它的 AbortController）。
@@ -132,9 +135,9 @@ function daysView(scope) {
   // 宽度量一次，变了才重排（一天的高度和宽度无关，变宽变窄时只重排马赛克和芯片行）。同步时长了行的天按标准的马赛克重排。
   const measure = () => {
     const w = refs.days.clientWidth;
-    if (w && Math.abs(w - v.width) >= 1) { v.width = w; v.grow.clear(); scope.write(layout, 'days:layout'); }
+    if (w && Math.abs(w - v.width) >= 1) { v.width = w; v.grow.clear(); scope.write(layout, LAYOUT); }
   };
-  if (typeof ResizeObserver === 'function') scope.observe(new ResizeObserver(() => scope.read(measure, 'days:width'))).observe(refs.days);
+  if (typeof ResizeObserver === 'function') scope.observe(new ResizeObserver(() => scope.read(measure, WIDTH))).observe(refs.days);
   // 等 ui/virtual.js 这一轮的读和写都跑完（内容的高度已经写上），再量、再滚。
   const settled = () => new Promise(done => scope.read(() => scope.write(done)));
   const offsetOf = () => refs.days.getBoundingClientRect().top - viewport.getBoundingClientRect().top + viewport.scrollTop;
@@ -146,10 +149,10 @@ function daysView(scope) {
   // 这里在读阶段（量滚动位置），活页条的选中和接着读（会改 DOM）挪到写阶段。
   function onScroll() {
     const top = viewport.scrollTop - offsetOf(), day = dayAt(v.boxes, top + 1);
-    if (day && day !== v.day) { v.day = day; scope.write(() => selectDay(day), 'days:select'); }
-    if (v.next && !v.failed && top + viewport.clientHeight * 2.5 > v.height) scope.write(() => more(), 'days:more');
+    if (day && day !== v.day) { v.day = day; scope.write(() => selectDay(day), SELECT); }
+    if (v.next && !v.failed && top + viewport.clientHeight * 2.5 > v.height) scope.write(() => more(), MORE);
   }
-  scope.on(viewport, 'scroll', () => scope.read(onScroll, 'days:scroll'), {passive: true});
+  scope.on(viewport, 'scroll', () => scope.read(onScroll, SCROLL), {passive: true});
 
   // ---------- 从头读 ----------
   async function load(route, {restore = false, force = false} = {}) {
@@ -175,10 +178,10 @@ function daysView(scope) {
       days.push(...r.days.filter(g => !days.some(x => x.day === g.day))); next = r.next;
     } while (next && days.length < count);
     Object.assign(v, {days, next, reading: false});
-    scope.read(measure, 'days:width'); layout();
+    scope.read(measure, WIDTH); layout();
     await settled();
     if (!valid(tk)) return;
-    scope.read(onScroll, 'days:scroll');
+    scope.read(onScroll, SCROLL);
     if (v.target) goto(v.target);
     drain();
   }
@@ -209,7 +212,7 @@ function daysView(scope) {
       if (!scope.alive) return;
       layout();
       await settled();
-      if (valid(tk)) scope.read(onScroll, 'days:scroll');
+      if (valid(tk)) scope.read(onScroll, SCROLL);
     });
     layout();
     return p;

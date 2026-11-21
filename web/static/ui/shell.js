@@ -12,7 +12,7 @@ import {canGoBack, cleanup, defaultSort, go, hashFor, historyEntry, noteHistory,
 import {readError} from '../core/session.js';
 import {state} from '../core/state.js';
 import {$, error, helpTip, searchIcon, showArea, wireHelpTip} from './dom.js';
-import {attr, make, show, text, tpl} from './el.js';
+import {attr, cls, make, show, text, tpl} from './el.js';
 import {closeInspector} from './detail.js';
 import {closeViewer} from './viewer.js';
 import {fixedLayout} from './grid_rows.js';
@@ -70,6 +70,8 @@ export async function applyRoute() {
   // 决定留在哪里。网格页由 reload 定位（回到记过的地址时恢复，否则回顶部）。
   const saved = traversed ? panelScroll.get(historyEntry()) : undefined;
   if (page.render && !samePage) $('viewport').scrollTop = 0;
+  // 网格页顶上跟着滚动的头部（角色页的横幅，#712）：进页和同一页又画一次时交给这一页（core/pages.js 的 gridHead）。
+  viewOf(route, state.char).gridHead?.({samePage, scope});
   if (!page.render) { await reload(true, placeFor(route)); return; }   // 没有自己渲染入口的页面是网格页
   const drawn = page.render({samePage, restore: saved !== undefined, scope});
   if (saved === undefined) return;
@@ -87,10 +89,14 @@ const HEAD = tpl`<hgroup class="heading-main"><h1 class="title-page"><span data-
   title="这一页的说明" aria-label="这一页的说明" data-t-attr="title aria-label" aria-expanded="false" aria-controls="pageHelpPop" hidden>?</button></h1><p
   class="page-sub" data-ref="line"><span data-ref="sub"></span><strong data-ref="alert"></strong></p><div id="pageHelpPop" class="menu menu-drop" role="dialog"
   aria-label="这一页的说明" data-t-attr="aria-label" tabindex="-1" data-ref="pop" hidden></div></hgroup>`;
-let head = null, actions = null;   // 建一次，之后只改变了的地方（模块载入时不建节点）
+let head = null, actions = null, tucked = false;   // 建一次，之后只改变了的地方（模块载入时不建节点）
+// 页头的标题这会儿藏不藏（角色页：横幅上已经写着名字，横幅的名字滚出视口以后才显示，#712）。由那一页调，离开时调回 false。
+export function tuckHeading(on) { tucked = !!on; if (head) markTucked(); }
+function markTucked() { cls(head.el, 'is-tucked', tucked); attr(head.el, 'aria-hidden', tucked ? 'true' : null); }
 function drawHead(h, {title = '', sub = '', alert = '', actions: buttons = []} = {}, help) {
   head ||= HEAD(); actions ||= make('div', 'heading-actions');
   const {refs} = head;
+  markTucked();
   text(refs.title, title);
   text(refs.sub, sub); text(refs.alert, alert && sub ? ' · ' + alert : alert);
   show(refs.line, !!(sub || alert));

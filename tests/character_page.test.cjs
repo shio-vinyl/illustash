@@ -1,4 +1,4 @@
-// 角色页的横幅和资料（#712）：core/character.js 挑横幅图、同作品的角色、请求参数和缓存。角色和图片都是合成数据。
+// 角色页的横幅和资料（#712）：core/character.js 挑横幅图、常一起出现和同作品的角色、请求参数和缓存。角色和图片都是合成数据。
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const web = require('./web.cjs');
@@ -37,6 +37,7 @@ test('读取：图、统计和动态各请求一次，同一角色和数据版�
     seen.push(String(path).split('?')[0]);
     const body = path.startsWith('/api/assets') ? {items: [item('a', 600, 800, '#123456'), item('b', 1800, 900, '#654321'), item('c', 700, 700), item('d', 500, 500)]}
       : path.startsWith('/api/character/stats') ? {count: 4, first: '2026-01-02', months: [{month: '2026-10', count: 1}, {month: '2026-11', count: 3}]}
+      : path.startsWith('/api/character/together') ? [{id: 'x', count: 2}]
       : {me: {recent: 2, last: '2026-11-19'}};
     return {ok: true, status: 200, json: async () => body};
   };
@@ -47,10 +48,21 @@ test('读取：图、统计和动态各请求一次，同一角色和数据版�
   assert.deepEqual(data.recent.map(x => x.uuid), ['a', 'b', 'c']);
   assert.equal(data.months.length, 2);
   assert.equal(data.recent30, 2);
-  assert.deepEqual(seen.sort(), ['/api/assets', '/api/character/activity', '/api/character/stats']);
+  assert.deepEqual(data.together, [{id: 'x', count: 2}]);
+  assert.deepEqual([...seen].sort(), ['/api/assets', '/api/character/activity', '/api/character/stats', '/api/character/together']);
   await C.loadCharacter({id: 'me', count: 4});
-  assert.equal(seen.length, 3);
+  assert.equal(seen.length, 4);
   S.readEpoch = 2;
   await C.loadCharacter({id: 'me', count: 4});
-  assert.ok(seen.length > 3);
+  assert.ok(seen.length > 4);
+});
+
+test('常一起出现：按角色目录取名字和头像，目录里没有的、只当标签的不画；一个都没有时退回同作品', () => {
+  const me = {id: 'me', work_id: 'w', count: 5}, x = {id: 'x', name: '合成乙', work_id: 'w', count: 3, cover: 'u1'}, m = {id: 'm', name: '合成吉祥物', mascot: true, count: 9};
+  const chars = [me, x], map = new Map([[me.id, me], [x.id, x], [m.id, m]]);
+  assert.deepEqual(C.peopleOf(me, [{id: 'gone', count: 9}, {id: 'm', count: 8}, {id: 'x', count: 2}], chars, map), {kind: 'together', people: [{c: x, count: 2}]});
+  assert.deepEqual(C.peopleOf(me, [], chars, map), {kind: 'work', people: [{c: x, count: 3}]});
+  // 目录换了（封面变了）：画的时候按新目录取，不留旧封面。
+  const x2 = {...x, cover: 'u2'};
+  assert.equal(C.peopleOf(me, [{id: 'x', count: 2}], [me, x2], new Map([['x', x2]])).people[0].c.cover, 'u2');
 });

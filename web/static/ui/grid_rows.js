@@ -98,6 +98,14 @@ function stackAt(x, y, clamp) {
 
 // 顶部头部的高度（0 是没有）。变了以后下一次 layout() 重新分行。
 export function setHead(height) { height = Math.max(0, Math.round(height || 0)); if (height !== head) { head = height; key = ''; } }
+// 网格头部的高度变了（ui/grid.js 的 ResizeObserver 报的边框盒高度）：记进行坐标。视口已经滚过头部时（回到原位置 #402 以后，
+// 横幅的资料才读到、变高），滚动位置加上高度差，看着的那几行不动；先撑高网格，滚动位置才不会被截住。
+export function headResized(height) {
+  height = Math.max(0, Math.round(height || 0));
+  const v = $('viewport'), shift = height !== head && v.scrollTop > head ? height - head : 0;
+  setHead(height);
+  if (shift) { $('grid').style.height = `${rowTop(rowCount())}px`; v.scrollTop += shift; }
+}
 // 这一次分行的键：宽度、缩放、显示方式、张数、数据版本、头部变了就不同。网格用它判断要不要重新定位、重挂卡片。
 export const layoutKey = () => key;
 

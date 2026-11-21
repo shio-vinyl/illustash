@@ -179,6 +179,15 @@ function checkEntry(code, key, value) {
   return !!value.other;
 }
 
+// JSON.parse 遇到重复的键只留最后一个：只改了前一份的译文不会生效，所以表里不许有重复的键（#712 的审核）。
+test('no table repeats a key', () => {
+  for (const code of Object.keys(locales)) {
+    const keys = [...read(`locales/${code}.json`).matchAll(/^  "((?:[^"\\]|\\.)*)":/gm)].map(m => m[1]);
+    const repeated = keys.filter((k, i) => keys.indexOf(k) !== i);
+    assert.deepEqual(repeated, [], `${code}.json repeats ${repeated.join(', ')}`);
+  }
+});
+
 test('every table matches the code: no unused keys, matching placeholders, plural forms of its language', () => {
   const {used} = usedKeys();
   assert.ok(english, 'locales/en.json');

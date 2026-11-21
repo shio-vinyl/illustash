@@ -1,171 +1,153 @@
 // 角色页（#712）：网格上面跟着滚动的横幅（这个角色最近的一张宽图往下渐变成图的颜色、圆头像、名字、作品和 Danbooru、
-// 张数和未检查、标为已检查和更多菜单），横幅下面的三组资料（ui/character_facts.js），以及页头里的小标题（横幅滚出去以后才显示）。
+// 张数和未检查、标为已检查和「⋯」菜单），横幅下面的三组资料（ui/character_facts.js）。页头只有一个小标题（名字和张数），
+// 横幅上的名字整个看得见时藏着（ui/shell.js 的 tuckHeading）。
 // 角色页没有自己的 render，主区是网格（core/pages.js 的 character 视图）：横幅放进 C2 留的网格头部（ui/grid.js 的 gridHead），
-// 在页头每次重画时（drawHeading）确保建好、只更新。数据在 core/character.js。工具栏（造型、可能也是 TA、可能认错、排序、选择）
-// 照旧由 ui/shell.js 画。
-import {loadCharacter} from '../core/character.js';
+// 由框架的 gridHead 钩子在进页和同一页又画一次时建好、更新；元数据重读（写入、撤销以后）时横幅自己在作用域上听 onMeta。
+// 数据在 core/character.js。工具栏（造型、可能也是 TA、可能认错、排序、选择）照旧由 ui/shell.js 画。
+import {loadCharacter, peopleOf} from '../core/character.js';
 import {imageUrl, localDate, number} from '../core/format.js';
 import {t} from '../core/i18n.js';
 import {nameTip, workLabel} from '../core/labels.js';
-import {implement} from '../core/pages.js';
-import {backTo} from '../core/rail.js';
-import {cameFrom, hashFor, stepHistory} from '../core/route.js';
+import {onMeta} from '../core/meta.js';
+import {implement, narrowed} from '../core/pages.js';
+import {go} from '../core/route.js';
 import {readError} from '../core/session.js';
 import {state} from '../core/state.js';
+import {backLink} from './back_link.js';
 import {charFacts} from './character_facts.js';
 import {$, error} from './dom.js';
-import {attr, cls, show, text, tpl} from './el.js';
+import {attr, show, text, tpl} from './el.js';
 import {gridHead, sweep} from './grid.js';
-import {createLayer} from './overlay.js';
+import {moreMenu} from './more_menu.js';
 import {editProfile, mergeCharacter, toggleMascot, toggleOc} from './palette.js';
-import {currentPage} from './scope.js';
+import {tuckHeading} from './shell.js';
 import {setTint} from './tint.js';
 
 // 没有来路（打开图库后的第一页就是这个角色）时，返回去资料库。
-const BACK = () => ({label: t('资料库'), href: '#/characters'});
+const BACK = {label: t('资料库'), href: '#/characters'};
 
 const HERO = tpl`<section class="char-hero" aria-labelledby="charHeroName">
   <div class="char-hero-art" aria-hidden="true"><img alt="" decoding="async" data-ref="art"></div>
-  <div class="char-hero-bar">
-    <a class="char-hero-back" data-ref="back"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M12 4.5 6.5 10l5.5 5.5"/></svg><span data-ref="backLabel"></span></a>
-    <div class="char-hero-actions">
-      <button class="quiet" type="button" id="sweepButton" data-ref="sweep"></button>
-      <div class="tag-control more-control"><button class="quiet" type="button" id="moreButton" data-ref="more">⋯</button>
-        <div id="morePopover" class="menu menu-drop more-menu" data-ref="menu" hidden>
-          <button class="menu-item" type="button" id="ocButton" data-ref="oc"></button>
-          <button class="menu-item" type="button" id="mascotButton" data-ref="mascot"></button>
-          <button class="menu-item" type="button" id="profileButton" data-ref="profile"></button>
-          <button class="menu-item" type="button" id="mergeButton" data-ref="merge"></button>
-        </div></div>
-    </div>
-  </div>
+  <div class="char-hero-bar"><span data-ref="back"></span><div class="char-hero-actions"><button class="btn glass" type="button" data-ref="sweep"
+    title="把剩下的机器识别都记为已检查；以后新识别的图会重新计入未检查" data-t-attr="title" data-t>标为已检查</button><span data-ref="more"></span></div></div>
   <div class="char-hero-main">
-    <img class="avatar is-large char-hero-avatar" alt="" data-ref="avatar">
+    <img class="avatar char-hero-avatar" alt="" data-ref="avatar">
     <div class="char-hero-id">
-      <h1 class="char-hero-name" id="charHeroName" data-ref="name"></h1>
-      <p class="char-hero-meta"><span class="oc-badge" data-ref="badge"></span><span data-ref="work"></span><code class="char-hero-tag" data-ref="tag"></code><button
-        class="link-button" type="button" id="profileNudge" data-ref="nudge"></button></p>
+      <h1 class="title-hero char-hero-name" id="charHeroName" data-ref="name"></h1>
+      <p class="char-hero-meta"><span class="oc-badge" data-ref="badge" data-t>只当标签</span><span data-ref="work"></span><code class="char-hero-tag"
+        data-ref="tag"></code><button class="link-button" type="button" data-ref="nudge" title="补上中文名、别名和所属作品" data-t-attr="title" data-t>关联 Danbooru…</button></p>
     </div>
     <dl class="char-hero-stats">
-      <div><dt data-ref="countLabel"></dt><dd data-ref="count"></dd></div>
-      <div data-ref="recentBox"><dt data-ref="recentLabel"></dt><dd data-ref="recent"></dd></div>
-      <div data-ref="checkBox"><dt data-ref="checkLabel"></dt><dd><a class="unchecked-link" data-ref="check"></a></dd></div>
+      <div><dt class="text-meta" data-t>张数</dt><dd data-ref="count"></dd></div>
+      <div data-ref="recentBox"><dt class="text-meta" data-t>最近 30 天</dt><dd data-ref="recent"></dd></div>
+      <div data-ref="checkBox"><dt class="text-meta" data-t>未检查</dt><dd><button class="char-hero-check" type="button" data-ref="check"></button></dd></div>
     </dl>
   </div>
   <div data-ref="facts"></div>
-  <p class="char-hero-foot" data-ref="foot"></p>
+  <p class="char-hero-foot text-meta" data-ref="foot"></p>
 </section>`;
 
-// 更多菜单是非模态浮层：Esc、点外关闭由浮层管理器（ui/overlay.js）统一处理。横幅只建一次，菜单元素不换；层按 id 找元素。
-// 打开时焦点进第一项，↑ ↓ 在各项之间移动焦点（menu，#422）。
-const moreMenu = createLayer({kind: 'popover', id: 'more-menu', el: () => $('morePopover'), anchor: () => $('moreButton'), menu: true, focusIn: 'first',
-  onDismiss: reason => setMenu(false, reason)});
-function setMenu(open, reason) {
-  const el = $('morePopover'); if (el) el.hidden = !open;
-  if (open) moreMenu.open(); else moreMenu.close(reason);
-}
-
-// 横幅部件：{el, update(r, c), out, dispose}。out 是横幅是否已经滚出视口（页头据此显示小标题）。
-function charHero(scope, onOut) {
-  const {el, refs} = HERO(), facts = charFacts();
-  refs.facts.replaceWith(facts.el);
-  let c = null, loaded = '';
-  // 左上的返回按来路走（core/rail.js 的 backTo，和作品页一样）：后退一步能回去就后退，没有来路时回资料库。
-  scope.on(refs.back, 'click', e => { if (backTo(cameFrom(), BACK()).step) { e.preventDefault(); stepHistory(-1); } });
-  attr(refs.more, 'title', t('更多操作')); attr(refs.more, 'aria-label', t('更多操作'));
-  text(refs.profile, t('编辑资料…')); attr(refs.profile, 'title', t('名称、别名、所属作品、Danbooru 关联'));
-  text(refs.merge, t('合并到另一个角色…')); attr(refs.merge, 'title', t('把这个角色的图和人工结论并到另一个角色'));
-  text(refs.nudge, t('关联 Danbooru…')); attr(refs.nudge, 'title', t('补上中文名、别名和所属作品'));
-  text(refs.countLabel, t('张数')); text(refs.recentLabel, t('最近 30 天')); text(refs.checkLabel, t('未检查'));
-  text(refs.sweep, t('标为已检查')); attr(refs.sweep, 'title', t('把剩下的机器识别都记为已检查；以后新识别的图会重新计入未检查'));
+// 横幅部件：{el, update(r, c), scope, dispose()}。建在页面作用域的子作用域上，放进网格头部；作用域释放时清空、藏起头部，
+// 页头的小标题恢复常显。
+function charHero(scope) {
+  const {el, refs} = HERO(), facts = charFacts(), back = backLink(scope, BACK);
+  let c = null, route = null, data = null, key = '', nsfw = null, seq = 0;
+  const more = scope.add(moreMenu({id: 'char-menu', menuId: 'charMenu', button: 'btn glass', items: () => menuItems(c)}));
+  refs.facts.replaceWith(facts.el); refs.back.replaceWith(back.el); refs.more.replaceWith(more.el);
   scope.on(refs.sweep, 'click', sweep);
-  scope.on(refs.more, 'click', () => setMenu($('morePopover').hidden));
-  scope.on(refs.merge, 'click', () => { setMenu(false); mergeCharacter(c); });
-  scope.on(refs.profile, 'click', () => { setMenu(false); editProfile(c); });
   scope.on(refs.nudge, 'click', () => editProfile(c));
-  scope.on(refs.oc, 'click', () => { setMenu(false); toggleOc(c); });
-  scope.on(refs.mascot, 'click', () => { setMenu(false); toggleMascot(c); });
-  // 横幅上按下不开始网格的拖动选择（ui/grid.js 在 #grid 上听 pointerdown）。
-  scope.on(el, 'pointerdown', e => e.stopPropagation());
-  // 横幅的名字有一部分滚出视口：页头显示小标题。
-  const seen = scope.observe(new IntersectionObserver(([entry]) => onOut(entry.intersectionRatio < 1), {root: $('viewport'), threshold: [0, 1]}));
+  // 未检查：按下只看还没检查过的机器识别，再按一次回到全部（新增一条历史，返回仍回到进这一页之前的地方，core/route.js）。
+  scope.on(refs.check, 'click', () => go({...route, check: route.check ? '' : '1', maybe: ''}));
+  // 元数据重读以后（写入、撤销、改资料）角色的数字和名字变了：照新的画。换页途中（state.char 还没读到）不画。
+  scope.add(onMeta(() => { if (state.char?.id === c?.id) update(state.route, state.char); }));
+  // 横幅上的名字整个看得见时，页头的小标题藏着；滚出去一部分就显示。
+  const seen = scope.observe(new IntersectionObserver(([entry]) => tuckHeading(entry.intersectionRatio >= 1), {root: $('viewport'), threshold: [0, 1]}));
   seen.observe(refs.name);
+  tuckHeading(true);
+  const head = gridHead();
+  head.replaceChildren(el); show(head, true);
+  scope.add(() => { if (head.firstElementChild === el) { head.replaceChildren(); show(head, false); } tuckHeading(false); });
 
-  // 横幅的图、最近加入、曲线和同作品：按角色和数据版本读（core/character.js 缓存），回来时还在这个角色上才画。
-  // 这些数据不随排序、造型、筛选变，所以守卫看作用域和角色，不看路由对象。
-  async function load(char) {
-    let data;
-    try { data = await loadCharacter(char, {signal: scope.signal}); } catch (e) { if (scope.alive && e.name !== 'AbortError') error(readError(e)); return; }
-    if (!scope.alive || state.char?.id !== char.id) return;
+  // 横幅的图、最近加入、曲线和常一起出现：按角色、NSFW 和数据版本读（core/character.js 缓存）。同一页上几次读取不分先后回来，
+  // 只认最后发出的那次（seq，页面样板第 5 条），成功和失败都这样判断。角色在这个作用域里不变，不用再比角色。
+  async function load() {
+    const mine = ++seq;
+    let got;
+    try { got = await loadCharacter(c, {signal: scope.signal}); } catch (e) {
+      if (scope.alive && mine === seq && e.name !== 'AbortError') error(readError(e));
+      return;
+    }
+    if (!scope.alive || mine !== seq) return;
+    data = got;
     const art = data.banner;
-    attr(refs.art, 'src', art ? imageUrl(art.uuid, 'medium') : null);
+    attr(refs.art, 'src', art ? imageUrl(art.uuid, 'preview') : null);
     show(refs.art, !!art);
-    setTint(el, art?.color || char.color || null);
+    setTint(el, art?.color || c.color || null);
     text(refs.recent, data.recent30 === null ? '' : number(data.recent30));
     show(refs.recentBox, data.recent30 !== null);
     facts.update(data);
+    facts.people(peopleOf(c, data.together, state.chars, state.charMap));
   }
 
   function update(r, char) {
-    c = char;
-    const back = backTo(cameFrom(), BACK());
-    text(refs.backLabel, back.label); attr(refs.back, 'href', back.href);
-    const tagOnly = !!c.mascot;   // 只当标签：没有要复核的，所以没有检查、清扫、OC 这些控件
+    route = r; c = char;
+    const tagOnly = !!c.mascot;   // 只当标签：没有要复核的，所以没有检查、清扫、原创角色这些控件
     text(refs.name, c.name); attr(refs.name, 'title', nameTip(c));
     attr(refs.avatar, 'src', c.cover ? imageUrl(c.cover) : null);
-    show(refs.badge, tagOnly); text(refs.badge, t('只当标签'));
+    show(refs.badge, tagOnly);
     attr(refs.badge, 'title', (c.mascot_origin === 'default' ? t('老师、博士、训练员这类没有固定形象的玩家化身和吉祥物默认只当标签。') : '') +
       t('不算角色：不出现在角色列表里，也不算多人图；图上仍挂着这个标签'));
-    const work = tagOnly ? '' : workLabel(c);
+    const work = tagOnly ? '' : workLabel(c), tag = c.tag && c.tag !== c.name ? c.tag : '';
     text(refs.work, work); show(refs.work, !!work);
-    text(refs.tag, c.tag && c.tag !== c.name ? c.tag : ''); show(refs.tag, !!c.tag && c.tag !== c.name);
+    text(refs.tag, tag); show(refs.tag, !!tag);
     show(refs.nudge, !c.tag && c.kind !== 'oc' && !c.label_only);
     text(refs.count, number(c.count));
-    // 未检查：点它只看还没检查过的机器识别，再点一次回到全部。
     show(refs.checkBox, !tagOnly && !!(c.unchecked || r.check));
-    text(refs.check, number(c.unchecked) + (r.check ? ' ×' : ''));
-    cls(refs.check, 'on', !!r.check);
-    attr(refs.check, 'href', hashFor({...r, check: r.check ? '' : '1', maybe: ''}));
+    text(refs.check, number(c.unchecked));
+    attr(refs.check, 'aria-pressed', r.check ? 'true' : 'false');
     attr(refs.check, 'title', r.check ? t('显示全部') : t('只看机器识别、还没检查过的图'));
     show(refs.sweep, !tagOnly); attr(refs.sweep, 'disabled', !c.unchecked);
-    show(refs.oc, !c.label_only && !tagOnly);
-    text(refs.oc, c.kind === 'oc' ? t('取消原创角色') : t('标为原创角色')); attr(refs.oc, 'title', t('画师自己的原创角色，不属于任何作品'));
-    show(refs.mascot, !c.label_only);
-    text(refs.mascot, c.mascot ? t('算作角色') : t('不算角色，只当标签'));
-    attr(refs.mascot, 'title', c.mascot ? t('恢复成角色：出现在角色列表里，同框就算多人图') : t('像佩洛洛这样的吉祥物、玩家化身：不算角色，不算多人图；图上仍挂着这个标签，可以按它筛选'));
+    // 「全部 N 张」只在下面的网格就是全部的时候写；有筛选（未检查、可能也是 TA、可能认错、造型、搜索、条件）时工具栏的芯片已经写明。
+    const plain = !narrowed(r) && !r.maybe && !r.variant;
     const checked = !tagOnly && c.reviewed_at ? t('上次检查 {date}', {date: localDate(c.reviewed_at)}) : '';   // 后端存的是 UTC（#386 的 2-15）
-    text(refs.foot, [t('全部 {n} 张', {n: number(c.count)}), checked].filter(Boolean).join(' · '));
-    const key = [c.id, state.nsfw, state.readEpoch].join('|');
-    if (key !== loaded) { loaded = key; load(c); }
+    text(refs.foot, [plain ? t('全部 {n} 张', {n: number(c.count)}) : '', checked].filter(Boolean).join(' · '));
+    back.update();
+    // 常一起出现的名字和头像按当时的角色目录取：元数据比横幅的数据晚到时也跟着换。
+    if (data) facts.people(peopleOf(c, data.together, state.chars, state.charMap));
+    const next = [c.id, state.nsfw, state.readEpoch].join('|');
+    if (next === key) return;
+    // NSFW 变了：上一种设置下的图先藏起来，新数据到了再显示（读失败也不留着）。
+    if (nsfw !== null && nsfw !== state.nsfw) { data = null; show(refs.art, false); facts.update(null); facts.people({kind: 'work', people: []}); }
+    key = next; nsfw = state.nsfw;
+    load();
   }
-  return {el, update, scope};
+  return {el, update, scope, dispose: () => scope.dispose()};
 }
 
-// 页头里的小标题：横幅在视野里时藏着（名字已经在横幅上），滚出去以后显示名字和张数。
-const TITLE = tpl`<hgroup class="heading-main char-title"><h1 class="title-page" data-ref="name"></h1><p class="page-sub" data-ref="sub"></p></hgroup>`;
-let hero = null, title = null, out = false;
-function drawTitle(h, c) {
-  title ||= TITLE();
-  text(title.refs.name, c.name);
-  text(title.refs.sub, t('{n} 张', {n: number(c.count)}));
-  cls(title.el, 'is-out', out);
-  attr(title.el, 'aria-hidden', !out);
-  if (h.firstChild !== title.el || h.childNodes.length !== 1) h.replaceChildren(title.el);
-}
-// 每次画页头时调（ui/shell.js 的 renderHeading）：这一页的横幅没建就建一个（换角色是换页，作用域是新的），然后只更新。
-function drawHeading(h, r, c) {
-  const page = currentPage(), head = gridHead();
-  if (!hero || !hero.scope.alive || hero.page !== page) {
-    const scope = page.child('character-hero');
-    hero = {...charHero(scope, o => { out = o; if (title) { cls(title.el, 'is-out', o); attr(title.el, 'aria-hidden', !o); } }), page};
-    out = false;
-    head.replaceChildren(hero.el); cls(head, 'is-hero', true); show(head, true);
-    // 离开这一页：网格头部清空、藏起来，别的网格页没有横幅。
-    const el = hero.el;
-    scope.add(() => { if (head.firstChild === el) { head.replaceChildren(); cls(head, 'is-hero', false); show(head, false); } setMenu(false); });
-  }
-  hero.update(r, c);
-  drawTitle(h, c);
+// 「⋯」菜单的项：原创角色、只当标签、编辑资料、合并。每一步都进撤销栈（ui/palette.js）。
+function menuItems(c) {
+  if (!c) return [];
+  return [
+    !c.label_only && !c.mascot && [c.kind === 'oc' ? t('取消原创角色') : t('标为原创角色'), () => toggleOc(c), t('画师自己的原创角色，不属于任何作品')],
+    !c.label_only && [c.mascot ? t('算作角色') : t('不算角色，只当标签'), () => toggleMascot(c),
+      c.mascot ? t('恢复成角色：出现在角色列表里，同框就算多人图') : t('像佩洛洛这样的吉祥物、玩家化身：不算角色，不算多人图；图上仍挂着这个标签，可以按它筛选')],
+    [t('编辑资料…'), () => editProfile(c), t('名称、别名、所属作品、Danbooru 关联')],
+    [t('合并到另一个角色…'), () => mergeCharacter(c), t('把这个角色的图和人工结论并到另一个角色')],
+  ];
 }
 
-implement({character: {drawHeading}});
+let hero = null;
+implement({character: {
+  // 页头：小标题（名字和张数），横幅上的名字看得见时藏着。
+  head: () => ({title: state.char?.name || '', sub: state.char ? t('{n} 张', {n: number(state.char.count)}) : ''}),
+  // 刚进这一页（或横幅的作用域已经释放）才建；同一页又画一次（换造型、只看未检查……）只按新地址更新。
+  gridHead: ({samePage, scope}) => {
+    if (!state.char) return;
+    if (!samePage || !hero?.scope.alive) {
+      const made = charHero(scope.child('character-hero'));
+      made.scope.add(() => { if (hero === made) hero = null; });
+      hero = made;
+    }
+    hero.update(state.route, state.char);
+  },
+}});

@@ -39,12 +39,13 @@ export function adoptDetail(d, ident, enabled) {
 
 // 这张图的角色每月加入多少张：按角色、NSFW 设置和读取纪元缓存，到下一次写入或切换 NSFW 为止。
 const statsCache = new Map();
-/** 角色卡的数字：{count, first, months: [{month, count}], recent: [uuid]}；读不到时是 null。exclude 是这张图自己。 */
+/** 角色卡的数字：{count, first, months: [{month, count}], recent: [uuid]}；读不到时是 null。exclude 是这张图自己（详情卡片给，
+ * 角色页的收集曲线不给，core/character.js）。缓存键带上 exclude，两处各存各的。 */
 export async function readCharStats(id, exclude) {
-  const key = `${id}|${state.nsfw}|${state.readEpoch}`;
+  const key = `${id}|${exclude || ''}|${state.nsfw}|${state.readEpoch}`;
   if (statsCache.has(key)) return statsCache.get(key);
   let st;
-  try { st = await api('/api/character/stats?' + new URLSearchParams({id, nsfw: state.nsfw, exclude})); } catch { return null; }
+  try { st = await api('/api/character/stats?' + new URLSearchParams({id, nsfw: state.nsfw, ...(exclude ? {exclude} : {})})); } catch { return null; }
   statsCache.set(key, st);
   return st;
 }

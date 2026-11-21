@@ -99,9 +99,9 @@ export const FLOWS = [
       w.check('作品页：横幅上有作品名', !!opened, await page.eval('location.hash'));
       const posters = await page.eval(`document.querySelectorAll('.cat-workpage .cat-poster').length`);
       w.check('作品页：有角色海报', posters > 0, `posters=${posters}`);
-      const back = await page.eval(`document.querySelector('.cat-back')?.innerText.trim() || ''`);
+      const back = await page.eval(`document.querySelector('.cat-hero-top > a.btn')?.innerText.trim() || ''`);
       w.check('作品页：返回写回到资料库', back === '资料库' || back === 'Catalog', back);
-      await w.step('点返回', () => page.click('.cat-back'));
+      await w.step('点返回', () => page.click('.cat-hero-top > a.btn'));
       const returned = await page.waitFor(`location.hash === '#/characters' && document.querySelectorAll('#charIndex .cat-poster').length > 0`, 4000);
       w.check('返回：回到资料库的角色页签，海报还在', !!returned, await page.eval('location.hash'));
     },

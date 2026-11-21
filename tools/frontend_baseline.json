@@ -126,7 +126,7 @@
    "app.css: font-weight: 500": 8,
    "app.css: font-weight: 600": 16,
    "app.css: font-weight: 650": 3,
-   "app.css: font-weight: 700": 3,
+   "app.css: font-weight: 700": 2,
    "app.css: font-weight: 800": 1,
    "app.css: transition-duration: .12s": 5,
    "app.css: transition-duration: .15s": 5,

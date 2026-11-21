@@ -44,7 +44,6 @@ main{flex:1;display:flex;flex-direction:column;min-width:0}
 .heading-main h1 .icon.small.on{background:var(--accent-soft);color:var(--accent-ink)}
 .heading-main>.menu-drop{top:100%;margin-top:var(--space-4)}
 .heading-main>.menu-drop p{margin:0;padding:var(--space-4) var(--space-6);font-size:var(--fs-12);line-height:1.6;color:var(--ink2)}
-h1.tag-title{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;user-select:all}
 p{margin:0;font-size:var(--fs-12);line-height:1.6}
 .unchecked{color:var(--tone-sand-ink)}
 .heading-actions{display:flex;gap:var(--space-4);flex-shrink:0}
@@ -220,9 +219,6 @@ dialog.relate{width:min(980px,calc(100vw - 32px));max-height:88vh;overflow:auto}
 @media (max-width:760px){.form-grid{grid-template-columns:minmax(0,1fr)}}
 .credits td small{display:block;color:var(--muted);font-size:var(--fs-11)}
 .more-menu{left:auto;right:0;width:190px}
-.unchecked-link{color:var(--tone-sand-ink);border-radius:var(--radius-4)}
-.unchecked-link:hover{text-decoration:underline}
-.unchecked-link.on{background:var(--tone-sand-bg);color:var(--tone-sand-ink);padding:var(--space-1) var(--space-6)}
 .menu-drop .palette-label{padding:var(--space-6) var(--space-8) var(--space-2)}
 .menu-item small{color:var(--muted);margin-left:4px}
 .watch-add{position:relative;display:inline-block}
@@ -304,7 +300,6 @@ kbd{font-family:var(--mono);font-size:var(--fs-10);color:var(--muted);padding:0 
 /* 页头 */
 .page-heading{flex:1;min-width:0;padding:0;align-items:center;gap:var(--space-12)}
 h1{font-size:var(--fs-20);font-weight:700;letter-spacing:-.4px;margin:0 0 1px}
-h1.tag-title{font-size:var(--fs-20);font-weight:700;letter-spacing:-.4px}
 p{color:var(--muted)}
 .top-actions{display:flex;align-items:center;gap:var(--space-8);flex-shrink:0}
 /* 「跳到角色」是按钮，和旁边的圆形按钮同一种底色，不做成输入框的样子（#386 的 2-31） */

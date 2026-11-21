@@ -289,12 +289,12 @@
   "只看机器识别、还没检查过的图": "Only machine-identified pictures not checked yet",
   "未检查": "Unchecked",
   "最近 30 天": "Last 30 days",
-  "全部 {n} 张": {
-    "one": "All {n} picture",
-    "other": "All {n} pictures"
-  },
-  "最近加入": "Recently added",
   "收集曲线": "Saved over time",
+  "常一起出现": "Often together",
+  "同框 {n} 张": {
+    "one": "Together in {n} picture",
+    "other": "Together in {n} pictures"
+  },
   "同作品": "Same series",
   "看详情": "Show details",
   "最近 12 个月每月加入的张数": "Pictures added each month over the last 12 months",

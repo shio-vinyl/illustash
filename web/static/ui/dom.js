@@ -81,6 +81,7 @@ export function error(message) { if (session.stale) return; $('errorBanner').tex
 export function readFailure(node, e) { if (node) { node.hidden = false; node.innerHTML = `<p class="empty" role="alert">${esc(readError(e))}</p>`; } }
 // 可折叠的块，展开或收起的状态在重新渲染和重新载入后保留。
 export const fold = (key, summary, body) => `<details class="more" data-fold-key="${key}"${prefs.get('settingsOpen', {})[key] ? ' open' : ''}><summary>${summary}</summary><div class="more-body">${body}</div></details>`;
+// 只有 fold() 生成的 <details> 带 data-fold-key，按属性找就够；不写元素名，测试用的假 DOM（tests/dom.cjs）不认带元素名的属性选择器。
 export function wireFolds(root) {
   for (const d of root.querySelectorAll('[data-fold-key]')) {
     if (d.dataset.foldWired) continue;
@@ -111,7 +112,7 @@ export async function busy(buttons, run) {
   try { return await run(); } finally { for (const b of list) b.disabled = false; }
 }
 // 按钮的数据（[{act, label, primary, disabled, title}]，ui/rows.js 的 buttons 也是这个形状）拼成 HTML，给还在拼 HTML 的
-// 任务面板和向导横条用；attr 是放动作名的属性（data-models、data-pack…）。不能点时 title 写原因。
+// 向导横条和更新提示用；attr 是放动作名的属性（data-models、data-pack…）。不能点时 title 写原因。
 export const buttonsHTML = (list, attr) => list.map(b => `<button class="${b.primary ? 'primary' : 'quiet'} small" ${attr}="${esc(b.act)}"`
   + `${b.disabled ? ` disabled${b.title ? ` title="${esc(b.title)}"` : ''}` : ''}>${esc(b.label)}</button>`).join('');
 // 只替换 HTML 变了的部分，没变的封面不会重新加载。

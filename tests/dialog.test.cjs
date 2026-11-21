@@ -92,14 +92,14 @@ test('表单提交播完退场再关，returnValue 是按下的按钮；调用�
   d.on.submit({defaultPrevented: false, submitter: {value: 'ok'}, preventDefault() { prevented = true; }});
   assert.equal(prevented, true); assert.equal(d.open, false); assert.equal(d.returnValue, 'ok');
 });
-test('closeModal：退场中再关一次不重复关；showModal 打开静态对话框，Esc 同样走退场（#715）', async () => {
+test('closeModal：退场中再关一次不重复关；openStatic 打开静态对话框，Esc 同样走退场（#715）', async () => {
   page();
   const d = document.createElement('dialog'); d.onclose = () => {};
   let closes = 0; const close = d.close.bind(d); d.close = v => { closes++; close(v); };
-  dialog.showModal(d, {id: 'static'}); assert.equal(d.open, true); assert.deepEqual(overlay.layerIds(), ['static']);
+  dialog.openStatic(d, {id: 'static'}); assert.equal(d.open, true); assert.deepEqual(overlay.layerIds(), ['static']);
   await Promise.all([dialog.closeModal(d, 'a'), dialog.closeModal(d, 'b')]);
   assert.equal(closes, 1); assert.equal(d.returnValue, 'a'); assert.deepEqual(overlay.layerIds(), []);
-  dialog.showModal(d, {id: 'static'});
+  dialog.openStatic(d, {id: 'static'});
   document.dispatch('keydown', {key: 'Escape', target: {}, preventDefault() {}, stopImmediatePropagation() {}});
   assert.equal(d.open, false); assert.equal(closes, 2); assert.deepEqual(overlay.layerIds(), []);
 });

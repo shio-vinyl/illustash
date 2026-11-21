@@ -11,9 +11,9 @@ import {remoteNames, remoteNote} from '../core/settings.js';
 import {catalogChanged, loadTagged, loadWorkTree, loadLocalLinks, castWorks, PSEUDO_NOTES, WORK_NAMES, workName, loadIndex, searchWorks, saveWatch, watchTarget,
   saveWork} from '../core/catalog.js';
 import {$, toast, toastMore, error, namesAllowButton, searchIcon} from './dom.js';
-import {chooseWork, openDialog} from './dialog.js';
+import {chooseWork, openDialog, openStatic} from './dialog.js';
 import {attr, make, prop, tpl} from './el.js';
-import {createLayer, openModal} from './overlay.js';
+import {createLayer} from './overlay.js';
 import {openPicker, toggleMascot} from './palette.js';
 import {combo} from './combo.js';
 import {exit} from './motion.js';
@@ -48,9 +48,10 @@ export function allWorksButton() {
   button.id = 'castAll'; button.type = 'button'; button.setAttribute('aria-expanded', 'false'); host.id = 'castPopHost';
   wrap.append(button, host);
   button.onclick = () => setPop(!pop.open);
-  host.addEventListener('click', e => { const w = e.target.closest('[data-tab]'); if (w) { setPop(false, 'silent'); go({page: 'work', id: w.dataset.tab}); } });
+  // 退场中的旧弹层已经 inert（ui/motion.js）；迟到的事件也按 pop.open 再挡一次，不导航、不把正在退场的节点换成新列表。
+  host.addEventListener('click', e => { const w = pop.open && e.target.closest('[data-tab]'); if (w) { setPop(false, 'silent'); go({page: 'work', id: w.dataset.tab}); } });
   onTyped(host, e => {
-    if (e.target.id !== 'castPopQ') return;
+    if (e.target.id !== 'castPopQ' || !pop.open) return;
     pop.q = e.target.value; const pos = e.target.selectionStart;
     host.innerHTML = castPop(castWorks()); const i = $('castPopQ'); i?.focus(); i?.setSelectionRange(pos, pos);
   });
@@ -85,7 +86,7 @@ export async function openTagged() {
   });
   d.querySelector('#taggedAdd').onclick = () => openPicker({title: t('把一个角色设为只当标签'), jump: true, exclude: (state.tagged || []).map(x => x.id),
     sentence: e => t('{name} 不再算角色，只当标签', {name: e.name}),
-    pick: async e => { await toggleMascot({id: e.id, name: e.name, mascot: false}); await refresh(); if (!d.open) openModal(d, {backdropClose: true, id: 'tagged'}); }});
+    pick: async e => { await toggleMascot({id: e.id, name: e.name, mascot: false}); await refresh(); if (!d.open) openStatic(d, {backdropClose: true, id: 'tagged'}); }});
   list();
   refresh();
 }

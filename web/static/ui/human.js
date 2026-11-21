@@ -11,7 +11,7 @@ import {IMPORT_STAGES, importActive, importCount, importLine, cancelImport} from
 import {HUMAN_IMPORT, exportActive, rfcSeconds, loadHuman, onHuman, startExport, cancelExport, startHumanImport, restoreSnapshot, isRestore,
   readReport, REPORT_PAGE, adoptUndo, humanError, COUNT_GROUPS, resultText, kindText, reasonText, fieldText, conflictCount} from '../core/human.js';
 import {$, toast, error, fold, wireFolds} from './dom.js';
-import {openDialog, confirmAction} from './dialog.js';
+import {closeModal, openDialog, confirmAction} from './dialog.js';
 
 const when = sec => (sec ? esc(localStamp(sec)) : '—');
 const dot = tone => `<span class="local-dot${tone ? ' ' + tone : ''}"></span>`;
@@ -171,7 +171,7 @@ function openReport(r, restore = false) {
     } else if (back) {
       // 顶栏的撤销总是撤销最近一步：这之后又有别的改动时，不能从这里跳过它们去撤销导入。
       if (edits.latest?.id !== r.undo) { toast(t('这次导入之后又有别的改动，要先撤销那些改动。')); return; }
-      d.close(); await hooks.undo?.();
+      closeModal(d); await hooks.undo?.();
     }
   });
   return d;

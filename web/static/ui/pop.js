@@ -1,6 +1,7 @@
-// 弹出层的开合（#715）：视图选项、任务面板、页面说明、图库切换、上手清单这类 hidden 开关的浮层，开的时候显示出来
-// （进场是 css/overlays.css 里 .menu 的动画，取消显示时 display 变回来就会重播），关的时候先播一段短的退场再 hidden。
-// 浮层管理器（ui/overlay.js）照旧管栈和 Esc；这里只管样子，各处原来写 `el.hidden = !open` 的地方改调 showPop。
+// 弹出层的开合（#715）：任务面板、页面说明、图库切换、提示条、选择栏这类 hidden 开关的浮层，开的时候显示出来（进场是
+// css/overlays.css 里 .menu 的动画，取消显示时 display 变回来就会重播），关的时候先播一段短的退场再 hidden。退场一开始
+// 浮层就 inert（ui/motion.js 的 exit），看得见的那一小段里点不动，重开时还原。
+// 浮层管理器（ui/overlay.js）照旧管栈和 Esc；这里只管样子，原来写 `el.hidden = !open` 的地方改调 showPop。
 import {cancelExit, exit, exitingNow} from './motion.js';
 
 /**

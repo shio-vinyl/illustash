@@ -164,11 +164,12 @@ export function createLayer(spec) {
 
 // 打开一个 <dialog> 作为模态对话框，并登记进栈；对话框关闭时（任何途径）自动出栈。
 // onDismiss 同 createLayer：Esc、点背景时代替 close() 运行，返回 false 时对话框留着。
+// 页面代码不直接调它：一律经过 ui/dialog.js（openDialog、openStatic），关的时候才会播退场（#715）。
 export function openModal(dialog, {backdropClose = false, id = '', onDismiss} = {}) {
   const known = stack.find(layer => layer.el === dialog);
   if (known) return known;
   const layer = createLayer({kind: 'modal', id, el: dialog, backdropClose, ...(onDismiss ? {onDismiss} : {})});
-  dialog.showModal();
+  if (!dialog.open) dialog.showModal();   // 还开着（退场被接手）时再调一次，Safari 会不会抛错没核实，不调
   layer.open();
   dialog.addEventListener('close', () => layer.close('api'), {once: true});
   return layer;

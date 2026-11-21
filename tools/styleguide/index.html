@@ -226,7 +226,7 @@
 <section id="n-glass">
   <h2>新部件 · 玻璃</h2>
   <div class="sg-item"><header><h3>玻璃表面（只给浮层）和浮在图上的玻璃按钮组</h3><span class="sg-tag hand">手写</span><span class="sg-cls"><code>.glass</code><code>.glass-bar</code></span></header>
-    <p class="sg-src"><code>backdrop-filter</code> 只写在这两处（规则 16）：每个带模糊的元素各占一块显存。不支持模糊、或系统要求降低透明度（<code>prefers-reduced-transparency</code>，Safari 还不认）时是几乎不透明的底。按钮组用来放翻页、收藏、放大、关闭；按下（收藏了）写 <code>aria-pressed="true"</code>。</p>
+    <p class="sg-src"><code>backdrop-filter</code> 只写在 <code>css/base.css</code> 的三个玻璃选择器上（规则 16）：<code>.glass</code>、<code>.glass-bar</code> 和对话框背后的 <code>.glass-scrim::backdrop</code>；每个带模糊的元素各占一块显存。不支持模糊、或系统要求降低透明度（<code>prefers-reduced-transparency</code>，或桌面外壳写的 <code>:root[data-reduce-transparency]</code>，#755）时是不透明的底。按钮组用来放翻页、收藏、放大、关闭；按下（收藏了）写 <code>aria-pressed="true"</code>。</p>
     <div class="sg-stage"><div class="sg-glass-bg"><img data-ph="3" alt=""><div class="glass-bar sg-glass-l"><button aria-label="上一张"><svg viewBox="0 0 24 24"><path d="m15 6-6 6 6 6"/></svg></button><button aria-label="下一张"><svg viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></svg></button></div><div class="glass-bar sg-glass-r"><button aria-label="收藏" aria-pressed="true"><svg viewBox="0 0 24 24"><path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/></svg></button><button aria-label="放大"><svg viewBox="0 0 24 24"><path d="M4 10V4h6M20 14v6h-6M4 4l6 6M20 20l-6-6"/></svg></button><button aria-label="关闭"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div><div class="glass sg-glass-panel"><b>玻璃浮层</b><p class="text-meta">弹出层、菜单这类浮在内容上的东西。</p></div></div></div></div>
 </section>
 
@@ -583,15 +583,15 @@
 
 <!-- ======================= toast · 选择栏 ======================= -->
 <section id="s-toast" class="sg-frozen">
-  <h2>带行为的壳 · toast 与选择栏 <span class="sg-tag dup">选择栏是旧样式，重做中</span></h2>
+  <h2>带行为的壳 · toast 与选择栏</h2>
   <div class="sg-item"><header><h3>toast</h3><span class="sg-tag live">调用生成</span><span class="sg-cls"><code>.toast</code><code>.toast-undo</code></span></header>
     <p class="sg-src">调用：<code>ui/dom.js</code> toast() / toastMore()（后者可再加一个动作按钮，如“关注”），写进 <code>index.html</code> 的 <code>#toast</code>（<code>position:fixed</code>，底部居中，z-index 60，内含 <code>#toastText</code> 和两个按钮）。看大图时（<code>body.viewing</code>）移到 <code>bottom:120px</code>。</p>
     <div class="sg-stage canvas col" data-sg-live="toast"></div></div>
 
   <div class="sg-item"><header><h3>选择栏</h3><span class="sg-tag live">调用生成</span><span class="sg-cls"><code>.selection-bar</code><code>.sel-count</code><code>.bar-divider</code><code>.bar-note</code></span></header>
-    <p class="sg-src">调用：<code>ui/grid.js</code> renderSelection()，写进 <code>index.html</code> 的 <code>#selectionBar</code>（<code>position:fixed</code> 底部居中，z-index 10，深色毛玻璃，两个主题下都是深底）；按页面（角色页、可能是、随机抽查、未识别、已排除…）换按钮；<code>armed</code> 表示“再点一次确认”。<code>.busy</code> 时按钮禁点。</p>
+    <p class="sg-src">调用：<code>ui/grid.js</code> renderSelection()，写进 <code>index.html</code> 的 <code>#selectionBar</code>（<code>position:fixed</code> 底部居中，z-index 10，和提示条同一种深色胶囊，两个主题下都是不透明的深底）；按页面（角色页、可能是、随机抽查、未识别、已排除…）换按钮；<code>armed</code> 表示“再点一次确认”。<code>.busy</code> 时按钮禁点。</p>
     <div class="sg-stage canvas col" data-sg-live="selection"></div>
-    <p class="sg-note">选择栏里的 <code>.primary</code> 没有被改写，仍是强调色；<code>.quiet</code>/<code>.icon</code> 被改成白字（<code>.selection-bar .quiet,.selection-bar .icon</code>），<code>kbd</code> 去底（<code>.selection-bar kbd</code>），armed 变浅红 <code>#ffb4a8</code>，<code>.bar-note</code> 浅橙 <code>#ffcf99</code>——都是写死的色值。</p>
+    <p class="sg-note">选择栏和提示条共用 <code>--capsule-*</code> 令牌（<code>css/overlays.css</code>，#715）：<code>.quiet</code>/<code>.icon</code> 白字、悬停浅白底，<code>kbd</code> 去底，armed 浅红、<code>.bar-note</code> 浅橙；<code>.primary</code> 仍是强调色。进场弹一下，退场淡出（<code>ui/pop.js</code>）。</p>
   </div>
 </section>
 

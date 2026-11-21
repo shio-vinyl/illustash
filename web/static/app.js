@@ -12,8 +12,8 @@ import {setLatest} from './core/edits.js';
 import {onJob} from './core/jobs.js';
 import {$, platformHints, toast, wireToast, error, wireDom} from './ui/dom.js';
 import {wireTasks, taskTick, openTasks} from './ui/tasks.js';
-import {confirmAction} from './ui/dialog.js';
-import {openModal, wireOverlays} from './ui/overlay.js';
+import {confirmAction, openStatic} from './ui/dialog.js';
+import {wireOverlays} from './ui/overlay.js';
 import {wireSettings} from './ui/settings.js';
 import './ui/catalog_page.js';
 import {wireWorkPage} from './ui/work_page.js';
@@ -76,7 +76,7 @@ wireGuide();
 wireIntegrity();
 wireModels();
 wirePacks();
-$('undoButton').onclick = undo; $('helpButton').onclick = () => openModal($('help'), {backdropClose: true, id: 'help'});
+$('undoButton').onclick = undo; $('helpButton').onclick = () => openStatic($('help'), {backdropClose: true, id: 'help'});
 
 // 启动：本会话的 token 和撤销步骤、各项计数，然后是地址指向的页面。
 (async () => {

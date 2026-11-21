@@ -22,6 +22,7 @@ import {reload} from './grid.js';
 import {createLayer} from './overlay.js';
 import {currentPage} from './scope.js';
 import {renderChrome} from './shell.js';
+import {popOpen, showPop} from './pop.js';
 
 // ---------- 一个画廊：进页面之前 ----------
 // 先读画廊列表和各画廊的展示方式。地址的页面和这个画廊的展示方式不符（记着的是展示页，地址是网格页，或反过来）时换到对的那页。
@@ -111,13 +112,13 @@ const menu = createLayer({kind: 'popover', id: 'gallery-menu', el: () => more?.r
   onDismiss: reason => setMenu(false, reason)});
 function setMenu(open, reason) {
   if (!more) return;
-  more.refs.menu.hidden = !open;
+  showPop(more.refs.menu, open);
   if (open) menu.open(); else menu.close(reason);
 }
 function moreButton() {
   if (!more) {
     more = MORE();
-    more.refs.button.onclick = () => { if (more.refs.menu.hidden) fillMenu(galleryOf(state.route.id)); setMenu(more.refs.menu.hidden); };
+    more.refs.button.onclick = () => { const open = !popOpen(more.refs.menu); if (open) fillMenu(galleryOf(state.route.id)); setMenu(open); };
   }
   return more.el;
 }

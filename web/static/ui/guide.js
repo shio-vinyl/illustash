@@ -135,7 +135,7 @@ async function placeTour(moved) {
   if (!moved && bubble.dataset.stop === id) {
     const text = bubble.querySelector('.tour-text'); if (text && text.innerHTML !== stop.text) text.innerHTML = stop.text;
   }
-  const html = `<b class="tour-title">${stop.title}</b><p class="tour-text">${stop.text}</p>
+  const html = `<b class="title-section tour-title">${stop.title}</b><p class="tour-text">${stop.text}</p>
     <div class="tour-foot"><span class="tour-dots">${TOUR.map((_, i) => `<i class="${i === tourAt ? 'on' : ''}"></i>`).join('')}</span><div class="spacer"></div>
       ${stop.skip || tourAt === TOUR.length - 1 ? '' : `<button class="quiet small" data-tour="skip">${t('跳过')}</button>`}${stop.skip ? `<button class="quiet small" data-tour="skip">${stop.skip}</button>` : ''}
       ${tourAt && tourAt < TOUR.length - 1 ? `<button class="quiet small" data-tour="back">${t('上一步')}</button>` : ''}

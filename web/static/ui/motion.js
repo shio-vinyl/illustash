@@ -128,11 +128,14 @@ export function enter(el, {from = 'rise', dur = 2, delay = 0, ease = 'ease'} = {
  * 出场，比进场短。结束后默认把节点摘掉；remove: false 时改成 hidden = true（藏起来以后再撤掉动画，不会闪一下）；
  * 给了 done 就只调 done()，由调用方自己收尾（对话框要 close()，#715），同样在撤掉动画之前调。
  * 同一个节点上没走完的出场先取消（返回 false），由这一次接手。
+ * 出场一开始节点就设 inert（不能点、不能聚焦、不收键盘，#715）：看得见的那一小段里不会再被操作，关掉的浮层不会再写入。
+ * 收尾或 cancelExit 时只去掉这里设的那一份；节点本来就是 inert 的（浮层管理器、keyed 列表设的）不动。
  */
 export async function exit(el, {to = 'rise', dur = 1, delay = 0, remove = true, done} = {}) {
   const keyframes = Array.isArray(to) ? to : EXIT[to] || EXIT.rise;
   const off = reduced();
   cancelExit(el);
+  if (el && !el.inert) { el.inert = true; inerted.add(el); }
   if (typeof el?.animate !== 'function') { finishExit(el, remove, done); return true; }
   const ms = off ? 0 : duration(dur);
   const wait = off ? 0 : Math.max(0, delay);
@@ -141,16 +144,18 @@ export async function exit(el, {to = 'rise', dur = 1, delay = 0, remove = true, 
   const ok = await settle(animation, ms + wait);
   if (exiting.get(el) !== animation) return false;
   exiting.delete(el);
-  if (!ok) return false;
+  if (!ok) { restoreInert(el); return false; }
   finishExit(el, remove, done);
   animation.cancel();
   return true;
 }
-const exiting = new WeakMap();
+const exiting = new WeakMap(), inerted = new WeakSet();
+function restoreInert(el) { if (inerted.has(el)) { inerted.delete(el); el.inert = false; } }
 function finishExit(el, remove, done) {
   if (done) done();
   else if (remove) el?.remove?.();
   else if (el) el.hidden = true;
+  restoreInert(el);
 }
 /** 节点是不是正在出场（还看得见，但已经在关了）：开关浮层时按它判断「开着」（ui/pop.js）。 */
 export const exitingNow = el => exiting.has(el);
@@ -160,6 +165,7 @@ export function cancelExit(el) {
   const animation = exiting.get(el);
   if (!animation) return;
   exiting.delete(el);
+  restoreInert(el);
   animation.cancel();
 }
 

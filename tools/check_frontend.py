@@ -1062,9 +1062,16 @@ GLASS_FILE = 'css/base.css'
 GLASS_SELECTORS = frozenset({'.glass', '.glass-bar', '.glass-scrim::backdrop'})
 
 
+# 玻璃选择器前面只允许这一个前缀：桌面外壳注入的「降低透明度」根属性（#755）。别的前缀（`.card .glass`）不放行。
+GLASS_PREFIXES = frozenset({':root[data-reduce-transparency]'})
+
+
 def _glass_selector(prelude):
-    """选择器列表里每一项的最后一节都是玻璃表面。"""
-    return all(part.split()[-1] in GLASS_SELECTORS for part in prelude.split(',') if part.strip())
+    """选择器列表里每一项都是玻璃表面本身，或前缀是「降低透明度」的根属性。"""
+    def ok(part):
+        bits = part.split()
+        return bool(bits) and bits[-1] in GLASS_SELECTORS and (len(bits) == 1 or (len(bits) == 2 and bits[0] in GLASS_PREFIXES))
+    return all(ok(part) for part in prelude.split(',') if part.strip())
 # 规则 14
 CLASS_SUBSTRING_RE = re.compile(r'\[\s*class\s*[*^$|]=')
 HAS_RE = re.compile(r':has\(\s*(.)')

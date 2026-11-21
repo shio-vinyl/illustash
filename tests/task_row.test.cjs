@@ -26,6 +26,15 @@ test('值没变不动按钮；按钮数据变了才重建，data-* 名照 attr �
   assert.equal(next.getAttribute('data-pack'), 'cancel'); assert.equal(next.disabled, true); assert.equal(next.title, '正在写入');
 });
 
+test('同一个动作只改文字、disabled 和 title，按钮节点留着（焦点不掉，#422）', () => {
+  const row = taskRow(task());
+  const first = row.el.querySelector('button');
+  row.update(task({buttons: [{attr: 'task', act: 'sync', label: '同步中', disabled: true, title: '正在同步'}]}));
+  const same = row.el.querySelector('button');
+  assert.equal(same, first); assert.equal(same.textContent, '同步中'); assert.equal(same.disabled, true); assert.equal(same.title, '正在同步');
+  assert.equal(same.className, 'btn is-small');
+});
+
 test('进度条只改 transform，没有总数时藏起来；状态点和进行中的底跟着状态', () => {
   const row = taskRow(task({active: true, progress: {done: 3, total: 12}}));
   const bar = row.el.querySelector('.task-bar');

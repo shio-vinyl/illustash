@@ -9,7 +9,7 @@ import {esc, bytes, number, localTime, home} from '../core/format.js';
 import {state} from '../core/state.js';
 import {packDownloading, packRunning, packFinished, packDownloadFinished, loadPack, onPack, packAction, enablePack, withdrawPack,
   declinePack, cancelPack, packOffer} from '../core/packs.js';
-import {$, toast, busy, buttonsHTML} from './dom.js';
+import {toast} from './dom.js';
 import {confirmAction} from './dialog.js';
 
 export const packName = () => t('角色资料包');
@@ -94,14 +94,8 @@ export function packProgress(x = current()) {
   const job = packRunning(x) ? x.task : packDownloading(x) ? x.download : null;
   return !job?.total || (x.task === job && job.phase === 'write') ? null : {done: job.done || 0, total: job.total};
 }
-export function packBar(x = current()) {
-  const job = packRunning(x) ? x.task : packDownloading(x) ? x.download : null;
-  if (!job?.total || (x.task === job && job.phase === 'write')) return '';
-  const width = Math.min(100, (job.done || 0) / job.total * 100).toFixed(1);
-  return `<div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="${job.total}" aria-valuenow="${job.done || 0}"><span style="width:${width}%"></span></div>`;
-}
-// 按钮的数据（[{act, label, primary, disabled, title}]，#714）：设置页的卡片用 ui/rows.js 的 buttons 接，任务面板用
-// packActions 拼成 HTML（data-pack="动作"，监听在 wirePacks）；点了都走 runPack(act)。
+// 按钮的数据（[{act, label, primary, disabled, title}]，#714）：设置页的卡片用 ui/rows.js 的 buttons 接，任务面板的行
+// （ui/task_row.js）建成按钮；点了都走 runPack(act)。
 const button = (act, label, primary = false, title = '') => ({act, label, primary, disabled: !!title, title});
 // 当前状态下的按钮；`compact` 只留主要的那个（任务面板）。
 export function packButtons(x = current(), compact = false) {
@@ -134,7 +128,6 @@ export function packButtons(x = current(), compact = false) {
   if (l.prompt === 'ask') return [button('enable-confirm', t('启用…'), true, blocked), ...(compact ? [] : [button('decline', t('不用'))])];
   return [button('enable-confirm', t('启用…'), true, blocked)];
 }
-export const packActions = (x = current(), compact = false) => buttonsHTML(packButtons(x, compact), 'data-pack');
 // 没就位时的手动下载说明（链接）。
 export function packManual(x = current()) {
   const manual = x?.wd?.package?.manual;
@@ -319,13 +312,8 @@ export async function runPack(what) {
     }
   } catch (e) { toast(e.message); }
 }
-// 处理函数。页面启动时调用一次。拼成 HTML 的按钮（data-pack）只在任务面板里，监听挂在那里，不挂在 document 上；设置页的
-// 卡片用行，点了直接调 runPack。
+// 处理函数。页面启动时调用一次。任务面板里的按钮由 ui/tasks.js 分派，设置页的卡片用行，点了都直接调 runPack。
 export function wirePacks() {
-  $('taskPanel').addEventListener('click', e => {
-    const b = e.target.closest('[data-pack]'); if (!b || b.disabled) return;
-    busy(b, () => runPack(b.dataset.pack));
-  });
   onPack(before => {
     const x = current(), task = packFinished(before, x), d = packDownloadFinished(before, x);
     const note = task ? finishedText(task, before) : d ? downloadText(d, before) : '';

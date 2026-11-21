@@ -15,7 +15,7 @@ import {currentLibraryId, remoteNames, remoteNote} from '../core/settings.js';
 import {state} from '../core/state.js';
 import {refreshLocalLinks} from './catalog.js';
 import {$, charOption, namesAllowButton, toast, written} from './dom.js';
-import {closeModal, openDialog, showModal} from './dialog.js';
+import {closeModal, openDialog, openStatic} from './dialog.js';
 import {combo, listNav} from './combo.js';
 import {mutate, reload} from './grid.js';
 import {renderHeading} from './shell.js';
@@ -41,7 +41,7 @@ export async function openPicker(opts) {
   const p = palette = {...opts, list: [], index: 0, generation: 0, staged: [], recent: libraryPrefs('')};
   renderStaged(); renderSubject(opts);
   $('pickerSearch').value = ''; $('pickerSearch').placeholder = opts.placeholder || t('输入角色 tag 或别名…');
-  showModal($('picker'), {backdropClose: true, id: 'picker'}); $('pickerSearch').focus();
+  openStatic($('picker'), {backdropClose: true, id: 'picker', onDismiss: () => { if (palette === p) palette = null; }}); $('pickerSearch').focus();
   p.recent = await recentIn();
   if (palette === p) await paletteSearch();
 }
@@ -170,7 +170,8 @@ async function choose(i, more = false, explicit = false) {
     if (more) { if (e) stage(e); return; }
     const list = finalList(e, explicit || p.touched); if (!list.length) return;
     const entities = [];
-    try { for (const x of list) entities.push(await resolveEntity(x)); } catch (err) { toast(err.message); return; }
+    try { for (const x of list) entities.push(await resolveEntity(x)); } catch (err) { if (palette === p) toast(err.message); return; }
+    if (palette !== p) return;   // 等新建角色时面板已经关了（或换了一次）：这次选择作废
     palette = null; closeModal($('picker')); p.pick(entities); return;
   }
   if (!e) return;
@@ -178,7 +179,8 @@ async function choose(i, more = false, explicit = false) {
     if (!e.remove) remember(p.recent, 'tagPicks', e.tag, tag => tag === e.tag);
     palette = null; closeModal($('picker')); p.pick(e); return;
   }
-  let entity; try { entity = await resolveEntity(e); } catch (err) { toast(err.message); return; }
+  let entity; try { entity = await resolveEntity(e); } catch (err) { if (palette === p) toast(err.message); return; }
+  if (palette !== p) return;
   palette = null; closeModal($('picker')); p.pick(entity);
 }
 export function mergeCharacter(c) {
@@ -207,7 +209,7 @@ export async function splitOc(c) {
   const d = $('ocSplitDialog'), body = $('ocSplitBody');
   $('ocSplitTitle').textContent = t('按相似细分 · {name}', {name: c.name});
   body.innerHTML = `<p class="muted-note">${t('正在比较长相…')}</p>`;
-  showModal(d, {backdropClose: true, id: 'oc-split'});
+  openStatic(d, {backdropClose: true, id: 'oc-split'});
   let r; try { r = await api('/api/oc/groups?' + new URLSearchParams({entity: c.id})); } catch (e) { body.innerHTML = `<p class="muted-note">${esc(readError(e))}</p>`; return; }
   const grouped = r.groups.reduce((n, g) => n + g.length, 0);
   body.innerHTML = `<p class="muted-note">${t('{n} 张里有 {groups} 组长得像（共 {grouped} 张）；其余的不像任何一张，留在这里。', {n: number(r.total), groups: number(r.groups.length), grouped: number(grouped)})}</p>` +
@@ -342,12 +344,15 @@ function editCharacterFlag(path, body) {
   });
 }
 // ---------- 选中图片之间的关系（relate，native/terms/src/research_compute/relations.rs） ----------
+// 每次打开一个序号，关掉时作废：迟到的回复（成功或失败）只写给它自己那一次，不盖掉下一组选图的结论（#715）。
+let relateSeq = 0;
 export async function openRelate(ids) {
-  const d = $('relateDialog');
+  const d = $('relateDialog'), seq = ++relateSeq, current = () => seq === relateSeq;
   $('relateTitle').textContent = t('{n} 张图的关系', {n: number(ids.length)});
   $('relateBody').innerHTML = `<p class="muted-note">${t('正在逐对比较…')}</p>`;
-  showModal(d, {backdropClose: true, id: 'relate'});
-  let r; try { r = await post('/api/relate', {ids}); } catch (e) { $('relateBody').innerHTML = `<p class="muted-note">${esc(readError(e))}</p>`; return; }
+  openStatic(d, {backdropClose: true, id: 'relate', onDismiss: () => { if (current()) relateSeq++; }});
+  let r; try { r = await post('/api/relate', {ids}); } catch (e) { if (current()) $('relateBody').innerHTML = `<p class="muted-note">${esc(readError(e))}</p>`; return; }
+  if (!current()) return;
   const no = u => ids.indexOf(u) + 1;
   const figure = (u, boxes) => `<figure class="rel-fig"><div class="rel-img"><img src="/image?id=${encodeURIComponent(u)}&size=medium" alt="">${boxes.map(b =>
     `<i class="${b.match ? 'match' : 'diff'}" style="left:${(b.x * 100).toFixed(2)}%;top:${(b.y * 100).toFixed(2)}%;width:${(b.w * 100).toFixed(2)}%;height:${(b.h * 100).toFixed(2)}%"></i>`).join('')}<span class="rel-no">${no(u)}</span></div>
@@ -375,7 +380,7 @@ export function wirePalette() {
   $('pickerStaged').addEventListener('click', e => { const b = e.target.closest('[data-unstage]'); if (b && palette) stage(palette.staged[Number(b.dataset.unstage)]); });
   $('picker').addEventListener('close', () => { palette = null; });
   $('ocSplitClose').onclick = () => closeModal($('ocSplitDialog'));
-  $('relateClose').onclick = () => closeModal($('relateDialog'));
+  $('relateClose').onclick = () => { relateSeq++; closeModal($('relateDialog')); };
 
   $('jumpButton').onclick = jumpToCharacter;
 }

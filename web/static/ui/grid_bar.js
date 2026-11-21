@@ -134,7 +134,8 @@ async function answerAudit(yes) {
 }
 function runBarAction(act) {
   const n = selCount(), r = state.route; if (!n || edits.busy) return;
-  const payload = () => ({...selectionPayload(), confirm: n > 500});
+  // 选区在点下按钮的这一刻定下来：命令面板开着、请求在途时选区再变，写进去的仍是这一次选的图（#715）。
+  const fixed = {...selectionPayload(), confirm: n > 500}, payload = () => fixed;
   if (galleryAction(act, n, payload)) return;
   if (act === 'audit_yes' || act === 'audit_no') { answerAudit(act === 'audit_yes'); return; }
   if (act === 'export') { openExport(selectionPayload(), n); return; }

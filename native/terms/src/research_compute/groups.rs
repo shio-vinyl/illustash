@@ -4,7 +4,7 @@ use super::{
     numeric,
     snapshot::{self, Snapshot},
 };
-use crate::{Error, Result};
+use crate::{sql_fragments::first_leads, Error, Result};
 use rusqlite::Connection;
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, BTreeSet, HashMap};
@@ -120,6 +120,21 @@ fn split(members: Vec<usize>, tags: &Tags, ids: &[String]) -> Vec<Vec<usize>> {
     }
     parts
 }
+/// 按每张图的首选线索（`leads`，和组头计票同一条）把一组拆开：指向同一角色的图归一部分，没有线索的图归一部分。
+/// 各部分按首张图在原组里的先后排列（之后的组号也按这个顺序），部分内保持原来的顺序；不满 2 张的由调用方去掉。
+fn split_by_lead(members: Vec<usize>, ids: &[String], leads: &HashMap<String, String>) -> Vec<Vec<usize>> {
+    let mut positions = HashMap::new();
+    let mut parts: Vec<Vec<usize>> = Vec::new();
+    for i in members {
+        let lead = leads.get(&ids[i]);
+        let pos = *positions.entry(lead).or_insert_with(|| {
+            parts.push(Vec::new());
+            parts.len() - 1
+        });
+        parts[pos].push(i);
+    }
+    parts
+}
 pub fn oc(snapshot: &Snapshot, f: &Matrix, entity: &str) -> Result<Value> {
     let c = snapshot.read()?;
     let pool = snapshot::strings(
@@ -147,8 +162,17 @@ pub fn cluster(snapshot: &Snapshot, f: &Matrix) -> Result<(usize, Value)> {
         .map_err(Error::Invalid)?
         .into_iter()
         .flat_map(|g| split(g, &tags, &ids))
-        .filter(|g| g.len() >= 2)
         .collect();
+    let page = json!(groups.iter().flatten().map(|&i| &ids[i]).collect::<Vec<_>>()).to_string();
+    let leads: HashMap<_, _> = first_leads(&c, &page)?.into_iter().collect();
+    // 每个子组记下它来自哪个长相团（长相聚类、发色拆分之后的组）。同一团按线索拆出的兄弟组正是因为线索指向
+    // 不同角色才分开的，下面选「可能是同一人」时跳过它们（#790）。
+    let (origins, groups): (Vec<usize>, Vec<Vec<usize>>) = groups
+        .into_iter()
+        .enumerate()
+        .flat_map(|(origin, g)| split_by_lead(g, &ids, &leads).into_iter().map(move |part| (origin, part)))
+        .filter(|(_, g)| g.len() >= 2)
+        .unzip();
     let n = groups.len();
     let traits = traits();
     let centres =
@@ -198,6 +222,9 @@ pub fn cluster(snapshot: &Snapshot, f: &Matrix) -> Result<(usize, Value)> {
         for j in numeric::argsort(&distances) {
             if distances[j] > 0.12 {
                 break;
+            }
+            if origins[j] == origins[k] {
+                continue;
             }
             if dominant[k].is_some() && dominant[j].is_some() && dominant[k] != dominant[j] {
                 continue;
@@ -305,5 +332,15 @@ mod tests {
         }
         let groups = split((0..8).collect(), &tags, &ids);
         assert_eq!(groups, vec![vec![3, 4, 5, 6, 7], vec![0, 1, 2]]);
+    }
+    #[test]
+    fn lead_split_orders_parts_by_their_first_member() {
+        // 原组的顺序是 4、1、6、0、3、5：先出现的是指向 Y 的 4，然后是没有线索的 1，最后是指向 X 的 6。
+        // 各部分照这个先后排，不按角色名或图的序号排；部分内也保持原组里的顺序。
+        let ids: Vec<_> = (0..7).map(|i| i.to_string()).collect();
+        let leads =
+            HashMap::from([("4", "Y"), ("0", "Y"), ("6", "X"), ("3", "X")].map(|(u, e)| (u.to_owned(), e.to_owned())));
+        let parts = split_by_lead(vec![4, 1, 6, 0, 3, 5], &ids, &leads);
+        assert_eq!(parts, vec![vec![4, 0], vec![1, 5], vec![6, 3]]);
     }
 }

@@ -2,13 +2,14 @@
 // location.hash 和 history。
 import {readLike} from './like.js';
 import {prefs} from './prefs.js';
-import {matchPath, pageOf, pathFor, viewOf} from './pages.js';
+import {favoritesOnly, matchPath, pageOf, pathFor, viewOf} from './pages.js';
 import {state} from './state.js';
 import {parseList} from './filters.js';
 
 // ---------- routing ----------
-export function parseHash() {
-  const [path, query = ''] = location.hash.replace(/^#/, '').split('?');
+// hash 不给就是现在的地址；给了是别的地址（作品页的返回按钮读上一条的地址，cameFrom）。
+export function parseHash(hash = location.hash) {
+  const [path, query = ''] = hash.replace(/^#/, '').split('?');
   const parts = path.split('/').filter(Boolean), q = new URLSearchParams(query);
   const route = {page: 'library', q: q.get('q') || '', tag: q.get('tag') || '', utag: q.get('utag') || '', dup: q.get('dup') || '', reason: q.get('reason') || '', kind: q.get('kind') || '', seen: q.get('seen') || '', maybe: q.get('maybe') || '', sort: q.get('sort') || '',
     work: q.get('work') || '', day: q.get('day') || '', artist: q.get('artist') || '', char: q.get('char') || '', variant: q.get('variant') || '', check: q.get('check') || '', doubt: q.get('doubt') || '',
@@ -26,6 +27,8 @@ export function parseHash() {
   // 「更多像这张的」（#449）只属于图库本身，不和角色页叠在一起。
   Object.assign(route, readLike(q, pageOf(route).toolbar === 'library' && !route.char));
   if (!route.like && route.sort === 'similar') route.sort = '';   // 「最相似」离开例图就没有意义
+  // 只按收藏筛选的图库是收藏的旧地址（#447）：收藏现在是内置的画廊（#710），改写到它，地址就地换成新的（legacy）。
+  if (favoritesOnly(route)) Object.assign(route, {page: 'gallery', id: 'fav', has: ['fav'], sort: route.sort, legacy: true});
   return route;
 }
 export function hashFor(r) {
@@ -67,19 +70,23 @@ export function reRoute(patch) {
 // 桌面 App 菜单里的「后退／前进」（⌘[、⌘]）经 window.illustashHistory 调 stepHistory。只在这个页面自己的地址之间走：
 // 页面打开之前的那一条是启动页或上一个图库（带一次性登录码的地址），退过去就离开了图库。所以每一条地址在
 // history.state 里记着它是这个页面打开后的第几条（0 是第一条），退到 0 就不再退；前进到头浏览器自己就不动。
-let entry = 0, noted = false;
+// 每一条另记着它是从哪一条来的（from：上一条的地址），存在 history.state 里，刷新以后还在；返回按钮按它写「回到哪里」（#711）。
+let entry = 0, noted = false, last = '';
 // 每次地址变了都调用一次（ui/shell.js applyRoute）：新建的那条还没有序号，记成上一条的下一个；后退、前进到的那条
 // 已经有。url 是要就地改写成的地址（旧地址换成新的），不给就是现在的地址。返回 true 表示回到的是一条已有的记录
 // （后退、前进或刷新），false 是新的一条。
 export function noteHistory(url) {
   const seq = history.state?.illustash;
-  if (Number.isInteger(seq) && !url) { entry = seq; noted = true; return true; }
-  const known = Number.isInteger(seq);
+  if (Number.isInteger(seq) && !url) { entry = seq; noted = true; last = location.hash; return true; }
+  const known = Number.isInteger(seq), from = known ? history.state?.from || '' : noted ? last : '';
   if (!known) entry = noted ? entry + 1 : 0; else entry = seq;
   noted = true;
-  history.replaceState({...history.state, illustash: entry}, '', url ?? location.hash);
+  history.replaceState({...history.state, illustash: entry, from}, '', url ?? location.hash);
+  last = url ?? location.hash;
   return known;
 }
+// 这一条是从哪个地址来的（没有：页面打开后的第一条）。后退一步就回到它。
+export const cameFrom = () => entry > 0 ? history.state?.from || '' : '';
 // 现在在第几条（0 是页面打开后的第一条）；还能不能后退。标题旁的「‹」按它显示（#526）。
 export const historyEntry = () => entry;
 export const canGoBack = () => entry > 0;

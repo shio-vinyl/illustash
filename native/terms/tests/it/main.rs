@@ -10,6 +10,7 @@
 
 mod app_service;
 mod baseline_projection;
+mod build_script;
 mod character_projection;
 mod entry;
 mod integrity;

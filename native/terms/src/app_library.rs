@@ -35,42 +35,46 @@ pub struct Library {
 
 impl Library {
     pub fn open(path: &Path) -> Result<Self> {
-        Self::open_validated(path, false, Checks::Now(None))
+        Self::open_validated(path, false, Checks::Now(None), read_connection)
     }
 
     /// 同样的校验；几个 GiB 的图库包完整性检查要几十秒，所以报告进度。
     pub fn open_reporting(path: &Path, progress: Progress) -> Result<Self> {
-        Self::open_validated(path, false, Checks::Now(Some(progress)))
+        Self::open_validated(path, false, Checks::Now(Some(progress)), read_connection)
     }
 
     /// 同样的校验，但不做两项完整检查，给自己决定是否检查的会话使用（#212，`app_service::open_owned`）：版本、
     /// 核心标记和来源的基础 schema 仍然必须满足。
     pub(crate) fn open_deferring_checks(path: &Path) -> Result<Self> {
-        Self::open_validated(path, false, Checks::Deferred)
+        Self::open_validated(path, false, Checks::Deferred, read_connection)
     }
 
-    /// 显式升级可以打开的图库包，包括两项完整检查（导入的归档按升级会做的方式检查）。普通打开从不接受旧的核心。
-    pub(crate) fn open_for_upgrade(path: &Path) -> Result<Self> {
-        Self::open_validated(path, true, Checks::Now(None))
+    /// 校验刚解包的归档，接受需要显式升级的旧核心。只读检查使用归档专用连接。
+    pub(crate) fn check_import(path: &Path) -> Result<()> {
+        match Self::open_validated(path, false, Checks::Now(None), read_archive) {
+            Ok(_) => Ok(()),
+            Err(Error::Schema(_)) => Self::open_validated(path, true, Checks::Now(None), read_archive).map(|_| ()),
+            Err(error) => Err(error),
+        }
     }
 
     /// 不做两项完整性检查的 `open_for_upgrade`：要不要提供升级只根据版本、标记和 schema 决定，
     /// 升级自己在它的写锁下运行检查，只运行一次（#267）。
     pub(crate) fn open_for_upgrade_deferring_checks(path: &Path) -> Result<Self> {
-        Self::open_validated(path, true, Checks::Deferred)
+        Self::open_validated(path, true, Checks::Deferred, read_connection)
     }
 
-    fn open_validated(path: &Path, upgrade: bool, checks: Checks) -> Result<Self> {
+    fn open_validated(path: &Path, upgrade: bool, checks: Checks, open: ReadConnection) -> Result<Self> {
         let library = Self::locate(path)?;
         if let Checks::Now(progress) = checks {
-            library.check(progress)?;
+            checked(library.inspect_using(progress, open)?)?;
         }
-        let mut db = read_connection(&library.db())?;
+        let mut db = open(&library.db())?;
         // 一次读快照：并发的迁移不会给出混杂的版本和归属标记。
         let tx = db.transaction()?;
         validate_checked(&tx, upgrade)?;
         tx.commit()?;
-        let source = read_connection(&library.source())?;
+        let source = open(&library.source())?;
         // 来源的布局没有独立的版本号。只要求既定的基础 schema；
         // 迁移后的读取用不到新的来源链接和出处预设，打开时也绝不能添加它们。
         source.prepare(
@@ -117,17 +121,17 @@ impl Library {
     /// 只有 Unix 符号链接测试使用它。
     #[cfg(all(test, unix))]
     pub(crate) fn reopen(&self) -> Result<Self> {
-        self.keep_display(Self::open_validated(&self.instance_path, false, Checks::Now(None))?)
+        self.keep_display(Self::open_validated(&self.instance_path, false, Checks::Now(None), read_connection)?)
     }
 
     /// 显式升级流程用的 `reopen`，接受旧的核心。不做完整检查：升级在持有写锁时自己运行它们（#267）。
     pub(crate) fn reopen_for_upgrade_deferring_checks(&self) -> Result<Self> {
-        self.keep_display(Self::open_validated(&self.instance_path, true, Checks::Deferred)?)
+        self.keep_display(Self::open_validated(&self.instance_path, true, Checks::Deferred, read_connection)?)
     }
 
     /// 不做完整检查的 `reopen`，给提交之后的升级使用：它只检查自己写过的数据库。
     pub(crate) fn reopen_deferring_checks(&self) -> Result<Self> {
-        self.keep_display(Self::open_validated(&self.instance_path, false, Checks::Deferred)?)
+        self.keep_display(Self::open_validated(&self.instance_path, false, Checks::Deferred, read_connection)?)
     }
 
     /// 只对 library.sqlite 做完整检查，`progress` 收到它的完成比例；损坏与 `check` 中一样是错误。
@@ -141,14 +145,15 @@ impl Library {
     /// 两项完整性检查，先查 library.sqlite；`progress` 收到合计的完成比例，每个文件按大小加权，
     /// 让比例跟上实际读过的字节。损坏是一个错误，写明 SQLite 发现了什么。
     pub(crate) fn check(&self, progress: Option<Progress>) -> Result<()> {
-        match self.inspect(progress)?.pop() {
-            Some((_, Verdict::Damaged(result))) => Err(Error::Schema(format!("图库数据库损坏：{result}"))),
-            _ => Ok(()),
-        }
+        checked(self.inspect(progress)?)
     }
 
     /// 在第一个损坏的文件处停下并说明是哪个的 `check`，供会话自己处理（#212）。
     pub(crate) fn inspect(&self, progress: Option<Progress>) -> Result<Vec<(&'static str, Verdict)>> {
+        self.inspect_using(progress, read_connection)
+    }
+
+    fn inspect_using(&self, progress: Option<Progress>, open: ReadConnection) -> Result<Vec<(&'static str, Verdict)>> {
         let files = [("library.sqlite", self.db()), ("source.sqlite", self.source())];
         let weights = match &progress {
             Some(_) => {
@@ -164,7 +169,7 @@ impl Library {
                 let (base, span) = weights[index];
                 Arc::new(move |done: f64| p(label, base + span * done)) as Report
             });
-            let verdict = inspect_file(&path, report, Watch::default())?;
+            let verdict = check_database_reporting(&mut open(&path)?, report, Watch::default())?;
             let damaged = matches!(verdict, Verdict::Damaged(_));
             found.push((label, verdict));
             if damaged {
@@ -242,6 +247,21 @@ impl Library {
     pub fn info_json(&self) -> Result<String> {
         Ok(self.info()?.dump())
     }
+}
+
+fn checked(mut verdicts: Vec<(&'static str, Verdict)>) -> Result<()> {
+    match verdicts.pop() {
+        Some((_, Verdict::Damaged(result))) => Err(Error::Schema(format!("图库数据库损坏：{result}"))),
+        _ => Ok(()),
+    }
+}
+
+type ReadConnection = fn(&Path) -> Result<Connection>;
+
+fn read_archive(path: &Path) -> Result<Connection> {
+    let c = read_connection(path)?;
+    crate::sqlite::protect_archive(&c)?;
+    Ok(c)
 }
 
 fn truthy(value: &Value) -> bool {

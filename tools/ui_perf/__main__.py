@@ -14,7 +14,7 @@ release 构建（debug 版生成缩略图、回读接口都慢得多，数字不
 从 <root>/web/static 读前端，从 <root>/tags 读标签表；默认是当前检出。改前、改后用同一个宿主程序、同一份夹具，只换
 --root，比较的就只是前端。
 
-**场景**（SCENARIOS）：首页滚动（空闲）、首页同步导入中（先停在最上面看新图一批批进来，再往下滚）、图库网格滚动、大图
+**场景**（SCENARIOS）：首页滚动（空闲）、首页同步导入中（先停在最上面看新图一批批进来，再往下滚）、图库网格滚动、画廊的瀑布和色彩滚动、大图
 翻页、资料库长列表。每个场景每次用一份新恢复的图库（缩略图缓存保留）和新起的宿主、浏览器；先跑 --warmup 次不记（把这
 个场景要用的缩略图生成好），再跑 --runs 次，报告取中位数。同步导入的新图是每次新导入的，缩略图当场生成，和真实同步一样。
 
@@ -86,6 +86,14 @@ SCENARIOS: dict[str, dict] = {
         {'op': 'go', 'args': {'page': 'library'}}, {'op': 'memory', 'label': '打开后', 'args': {'page': 'library'}},
         {'op': 'traceStart'}, *scroll('library', 4, 10, '滚动'), {'op': 'traceStop', 'label': '性能记录'},
         {'op': 'memory', 'label': '停下 3 秒后', 'args': {'page': 'library', 'settle': 3000}}]},
+    'gallery-masonry': {'title': '画廊瀑布滚动（全部图放进一个手选画廊）', 'plan': [
+        {'op': 'go', 'args': {'page': 'galleryMasonry'}}, {'op': 'memory', 'label': '打开后', 'args': {'page': 'galleryMasonry'}},
+        {'op': 'traceStart'}, *scroll('galleryMasonry', 4, 10, '滚动'), {'op': 'traceStop', 'label': '性能记录'},
+        {'op': 'memory', 'label': '停下 3 秒后', 'args': {'page': 'galleryMasonry', 'settle': 3000}}]},
+    'gallery-color': {'title': '画廊色彩滚动（全部图放进一个手选画廊）', 'plan': [
+        {'op': 'go', 'args': {'page': 'galleryColor'}}, {'op': 'memory', 'label': '打开后', 'args': {'page': 'galleryColor'}},
+        {'op': 'traceStart'}, *scroll('galleryColor', 4, 10, '滚动'), {'op': 'traceStop', 'label': '性能记录'},
+        {'op': 'memory', 'label': '停下 3 秒后', 'args': {'page': 'galleryColor', 'settle': 3000}}]},
     'viewer': {'title': '大图翻页', 'plan': [
         {'op': 'go', 'args': {'page': 'viewer'}}, {'op': 'memory', 'label': '打开前', 'args': {'page': 'viewer'}},
         {'op': 'traceStart'}, {'op': 'flip', 'label': '翻 40 张', 'args': {'flips': 40, 'every': 400}},

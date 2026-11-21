@@ -59,30 +59,30 @@ test('responses after navigating away update cached data without repainting', as
   assert.equal(renders.length, 0);
 });
 
-// 资料库 · 作品（#198）：作品树取代设置页的作品表。书架在 ui/catalog.js。
-async function shelfHarness(works, watch = []) {
-  const root = {className: '', innerHTML: '', querySelectorAll: () => [], setAttribute() {}, addEventListener() {}};
-  const catalog = await web.load('ui/catalog.js'), {state} = web.core();
-  Object.assign(state, {route: {page: 'characters', section: 'works'}, chars: [{work_id: 'a'}, {work_id: 'a'}, {work_id: 'b'}],
-    index: {works, watch: {works: watch, pending_tags: []}, check: {missing: [{copyright: 'tag_a'}]}}});
-  globalThis.document = {getElementById: () => root, activeElement: null};
-  return {c: catalog, root};
-}
-test('work tree lists children under their parent, with counts and the watch switch', async () => {
+// 资料库 · 作品（#198，#711 改成作品卡）：作品树取代设置页的作品表。作品页签在 ui/works_tab.js。
+test('work cards follow the work tree, children under their parent, with counts, the watch switch and one notice', async () => {
+  const {worksView, worksFilter: shelf} = await web.load('ui/works_tab.js'), scopes = await web.load('ui/scope.js'), {state} = web.core();
+  web.fakePage();
   const works = [{id: 'b', name: 'child', parent_id: 'a', count: 1, watchable: false},
     {id: 'a', name: 'parent', parent_id: null, count: 9, tag: 'tag_a', watchable: true},
     {id: 'c', name: 'orphan', parent_id: 'gone', count: 3, status: 'pending', watchable: false}];
-  const {c, root} = await shelfHarness(works, ['a']);
-  c.drawShelf();
-  const html = root.innerHTML, order = ['parent', 'child', 'orphan'].map(n => html.indexOf(`<b>${n}</b>`));
-  assert.deepEqual([...order].sort((x, y) => x - y), order);
-  assert.match(html, /style="--depth:1"[^]*<b>child<\/b>/);
-  assert.match(html, /data-watch="a" checked/);
-  assert.match(html, /data-watch="b"\s+disabled/);
-  assert.match(html, /\+1 个新角色/);
-  assert.match(html, /链接待确认/);
-  c.shelf.filter = 'watched'; c.drawShelf();
-  assert.ok(root.innerHTML.includes('<b>parent</b>') && !root.innerHTML.includes('<b>child</b>'));
+  Object.assign(state, {route: {page: 'characters', section: 'works'}, workTree: [],
+    chars: [{id: 'x', name: 'x', work_id: 'a', count: 2}, {id: 'y', name: 'y', work_id: 'a', count: 1}, {id: 'z', name: 'z', work_id: 'b', count: 1}],
+    index: {works, watch: {works: ['a'], pending_tags: []}, check: {missing: [{copyright: 'tag_a'}]}}});
+  Object.assign(shelf, {q: '', filter: 'all'});
+  const view = worksView(scopes.scope('works'), {open() {}});
+  view.update();
+  const cards = () => view.el.querySelectorAll('.cat-work');
+  assert.deepEqual(cards().map(c => c.querySelector('.cat-work-name').textContent), ['parent', 'child', 'orphan']);
+  assert.equal(cards()[0].querySelector('small').textContent, '2 位角色 · 9 张');
+  assert.equal(cards()[0].querySelector('.cat-watch').firstChild.checked, true);
+  assert.equal(cards()[1].querySelector('.cat-watch').firstChild.checked, false);
+  const notice = view.el.querySelector('.cat-notice');
+  assert.equal(notice.hidden, false);
+  assert.match(notice.textContent, /1 部作品的 Danbooru 链接待确认/);
+  assert.match(notice.textContent, /上次检查发现 1 个还没收录的角色/);
+  shelf.filter = 'watched'; view.update();
+  assert.deepEqual(cards().map(c => c.querySelector('.cat-work-name').textContent), ['parent']);
 });
 
 // 索引的轮询在 core/jobs.js；它在任务面板之外重画什么，由 ui/effects.js 的 afterJob() 决定（接法与 app.js 相同）：
@@ -112,9 +112,10 @@ test('index progress does not reload work list or rebuild the editor', async () 
 
 test('index completion fetches updated results once', async () => {
   const {calls, renders} = await indexHarness('checking', 'checked');
-  // 卡片重画时另读一次覆盖情况（#561，/api/index 的回复冻结，覆盖情况走单独的路由）。
-  assert.deepEqual(calls, ['/api/index?progress=1', '/api/index', '/api/index/coverage']);
-  assert.deepEqual(renders, ['index', 'tasks']);
+  // 设置页开着时，「检查新角色」那一组随之更新，并另读一次覆盖情况（#561，覆盖情况走单独的路由；
+  // tests/index_coverage.test.cjs）。这里没开设置页。
+  assert.deepEqual(calls, ['/api/index?progress=1', '/api/index']);
+  assert.deepEqual(renders, ['tasks']);
 });
 
 test('returning to settings refreshes cached data once without clearing it', async () => {
@@ -130,21 +131,26 @@ test('returning to settings refreshes cached data once without clearing it', asy
 });
 
 test('the names and new-characters cards read their data when they open', async () => {
-  const {state} = web.core(), nodes = {};
-  state.route = {page: 'settings'};
-  const card = () => ({hidden: true, innerHTML: '', contains: () => false, querySelectorAll: () => []});
-  globalThis.document = {getElementById: id => nodes[id] ||= card(), activeElement: null};
-  globalThis.fetch = async path => ({status: 200, ok: true, json: async () => path === '/api/names'
+  const dom = require('./dom.cjs'), {view} = require('./settings_view.cjs');
+  const {state} = web.core(), calls = [];
+  state.route = {page: 'settings', section: 'characters'}; state.names = null; state.index = null; state.pack = null;
+  dom.install();
+  globalThis.fetch = async path => { calls.push(path); return {status: 200, ok: true, json: async () => path === '/api/names'
     ? {state: {status: 'idle'}, counts: {characters: {total: 2, zh: 1}}}
-    : {state: {status: 'idle'}, works: [], watch: {works: [], min_posts: 50}, history: [], mb_per_character: 2}});
-  await ui.renderNamesCard();
-  await ui.renderIndexCard();
-  assert.match(nodes.namesCard.innerHTML, /角色名称/);
-  assert.match(nodes.indexCard.innerHTML, /检查新角色/);
+    : path === '/api/packs' ? null
+    : {state: {status: 'idle'}, works: [], watch: {works: [], min_posts: 50}, history: [], mb_per_character: 2}}; };
+  const open = await view('characters'), v = open();
+  await v.load(true);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(calls.filter(p => p === '/api/names' || p === '/api/index').sort(), ['/api/index', '/api/names']);
+  v.update();
+  assert.match(v.text, /角色名称/);
+  assert.match(v.text, /检查新角色/);
+  v.dispose(); dom.uninstall();
 });
 
 test('an older library is opened only after the person agrees to upgrade it (#193)', async () => {
-  // openLibrary() 在 ui/settings.js：后端的拒绝指明需要升级，页面询问用户，然后带上 upgrade 再请求一次。
+  // openLibrary() 在 ui/settings_libraries.js：后端的拒绝指明需要升级，页面询问用户，然后带上 upgrade 再请求一次。
   const sent = [], nodes = {}, dialogs = [];
   const element = () => ({hidden: true, textContent: '', innerHTML: '', contains: () => false});
   globalThis.document = {getElementById: id => nodes[id] ||= element(), activeElement: null, body: {append(d) { dialogs.push(d); setImmediate(() => d.close('')); }},
@@ -154,15 +160,14 @@ test('an older library is opened only after the person agrees to upgrade it (#19
     return {status: 409, ok: false, json: async () => ({error: '这个图库需要升级到新格式才能打开。升级后旧版本的 Illustash 打不开它；升级前会自动备份，升级没有完成时图库保持原样。'})};
   };
   const setTimeout = globalThis.setTimeout; globalThis.setTimeout = () => 0;
-  try { await ui.openLibrary('/tmp/synthetic.pilib', '合成'); } finally { globalThis.setTimeout = setTimeout; }
+  const {openLibrary} = await web.load('ui/settings_libraries.js');
+  try { await openLibrary('/tmp/synthetic.pilib', '合成'); } finally { globalThis.setTimeout = setTimeout; }
   assert.deepEqual(sent, [{path: '/tmp/synthetic.pilib'}]);
   assert.equal(dialogs.length, 1, 'asked before upgrading; declined, so nothing more was sent');
 });
 
-test('the full backup section names both backup folders, the upgrade one included (#517)', () => {
-  const row = (path, name) => ui.backupFolder('合成', path, name);
-  assert.equal(row('/Users/合成/Pictures/Illustash/合成.pilib', 'library-backups'),
-    '<tr><td>合成</td><td class="mono" title="/Users/合成/Pictures/Illustash/合成.pilib/library-backups">~/Pictures/Illustash/合成.pilib/library-backups</td></tr>');
-  assert.match(row('D:\\图库\\合成.pilib', 'backups'), /title="D:\\图库\\合成\.pilib\\backups"/);
-  assert.match(row('/tmp/a&b.pilib', 'backups'), /\/tmp\/a&amp;b\.pilib\/backups/);
+test('the full backup section names both backup folders, the upgrade one included (#517)', async () => {
+  const {backupFolder} = await web.load('ui/settings_data.js');
+  assert.equal(backupFolder('/Users/合成/Pictures/Illustash/合成.pilib', 'library-backups'), '/Users/合成/Pictures/Illustash/合成.pilib/library-backups');
+  assert.equal(backupFolder('D:\\图库\\合成.pilib', 'backups'), 'D:\\图库\\合成.pilib\\backups');
 });

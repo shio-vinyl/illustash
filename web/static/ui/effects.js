@@ -8,13 +8,12 @@ import {onPage, pageOf} from '../core/pages.js';
 import {loadLibraries} from '../core/settings.js';
 import {readError} from '../core/session.js';
 import {state} from '../core/state.js';
-import {drawShelf} from './catalog.js';
+import {catalogChanged} from '../core/catalog.js';
 import {error, toast} from './dom.js';
 import {afterSync, listChanged, reload, selCount} from './grid.js';
 import {inspect} from './detail.js';
 import {guideAfterPost, guideRefresh} from './guide.js';
 import {humanImportEnded, renderHumanBlock} from './human.js';
-import {renderIndexCard, renderLibrariesCard, renderNamesCard, renderProvenanceCard} from './settings.js';
 
 // 不改图片列表的写入（#452）：引导进度、画廊、收藏（不让图离开本页的那条路径在本地改心形；会离开的走 ui/grid.js 的
 // mutate，自己重读）、设置，以及启动后台任务（任务结束时由 afterJob 处理）。这些写入之后已读到的列表照旧有效。
@@ -54,16 +53,14 @@ export async function afterJob(job, change) {
   } else if (job === 'index') {
     const s = state.index.state;
     if (change.ended && s.status === 'done') { listChanged(); await refreshMeta().catch(e => error(readError(e))); }
-    if (s.status !== change.was && onPage(state.route, 'settings')) renderIndexCard(false);
-    if (s.status !== change.was && state.route.section === 'works') drawShelf();
+    if (s.status !== change.was) catalogChanged.emit('index');
   } else if (job === 'names') {
-    renderNamesCard(false);
     if (change.ended) refreshMeta();
-  } else if (job === 'provenance') renderProvenanceCard();
+  }
   else if (job === 'import') {
     const task = state.importTask;
     if (change.ended && task.kind === HUMAN_IMPORT) { if (task.status === 'done' && (task.committed ?? task.result?.committed)) listChanged(); humanImportEnded(task); }
     else if (change.ended) { toast(importLine(task)); if (task.status === 'done' && task.kind === 'archive') loadLibraries(); }
-    renderLibrariesCard(); renderHumanBlock();
+    renderHumanBlock();
   }
 }

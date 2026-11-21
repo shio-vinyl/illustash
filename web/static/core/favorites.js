@@ -17,8 +17,6 @@ export function conditions(value) {
 }
 // 写入以后这张图是不是离开本页：「只看收藏」里取消，「不含收藏」里收藏。
 export const favLeaves = (add, route = state.route) => add ? conditions(route.not).includes(FAV) : conditions(route.has).includes(FAV);
-// 只按收藏筛选的图库（没有别的条件）：判断写在 core/pages.js（注册表要用它，放在这里会和注册表互相导入）。
-export {favoritesOnly} from './pages.js';
 // 在一组查询参数的 key（has 或 not）里加一个条件，返回新的一组；参数里条件写成 JSON 字符串数组，同 /api/assets。
 export function withCondition(params, key, condition) {
   const list = conditions(params[key]);

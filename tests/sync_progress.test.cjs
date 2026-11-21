@@ -144,8 +144,10 @@ test('a sync the system refused the Photos library says what to do, by its code 
   globalThis.location = {href: ''};
   const {toggleTasks, wireTasks} = await web.load('ui/tasks.js');
   wireTasks(); toggleTasks(true);
-  const html = el('taskPanel').innerHTML;
-  assert.match(html, /<h6>等你确认<\/h6>.*没有访问照片图库的权限。到「系统设置 › 隐私与安全性 › 照片」里打开 Illustash，退出并重新打开后再同步。/s);
+  // 面板的外壳和行是 ui/el.js 的节点（ui/task_row.js），按节点读出来
+  const panel = () => el('taskPanel').children.map(n => n.outerHTML).join('');
+  const html = panel();
+  assert.match(html, /<h6 data-ref="asksHead" data-t>等你确认<\/h6>.*没有访问照片图库的权限。到「系统设置 › 隐私与安全性 › 照片」里打开 Illustash，退出并重新打开后再同步。/s);
   assert.match(html, /data-task="photos-privacy">打开系统设置</);
   assert.doesNotMatch(html, /Operation not permitted/);
   const button = {dataset: {task: 'photos-privacy'}, disabled: false};
@@ -155,7 +157,7 @@ test('a sync the system refused the Photos library says what to do, by its code 
   // 其他失败不请求任何东西。
   Object.assign(core.state, {sync: {status: 'error', message}});
   toggleTasks(false); toggleTasks(true);
-  assert.doesNotMatch(el('taskPanel').innerHTML, /photos-privacy/);
+  assert.doesNotMatch(panel(), /photos-privacy/);
   toggleTasks(false);
 });
 

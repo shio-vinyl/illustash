@@ -82,7 +82,7 @@ export function readFailure(node, e) { if (node) { node.hidden = false; node.inn
 // 可折叠的块，展开或收起的状态在重新渲染和重新载入后保留。
 export const fold = (key, summary, body) => `<details class="more" data-fold-key="${key}"${prefs.get('settingsOpen', {})[key] ? ' open' : ''}><summary>${summary}</summary><div class="more-body">${body}</div></details>`;
 export function wireFolds(root) {
-  for (const d of root.querySelectorAll('details[data-fold-key]')) {
+  for (const d of root.querySelectorAll('[data-fold-key]')) {
     if (d.dataset.foldWired) continue;
     d.dataset.foldWired = '1';
     d.ontoggle = () => { const o = prefs.get('settingsOpen', {}); if (d.open) o[d.dataset.foldKey] = true; else delete o[d.dataset.foldKey]; prefs.set('settingsOpen', o); };

@@ -72,7 +72,13 @@ dialog[open]{animation:ov-dialog var(--dur-2) var(--ease)}
   transition:background-color var(--dur-2) var(--ease)}
 .task-item.on{background:var(--accent-soft)}
 .task-main{display:flex;align-items:center;gap:var(--space-10);font-size:var(--fs-12)}
-.task-main>button{border-radius:var(--radius-pill);flex:none}
+.task-acts{display:flex;gap:var(--space-6);flex:none}
+.task-acts>button{border-radius:var(--radius-pill)}
+/* 进度条（ui/task_row.js）：只改 transform，不改宽度 */
+.task-bar{display:block;height:4px;border-radius:var(--radius-pill);background:var(--soft);overflow:hidden}
+.task-bar[hidden]{display:none}
+.task-bar>span{display:block;height:100%;background:var(--accent);transform-origin:left center;transition:transform var(--dur-2) var(--ease)}
+.task-item.on .task-bar{background:var(--sheet)}
 .task-text{flex:1;min-width:0;display:grid;gap:var(--space-2)}
 .task-text b{font-weight:var(--fw-600)}
 .task-text small{font-size:var(--fs-11);color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}

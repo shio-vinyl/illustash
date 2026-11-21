@@ -428,7 +428,8 @@ test('任务面板的一项：有下载或任务时才列出，失败时打警�
   assert.equal(c.packTask(pack({current: READY})), null);
   const running = c.packTask(pack({current: READY, task: {id: 't', kind: 'enable', status: 'running', phase: 'scan', done: 3, total: 12}}));
   assert.deepEqual([running.key, running.name, running.busy, running.active, running.line], ['pack', '角色资料包', '检查角色资料包中', true, '正在检查 3 / 12 张']);
-  assert.match(running.action, /data-pack="cancel"/);
+  assert.deepEqual(running.buttons.map(b => [b.attr, b.act]), [['pack', 'cancel']]);
+  assert.deepEqual(running.progress, {done: 3, total: 12});
   const failed = c.packTask(pack({current: READY, task: {id: 't', kind: 'withdraw', status: 'failed', message: '磁盘已满', diagnostic: {id: 'D-1', stored: true}}}));
   assert.equal(failed.warn, true);
   assert.equal(failed.diagnostic.id, 'D-1');

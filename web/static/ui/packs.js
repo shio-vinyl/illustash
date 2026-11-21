@@ -231,7 +231,7 @@ export function packTask(x = current()) {
   const d = x.download;
   const failed = importFailed(d) ? d : x.task?.status === 'failed' ? x.task : !ready(x) && d?.status === 'failed' ? d : null;
   return {key: 'pack', name: packName(), busy: busyText, active: running || downloading, warn: !!failed, off: packDot(x) === 'off',
-    line: packLine(x), body: packBar(x), action: packActions(x, true), diagnostic: failed?.diagnostic};
+    line: packLine(x), progress: packProgress(x), body: '', buttons: packButtons(x, true).map(b => ({...b, attr: 'pack'})), diagnostic: failed?.diagnostic};
 }
 
 // 结束时的提示。`before` 是任务运行时最后一次读到的状态：那时已经启用的，这一次是重新检查或换包。同步后对新识别的图自动

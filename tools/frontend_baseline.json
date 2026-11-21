@@ -42,7 +42,7 @@
    "ui/models.js": 1,
    "ui/palette.js": 21,
    "ui/shell.js": 12,
-   "ui/tasks.js": 16
+   "ui/tasks.js": 14
   },
   "css-literal": {
    "-webkit-mask-image: #000000": 2,

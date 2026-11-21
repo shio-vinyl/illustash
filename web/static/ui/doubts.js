@@ -13,6 +13,7 @@
 import {CARD_MAX, doubtAnswer, doubtCards, doubtLater, loadDoubts} from '../core/doubts.js';
 import {imageUrl, number} from '../core/format.js';
 import {t} from '../core/i18n.js';
+import {refreshMeta} from '../core/meta.js';
 import {implement, onPage} from '../core/pages.js';
 import {DOUBT_POOL} from '../core/rail.js';
 import {charHash} from '../core/route.js';
@@ -164,7 +165,9 @@ function doubtsView(scope) {
     lock(c, true);
     try { await doubtLater(c); } catch (e) { lock(c, false); toast(readError(e)); return; }
     lock(c, false);
-    if (scope.alive) shed(c, c.items.map(x => x.uuid));
+    if (!scope.alive) return;
+    shed(c, c.items.map(x => x.uuid));
+    refreshMeta().catch(() => {});   // 页头页签上的张数（活页条的数字 shed 已先减了）
   };
   scope.on(refs.empty, 'click', e => { if (e.target.closest('[data-empty="retry"]')) load(); });
   scope.on(refs.more, 'click', () => { page.shown += PAGE; draw(); });

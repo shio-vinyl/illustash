@@ -475,6 +475,7 @@ export const FLOWS = [
       w.check('「以后再说」以后卡收起', !(await cards()).includes(key), {key});
       await w.step('去按组整理再回来', async p => { await p.eval(`location.hash = '#/groups'`); await p.settle({quiet: 600}); await p.eval(`location.hash = '#/doubts'`); await p.settle({quiet: 800}); }, {shot: true});
       w.check('重新进来，「以后再说」的那批不在，写着空状态', !(await cards()).length && await page.eval(`!!document.querySelector('#groupsPage .empty-state')`), '');
+      w.check('页头页签和活页条上都不再写可能认错的张数', await page.eval(`!/\\d/.test([...document.querySelectorAll('#heading .seg a')].find(a => a.getAttribute('href') === '#/doubts')?.textContent || '')`) && await rail() === 0, '');
       w.check('「以后再说」没有改人工结论', same(await Promise.all(pics.map(u => assertionsOf(page, u))), was), {pics});
     },
   },

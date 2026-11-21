@@ -6,6 +6,7 @@ import sqlite3
 import subprocess
 import tempfile
 import unittest
+from urllib.parse import urlencode
 
 from tests import test_native_lifecycle as lifecycle
 from tests.fixed_expectations import Library
@@ -88,6 +89,7 @@ class NativeAmbiguousClaimsTest(unittest.TestCase):
             self.seed(c, 'r18', '2026-01-03')
             self.seed(c, 'reversed', '2026-01-04', reverse=True)
             self.seed(c, 'other-kind', '2026-01-02')
+            self.seed(c, 'same-day', '2026-01-02')
             self.seed(c, 'later', '2026-01-07')
             self.seed(c, 'hidden', '2026-01-08')
             self.seed(c, 'excluded', '2026-01-09')
@@ -109,24 +111,46 @@ class NativeAmbiguousClaimsTest(unittest.TestCase):
         self.assertEqual(later, {'undo': None})
 
         reverse = self.group(['reversed'], reverse=True)
-        self.assert_queue([self.group(['new', 'r18', 'other-kind', 'old']), reverse])
-        self.assert_queue([self.group(['new', 'other-kind', 'old']), reverse], 'hide')
+        # 组内新加入的在前，同一入库时间按 uuid 升序。
+        self.assert_queue([self.group(['new', 'r18', 'other-kind', 'same-day', 'old']), reverse])
+        self.assert_queue([self.group(['new', 'other-kind', 'same-day', 'old']), reverse], 'hide')
         self.assert_queue([self.group(['r18'])], 'only')
         self.read('/api/ambiguous?nsfw=invalid', status=400)
+        # 和 /api/assets 默认的「最新」排序同一个次序（那边不排除暂缓的图）。
+        listed = self.read('/api/ids?' + urlencode({'entity': self.alice, 'status': 'ambiguous'}))
+        queued = self.read('/api/ambiguous')['groups'][0]['items']
+        self.assertEqual([uid for uid in listed if uid in queued], queued)
 
     def test_reject_both_then_undo_once(self):
         with self.connect() as c, c:
             self.seed(c, 'a', '2026-01-02')
+            self.seed(c, 'a-copy', '2026-01-02')
             self.seed(c, 'b', '2026-01-01')
             self.seed(c, 'other', '2026-01-03', reverse=True)
+            # a-copy 是 a 折叠起来的重复副本：不在清单里，回答时跟着 a 一起改。
+            c.executemany("INSERT INTO duplicates VALUES (?,'g',2,?,'2026-01-02',?,?)",
+                          [('a', 0, 1, 0), ('a-copy', 1, 0, 1)])
+            # 这一步会覆盖的旧问答：A 侧一条过期的「以后再说」、一条别的问题还在暂缓期内的，B 侧一条还在暂缓期内的。
             c.execute("INSERT INTO asked VALUES ('b',?,'ambiguous','later',NULL,datetime('now','-8 days'))",
                       (self.alice,))
+            c.execute("INSERT INTO asked(uuid,entity,kind,answer) VALUES ('a',?,'hint','later')", (self.alice,))
+            c.execute("INSERT INTO asked(uuid,entity,kind,answer) VALUES ('a',?,'seed','later')", (self.bob,))
             before = self.history(c)
         reverse = self.group(['other'], reverse=True)
         self.assert_queue([self.group(['a', 'b']), reverse])
         body = {'kind': 'ambiguous', 'entity': self.alice, 'also_no': self.bob, 'no': ['a', 'b']}
-        self.read('/api/ask/answer', {**body, 'no': ['a', 'other']}, status=400)
-        self.read('/api/ask/answer', {**body, 'switch': self.bob}, status=400)
+        refused = [
+            ({**body, 'no': ['a', 'other']}, '图片的备选归属已变更，请刷新'),
+            ({**body, 'switch': self.bob}, '回答格式不正确'),
+            ({**body, 'yes': ['other']}, '回答格式不正确'),
+            ({**body, 'later': ['other']}, '回答格式不正确'),
+            ({**body, 'kind': 'seed'}, '回答格式不正确'),
+            ({**body, 'no': []}, '回答格式不正确'),
+            ({**body, 'also_no': self.alice}, '请选择不同的父角色'),
+            ({**body, 'also_no': 'missing'}, '角色不存在'),
+        ]
+        for refusal, error in refused:
+            self.assertEqual(self.read('/api/ask/answer', refusal, status=400), {'error': error}, refusal)
         with self.connect() as c, c:
             c.execute(
                 "CREATE TRIGGER fail_second_rejection BEFORE INSERT ON asked "
@@ -142,24 +166,48 @@ class NativeAmbiguousClaimsTest(unittest.TestCase):
         self.assert_queue([self.group(['a', 'b']), reverse])
 
         undo = self.read('/api/ask/answer', body)['undo']
+        self.assertEqual(undo['label'], '已将 2 张移出 Alice、Bob')
         with self.connect() as c:
-            pairs = sorted((uid, entity) for uid in ['a', 'b'] for entity in (self.alice, self.bob))
+            # 隐藏副本跟着否定；问答只记提交的两张。
+            rejected = sorted((uid, entity) for uid in ['a', 'a-copy', 'b'] for entity in (self.alice, self.bob))
+            answered = sorted((uid, entity) for uid in ['a', 'b'] for entity in (self.alice, self.bob))
             self.assertEqual(c.execute("SELECT uuid,entity,status FROM assertions ORDER BY uuid,entity").fetchall(),
-                             [(*pair, 'rejected') for pair in pairs])
-            self.assertEqual(c.execute("SELECT uuid,entity,kind,answer,action_id FROM asked ORDER BY uuid,entity").fetchall(),
-                             [(*pair, 'ambiguous', 'no', undo['id']) for pair in pairs])
+                             [(*pair, 'rejected') for pair in rejected])
+            asked = c.execute("SELECT uuid,entity,kind,answer,action_id FROM asked ORDER BY uuid,entity").fetchall()
+            self.assertEqual(asked, [(*pair, 'ambiguous', 'no', undo['id']) for pair in answered])
             verdicts = c.execute("SELECT a.key,t.key,v.verdict,v.action_id FROM term_verdicts v "
                                  "JOIN term_assets a ON a.id=v.asset_id JOIN terms t ON t.id=v.term_id "
                                  "ORDER BY a.key,t.key").fetchall()
-            self.assertEqual(verdicts, [(*pair, 'no', undo['id']) for pair in pairs])
+            self.assertEqual(verdicts, [(*pair, 'no', undo['id']) for pair in rejected])
             self.assertEqual(c.execute("SELECT id,undone FROM actions").fetchall(), [(undo['id'], 0)])
         self.assert_queue([reverse])
 
         self.read('/api/undo', {'id': undo['id']})
         self.assert_queue([self.group(['a', 'b']), reverse])
         with self.connect() as c:
+            # 两侧被覆盖的旧问答原样放回，含问的时间；原来没有问答的（b，B）不留行。
             self.assertEqual(self.history(c), before)
             self.assertEqual(c.execute("SELECT id,undone FROM actions").fetchall(), [(undo['id'], 1)])
+
+    def test_ambiguous_later_does_not_rest_the_character_in_ask(self):
+        # 「以后再说」只针对当前这一问：「可能认错」卡上的暂缓不让 A 在认一认里消失，认一认自己的暂缓照旧。
+        with self.connect() as c, c:
+            for day, uid in enumerate(['one', 'two', 'three', 'four'], 1):
+                self.seed(c, uid, f'2026-01-0{day}')
+        self.assertEqual(self.ask()['entity'], self.alice)
+        self.read('/api/ask/answer', {'kind': 'ambiguous', 'entity': self.alice, 'later': ['one']})
+        self.assert_queue([self.group(['four', 'three', 'two'])])
+        batch = self.ask()
+        self.assertIsNotNone(batch)
+        self.assertEqual((batch['kind'], batch['entity']), ('seed', self.alice))
+        # 问过的那一张不再出现在认一认里。
+        self.assertEqual(sorted(item['uuid'] for item in batch['items']), ['four', 'three', 'two'])
+        self.read('/api/ask/answer', {'kind': 'seed', 'entity': self.alice, 'later': ['two']})
+        self.assertIsNone(self.ask())
+        self.assert_queue([self.group(['four', 'three', 'two'])])
+
+    def ask(self):
+        return self.read('/api/ask')['batch']
 
     def history(self, c):
         return {table: c.execute(f'SELECT * FROM {table} ORDER BY 1,2').fetchall()

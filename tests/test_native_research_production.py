@@ -17,6 +17,7 @@ import unittest
 import numpy as np
 from PIL import Image
 
+from tests import native_commands
 from tests import test_native_lifecycle as lifecycle
 from tests import test_native_research_compute as compute
 from tests import test_native_relations_compute as relations
@@ -309,28 +310,30 @@ child.terminate();child.wait()
             self.assertEqual(reply['status'], 200, reply)
             return json.loads(reply['body'])
 
-        reply = self.request('/api/entities', {'name': '合成角色 Y'})
-        self.assertEqual(reply['status'], 200, reply)
-        other = json.loads(reply['body'])['id']
         ids = [f'lead-split-{i}' for i in range(9)]
         first, second, unknown, separate = (frozenset(ids[i:i+2]) for i in (0, 2, 4, 6))
         singleton = ids[-1]
+        x, y = '00000000-0000-0000-0000-000000007901', '00000000-0000-0000-0000-000000007902'
+        added_at = '2026-10-04'
+        rows = [(ident, ident + '.png', str(self.root / (ident + '.png')), 120, 150, added_at, 'orig')
+                for ident in ids]
         # 前六张看起来相同。后三张是另一组，只有最后一张有线索。
         with sqlite3.connect(self.lib.source) as c:
+            c.executemany("INSERT INTO assets VALUES (?,?,?,?,?,?,?,1,0)", rows)
             for i, ident in enumerate(ids):
                 vector = np.zeros(768, np.float32)
                 vector[2 if i < 6 else 3] = 1
                 c.execute("INSERT INTO embeddings VALUES (?,'ccip',?)", (ident, vector.tobytes()))
         with sqlite3.connect(self.lib.db) as c:
-            c.executemany(
-                "INSERT INTO assets(uuid,filename,width,height,added_at,src_kind) VALUES (?,?,120,150,'2026-10-04','orig')",
-                [(ident, ident + '.png') for ident in ids])
-            # CCIP 单路线索低于认领门槛。这些图仍在未识别池，分组和组头会从 family_evidence 读到线索。
-            c.executemany(
-                "INSERT INTO family_evidence VALUES (?,?,'CCIP',0.91,1,1,NULL,0.91,1)",
-                [(ident, self.entity) for ident in (*first, singleton)] + [(ident, other) for ident in second])
+            duplicates = c.execute("SELECT uuid,grp,size,pos,grp_added,rep FROM duplicates").fetchall()
+        # 通过原生导入生成线索。CCIP 单路分数低于认领门槛，这些图仍留在未识别池。
+        labels = [(ident, 'synthetic_x', 0.91, 'char_ext') for ident in sorted(first | {singleton})]
+        labels += [(ident, 'synthetic_y', 0.91, 'char_ext') for ident in sorted(second)]
+        native_commands.character_command(self.lib.db, dict(
+            op='import', rows=rows, labels=labels, duplicates=duplicates, realistic=[],
+            new_ids={'ccip': {'synthetic_x': x, 'synthetic_y': y}}, indexed=added_at + ' 00:00:00'))
 
-        expected = {first: self.entity, second: other, unknown: None, separate: None}
+        expected = {first: x, second: y, unknown: None, separate: None}
         previous_ids = None
         for _ in range(2):
             self.assertEqual(self.request('/api/regroup', {})['status'], 200)

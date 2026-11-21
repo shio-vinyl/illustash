@@ -3,7 +3,7 @@
 //
 // - 卡片建一次，挂在 #inspector 里；翻页、写入后重读只 update，不重建。打开时从右边滑进来，关掉时滑出去再藏起 #inspector。
 // - 卡片和大图底栏的点击都交给 act(名字, data-*, 事件, 详情)：同一个按钮在两处做同一件事。
-// - 大图的函数照旧从这里导出（ui/grid.js、home.js、review.js、shell.js 从这里导入）；它们的实现在 ui/viewer.js。
+// - 大图的函数照旧从这里导出（ui/grid.js、shell.js 等从这里导入）；它们的实现在 ui/viewer.js。
 import {t} from '../core/i18n.js';
 import {number} from '../core/format.js';
 import {leaves} from '../core/filters.js';

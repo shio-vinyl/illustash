@@ -1,5 +1,5 @@
 /* 公共部件（#705，0.4 第 A2 步）：排版、表面、胶囊控件与「选中」、页头、空状态、海报、圆头像、玻璃。各页步骤用这里的部件，
-   不另画一套；样子和用法见样式清单 tools/styleguide/（「新部件」一组）。设计约定在 docs/WEB_V2.md「前端整体升级」。
+   不另画一套；样子和用法见样式清单 tools/styleguide/（「新部件」一组）。设计约定在 docs/WEB_V2.md「界面结构与渲染底座」。
    - 只用 css/tokens.css 的令牌。新写的界面字号只用 11 / 12 / 13 / 20 / 28 / 40，圆角只用 4 / 8 / 12 / 18、胶囊和圆形，
      字重、阴影、时长和缓动各用三档（tools/check_frontend.py 规则 8、13 拦）。
    - 「选中」一种画法：强调色浅底；分段控件里白底浮起。状态写在 aria-pressed / aria-selected / aria-checked / aria-current 上，

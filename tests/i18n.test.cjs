@@ -136,6 +136,8 @@ function usedKeys() {
   const used = new Set(), dynamic = [];
   const add = found => { found.keys.forEach(k => used.add(k)); dynamic.push(...found.dynamic); };
   for (const name of scripts) add(scriptKeys(name));
+  // 模块里 ui/el.js 的静态模板（tpl`…`）和 index.html 一样用 data-t / data-t-attr 标出要翻译的文字（#704）。
+  for (const name of scripts) for (const m of read(name).matchAll(/\btpl`([^`]*)`/g)) markupKeys(m[1]).forEach(k => used.add(k));
   // i18n.js 只翻译交给它的内容，后端消息的连接符除外。
   used.add('join\u0004；');
   markupKeys(read('index.html')).forEach(k => used.add(k));
@@ -176,6 +178,15 @@ function checkEntry(code, key, value) {
   if (value.other) assert.deepEqual(placeholders(value.other), placeholders(key), `${code}: placeholders differ: ${key} other`);
   return !!value.other;
 }
+
+// JSON.parse 遇到重复的键只留最后一个：只改了前一份的译文不会生效，所以表里不许有重复的键（#712 的审核）。
+test('no table repeats a key', () => {
+  for (const code of Object.keys(locales)) {
+    const keys = [...read(`locales/${code}.json`).matchAll(/^  "((?:[^"\\]|\\.)*)":/gm)].map(m => m[1]);
+    const repeated = keys.filter((k, i) => keys.indexOf(k) !== i);
+    assert.deepEqual(repeated, [], `${code}.json repeats ${repeated.join(', ')}`);
+  }
+});
 
 test('every table matches the code: no unused keys, matching placeholders, plural forms of its language', () => {
   const {used} = usedKeys();

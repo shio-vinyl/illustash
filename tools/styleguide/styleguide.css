@@ -1,6 +1,8 @@
 /* 样式清单页自己的样式（#318）。这里的类都带 sg- 前缀（或是挂在 .sg-* 上的修饰类），只画清单页本身：左侧目录、
    条目卡片、色块，不改写应用组件。唯一的例外是 `.sg-frozen`：关掉浮层组件的 position:fixed/absolute 和入场动画，
-   让它们排进页面流里；每条覆盖一行，并写明撤掉了什么。这些覆盖引用的应用类由 tools/check_styleguide.py 核对。 */
+   让它们排进页面流里；每条覆盖一行，并写明撤掉了什么。这些覆盖引用的应用类由 tools/check_styleguide.py 核对。
+   整个文件在 legacy 层（和 app.css 同层，#705）：没有层的样式比所有层都强，放在层外会盖过 app.css 里特异性更高的规则，旧组件的样子就和应用里不一样了。 */
+@layer legacy {
 
 :root { color-scheme: light dark; }
 :root[data-theme=light] { color-scheme: light; }
@@ -108,7 +110,6 @@ body { margin: 0; background: var(--canvas); color: var(--ink); }
 .sg-frozen dialog { position: static; margin: 0; max-height: none; }
 .sg-frozen .viewer { position: static; inset: auto; animation: none; height: 260px; width: 100%; border-radius: 12px; }
 .sg-frozen .inspector { height: auto; overflow: visible; }
-.sg-frozen .home-hero, .sg-frozen .home-j { position: relative; }
 /* live.js 给任务入口包的一截侧栏 */
 .sg-sidebar { width: 84px; padding: 8px 0; border-radius: 12px; }
 
@@ -118,4 +119,28 @@ body { margin: 0; background: var(--canvas); color: var(--ink); }
 .sg-img.c { background: linear-gradient(135deg, #d0b5ec, #a9c6f0); }
 .sg-cardbox { position: relative; width: 120px; height: 150px; }
 .sg-cardbox .card { position: relative; width: 100%; height: 100%; }
-.sg-cardbox .image-stage > .sg-img { width: 100%; height: 100%; }
+/* 网格卡片（#708）在网格里绝对定位，这里摆成普通的块 */
+.sg-cardbox .card { transform: none; }
+
+/* 0.4 新部件的样例（#705）：只摆位置和尺寸，部件本身的样子来自 web/static/css/base.css */
+.sg-tint { display: grid; gap: 6px; width: 150px; font-size: 11px; color: var(--muted); }
+.sg-tint b { font-family: var(--mono); font-weight: 600; color: var(--ink); }
+.sg-tint span { display: grid; place-items: center; height: 40px; border-radius: 8px; color: var(--ink2); }
+.sg-surface { width: 100%; padding: 14px; border-radius: 16px; }
+.sg-surface-sheet { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding: 18px; }
+.sg-surface-sheet .text-meta { margin: 4px 0 0; }
+.sg-poster { width: 150px; }
+.sg-glass-bg { position: relative; width: 420px; height: 260px; border-radius: 12px; overflow: hidden; }
+.sg-glass-bg > img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.sg-glass-l { position: absolute; top: 8px; left: 8px; }
+.sg-glass-r { position: absolute; top: 8px; right: 8px; }
+.sg-glass-panel { position: absolute; left: 16px; bottom: 16px; width: 220px; padding: 12px 14px; }
+.sg-glass-panel .text-meta { margin: 4px 0 0; }
+.sg-weights { display: grid; gap: 4px; font-size: 20px; }
+.sg-shadow { display: grid; place-items: center; width: 150px; height: 84px; border-radius: 12px; background: var(--sheet); font-size: 11px; color: var(--muted); }
+.sg-shadow code { font-size: 10.5px; }
+.sg-motion { display: grid; grid-template-columns: 220px 1fr; align-items: center; gap: 10px 14px; width: 100%; }
+.sg-motion .sg-track { position: relative; width: 360px; height: 28px; border-radius: 999px; background: var(--soft); }
+.sg-motion .sg-track > i { position: absolute; top: 4px; left: 4px; width: 20px; height: 20px; border-radius: 50%; background: var(--accent); transition-property: transform; }
+.sg-motion.sg-run .sg-track > i { transform: translateX(332px); }
+}

@@ -7,7 +7,7 @@ let guideUi, core;
 before(async () => { await web.ready(); guideUi = await web.load('ui/guide.js'); });
 
 // 引导（ui/guide.js）放在假页面上；后端用 `reply` 作答。运行的任务就是运行的同步。
-function guide({status = 'active', step = 'welcome', ticked = [], seen = [], hidden = false, results = {}, works, names, sync = {status: 'done'}, route = 'home', index, updates} = {}) {
+function guide({status = 'active', step = 'welcome', ticked = [], seen = [], hidden = false, results = {}, works, names, sync = {status: 'done'}, route = 'days', index, updates} = {}) {
   const posted = [];
   core = web.core(); core.session.token = 't';
   Object.assign(core.state, {route: {page: route}, sync, names, index, updates, guide: undefined});

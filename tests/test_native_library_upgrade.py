@@ -29,7 +29,7 @@ from unittest.mock import patch
 from PIL import Image
 
 from tests import test_native_lifecycle as lifecycle
-from tests.fixed_expectations import Library, Expectations, TERMS_VERSION, baseline_state
+from tests.fixed_expectations import Library, Expectations, TERMS_VERSION, baseline_state, with_ambiguous_pool
 from tests.synthetic_source import synthetic_reference
 from tests.test_read_http import INTERRUPT, SPAWN, free_port, wait_until
 from tools.build_db import SCHEMA as SOURCE_SCHEMA
@@ -369,7 +369,9 @@ class NativeLibraryUpgradeTest(unittest.TestCase):
             reference = f'http://127.0.0.1:{server.server_port}' if server else None
             for url in lifecycle.CORE_READS:
                 with self.subTest(url=url):
-                    left = self.rec.value('response')
+                    # 录制的参考回复早于「可能认错」池（#786）：只在 review-pools 末尾补上这一项再逐字节比，原有字节和响应头照旧
+                    # （同 test_native_lifecycle 的 pair、read_http_harness）。
+                    left = with_ambiguous_pool(url, self.rec.value('response'))
                     right = fetch(origin, {'url': url}, origin)
                     self.assertIsNone(difference(left, right), (url, difference(left, right)))
                     self.assertEqual(right['route'], 'core')

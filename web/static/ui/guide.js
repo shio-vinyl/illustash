@@ -10,9 +10,10 @@ import {api, post, session} from '../core/session.js';
 import {allowNames, updatesPost, updatesTick} from '../core/settings.js';
 import {state} from '../core/state.js';
 import {$, toast, redraw, setDrawn, drawnHTML, busy} from './dom.js';
-import {drawUpdateButton, openRelease, selfUpdate, updateAct, updateActions, updateBar, updateStarted, updateStatus} from './settings.js';
+import {drawUpdateButton, openRelease, selfUpdate, updateAct, updateActions, updateBar, updateStarted, updateStatus} from './updates.js';
 import {taskList} from './tasks.js';
 import {createLayer} from './overlay.js';
+import {key, read, write} from './frame.js';
 import {modelsNotice} from './models.js';
 import {modelsWaiting, modelsArrived, onModels} from '../core/models.js';
 
@@ -23,6 +24,8 @@ const TOUR = ['welcome', 'tasks', 'home', 'characters', 'unmatched', 'end'];
 const CHECKLIST = [['look', t('看看认出的角色'), '#/characters'], ['correct', t('纠正一张认错的图'), '', t('点开后按 C')], ['undo', t('撤销一次操作'), '', shortcut('Z')],
   ['group', t('确认一组没认出的图'), '#/groups'], ['follow', t('关注一部作品'), '#/characters/works']];
 let guideChecked = false, guideLoadedAt = 0, guideWorksAt = 0, tourAt = -1, checklistOpen = false;
+// 帧任务的令牌（#751）：引导全应用只有一份，在模块顶层取。
+const TOUR_IN = key('guide:tour-in'), TOUR_PLACE = key('guide:tour-place'), NUDGE_IN = key('guide:nudge-in');
 const guideOn = () => !!state.guide && state.guide.guide.status !== 'off';
 const guideActive = () => ['new', 'active'].includes(state.guide?.guide?.status);
 export async function loadGuide(works = false) {
@@ -103,11 +106,11 @@ export function tourStop(id) {
     welcome: SYNC_ACTIVE.includes(s.status) || !r.total
       ? {title: t('图库建好了'), text: t('正在读取并识别你的图片。花一分钟认识一下界面？'), next: t('带我看看'), skip: t('自己逛逛')}
       : {title: t('认识一下界面'), text: t('花一分钟看看几个常用的地方？'), next: t('带我看看'), skip: t('不用了')},
-    tasks: {target: () => $('taskButton'), title: t('进度在这里'), text: `${counting ? esc(counting) + '<br>' : ''}${t('同步和识别在后台进行，识别好的图会陆续出现在首页。')}`},
-    home: {route: 'home', target: () => document.querySelector('#homePage .home-j') || $('homePage'), title: t('首页'),
-      text: document.querySelector('#homePage .home-j') ? t('新加入的图按日期排在这里，图上写着认出的角色。认错了就点开它按 C 换成正确的角色，{key} 随时撤销。', {key: shortcut('Z')}) : t('图片导入后会按日期排在这里，图上写着认出的角色。')},
-    characters: {target: () => document.querySelector('.nav[data-page="characters"]'), title: t('资料库'), text: t('认出的角色按作品放在这里，点进去只看 TA 的图。')},
-    unmatched: {target: () => document.querySelector('.nav[data-page="unmatched"]'), title: t('还没认出的图'), text: t('长得像的会分成一组，一次确认一整组。')},
+    tasks: {target: () => $('taskButton'), title: t('进度在这里'), text: `${counting ? esc(counting) + '<br>' : ''}${t('同步和识别在后台进行，识别好的图会陆续出现在图库里。')}`},
+    home: {route: 'days', target: () => document.querySelector('#homePage .day-tile') || $('homePage'), title: t('图库'),
+      text: document.querySelector('#homePage .day-tile') ? t('新加入的图按日期排在这里，每天上面是当天认出的角色。认错了就点开它按 C 换成正确的角色，{key} 随时撤销。', {key: shortcut('Z')}) : t('图片导入后会按日期排在这里，每天上面是当天认出的角色。')},
+    characters: {target: () => document.querySelector('#railEntries [data-entry="catalog"]'), title: t('资料库'), text: t('认出的角色按作品放在这里，点进去只看 TA 的图。')},
+    unmatched: {target: () => document.querySelector('#railEntries [data-entry="tidy"]'), title: t('还没认出的图'), text: t('在「整理」里：长得像的会分成一组，一次确认一整组。')},
     end: {title: t('就这些'), text: t('右下角的「上手」清单会跟着你做过的事打勾，全做完就自己消失。以后想再看一遍，在「设置 › 关于」里。'), next: t('开始用吧')},
   }[id];
 }
@@ -118,7 +121,7 @@ const tourLayer = createLayer({kind: 'overlay', id: 'tour', el: () => $('tour'),
   inert: () => [document.querySelector('.app'), $('selectionBar'), $('taskPanel'), $('viewer'), $('nudge'), $('checklist')]});
 function showTour(at) {
   tourAt = at; drawNudge(); drawChecklist();
-  const root = $('tour'); root.hidden = false; tourLayer.open(); requestAnimationFrame(() => root.classList.add('on'));
+  const root = $('tour'); root.hidden = false; tourLayer.open(); write(() => root.classList.add('on'), TOUR_IN);   // 下一帧加 .on，淡入的过渡才会播
   placeTour(true);
 }
 function closeTour() {
@@ -134,7 +137,7 @@ async function placeTour(moved) {
   if (!moved && bubble.dataset.stop === id) {
     const text = bubble.querySelector('.tour-text'); if (text && text.innerHTML !== stop.text) text.innerHTML = stop.text;
   }
-  const html = `<b class="tour-title">${stop.title}</b><p class="tour-text">${stop.text}</p>
+  const html = `<b class="title-section tour-title">${stop.title}</b><p class="tour-text">${stop.text}</p>
     <div class="tour-foot"><span class="tour-dots">${TOUR.map((_, i) => `<i class="${i === tourAt ? 'on' : ''}"></i>`).join('')}</span><div class="spacer"></div>
       ${stop.skip || tourAt === TOUR.length - 1 ? '' : `<button class="quiet small" data-tour="skip">${t('跳过')}</button>`}${stop.skip ? `<button class="quiet small" data-tour="skip">${stop.skip}</button>` : ''}
       ${tourAt && tourAt < TOUR.length - 1 ? `<button class="quiet small" data-tour="back">${t('上一步')}</button>` : ''}
@@ -151,7 +154,7 @@ async function placeTour(moved) {
     Object.assign(bubble.style, {left: (W - bw) / 2 + 'px', top: (H - bh) / 2 + 'px'});
     return;
   }
-  // 大的区域（首页）只点亮顶部，也就是最先几张图片所在的地方。
+  // 大的区域（按天视图）只点亮顶部，也就是最先几张图片所在的地方。
   const box = {left: r.left - pad, top: r.top - pad, width: r.width + pad * 2, height: Math.min(r.height, H * .45) + pad * 2};
   Object.assign(hole.style, {left: box.left + 'px', top: box.top + 'px', width: box.width + 'px', height: box.height + 'px'}); hole.classList.remove('none');
   const right = box.left + box.width + 14, below = box.top + box.height + 14;
@@ -201,7 +204,7 @@ export function drawNudge() {
   el.dataset.key = n?.key || '';
   // 收起时不清空内容，留给淡出动画；记下空串，260 毫秒后还是空的才隐藏。
   if (!html) { setDrawn(el, ''); el.classList.remove('on'); setTimeout(() => { if (!drawnHTML(el)) el.hidden = true; }, 260); return; }
-  redraw(el, html); el.hidden = false; requestAnimationFrame(() => el.classList.add('on'));
+  redraw(el, html); el.hidden = false; write(() => el.classList.add('on'), NUDGE_IN);
 }
 // ----- 清单：事情做完就自己打勾 -----
 export function guideTick(item) {
@@ -228,8 +231,8 @@ export function drawChecklist(just = '') {
   el.hidden = !show; if (!show) return;
   const ring = `<svg class="cl-ring" viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="8"/><circle cx="10" cy="10" r="8" class="cl-done" style="stroke-dasharray:${(ticked.length / CHECKLIST.length * 50.3).toFixed(1)} 50.3"/></svg>`;
   el.classList.toggle('open', checklistOpen);
-  el.innerHTML = `<button class="cl-pill" data-cl="toggle" aria-expanded="${checklistOpen}">${ring}<span>${all ? t('都会了') : t('上手')}</span><b>${ticked.length}/${CHECKLIST.length}</b></button>
-    ${checklistOpen ? `<div class="cl-panel"><p class="cl-head">${t('做过的会自动打勾')}</p>${CHECKLIST.map(([k, label, href, hint]) => `<div class="cl-item${ticked.includes(k) ? ' done' : ''}${k === just ? ' just' : ''}"><span class="cl-check" aria-hidden="true">${ticked.includes(k) ? '✓' : ''}</span>${href && !ticked.includes(k) ? `<a class="link" href="${href}">${label}</a>` : `<span>${label}</span>`}${hint ? `<kbd>${esc(hint)}</kbd>` : ''}</div>`).join('')}
+  el.innerHTML = `<button class="cl-pill glass" data-cl="toggle" aria-expanded="${checklistOpen}">${ring}<span>${all ? t('都会了') : t('上手')}</span><b>${ticked.length}/${CHECKLIST.length}</b></button>
+    ${checklistOpen ? `<div class="cl-panel glass"><p class="cl-head">${t('做过的会自动打勾')}</p>${CHECKLIST.map(([k, label, href, hint]) => `<div class="cl-item${ticked.includes(k) ? ' done' : ''}${k === just ? ' just' : ''}"><span class="cl-check" aria-hidden="true">${ticked.includes(k) ? '✓' : ''}</span>${href && !ticked.includes(k) ? `<a class="link" href="${href}">${label}</a>` : `<span>${label}</span>`}${hint ? `<kbd>${esc(hint)}</kbd>` : ''}</div>`).join('')}
       <button class="link-button" data-cl="hide">${t('不再显示')}</button></div>` : ''}`;
   if (just) { el.classList.add('pulse'); setTimeout(() => el.classList.remove('pulse'), 900); }
   if (all && just) setTimeout(() => guideAction({action: 'hide'}).then(() => drawChecklist()), 2500);
@@ -248,7 +251,7 @@ async function guideWatch(w) {
 }
 export async function replayGuide() {
   if (!await guideAction({action: 'reopen'})) return;
-  if (onPage(state.route, 'settings')) go({page: 'home'});
+  if (onPage(state.route, 'settings')) go({page: 'days'});
   await new Promise(done => setTimeout(done, 300));
   showTour(0);
 }
@@ -304,7 +307,7 @@ export function wireGuide() {
     e.preventDefault(); buttons[next].focus();
   });
   $('tour').addEventListener('mousedown', e => { if (!e.target.closest('button')) e.preventDefault(); });
-  addEventListener('resize', () => { if (tourAt >= 0) requestAnimationFrame(() => placeTour(false)); });
+  addEventListener('resize', () => { if (tourAt >= 0) read(() => placeTour(false), TOUR_PLACE); });
 
   $('nudge').addEventListener('click', async e => {
     const act = e.target.closest('[data-nudge]')?.dataset.nudge, key = $('nudge').dataset.key; if (!act || !key) return;

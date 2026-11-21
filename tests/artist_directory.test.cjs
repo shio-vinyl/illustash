@@ -1,9 +1,9 @@
-// 资料库 · 画师（ui/artist_dir.js，#448）：读 /api/artist-directory 的参数、分页接着读、迟到的回应、卡片和空状态，
-// 以及经 applyRoute 进入 #/characters/artists 后的页签、标题和后退恢复。画师都是合成数据。英文见 artist_directory_en.test.cjs。
+// 资料库 · 画师（ui/artist_dir.js，#448；#711 改成部件）：读 /api/artist-directory 的参数、分页接着读、迟到的回应、卡片和空状态，
+// 以及经 applyRoute 进入 #/characters/artists 后的页签切换、标题和后退恢复。画师都是合成数据。英文见 artist_directory_en.test.cjs。
 const {test, before, beforeEach} = require('node:test');
 const assert = require('node:assert/strict');
 const web = require('./web.cjs');
-let dirs, shell, state;
+let dirs, shell, state, view, scopes;
 const tick = () => new Promise(resolve => setImmediate(resolve));
 const artist = i => ({id: `synthetic-${i}`, name: `合成画师 ${i}`, count: 100 - i, last: '2026-11-10 21:03:00', cover: `uuid-${i}`, homes: []});
 // 假的后端：按 offset、limit 切 total 位合成画师；hold 为真时先不回答，由测试调 release()。
@@ -26,7 +26,8 @@ before(async () => {
   await web.ready();
   dirs = await web.load('ui/artist_dir.js');
   shell = await web.load('ui/shell.js');
-  await web.load('ui/catalog.js');
+  await web.load('ui/catalog_page.js');
+  scopes = await web.load('ui/scope.js');
   ({state} = web.core());
   globalThis.history = {replaceState() {}, state: null};
   globalThis.requestAnimationFrame ??= () => 0;
@@ -38,7 +39,11 @@ beforeEach(() => {
   web.fakePage();
   Object.assign(dirs.dir, {q: '', order: 'count', items: [], total: null, next: 0, failed: null, key: ''});
   Object.assign(state, {route: {page: 'characters', section: 'artists'}, nsfw: ''});
+  view = dirs.artistsView(scopes.scope('test'));
 });
+// 页签里的卡片（圆头像卡的名字）和「再显示一些」是否还在。
+const names = () => view.el.querySelectorAll('.cat-person').map(a => a.querySelector('b').textContent);
+const moreShown = () => !view.el.querySelector('.cat-more').hidden;
 
 test('the query sends order, offset and limit, and q and nsfw only when set', () => {
   const plain = new URL(dirs.dirQuery(0), 'http://x').searchParams;
@@ -50,19 +55,21 @@ test('the query sends order, offset and limit, and q and nsfw only when set', ()
 
 test('pages are read one after another until the total, without repeats', async () => {
   total = dirs.PAGE * 2 + 5;
-  await dirs.renderArtistDir();
+  await view.start();
   assert.equal(dirs.dir.items.length, dirs.PAGE);
-  assert.match(document.getElementById('charIndex').innerHTML, /id="artistDirMore"/);
+  assert.equal(names().length, dirs.PAGE);
+  assert.ok(moreShown());
   await dirs.more(); await dirs.more(); await dirs.more();
   assert.equal(dirs.dir.items.length, total);
   assert.equal(new Set(dirs.dir.items.map(a => a.id)).size, total);
   assert.equal(requests.filter(p => p.startsWith('/api/artist-directory')).length, 3, 'no read after the last page');
-  assert.doesNotMatch(document.getElementById('charIndex').innerHTML, /artistDirMore/);
+  assert.equal(names().length, total);
+  assert.ok(!moreShown());
 });
 
 test('an answer for the old search that arrives late is dropped', async () => {
   hold = true;
-  const first = dirs.renderArtistDir();
+  const first = view.start();
   total = 1;   // 新搜索的回答（在请求时按 total 切）只有一位
   dirs.setQuery('合成画师 2');
   release(); await first; release(); await tick(); await tick();
@@ -71,26 +78,28 @@ test('an answer for the old search that arrives late is dropped', async () => {
   assert.deepEqual(dirs.dir.items.map(a => a.id), ['synthetic-0']);
 });
 
-test('a card links to the library filtered by the artist and escapes the name', () => {
-  const html = dirs.card({...artist(1), id: 'a&b', name: '<合成>'});
-  assert.match(html, /href="#\/library\?artist=a%26b"/);
-  assert.match(html, /<b>&lt;合成&gt;<\/b>/);
-  assert.match(html, /<small>99 张<\/small>/);
-  assert.match(html, /src="\/image\?id=uuid-1&size=thumb"/);
+test('a card links to the library filtered by the artist; the second line is the count or, by recent, the date', () => {
+  const card = dirs.cardData({...artist(1), id: 'a&b', name: '<合成>'});
+  assert.equal(card.href, '#/library?artist=a%26b');
+  assert.equal(card.name, '<合成>');
+  assert.equal(card.sub, '99 张');
+  assert.equal(card.cover, 'uuid-1');
   dirs.dir.order = 'recent';
-  assert.doesNotMatch(dirs.card(artist(1)), /<small>99 张/, 'by recent the second line is the date');
+  assert.notEqual(dirs.cardData(artist(1)).sub, '99 张', 'by recent the second line is the date');
 });
 
-test('the empty page says why: a search, R18 only, or no artists yet with the way to settings', async () => {
+test('the empty page says why: a search, NSFW only, or no artists yet with the way to settings', async () => {
   total = 0;
-  await dirs.renderArtistDir();
-  assert.match(document.getElementById('charIndex').innerHTML, /还没有画师。.*href="#\/settings\/artists"/s);
-  dirs.dir.q = '无'; assert.match(dirs.emptyText(), /没有符合的画师。/);
-  dirs.dir.q = ''; state.nsfw = 'only'; assert.match(dirs.emptyText(), /只看 R18/);
+  await view.start();
+  const empty = view.el.querySelector('.empty-state');
+  assert.equal(empty.querySelector('.empty-fact').textContent, '还没有画师。');
+  assert.equal(dirs.emptyState().next[0].href, '#/settings/artists');
+  dirs.dir.q = '无'; assert.equal(dirs.emptyState().fact, '没有符合的画师。');
+  dirs.dir.q = ''; state.nsfw = 'only'; assert.match(dirs.emptyState().fact, /只看 NSFW/);
 });
 
 test('the order is remembered and a new order reads from the start', async () => {
-  await dirs.renderArtistDir();
+  await view.start();
   const sets = [];
   globalThis.localStorage = {getItem: () => null, setItem: (k, v) => sets.push([k, v]), removeItem() {}};
   dirs.setOrder('name'); await tick(); await tick();
@@ -100,27 +109,25 @@ test('the order is remembered and a new order reads from the start', async () =>
   assert.equal(dirs.dir.order, 'name');
 });
 
-test('#/characters/artists shows the three tabs, the artist count and the cards', async () => {
+test('#/characters/artists shows the three tabs in the heading, the artist count and the cards', async () => {
   globalThis.location = {hash: '#/characters/artists'};
   await shell.applyRoute(); await tick(); await tick();
-  shell.renderHeading();   // 页面上由 wireShell 登记的 dirDrawn 触发
-  const bar = document.getElementById('toolbar').innerHTML;
-  assert.match(bar, /href="#\/characters\/artists" class="on" aria-selected="true">画师</);
-  assert.match(bar, /id="artistSearch"/);
-  assert.match(bar, /<option value="count" selected>张数最多<\/option>/);
-  assert.match(document.getElementById('heading').innerHTML, /3 位画师/);
-  assert.equal((document.getElementById('charIndex').innerHTML.match(/class="cast-rs"/g) || []).length, 3);
+  const {PAGES} = await web.load('core/pages.js');
+  const tabs = PAGES.characters.switches(state.route).list;
+  assert.deepEqual(tabs.map(x => [x.label, x.href, x.on]), [['角色', '#/characters', false], ['作品', '#/characters/works', false], ['画师', '#/characters/artists', true]]);
+  assert.equal(PAGES.characters.head(state.route).sub, '3 位画师');
+  assert.equal(dirs.dir.items.length, 3);
 });
 
 test('coming back keeps the pages already read; R18 switching reads again', async () => {
   total = dirs.PAGE + 1;
-  await dirs.renderArtistDir(); await dirs.more();
+  await view.start(); await dirs.more();
   const before = requests.length;
-  await dirs.renderArtistDir({restore: true});
+  await view.start({restore: true});
   assert.equal(requests.length, before, 'restored from what was read');
   assert.equal(dirs.dir.items.length, total);
   state.nsfw = 'hide';
-  dirs.refreshArtistDir('nsfw'); await tick(); await tick();
+  view.reload('nsfw'); await tick(); await tick();
   assert.ok(requests.at(-1).includes('nsfw=hide') && requests.at(-1).includes('offset=0'));
   assert.equal(dirs.dir.items.length, dirs.PAGE);
 });

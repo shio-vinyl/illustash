@@ -1,198 +1,161 @@
-// 画廊（#445）：侧栏的「画廊」入口、全部画廊的封面卡片（#/galleries）、一个画廊的页头（#/gallery/<id>），以及工具栏上的
-// 「保存为画廊」。画廊里的图就是带着它的条件的图库，网格和筛选条与图库共用；数据和接口在 core/galleries.js。
-import {exclusive} from '../core/edits.js';
-import {esc, number} from '../core/format.js';
+// 画廊（#445、#710）：三个页面的登记，一个画廊的页头（标题、副标题、展示方式的切换、「更新画廊」「另存为新画廊」、「⋯」菜单）。
+// 工具栏上的「保存为画廊」在 ui/gallery_save.js（框架 ui/shell.js 要用它；这个文件导入 shell，反过来会循环导入）。
+//
+// 一个画廊按它的展示方式（core/gallery_shows.js 的登记表）落在两页之一：网格页 gallery（瀑布、色彩：显示全部图，就是带着它的条件的
+// 图库网格）或展示页 showcase（拼贴、杂志、展厅：ui/gallery_stage.js）。全部画廊的卡片在 ui/gallery_cards.js；拖图进画廊在
+// ui/drag.js，选择栏的放进、拿出在 ui/gallery_bar.js，共用的动作在 ui/gallery_actions.js；数据在 core/galleries.js。
+import {number} from '../core/format.js';
 import {t} from '../core/i18n.js';
-import {defaultName, routeFields, savable, sameParams, savedParams} from '../core/filters.js';
-import {countOf, coversFor, createGallery, deleteGallery, forgetCovers, galleryOf, loadGalleries, setGallery, updateGallery} from '../core/galleries.js';
-import {composing} from '../core/keys.js';
-import {onMeta} from '../core/meta.js';
-import {implement, onPage, pageOf, viewOf} from '../core/pages.js';
+import {routeFields, sameParams, savedParams} from '../core/filters.js';
+import {deleteGallery, galleryHref, galleryOf, isFavGallery, isManual, setGallery, updateGallery} from '../core/galleries.js';
+import {chooseShow, loadShows, pageFor, showFor, SHOWS} from '../core/gallery_shows.js';
+import {implement, onPage, pageOf} from '../core/pages.js';
 import {go, replaceRoute} from '../core/route.js';
-import {readError} from '../core/session.js';
 import {state} from '../core/state.js';
-import {$, error, readFailure, toast, written} from './dom.js';
-import {conditionLabel} from './filters.js';
-import {createLayer} from './overlay.js';
+import {toast} from './dom.js';
+import {attr, make} from './el.js';
+import {hasIcon, icon} from './icons.js';
+import {askName, kindText, reloadList, write} from './gallery_actions.js';
+import {saveNew} from './gallery_save.js';
+import {renderIndex, refreshIndex} from './gallery_cards.js';
+import {renderStage, refreshStage, stageTotal} from './gallery_stage.js';
+import {reload} from './grid.js';
+import {moreMenu} from './more_menu.js';
+import {currentPage} from './scope.js';
+import {renderChrome} from './shell.js';
 
-const galleryRoute = g => ({page: 'gallery', id: String(g.id), ...routeFields(g.params)});
-// 侧栏的「画廊」：有画廊时才显示，在画廊页上总显示。
-function showNav() {
-  const nav = $('navGalleries'); if (!nav) return;
-  nav.hidden = !state.galleries?.length && viewOf(state.route).nav !== 'galleries';
-}
-async function reloadList() {
-  try { await loadGalleries(); } catch (e) { error(readError(e)); }
-  showNav();
-}
-// 一次画廊写入：同一时间只进行一项改动；成功后进撤销栈，回复里的 gallery 换进列表，列表再重读一次（顺序可能变了）。
-async function write(run) {
-  let result;
-  try { result = await exclusive(run); } catch (e) { toast(e.message); return null; }
-  if (!result) return null;
-  written(result.undo);
-  forgetCovers();
-  return result;
-}
-
-// ---------- 工具栏：保存为画廊 ----------
-// 在图库和角色页上有条件（含搜索词）时出现；画廊页上换成页头的「更新画廊」「另存为新画廊」。
-export const saveButton = r => savable(r) && !pageOf(r).gallery ? `<button class="quiet" id="saveGallery" title="${t('把现在的条件存成画廊')}">${t('保存为画廊')}</button>` : '';
-export function wireSaveButton(r) { $('saveGallery')?.addEventListener('click', () => saveNew(r)); }
-// 存成新画廊：名字按条件的文字生成，存好后进入这个画廊，标题处于改名状态。
-async function saveNew(r) {
-  const result = await write(() => createGallery(savedParams(r), defaultName(r, conditionLabel)));
-  if (!result?.gallery) return;
-  setGallery(result.gallery.id, result.gallery);
-  renaming = String(result.gallery.id);
-  showNav();
-  go(galleryRoute(result.gallery));
-  reloadList();
-}
-
-// ---------- 全部画廊 ----------
-async function renderIndex() {
-  const box = $('groupsPage');
-  let list; try { list = await loadGalleries(); } catch (e) { if (onPage(state.route, 'galleries')) readFailure(box, e); return; }
-  if (!onPage(state.route, 'galleries')) return;
-  showNav(); drawHeading();
-  if (!list.length) { box.innerHTML = `<p class="empty">${t('还没有画廊。在图库里加上条件，点「保存为画廊」。')}</p>`; return; }
-  const poster = g => `<a class="cast-poster" href="#/gallery/${encodeURIComponent(g.id)}" data-gallery="${esc(g.id)}">` +
-    `<span class="img"></span><span class="cap"><b title="${esc(g.name)}">${esc(g.name)}</b><small>…</small></span></a>`;
-  box.innerHTML = `<div class="cast-posters">${list.map(poster).join('')}</div>`;
-  const nsfw = state.nsfw, route = state.route, here = () => state.route === route && state.nsfw === nsfw;
-  const card = id => box.querySelector(`[data-gallery="${CSS.escape(String(id))}"]`);
-  coversFor(list.map(g => g.id)).then(covers => {
-    if (!here()) return;
-    for (const [id, uuid] of Object.entries(covers)) {
-      const img = uuid && card(id)?.querySelector('.img');
-      if (img) img.innerHTML = `<img src="/image?id=${encodeURIComponent(uuid)}&size=medium" alt="" loading="lazy">`;
-    }
-  }).catch(e => { if (here()) error(readError(e)); });
-  for (const g of list) {
-    countOf(g.params).then(({n, error: problem}) => {
-      const small = here() && card(g.id)?.querySelector('small'); if (!small) return;
-      small.textContent = problem ? t('条件失效') : t('{n} 张', {n: number(n)});
-      small.title = problem || '';
-    }).catch(() => {});
-  }
-}
-
-// ---------- 一个画廊 ----------
-// 打开 #/gallery/<id>：不带查询时按保存的条件打开，并把条件写进地址；带查询时按地址（条件可能已经改过）。
-// 条件失效时（引用的作品、标签没了）网格读取回 400，原因只写在空状态里（readFailed），不弹错误条（#647）。
-let renaming = '';
+// ---------- 一个画廊：进页面之前 ----------
+// 先读画廊列表和各画廊的展示方式。地址的页面和这个画廊的展示方式不符（记着的是展示页，地址是网格页，或反过来）时换到对的那页。
+// 网格页不带查询打开时按保存的条件，并把条件写进地址；带查询时按地址（条件可能已经改过）。
+// await 之后已经换了页（route 不再是现在的路由）就什么也不做，返回 false。
 async function prepare(route) {
-  if (!state.galleries) await reloadList();
+  await Promise.all([state.galleries ? null : reloadList(), loadShows()]);
+  if (state.route !== route) return false;
   const g = galleryOf(route.id);
   if (!g) { toast(t('画廊不存在')); go({page: 'galleries'}); return false; }
-  if (!location.hash.includes('?')) { Object.assign(route, routeFields(g.params)); replaceRoute({}); }
-  showNav();
+  if (pageFor(showFor(g.id)) !== route.page) { location.replace(galleryHref(g.id)); return false; }
+  if (pageOf(route).gallery && !location.hash.includes('?')) { Object.assign(route, routeFields(g.params)); replaceRoute({}); }
   return true;
 }
-const changed = (g, r) => !sameParams(g.params, savedParams(r));
-function drawGalleryHeading(h, r) {
+
+// ---------- 一个画廊：页头 ----------
+// 标题是名字；副标题写这是哪种画廊和张数：收藏只写张数，手选画廊写「手选」，按条件的写「按条件：条件的文字」（截图给用户看过，#710）。
+// 右边：展示方式的分段切换；按条件的画廊在网格页上改了条件后有「更新画廊」「另存为新画廊」；收藏以外有「⋯」菜单。
+// 「播放」「存成一张图」这次不做（#710），以后加在 actions 末尾。
+// 分段切换：每种一个按钮（图标 + 名字），按登记表的先后；按下的是这个画廊现在的展示方式。建一次，按画廊更新。
+let seg = null, segFor = '';
+function showSwitch(g) {
+  if (!seg) {
+    seg = make('div', 'seg gallery-shows');
+    attr(seg, 'role', 'group'); attr(seg, 'aria-label', t('展示方式'));
+    for (const show of SHOWS) {
+      const b = make('button');
+      b.type = 'button'; b.dataset.show = show.id;
+      b.append(icon(hasIcon(show.id) ? show.id : 'square'), make('span', '', show.label()));
+      b.onclick = () => switchShow(galleryOf(segFor), show.id);
+      seg.append(b);
+    }
+  }
+  segFor = String(g.id);
+  for (const b of seg.children) attr(b, 'aria-pressed', String(b.dataset.show === showFor(g.id)));
+  return seg;
+}
+// 换展示方式：记进偏好（按图库存在浏览器本地）。换到另一页（网格页 ↔ 展示页）时换地址；同一页里换（瀑布 ↔ 色彩、拼贴 ↔ 杂志）
+// 时就地重画：网格页按新的分行和排序重读，展示页重排。
+function switchShow(g, show) {
+  if (!g || show === showFor(g.id)) return;
+  const before = pageFor(showFor(g.id));
+  chooseShow(g.id, show);
+  if (pageFor(show) !== before) { location.hash = galleryHref(g.id, show); return; }
+  if (pageOf(state.route).gallery) { renderChrome(); reload(true); } else { renderChrome(); renderStage({samePage: true, scope: currentPage()}); }
+}
+// 按条件的画廊在网格页上改了条件（不算定义它的那个条件）：「更新画廊」「另存为新画廊」。
+const edited = (g, r) => !isManual(g) && pageOf(r).gallery && !sameParams(g.params, savedParams(r));
+let updateButtons = null;
+function editButtons(g, r) {
+  if (!edited(g, r)) return [];
+  if (!updateButtons) {
+    const update = make('button', 'btn is-quiet', t('更新画廊')), saveAs = make('button', 'btn is-quiet', t('另存为新画廊'));
+    update.title = t('用现在的条件替换这个画廊保存的条件');
+    update.onclick = () => { const x = galleryOf(state.route.id); if (x) change(x, {params: savedParams(state.route)}); };
+    saveAs.onclick = () => saveNew(state.route);
+    updateButtons = [update, saveAs];
+  }
+  return updateButtons;
+}
+function galleryHead(r, {n}) {
   const g = galleryOf(r.id);
-  if (!g) { h.innerHTML = `<div class="heading-main"><h1>${t('画廊')}</h1><p></p></div>`; return; }
-  const sub = t('{n} 张', {n: state.totalReady ? number(state.total) : '…'});
-  // 正在改名：输入框还在就只换副标题，不打断输入。
-  if (renaming === String(g.id) && $('galleryName')?.tagName === 'INPUT') { h.querySelector('.heading-main p').innerHTML = sub; return; }
-  const list = state.galleries, at = list.indexOf(g), movable = list.every(x => Number.isInteger(x.position));
-  const edited = changed(g, r);
-  const item = (id, label, title = '') => `<button class="menu-item" id="${id}"${title ? ` title="${title}"` : ''}>${label}</button>`;
-  const title = renaming === String(g.id)
-    ? `<input id="galleryName" maxlength="60" size="${Math.min(40, Math.max(12, [...g.name].length + 2))}" value="${esc(g.name)}" aria-label="${t('画廊名称')}">`
-    : `<button class="link-button" id="galleryName" title="${t('点一下改名')}">${esc(g.name)}</button>`;
-  h.innerHTML = `<div class="heading-main"><h1>${title}</h1><p>${sub}</p></div><div class="heading-actions">` +
-    (edited ? `<button class="quiet" id="galleryUpdate" title="${t('用现在的条件替换这个画廊保存的条件')}">${t('更新画廊')}</button><button class="quiet" id="gallerySaveAs">${t('另存为新画廊')}</button>` : '') +
-    `<div class="tag-control more-control"><button class="quiet" id="galleryMore" title="${t('更多操作')}" aria-label="${t('更多操作')}">⋯</button>` +
-    `<div id="galleryMenu" class="menu menu-drop more-menu" hidden>` +
-    item('galleryCover', t('把详情栏里这张设为封面')) + (g.cover_manual ? item('galleryAutoCover', t('封面改回自动'), t('用这个画廊排序下的第一张')) : '') +
-    (movable && at > 0 ? item('galleryUp', t('往前移')) : '') + (movable && at < list.length - 1 ? item('galleryDown', t('往后移')) : '') +
-    item('galleryDelete', t('删除画廊')) + `</div></div></div>`;
-  wireHeading(g, r);
+  if (!g) return {title: t('画廊')};
+  const stage = pageOf(r).stage, total = stage ? stageTotal() : null, count = stage ? (total === null ? '…' : number(total)) : n;
+  return {title: g.name, sub: [kindText(g), t('{n} 张', {n: count})].filter(Boolean).join(' · '),
+    actions: [...editButtons(g, r), showSwitch(g), ...(isFavGallery(g.id) ? [] : [moreButton(g)])]};
 }
-const menu = createLayer({kind: 'popover', id: 'gallery-menu', el: () => $('galleryMenu'), anchor: () => $('galleryMore'), menu: true, focusIn: 'first', onDismiss: reason => setMenu(false, reason)});
-function setMenu(open, reason) {
-  const el = $('galleryMenu'); if (el) el.hidden = !open;
-  if (open) menu.open(); else menu.close(reason);
+
+// ---------- 「⋯」菜单 ----------
+// 改名、设封面（用详情栏里那张）、封面改回自动、往前移、往后移、删除画廊。每一步都进撤销栈。菜单建一次（ui/more_menu.js），
+// 打开时按画廊排项。
+let more = null;
+function moreButton() {
+  more ||= moreMenu({id: 'gallery-menu', menuId: 'galleryMenu', items: () => menuItems(galleryOf(state.route.id))});
+  return more.el;
 }
-function wireHeading(g, r) {
-  const id = String(g.id), name = $('galleryName');
-  if (name.tagName === 'INPUT') {
-    name.focus(); name.select();
-    let done = false;
-    const finish = save => {
-      if (done) return; done = true; renaming = '';
-      const value = name.value.trim();
-      if (save && value && value !== g.name) rename(g, value); else drawHeading();
-    };
-    name.addEventListener('keydown', e => {
-      if (composing(e)) return;
-      if (e.key === 'Enter') { e.preventDefault(); finish(true); } else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); finish(false); }
-    });
-    name.addEventListener('blur', () => finish(true));
-  } else name.onclick = () => { renaming = id; drawHeading(); };
-  $('galleryUpdate')?.addEventListener('click', () => update(g, {params: savedParams(r)}));
-  $('gallerySaveAs')?.addEventListener('click', () => saveNew(r));
-  $('galleryMore').onclick = () => setMenu($('galleryMenu').hidden);
-  const act = (key, run) => $(key)?.addEventListener('click', () => { setMenu(false); run(); });
-  act('galleryCover', () => state.focused ? update(g, {cover: state.focused}) : toast(t('先点开一张图。')));
-  act('galleryAutoCover', () => update(g, {cover: null}));
-  act('galleryUp', () => move(g, -1));
-  act('galleryDown', () => move(g, 1));
-  act('galleryDelete', () => remove(g));
+function menuItems(g) {
+  if (!g) return [];
+  const list = state.galleries || [], at = list.findIndex(x => String(x.id) === String(g.id)), movable = list.every(x => Number.isInteger(x.position));
+  return [
+    [t('改名…'), () => rename(g)],
+    [t('把详情栏里这张设为封面'), () => state.focused ? change(g, {cover: state.focused}) : toast(t('先点开一张图。'))],
+    g.cover_manual && [t('封面改回自动'), () => change(g, {cover: null}), t('用这个画廊排序下的第一张')],
+    movable && at > 0 && [t('往前移'), () => move(g, -1)],
+    movable && at >= 0 && at < list.length - 1 && [t('往后移'), () => move(g, 1)],
+    [t('删除画廊'), () => remove(g)],
+  ];
 }
-async function update(g, patch) {
+async function change(g, patch) {
   const result = await write(() => updateGallery(g.id, patch));
   if (!result) return;
   setGallery(g.id, result.gallery);
   await reloadList();
-  drawHeading();
+  renderChrome();
 }
-const rename = (g, name) => update(g, {name});
+async function rename(g) {
+  const name = await askName(t('改名'), g.name);
+  if (name && name !== g.name) change(g, {name});
+}
 // 和相邻的一个交换先后：两步写入，撤销一次只换回一个，所以位置相同时按 id 排，不会丢画廊。
 async function move(g, dir) {
-  const list = state.galleries, other = list[list.indexOf(g) + dir]; if (!other) return;
+  const list = state.galleries, other = list[list.findIndex(x => String(x.id) === String(g.id)) + dir]; if (!other) return;
   const [a, b] = other.position === g.position ? [other.position, other.position - dir] : [other.position, g.position];
   if (b < 0) return;
   if (!await write(() => updateGallery(g.id, {position: a}))) return;
   await write(() => updateGallery(other.id, {position: b}));
-  await reloadList(); drawHeading();
+  await reloadList(); renderChrome();
 }
 async function remove(g) {
   if (!await write(() => deleteGallery(g.id))) return;
-  setGallery(g.id, null); showNav();
+  setGallery(g.id, null);
   go({page: 'galleries'});
   reloadList();
 }
-const indexHeading = () => [t('画廊'), t('{n} 个', {context: 'gallery', n: number(state.galleries?.length || 0)})];
-// 页头：画廊页由 drawGalleryHeading 画；全部画廊用通用标题。
-function drawHeading() {
-  if (onPage(state.route, 'gallery')) drawGalleryHeading($('heading'), state.route);
-  else if (onPage(state.route, 'galleries')) { const [title, sub] = indexHeading(); $('heading').innerHTML = `<div class="heading-main"><h1>${title}</h1><p>${sub}</p></div>`; }
-}
 
-// 写入、撤销或切换 R18 之后：列表重读，卡片和页头重画。网格本身由 reload() 管。
+// ---------- 数据变了 ----------
+// 写入、撤销或切换 NSFW 之后：列表重读，卡片、页头和展示页重画。网格本身由 reload() 管。画廊被删掉（撤销了新建）时回到全部画廊。
 async function refresh(why) {
   if (why === 'view' || why === 'ask') return;
-  forgetCovers();
-  if (onPage(state.route, 'galleries')) { renderIndex(); return; }
+  const r = state.route;
+  if (onPage(r, 'galleries')) { refreshIndex(); return; }
   await reloadList();
-  if (!onPage(state.route, 'gallery')) return;
-  if (!galleryOf(state.route.id)) { go({page: 'galleries'}); return; }
-  drawHeading();
+  if (state.route !== r || (!pageOf(r).gallery && !pageOf(r).stage)) return;   // 这期间已经换了页
+  if (!galleryOf(r.id)) { go({page: 'galleries'}); return; }
+  if (pageOf(r).stage) refreshStage(); else renderChrome();
 }
+const showAll = () => state.nsfw === 'only' ? [{label: t('显示全部'), act: 'nsfw'}] : [];
 implement({
-  galleries: {render: () => renderIndex(), heading: indexHeading, refresh},
-  gallery: {prepare, drawHeading: drawGalleryHeading, refresh, onMeta: () => {},
-    emptyNext: () => state.nsfw === 'only' ? `<button class="quiet" data-empty="nsfw">${t('显示全部')}</button>` : '',
+  galleries: {render: renderIndex, head: () => ({title: t('画廊'), sub: t('{n} 个', {context: 'gallery', n: number((state.galleries?.length || 0) + 1)})}), refresh},
+  gallery: {prepare, head: galleryHead, refresh, onMeta: () => {}, emptyNext: showAll,
     // 条件失效：后端对条件引用的角色、作品、标签不存在回 400。在筛选条上改掉失效的条件后可以「更新画廊」，或者删掉它。
     readFailed: e => e.status === 400 ? t('条件失效：{reason}', {reason: e.message}) : '',
-    failedNext: () => `<button class="quiet" data-empty="delete-gallery">${t('删除画廊')}</button>`,
+    failedNext: () => [{label: t('删除画廊'), act: 'delete-gallery'}],
     emptyAct: act => { const g = act === 'delete-gallery' && galleryOf(state.route.id); if (g) remove(g); }},
+  showcase: {prepare, render: renderStage, head: galleryHead, refresh},
 });
-// 页面启动时调用一次：每次读元数据（启动、写入、撤销、同步之后）顺带重读画廊列表，侧栏入口跟着显示或隐藏。
-export function wireGalleries() {
-  onMeta(() => { reloadList(); });
-}

@@ -1,10 +1,10 @@
-// 收藏的前端（#447）：core/favorites.js 的判断（筛选条件、侧栏高亮、选区该收藏还是取消、本地改值），F 键的动作，
+// 收藏的前端（#447）：core/favorites.js 的判断（筛选条件、选区该收藏还是取消、本地改值），F 键的动作，
 // ui/grid.js 的写入路径（不在收藏筛选里时只在本地改心形，图会离开本页时照其他写入重读），选择栏的按钮和
 // ui/favorites.js 画出的心形。
 const {test, before, beforeEach} = require('node:test');
 const assert = require('node:assert/strict');
 const web = require('./web.cjs');
-let fav, ui, grid, modes, pages, state, edits;
+let fav, ui, grid, modes, pages, state, edits, assets;
 before(async () => {
   await web.ready();
   fav = await web.load('core/favorites.js');
@@ -16,7 +16,7 @@ before(async () => {
   const store = new Map();
   globalThis.localStorage = {getItem: k => store.has(k) ? store.get(k) : null, setItem: (k, v) => store.set(k, v), removeItem: k => store.delete(k)};
   web.fakePage();
-  grid = await web.load('ui/grid.js');
+  grid = await web.load('ui/grid.js'); assets = await web.load('core/assets.js'); await web.load('ui/grid_bar.js');
   ui = await web.load('ui/favorites.js');
   ({state, edits} = web.core());
 });
@@ -38,12 +38,15 @@ beforeEach(() => {
   };
 });
 
-test('筛选条件读成数组：地址里的 JSON 字符串和已经读成的数组都认，读不了的当没有', () => {
-  assert.deepEqual(fav.conditions('["fav","tag:x"]'), ['fav', 'tag:x']);
-  assert.deepEqual(fav.conditions(['fav']), ['fav']);
-  assert.deepEqual(fav.conditions(''), []);
-  assert.deepEqual(fav.conditions('not json'), []);
-  assert.deepEqual(fav.conditions('{"fav":1}'), []);
+test('条件列表（core/filters.js 的 parseList）：地址里的 JSON 字符串和已经读成的数组都认，读不了的当没有；加一个条件', async () => {
+  const {parseList} = await web.load('core/filters.js');
+  assert.deepEqual(parseList('["fav","tag:x"]'), ['fav', 'tag:x']);
+  assert.deepEqual(parseList(['fav']), ['fav']);
+  assert.deepEqual(parseList(''), []);
+  assert.deepEqual(parseList('not json'), []);
+  assert.deepEqual(parseList('{"fav":1}'), []);
+  assert.deepEqual(fav.withCondition({has: ['tag:x']}, 'has', 'fav'), {has: '["tag:x","fav"]'});
+  assert.deepEqual(fav.withCondition({has: 'not json'}, 'has', 'fav'), {has: '["fav"]'});
   // 加一个条件：已有的保留，重复的不再加。
   assert.deepEqual(fav.withCondition({has: '["tag:x"]', q: 'k'}, 'not', 'fav'), {has: '["tag:x"]', q: 'k', not: '["fav"]'});
   assert.deepEqual(fav.withCondition({not: '["fav"]'}, 'not', 'fav'), {not: '["fav"]'});
@@ -57,36 +60,39 @@ test('哪些写入会让图离开本页：只看收藏里取消，不含收藏�
   assert.equal(fav.favLeaves(true, {page: 'unmatched'}), false);
 });
 
-test('侧栏的「收藏」只在图库只按收藏筛选时亮，别的时候照页面登记', () => {
-  const library = pages.PAGES.library;
-  assert.equal(fav.navFor({page: 'library', has: '["fav"]'}, library), 'favorites');
-  assert.equal(fav.navFor({page: 'library', has: ['fav']}, library), 'favorites');
-  assert.equal(fav.navFor({page: 'library'}, library), 'library');
-  assert.equal(fav.navFor({page: 'library', has: '["fav","tag:x"]'}, library), 'library');
-  assert.equal(fav.navFor({page: 'library', has: '["fav"]', q: 'miku'}, library), 'library');
-  assert.equal(fav.navFor({page: 'library', has: '["fav"]', not: '["tag:y"]'}, library), 'library');
-  assert.equal(fav.navFor({page: 'library', not: '["fav"]'}, library), 'library');
-  assert.equal(fav.navFor({page: 'duplicates', has: '["fav"]'}, pages.PAGES.duplicates), 'duplicates');
+test('收藏画廊（#710）：活页条落在「画廊 › 收藏」，标题是「收藏」；空着时说怎么收藏，隐藏、只看 NSFW 或加了条件时照图库的说法', async () => {
+  const {railAt} = await web.load('core/rail.js');
+  const {renderHeading} = await web.load('ui/shell.js');
+  await web.load('ui/galleries.js');
+  const r = {page: 'gallery', id: 'fav', has: ['fav']};
+  assert.deepEqual(railAt(r), {entry: 'galleries', item: 'fav'});
+  assert.deepEqual(railAt({page: 'library', has: ['fav', 'tag:x']}), {entry: 'library', item: ''});
+  Object.assign(state, {route: r, total: 0, totalReady: true, galleries: []});
+  renderHeading();
+  assert.match(web.headingText(globalThis.document.getElementById('heading')), /收藏/);
+  const {empty, emptyIcon} = pages.PAGES.gallery;
+  assert.equal(emptyIcon(r), 'heart');
+  assert.equal(empty(r, {nsfw: ''}), '还没有收藏。在详情面板或大图里点心形，或者按 F 收藏。');
+  assert.equal(empty(r, {nsfw: 'hide'}), '没有符合条件的图片。');
+  assert.match(empty(r, {nsfw: 'only'}), /只看 NSFW/);
+  assert.equal(empty({...r, has: ['fav', 'tag:x']}, {nsfw: ''}), '没有符合条件的图片。');
+  // 手选画廊空着时说怎么放进来；按条件的画廊照图库的说法。
+  const manual = {page: 'gallery', id: '2', has: ['gallery:2']};
+  assert.equal(emptyIcon(manual), 'gallery');
+  assert.match(empty(manual, {nsfw: ''}), /这个画廊还没有图/);
+  assert.equal(empty({page: 'gallery', id: '1', has: ['tag:beach']}, {nsfw: ''}), '没有符合条件的图片。');
 });
 
-test('侧栏的「收藏」：标题是「收藏」，空着时说怎么收藏；加了别的条件照旧是「图库」（#679）', async () => {
-  const {renderHeading} = await web.load('ui/shell.js');
-  const heading = () => globalThis.document.getElementById('heading').innerHTML;
-  Object.assign(state, {route: {page: 'library', has: ['fav']}, total: 0, totalReady: true});
-  renderHeading();
-  assert.match(heading(), /<h1>收藏<button[^>]*id="pageHelp"/);
-  assert.match(heading(), /<p>在详情面板或大图里点心形，或者按 F 收藏。<\/p>/);
-  const empty = pages.PAGES.library.empty;
-  assert.equal(empty(state.route, {nsfw: ''}), '还没有收藏。在详情面板或大图里点心形，或者按 F 收藏。');
-  // 隐藏或只看 R18 时空着不等于没有收藏
-  assert.equal(empty(state.route, {nsfw: 'hide'}), '没有符合条件的图片。');
-  assert.match(empty(state.route, {nsfw: 'only'}), /只看 R18/);
-  for (const r of [{page: 'library', has: ['fav', 'tag:x']}, {page: 'library', has: ['fav'], q: 'miku'}, {page: 'library'}]) {
-    state.route = r; renderHeading();
-    assert.match(heading(), /<h1>图库/);
-    assert.equal(empty(r, {nsfw: ''}), '没有符合条件的图片。');
-  }
+test('放进收藏（选择栏「放进画廊…」、拖到活页条的「收藏」，#710）走网格原有的收藏写入：本地数据、同组副本、详情卡片都改', async () => {
+  const {putInto} = await web.load('ui/gallery_actions.js');
+  const {favGallery} = await web.load('core/galleries.js');
+  state.detail = {uuid: 'a', fav: false};
+  assert.equal(await putInto(favGallery(), {ids: ['a']}, 1), true);
+  assert.deepEqual(requests.filter(x => x.path === '/api/favorite').map(x => x.body), [{ids: ['a'], add: true}]);
+  assert.deepEqual(state.items.map(x => x.fav), [true, true, true, false], 'a 和同组的 b 都亮了');
+  assert.equal(state.detail.fav, true);
 });
+
 test('选中的图该收藏还是取消：有一张没收藏、或有选中的图还没读到就收藏，否则取消', () => {
   const [a, , c] = page();
   assert.equal(fav.wantsAdd([a, c]), true);
@@ -132,21 +138,21 @@ test('详情栏、大图里那张也跟着改', async () => {
   assert.equal(state.viewerItem.fav, true);
 });
 
-test('只看收藏里取消：照其他写入重读列表，读列表时带 marks=fav', async () => {
+test('只看收藏里取消：照其他写入重读列表，读列表时带收藏标记（marks=fav,color，主色给卡片，#708）', async () => {
   state.route = {page: 'library', has: '["fav"]'};
   await grid.favoriteOne('c');
   assert.deepEqual(requests[0], {path: '/api/favorite', body: {ids: ['c'], add: false}});
   const list = requests.find(r => r.path.startsWith('/api/assets?'));
   assert.ok(list, '取消收藏后应重读列表');
-  assert.equal(new URLSearchParams(list.path.split('?')[1]).get('marks'), 'fav');
+  assert.equal(new URLSearchParams(list.path.split('?')[1]).get('marks'), 'fav,color');
 });
 
 test('全选时先问后端选区里还有没有没收藏的：都收藏了就全部取消', async () => {
   state.items[3].fav = true;
   state.sel = {all: true, ids: new Set(), exclude: new Set(['d'])};
   grid.renderSelection();
-  assert.match(document.getElementById('selectionBar').innerHTML, /data-act="fav">收藏 <kbd>F<\/kbd>/);
-  await grid.favoriteSelection({filter: grid.filters(), exclude: ['d'], confirm: false});
+  assert.deepEqual(web.barButton(document.getElementById('selectionBar'), 'fav'), {act: 'fav', label: '收藏', key: 'F', disabled: false, title: ''});
+  await grid.favoriteSelection({filter: assets.gridFilters(), exclude: ['d'], confirm: false});
   const count = requests.find(r => r.path.startsWith('/api/assets/count'));
   assert.deepEqual(JSON.parse(new URLSearchParams(count.path.split('?')[1]).get('not')), ['fav']);
   const write = requests.find(r => r.path === '/api/favorite');
@@ -160,21 +166,13 @@ test('全选时先问后端选区里还有没有没收藏的：都收藏了就�
 test('选择栏的按钮：选中的都已收藏时是「取消收藏」，超过 500 张要再点一次', () => {
   state.sel = {all: false, ids: new Set(['c']), exclude: new Set()};
   grid.renderSelection();
-  assert.match(document.getElementById('selectionBar').innerHTML, /data-act="fav">取消收藏 <kbd>F<\/kbd>/);
+  assert.deepEqual(web.barButton(document.getElementById('selectionBar'), 'fav'), {act: 'fav', label: '取消收藏', key: 'F', disabled: false, title: ''});
   state.sel = {all: false, ids: new Set(['a', 'c']), exclude: new Set()};
   grid.renderSelection();
-  assert.match(document.getElementById('selectionBar').innerHTML, /data-act="fav">收藏 <kbd>F<\/kbd>/);
+  assert.deepEqual(web.barButton(document.getElementById('selectionBar'), 'fav'), {act: 'fav', label: '收藏', key: 'F', disabled: false, title: ''});
 });
 
-test('心形：收藏过的是按下态，小格子只画不能点的实心，没收藏的小格子不画', () => {
-  assert.match(ui.cardHeart({uuid: 'a', fav: true}, false), /class="fav-mark on" data-fav="a" aria-pressed="true" title="取消收藏（F）"/);
-  assert.match(ui.cardHeart({uuid: 'a', fav: false}, false), /aria-pressed="false" title="收藏（F）"/);
-  assert.match(ui.cardHeart({uuid: 'a', fav: true}, true), /<span class="fav-mark on still" data-fav="a" aria-hidden="true">/);
-  assert.equal(ui.cardHeart({uuid: 'a', fav: false}, true), '');
-  assert.equal(ui.homeHeart({uuid: 'a'}), '');
-  assert.match(ui.viewerHeart('a', true), /data-vact="fav".*<kbd>F<\/kbd><span class="fav-label">已收藏<\/span>/);
-  assert.match(ui.detailHeart('a<', false), /data-fav="a&lt;"/);
-});
+// 网格卡片上的心形是 ui/grid_card.js 的部件，在 tests/grid_card.test.cjs 里测；详情卡片、大图的心形在各自的测试里。
 
 test('写入后就地改掉页面上这些图的心形，别的图不动', () => {
   const heart = (id, label) => {
@@ -186,6 +184,18 @@ test('写入后就地改掉页面上这些图的心形，别的图不动', () =>
   ui.paintHearts(new Set(['a', 'b']), true, {querySelectorAll: () => els});
   assert.deepEqual(els.map(el => el.classList.contains('on')), [true, true, false]);
   assert.equal(els[0].getAttribute('aria-pressed'), 'true');
-  assert.equal(els[0].title, '取消收藏（F）');
+  assert.equal(els[0].getAttribute('title'), '取消收藏（F）');
   assert.equal(els[1].span.textContent, '已收藏');
+});
+
+// paintHearts 经 ui/el.js 的写入函数写：部件之前写过「没收藏」，paintHearts 改成收藏以后，部件再按自己的数据写回「没收藏」
+// （撤销、重读）时照样写进 DOM，不会因为缓存里还是旧值而跳过。
+test('paintHearts 之后部件照常改回心形（ui/el.js 的缓存跟着变）', async () => {
+  const {cls} = await web.load('ui/el.js');
+  const el = new web.FakeElement('button'); el.dataset.fav = 'a'; el.querySelector = () => null;
+  cls(el, 'on', false);
+  ui.paintHearts(new Set(['a']), true, {querySelectorAll: () => [el]});
+  assert.equal(el.classList.contains('on'), true);
+  cls(el, 'on', false);
+  assert.equal(el.classList.contains('on'), false);
 });

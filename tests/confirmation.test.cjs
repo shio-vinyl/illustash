@@ -1,11 +1,11 @@
-// 页面自己的确认对话框（ui/dialog.js）把守移除来源（ui/settings.js）和第一次查画师（ui/artists.js）：
+// 页面自己的确认对话框（ui/dialog.js）把守移除来源（ui/settings_libraries.js）和第一次查画师（ui/artists.js）：
 // 在同一会话、同一页面里确认之前，什么都不发送（#199）。
 const {test, before, afterEach} = require('node:test');
 const assert = require('node:assert/strict');
 const web = require('./web.cjs');
 const tick = () => new Promise(resolve => setImmediate(resolve));
 let settings, artists, overlay;
-before(async () => { await web.ready(); settings = await web.load('ui/settings.js'); artists = await web.load('ui/artists.js'); overlay = await web.load('ui/overlay.js'); });
+before(async () => { await web.ready(); settings = await web.load('ui/settings_libraries.js'); artists = await web.load('ui/artists.js'); overlay = await web.load('ui/overlay.js'); });
 let restore = () => {};
 afterEach(() => { restore(); restore = () => {}; });
 
@@ -38,7 +38,7 @@ function harness() {
   restore = () => { globalThis.localStorage = localStorage; globalThis.setTimeout = setTimeout; };
   overlay.resetLayers(); overlay.wireOverlays();
   const c = {session: core.session, state: core.state, findArtists: ids => artists.findArtists(ids), findArtistWorks: artist => artists.findArtistWorks(artist, 'synthetic')};
-  const remove = () => settings.onLibrariesClick({target: {closest: () => ({dataset: {libRemove: 'synthetic-source'}})}});
+  const remove = () => settings.removeSource('synthetic-source');
   return {c, dialogs, calls, consent, remove};
 }
 
@@ -84,7 +84,7 @@ test('rapid repeated removal has one preview, dialog and commit', async () => {
 for (const change of ['token','route']) test(`confirmation after ${change} change cannot submit`, async () => {
   const h = harness(), pending = h.remove(); await tick();
   if (change === 'token') h.c.session.token = 'replacement-session';
-  else h.c.state.route = {page:'home'};
+  else h.c.state.route = {page:'days'};
   h.dialogs[0].close('ok'); await pending;
   assert.equal(h.calls.length,1);
 });

@@ -23,13 +23,13 @@ const SNAPSHOT = `(async () => {
     else if (el.classList.length) s += '.' + [...el.classList].slice(0, 2).join('.');
     const label = el.getAttribute('aria-label') || el.getAttribute('data-act') || el.getAttribute('name');
     if (label) s += '[' + label.slice(0, 40) + ']';
-    const where = el.closest('dialog[open], #viewer, #inspector, #tour, #taskPanel, #sidebar, #toolbar, #selectionBar, #grid, .topbar, [role=dialog], .popover');
+    const where = el.closest('dialog[open], #viewer, #inspector, #tour, #taskPanel, #rail, #toolbar, #selectionBar, #grid, #pageHead, [role=dialog], .popover');
     if (where && where !== el) s += ' in ' + (where.id ? '#' + where.id : where.tagName.toLowerCase() + (where.className ? '.' + String(where.className).split(' ')[0] : ''));
     const card = el.closest('.card[data-id]');
     if (card) s += ' card ' + nameOf(card.dataset.id);
     return s;
   };
-  const OVERLAYS = ['viewer', 'inspector', 'taskPanel', 'viewPopover', 'tagPopover', 'morePopover', 'castPop', 'tour', 'nudge',
+  const OVERLAYS = ['viewer', 'inspector', 'taskPanel', 'viewPopover', 'tagPopover', 'charMenu', 'galleryMenu', 'castPop', 'tour', 'nudge',
     'checklist', 'selectionBar', 'toast', 'splash', 'errorBanner'];
   const shown = OVERLAYS.filter(id => visible(document.getElementById(id)));
   const dialogs = [...document.querySelectorAll('dialog[open]')].map(d => d.id || d.getAttribute('aria-label') || text(d.querySelector('h2,h3,header'), 30) || 'dialog');
@@ -55,8 +55,8 @@ const SNAPSHOT = `(async () => {
     detail: nameOf(S.detail?.uuid ?? S.detail?.asset?.uuid ?? null),
     viewer: S.viewer >= 0 ? nameOf(S.viewerItem?.uuid) ?? ('#' + S.viewer) : null,
     // 网格上画着高亮的卡片：同时有两张「当前」的样子就是指向不一致（#386 的 1-4）。
-    marked: {focused: [...document.querySelectorAll('#grid .card.focused')].map(c => nameOf(c.dataset.id)),
-      cursor: [...document.querySelectorAll('#grid .card.cursor')].map(c => nameOf(c.dataset.id))},
+    marked: {focused: [...document.querySelectorAll('#grid .card[aria-current=true]')].map(c => nameOf(c.dataset.id)),
+      cursor: [...document.querySelectorAll('#grid .card.is-cursor')].map(c => nameOf(c.dataset.id))},
     total: S.total ?? null,
     items: (S.items || []).slice(0, 12).map(x => nameOf(x?.uuid)),
     search: search ? search.value : null,

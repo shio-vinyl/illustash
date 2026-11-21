@@ -13,6 +13,13 @@ import {baseDownloadStatus} from './models.js';
 const changed = listeners();
 // /api/index 的最新回应（关注列表、作品、检查与添加的状态）。资料库、设置页、引导读到新的回应也经这里换上。
 export function setIndex(value) { state.index = value; }
+// 读 /api/index 换上：同一时间的几次读取合并成一次（session.js 的 shared）；回来时已经换了图库（会话令牌变了）就不换上。
+// 写入之后要读改动以后的那份时不用它（合并会拿到写入之前就在途的读取），直接 setIndex(await api('/api/index'))。
+export async function loadIndex() {
+  const token = session.token, value = await shared('/api/index');
+  if (value && token === session.token) setIndex(value);
+  return value;
+}
 // /api/names 的最新回应（覆盖率、设置、运行状态）；mergeNames 只换掉回应里带的那几项。
 export function setNames(value) { state.names = value; }
 export function mergeNames(patch) { state.names = {...state.names, ...patch}; }
@@ -23,6 +30,10 @@ export const onJob = changed.on;
 // ---------- 同步 ----------
 // waiting：角色索引在写入或 WD 扩展检查在跑，同步排在它们后面，结束后宿主自己开始（#607）。
 export const SYNC_ACTIVE = ['waiting', 'scanning', 'recognising', 'importing'];
+// 状态圆点的口径（设置页的行、任务面板、按天视图的同步卡片都用这几个）：'busy' 进行中，'warn' 要处理，'off' 这次启动没开，'' 其余。
+// 同步：出错、中断、等待识别都算要处理。
+export const syncTone = status => SYNC_ACTIVE.includes(status) ? 'busy' : ['error', 'interrupted', 'needs_recognition'].includes(status) ? 'warn'
+  : status === 'off' ? 'off' : '';
 // 系统拒绝让本 App 访问照片图库（#202）：后端用一个代码表示，从不放在错误文字里。出路是「系统设置 ›
 // 隐私与安全性 › 照片」，然后退出并重新打开；桌面外壳会在窗口外打开这一个地址（desktop/src/server.rs PHOTOS_PRIVACY），
 // 浏览器会先询问。
@@ -81,8 +92,15 @@ export function syncLine(s) {
 }
 // 同步进行中每 2 s 读一次；读失败 10 s 后再试。重叠的轮询由 core/poll.js 的序号守卫。
 export const pollSync = poller(async fresh => {
-  const {state: s, history, damaged} = await api('/api/sync');
+  let reply;
+  try { reply = await api('/api/sync'); } catch (e) {
+    // 读不到同步状态：记下来、通知一次（按天视图的同步卡写「正在重新连接」），照旧按间隔重试。
+    if (fresh() && !state.syncLost) { state.syncLost = true; await changed.emit('sync', {was: state.sync.status, lost: true}); }
+    throw e;
+  }
+  const {state: s, history, damaged} = reply;
   if (!fresh()) return 0;
+  state.syncLost = false;
   const previous = state.sync, was = previous.status, ended = SYNC_ACTIVE.includes(was) && !SYNC_ACTIVE.includes(s.status);
   state.sync = s; state.syncHistory = history; state.syncDamaged = damaged;
   // 文件夹里的图片可在扫描时计入 imported，后续用 import_done 判断识别结果何时交付。
@@ -95,6 +113,8 @@ export async function startSync() { const r = await post('/api/sync', {}); state
 
 // ---------- 外部索引的新角色 ----------
 export const INDEX_ACTIVE = ['checking', 'fetching', 'cleaning', 'building', 'scanning', 'importing'];
+// 检查新角色的状态圆点（口径见 syncTone）。
+export const indexTone = status => INDEX_ACTIVE.includes(status) ? 'busy' : status === 'error' ? 'warn' : status === 'off' ? 'off' : '';
 export function indexLine(s, check) {
   const n = s.total ? ` ${number(s.done || 0)}/${number(s.total)}` : '';
   return {checking: t('正在检查 Danbooru…'), fetching: t('正在下载参考图') + n, cleaning: t('正在处理参考图'), building: t('正在更新角色特征'), scanning: t('正在重新扫描图库'), importing: t('正在导入图库'),
@@ -155,6 +175,8 @@ export async function discardIndex(confirm) {
 
 // ---------- 显示名：Bangumi 优先，用户选择开启的模型 API 最后 ----------
 export const NAMES_ACTIVE = ['fetching', 'matching', 'translating', 'running'];
+// 角色名称的状态圆点（口径见 syncTone）：没允许联网也算没开。
+export const namesTone = status => NAMES_ACTIVE.includes(status) ? 'busy' : status === 'error' ? 'warn' : ['off', 'unauthorized'].includes(status) ? 'off' : '';
 export const namesLine = s => s.status === 'off' ? t('当前未启用') : NAMES_ACTIVE.includes(s.status) ? t('正在获取 {progress}', {progress: s.total ? `${number(s.done || 0)} / ${number(s.total)}` : '…'}) : s.status === 'error' ? t('获取失败，将在下次启动时重试') : s.status === 'unauthorized' ? t('未允许联网查询 · 可在设置 › 网络与隐私里允许') : t('已是最新');
 export const pollNames = poller(async fresh => {
   const was = state.names?.state?.status, running = NAMES_ACTIVE.includes(was);

@@ -32,26 +32,33 @@ test('requests name the language; a refusal is shown translated and kept as sent
 });
 
 test('a maybe artist renders in English too', async () => {
-  const {artistSection} = await web.load('ui/artists.js');
-  const maybe = {id: 'a1', name: '合成画师', reason: '合成理由', homes: [{url: 'https://example.com/a1', label: 'example', site: 'Example'}]};
-  const html = artistSection({artists: [], posts: [], maybe: [maybe]}, {});
-  assert.match(html, /Maybe <a class="artist-name" href="#\/library\?artist=a1" title="Show only their pictures in the library">合成画师<\/a>/);
+  // 画师一节是部件（ui/artists.js 的 artistBlock，#709）：在 tests/dom.cjs 的真树里画。
+  const dom = require('./dom.cjs');
+  dom.install();
+  try {
+    const {artistBlock} = await web.load('ui/artists.js');
+    const maybe = {id: 'a1', name: '合成画师', reason: '合成理由', homes: [{url: 'https://example.com/a1', label: 'example', site: 'Example'}]};
+    const b = artistBlock({verdict() {}, find() {}, findMore() {}});
+    b.update({artists: [], posts: [], maybe: [maybe]});
+    const all = el => el.children.flatMap(c => [c, ...all(c)]), link = all(b.el).find(x => x.classList.contains('artist-name'));
+    assert.equal(link.parentNode.textContent, 'Maybe 合成画师');
+    assert.equal(link.getAttribute('title'), 'Show only their pictures in the library');
+  } finally { dom.uninstall(); }
 });
 
 // #519：GPU 回退原因是后端的中文原话，按后端文字翻译；一张图时用单数；关于页没检查过更新时是完整的一句。
 test('a GPU fallback reason, one picture and a never-checked update read as English (#519)', async () => {
   const {t, state} = web.core();
-  const {accelerationLine} = await web.load('ui/models.js');
+  const {accelerationFell} = await web.load('ui/models.js');
   const reason = 'WD 加速文件缺失或损坏；在设置的识别模型中重新下载或导入加速文件';
-  const line = accelerationLine({acceleration: {available: true, backend: 'coreml', on: true, last: {wd: {requested: 'coreml', used: 'cpu', reason, at: 1}}}});
-  assert.match(line, /<em>Last time the GPU could not be used, so the CPU was used instead: The WD acceleration file is missing or damaged; download or import it again under Recognition models in Settings<\/em>/);
+  const line = accelerationFell({acceleration: {available: true, backend: 'coreml', on: true, last: {wd: {requested: 'coreml', used: 'cpu', reason, at: 1}}}});
+  assert.equal(line, 'Last time the GPU could not be used, so the CPU was used instead: The WD acceleration file is missing or damaged; download or import it again under Recognition models in Settings');
   assert.doesNotMatch(line, /\p{Script=Han}/u);
   // 「已排除」页的副标题原来是「{n} 张 · 只是标记…」，#426 把张数挪到页签上、副标题只剩说明；单复数照样按 {n}。
   assert.equal(t('{n} 张', {n: '1'}), '1 picture');
   assert.equal(t('{n} 张', {n: '2'}), '2 pictures');
   assert.equal(t('共 {n} 份备份', {n: '1'}), '1 backup');
-  const {updatesLine} = await web.load('ui/settings.js');
-  state.updates = {checked_at: null, newer: false, auto: false};
-  assert.match(updatesLine(), /Not checked yet · Automatic checks are off/);
+  const {updatesHint} = await web.load('ui/updates.js');
+  assert.match(updatesHint({checked_at: null, newer: false, auto: false}), /Not checked yet · Automatic checks are off/);
   assert.equal(t('还没有检查过'), 'never', 'the integrity line still says “library.sqlite never”');
 });

@@ -1,4 +1,5 @@
-// 不带识别模型的安装包在第一次使用时下载的模型（#168）：向导横条、任务面板和「设置 › 数据」共用的文字和按钮。用户点
+// 不带识别模型的安装包在第一次使用时下载的模型（#168）：向导横条、任务面板和「设置 › 数据」共用的文字和按钮（设置页的
+// 卡片用这里的数据画成行，在 ui/settings_data.js，#714）。用户点
 // 「下载」之前什么都不下载；按钮上写明有多大。拒绝的话还有「从文件导入」和手动下载页面。
 import {t, tb} from '../core/i18n.js';
 import {esc, bytes, home, number} from '../core/format.js';
@@ -6,7 +7,7 @@ import {state} from '../core/state.js';
 import {SYNC_ACTIVE, INDEX_ACTIVE, startSync, pollSync, pollIndex, onJob, indexEndText} from '../core/jobs.js';
 import {loadModels, modelsPost, modelsWaiting, modelsFinished, modelsArrived, onModels, saveAcceleration, fallbacks,
   loadCharacterBase, characterBasePost, characterBasePath, optionalGaps, baseDownloadStatus} from '../core/models.js';
-import {$, toast, redraw, busy} from './dom.js';
+import {toast, busy, buttonsHTML} from './dom.js';
 import {confirmAction} from './dialog.js';
 import {loadPack} from '../core/packs.js';
 
@@ -44,23 +45,33 @@ const extra = m => {
   if (m?.status !== 'ready' || !m.on_demand) return '';
   return m.optional_missing ? 'download' : m.acceleration?.backend === 'coreml' && fallbacks(m).wd ? 'repair' : '';
 };
-// 当前状态下的按钮；`compact` 省掉不常用的那些（任务面板）。
-export function modelsActions(m = state.models, compact = false) {
-  if (!m) return '';
-  if (running(m)) return `<button class="quiet small" data-models="cancel">${t('取消')}</button>`;
+// 当前状态下的按钮（[{act, label, primary, disabled, title}]，#714）：设置页的卡片用 ui/rows.js 的 buttons 接，任务面板和
+// 向导横条用 modelsActions 拼成 HTML（data-models="动作"；横条改成部件以后删掉，#794）；点了都走 runModels(act)。
+// `compact` 省掉不常用的那些（任务面板）。
+export function modelsButtons(m = state.models, compact = false) {
+  if (!m) return [];
+  if (running(m)) return [{act: 'cancel', label: t('取消')}];
   if (m.status === 'ready') {
-    const want = extra(m); if (!want) return '';
+    const want = extra(m); if (!want) return [];
     const gaps = optionalGaps(m), size = bytes(left(m));
     const label = want !== 'download' ? t('修复 WD 加速文件')
       : gaps.base && gaps.wd ? t('下载 WD 加速文件和基础角色索引（约 {size}）', {size})
       : gaps.base ? t('下载基础角色索引（约 {size}）', {size}) : t('下载 WD 加速文件（约 {size}）', {size});
-    return `<button class="quiet small" data-models="download">${label}</button>`
-      + `<button class="quiet small" data-models="import">${t('从文件导入…')}</button>`;
+    return [{act: 'download', label}, {act: 'import', label: t('从文件导入…')}];
   }
-  const download = `<button class="primary small" data-models="download">${m.have ? t('继续下载（还差 {left}）', {left: fileSize(left(m))}) : t('下载模型（约 {size}）', {size: bytes(m.total)})}</button>`;
-  if (compact) return download;
-  return `${download}<button class="quiet small" data-models="import">${t('从文件导入…')}</button>`
-    + (m.partial && m.have ? `<button class="quiet small" data-models="discard">${t('删除未完成的部分')}</button>` : '');
+  const download = {act: 'download', primary: true,
+    label: m.have ? t('继续下载（还差 {left}）', {left: fileSize(left(m))}) : t('下载模型（约 {size}）', {size: bytes(m.total)})};
+  if (compact) return [download];
+  return [download, {act: 'import', label: t('从文件导入…')}, ...(m.partial && m.have ? [{act: 'discard', label: t('删除未完成的部分')}] : [])];
+}
+export const modelsActions = (m = state.models, compact = false) => buttonsHTML(modelsButtons(m, compact), 'data-models');
+// 下载进度 {done, total}，没在下载时 null（ui/rows.js 的 progress）。
+export const modelsProgress = (m = state.models) => running(m) && m.job.total ? {done: m.job.done, total: m.job.total} : null;
+// 设置卡片里列出的几项 {key, text, hint}：每个来源各自失败的原因，导入对每个选中的文件做了什么。
+export function modelsResultItems(m = state.models) {
+  const fails = m?.job?.status === 'failed' ? (m.job.failures || []).map((f, i) => ({key: 'f' + i, text: t('{source}：{why}', {source: f.source, why: tb(f.why)})})) : [];
+  const job = m?.job, results = job?.kind === 'import' ? job.results || [] : [];
+  return [...fails, ...results.map((r, i) => ({key: 'r' + i, text: r.name, hint: RESULT[r.result]?.() || r.result}))];
 }
 // 下载卡在某个文件上时，每个来源各自失败的原因。
 export function modelsFailures(m = state.models) {
@@ -68,11 +79,13 @@ export function modelsFailures(m = state.models) {
   return list.length ? `<ul class="models-results">${list.map(f => `<li class="mismatch">${esc(t('{source}：{why}', {source: f.source, why: tb(f.why)}))}</li>`).join('')}</ul>` : '';
 }
 // 在会自己下载模型的安装里已经就位（用户 2026-10-19 定，#168）：可以删除，正在使用时不行。
-export function deleteButton(m = state.models) {
-  if (!m?.on_demand || m.status !== 'ready') return '';
+export function modelsDeleteButtons(m = state.models) {
+  if (!m?.on_demand || m.status !== 'ready') return [];
   const working = running(m) || SYNC_ACTIVE.includes(state.sync?.status) || INDEX_ACTIVE.includes(state.index?.state?.status);
-  return `<div class="models-acts"><button class="quiet small" data-models="delete" ${working ? `disabled title="${t('正在识别或下载，等它结束再删除')}"` : ''}>${t('删除已下载的模型')}</button></div>`;
+  return [{act: 'delete', label: t('删除已下载的模型'), disabled: working, title: working ? t('正在识别或下载，等它结束再删除') : ''}];
 }
+// 手动下载说明的链接；已就位、又没有要补下的文件时不给。
+export const modelsManual = (m = state.models) => m?.manual && !(m.status === 'ready' && extra(m) !== 'download') ? {href: m.manual, label: t('手动下载说明')} : null;
 const manualLink = (m = state.models) => m?.manual ? `<a class="link" href="${esc(m.manual)}" target="_blank" rel="noreferrer noopener">${t('手动下载说明')}</a>` : '';
 // 导入对每个选中的文件做了什么。
 const RESULT = {accepted: () => t('已接收'), mismatch: () => t('SHA-256 不符，已拒绝'), unknown: () => t('不是需要的模型文件'), already: () => t('已经有了')};
@@ -96,14 +109,17 @@ export function modelsNotice() {
 
 // 「使用 GPU 加速识别」（#270）：只在这个构建带加速器的地方出现。全应用共用（preferences.json）；worker 启动时读取。
 // 上一个 worker 没能用上加速器时，说明原因，以及它改用 CPU 继续了。
-export function accelerationLine(m = state.models) {
+export const accelerationHint = (m = state.models) => {
   const a = m?.acceleration; if (!a?.available) return '';
   const hint = a.backend === 'coreml'
     ? t('用 Core ML 加速标签与角色特征计算。首次需要准备编译缓存；加速不可用时自动用 CPU。')
     : t('用显卡计算，识别更快，角色判定和只用 CPU 时一致。');
-  const fell = Object.values(fallbacks(m))[0];
-  return `<label class="switch-line"><span><b>${t('使用 GPU 加速识别')}</b><small>${hint} ${t('关掉就全部用 CPU。')} · ${t('下次识别时生效')}</small>${fell ? `<em>${esc(t('上次没能用上加速，已改用 CPU：{reason}', {reason: tb(fell.reason)}))}</em>` : ''}</span><input type="checkbox" class="switch" data-acceleration ${a.on ? 'checked' : ''}></label>`;
-}
+  return `${hint} ${t('关掉就全部用 CPU。')} · ${t('下次识别时生效')}`;
+};
+export const accelerationFell = (m = state.models) => {
+  const fell = m?.acceleration?.available ? Object.values(fallbacks(m))[0] : null;
+  return fell ? t('上次没能用上加速，已改用 CPU：{reason}', {reason: tb(fell.reason)}) : '';
+};
 
 // 下载或导入刚结束时提示的一句（#375），没什么要说时为空。模型刚到（`arrived`）时说开始识别；首次下载在同一个任务里
 // 接着下 WD 加速文件，它没下成时并进同一句（提示条只有一个，后一条会盖掉前一条）。没下成的是可选文件时写「WD 加速文件」。
@@ -123,7 +139,7 @@ export function finishedNote(job, arrived, m = state.models) {
 }
 // 镜像说明：清单里有项目自己发布的可选文件时（WD 加速文件只在 Apple 芯片的 macOS 上，基础角色索引在每个平台上），
 // 说明它们从哪里下载。
-const mirrorNote = m => {
+export const mirrorNote = (m = state.models) => {
   const hf = {hf: 'https://huggingface.co'}, base = characterBasePath();
   const wd = m.files.some(f => f.optional && f.path !== base), index = !!base && m.files.some(f => f.path === base);
   return wd && index ? t('原始模型先从这个地址下载，不行再换 ModelScope。填 {hf} 就是直连 Hugging Face。WD 加速文件和基础角色索引从项目的 GitHub Release 下载。', hf)
@@ -132,38 +148,20 @@ const mirrorNote = m => {
     : t('先从这个地址下载，不行再换 ModelScope。填 {hf} 就是直连 Hugging Face。', hf);
 };
 // 基础角色索引（#607）在这个图库里的状态和按钮；文件还没下载时由上面的下载那一行负责。
-export function characterBaseLine(b = state.characterBase) {
+export function characterBaseText(b = state.characterBase) {
   if (!b?.included || !b.writable || (!b.available && !b.enabled)) return '';
   const n = number(b.characters);
-  const text = b.running ? t('基础角色索引正在更新')
+  return b.running ? t('基础角色索引正在更新')
     : b.enabled ? t('基础角色索引：已启用，{n} 个角色', {n})
     : b.withdrawn ? t('基础角色索引：已撤回') : t('基础角色索引：已下载，这个图库还没启用');
-  const button = b.running ? ''
-    : b.enabled ? `<button class="quiet small" data-models="base-withdraw">${t('撤回')}</button>`
-    : `<button class="quiet small" data-models="base-enable">${t('启用')}</button>`;
-  return `<div class="setting-line"><span>${esc(text)}</span>${button ? `<div class="models-acts">${button}</div>` : ''}</div>`;
 }
-// 设置 › 数据：状态、存放位置、镜像，以及同样的按钮。
-export function renderModelsCard() {
-  const card = $('setModels'), m = state.models; if (!card) return;
-  if (!m) { redraw(card, `<h2>${t('识别模型')}</h2><p class="muted-note">…</p>`); return; }
-  const html = `<h2>${t('识别模型')}<span class="set-scope" title="${t('保存在这台电脑上，所有图库共用')}">${t('所有图库共用')}</span></h2>
-    <p class="settings-note">${m.on_demand ? t('图片识别要用 WD 和 CCIP 两个模型，安装包里没有带，第一次使用时下载。每个文件都按应用里写好的大小和 SHA-256 核对，对不上就不用。') : t('这个安装自带识别模型。')}</p>
-    <div class="setting-line"><span>${esc(modelsLine(m))}${m.status === 'ready' && extra(m) !== 'download' ? '' : `<small class="line-hint">${manualLink(m)}</small>`}</span></div>
-    ${modelsBar(m)}${modelsFailures(m)}${importSummary(m.job)}<div class="models-acts">${modelsActions(m)}</div>${deleteButton(m)}
-    ${characterBaseLine()}
-    ${accelerationLine(m)}
-    ${m.on_demand ? `<div class="form-grid"><label for="modelMirror">${t('Hugging Face 镜像')}</label><input id="modelMirror" value="${esc(m.mirror)}" placeholder="${esc(m.mirror_default)}" spellcheck="false" autocomplete="off"></div>
-    <p class="settings-note">${mirrorNote(m)}</p>
-    <div class="sync-now form-actions"><div class="spacer"></div>
-      ${m.mirror !== m.mirror_default ? `<button class="quiet" data-models="mirror-reset">${t('恢复默认')}</button>` : ''}<button class="primary" data-models="mirror">${t('保存')}</button></div>` : ''}
-    <table class="settings-table models-files"><tr><td>${t('存放位置')}</td><td class="mono" title="${esc(m.location)}">${esc(home(m.location))}</td></tr>
-      ${m.files.map(f => `<tr><td class="mono">${esc(f.path)}</td><td class="mono" title="SHA-256 ${esc(f.sha256)}">${fileSize(f.size)} · ${esc(f.sha256.slice(0, 12))}…</td></tr>`).join('')}</table>`;
-  // 任务运行期间会轮询：只在有变化时重画，正在输入镜像时绝不重画。
-  redraw(card, html, {keepInput: true});
-}
+export const characterBaseButtons = (b = state.characterBase) => !characterBaseText(b) || b.running ? []
+  : b.enabled ? [{act: 'base-withdraw', label: t('撤回')}] : [{act: 'base-enable', label: t('启用')}];
+// 文件清单（设置卡片的折叠区）：存放位置和每个文件的大小、SHA-256 开头。
+export const modelsFileItems = (m = state.models) => !m ? [] : [{key: 'location', text: t('存放位置'), hint: home(m.location), title: m.location},
+  ...m.files.map(f => ({key: f.path, text: f.path, hint: `${fileSize(f.size)} · ${f.sha256.slice(0, 12)}…`, title: 'SHA-256 ' + f.sha256}))];
 
-async function act(what) {
+export async function runModels(what, mirror = null) {
   try {
     if (what === 'download') {
       await modelsPost({action: 'download'});
@@ -185,30 +183,19 @@ async function act(what) {
       if (!await confirmAction(t('删除已经下载但还没完成的部分？下次要从头下载。'), t('删除未完成的部分'), t('删除'))) return;
       await modelsPost({action: 'discard'});
     } else if (what === 'mirror' || what === 'mirror-reset') {
-      await modelsPost({action: 'mirror', mirror: what === 'mirror' ? $('modelMirror').value.trim() || null : null});
+      await modelsPost({action: 'mirror', mirror: what === 'mirror' ? (mirror ?? '').trim() || null : null});
       toast(t('设置已保存'));
     }
   } catch (e) { toast(e.message); }
-  renderModels();
 }
-// 重画所有显示模型的地方；向导横条自己画自己（ui/guide.js 也在监听）。
-function renderModels() { renderModelsCard(); }
 
 // 处理函数。页面启动时调用一次。
 export function wireModels() {
   document.addEventListener('click', e => {
     const button = e.target.closest('[data-models]'); if (!button || button.disabled) return;
-    busy(button, () => act(button.dataset.models));
-  });
-  // GPU 加速开关只在设置页的模型卡片上。
-  $('settingsPage').addEventListener('change', async e => {
-    const box = e.target.closest('[data-acceleration]'); if (!box) return;
-    box.disabled = true;
-    try { await saveAcceleration(box.checked); toast(t('设置已保存')); } catch (err) { toast(err.message); box.checked = !box.checked; }
-    box.disabled = false;
+    busy(button, () => runModels(button.dataset.models));
   });
   onModels((before, start) => {
-    renderModels();
     const job = modelsFinished(before); if (!job) return;
     // 基础角色索引刚下载好时，宿主在下一次恢复检查里为这个图库启用它；稍等再读状态和索引任务。
     const wasEnabled = state.characterBase?.enabled;

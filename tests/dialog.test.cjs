@@ -16,7 +16,7 @@ function page() {
     dispatch(type, e) { for (const fn of handlers[type] || []) fn(e); }, createElement() {
     const nodes = {'#name': field};
     return {returnValue: '', attributes: {}, setAttribute(k, v) { this.attributes[k] = v; }, querySelector(selector) { return nodes[selector] ||= {}; },
-      showModal() { this.open = true; }, addEventListener(type, fn) { if (type === 'close') this.afterClose = fn; },
+      showModal() { this.open = true; }, addEventListener(type, fn) { if (type === 'close') this.afterClose = fn; else (this.on ||= {})[type] = fn; },
       close(value = '') { this.returnValue = value; this.open = false; this.onclose(); this.afterClose?.(); },
       remove() { this.removed = true; }, getBoundingClientRect: () => ({left: 10, right: 100, top: 10, bottom: 100})};
   }};
@@ -28,7 +28,7 @@ const inside = {clientX: 50, clientY: 50}, outside = {clientX: 0, clientY: 0};
 test('builds a titled modal with the shared class, aria-label and shell', () => {
   const {dialogs} = page(), d = dialog.openDialog({title: '标题', cls: 'work-dialog', body: '<p>正文</p>', actions: '<button class="primary">好</button>'});
   assert.equal(dialogs[0], d); assert.equal(d.open, true);
-  assert.equal(d.className, 'modal work-dialog'); assert.equal(d.attributes['aria-label'], '标题');
+  assert.equal(d.className, 'modal glass-scrim work-dialog'); assert.equal(d.attributes['aria-label'], '标题');
   assert.equal(d.querySelector('h2').textContent, '标题');
   assert.match(d.innerHTML, /<form method="dialog">/); assert.match(d.innerHTML, /<p>正文<\/p>/);
   assert.match(d.innerHTML, /<div class="dialog-actions"><button class="primary">好<\/button><\/div>/);
@@ -81,4 +81,36 @@ test('isBackdropClick is true only for the dialog itself outside its box', () =>
   assert.equal(overlay.isBackdropClick(d, {target: d, ...outside}), true);
   assert.equal(overlay.isBackdropClick(d, {target: d, ...inside}), false);
   assert.equal(overlay.isBackdropClick(d, {target: {}, ...outside}), false);
+});
+
+test('表单提交播完退场再关，returnValue 是按下的按钮；调用方拦下的提交不关（#715）', () => {
+  page();
+  const d = dialog.openDialog({title: 'x'});
+  const blocked = {defaultPrevented: true, submitter: {value: 'ok'}, preventDefault() {}};
+  d.on.submit(blocked); assert.equal(d.open, true, '校验没过，调用方 preventDefault 了');
+  let prevented = false;
+  d.on.submit({defaultPrevented: false, submitter: {value: 'ok'}, preventDefault() { prevented = true; }});
+  assert.equal(prevented, true); assert.equal(d.open, false); assert.equal(d.returnValue, 'ok');
+});
+test('closeModal：退场中再关一次不重复关；openStatic 打开静态对话框，Esc 同样走退场（#715）', async () => {
+  page();
+  const d = document.createElement('dialog'); d.onclose = () => {};
+  let closes = 0; const close = d.close.bind(d); d.close = v => { closes++; close(v); };
+  dialog.openStatic(d, {id: 'static'}); assert.equal(d.open, true); assert.deepEqual(overlay.layerIds(), ['static']);
+  await Promise.all([dialog.closeModal(d, 'a'), dialog.closeModal(d, 'b')]);
+  assert.equal(closes, 1); assert.equal(d.returnValue, 'a'); assert.deepEqual(overlay.layerIds(), []);
+  dialog.openStatic(d, {id: 'static'});
+  document.dispatch('keydown', {key: 'Escape', target: {}, preventDefault() {}, stopImmediatePropagation() {}});
+  assert.equal(d.open, false); assert.equal(closes, 2); assert.deepEqual(overlay.layerIds(), []);
+});
+test('输入框里按回车用「确定」提交，不用排在前面的「取消」（#716）', () => {
+  page();
+  const d = dialog.openDialog({title: '新建', body: '<input name="name">', actions: '<button value="cancel">取消</button><button value="ok">新建</button>'});
+  const submitted = [], ok = d.querySelector('form button[value="ok"]:not([disabled])');
+  ok.form = {requestSubmit(button) { submitted.push(button); }};
+  const enter = (target, extra = {}) => { const e = {key: 'Enter', target, defaultPrevented: false, preventDefault() { this.defaultPrevented = true; }, ...extra}; d.on.keydown(e); return e; };
+  const e = enter({tagName: 'INPUT'});
+  assert.deepEqual(submitted, [ok]); assert.equal(e.defaultPrevented, true);
+  enter({tagName: 'TEXTAREA'}); enter({tagName: 'INPUT'}, {isComposing: true}); enter({tagName: 'INPUT'}, {defaultPrevented: true});
+  assert.equal(submitted.length, 1, '多行文字、输入法组字、别处已经处理过的回车照旧');
 });

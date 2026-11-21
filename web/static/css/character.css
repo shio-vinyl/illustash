@@ -1,0 +1,57 @@
+/* 角色页：横幅、收集曲线、常一起出现的角色。归 0.4 第 G 步（角色页，#712）；A2（#705）只建了文件和层，规则由那一步写。
+   按钮、名字、头像、小字用 css/base.css 的公共部件（.btn.glass、.title-hero、.avatar、.text-meta），这里只写横幅自己的排布。 */
+@layer pages{
+
+/* ---- 横幅（ui/character.js）：放在网格头部（css/library.css 的 .grid-head）里，跟着网格滚。
+   下边距写成 padding：网格按头部的边框盒高度往下排卡片，margin 不算进去 ---- */
+.char-hero{position:relative;padding:0 0 var(--space-24)}
+/* 图：最近的一张宽图，往下渐变成图的颜色再到页面底色；整块底下垫一层图的颜色（.tint 上的 --tint-glow），图读完之前和没有图时也有颜色 */
+.char-hero-art{position:absolute;top:0;right:0;left:0;height:280px;overflow:hidden;border-radius:var(--radius-18);
+  background:linear-gradient(180deg,var(--tint-glow),transparent)}
+.char-hero-art>img{display:block;width:100%;height:100%;object-fit:cover;object-position:50% 30%}
+.char-hero-art::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,transparent 30%,var(--tint-wash) 78%,var(--sheet))}
+/* 返回、标为已检查、「⋯」：浮在图上的玻璃按钮。比下面的名字那一层高，窄窗口里「⋯」菜单往下展开时不被盖住 */
+.char-hero-bar{position:relative;z-index:var(--z-page-2);display:flex;align-items:flex-start;justify-content:space-between;gap:var(--space-12);padding:var(--space-14)}
+.char-hero-actions{display:flex;align-items:center;gap:var(--space-6)}
+/* 头像、名字、数字：压在图的下半截 */
+.char-hero-main{position:relative;z-index:var(--z-page-1);display:flex;flex-wrap:wrap;align-items:flex-end;gap:var(--space-20);margin-top:150px;padding:0 var(--space-24)}
+.char-hero-avatar{width:96px;height:96px;box-shadow:0 0 0 3px var(--sheet),var(--shadow-hover)}
+.char-hero-id{flex:1 1 240px;min-width:0}
+/* 名字和 Danbooru tag 能选中复制（网格整块是 user-select:none） */
+.char-hero-name{overflow:hidden;color:var(--ink);white-space:nowrap;text-overflow:ellipsis;-webkit-user-select:all;user-select:all}
+.char-hero-meta{display:flex;flex-wrap:wrap;align-items:baseline;gap:var(--space-8);margin:var(--space-6) 0 0;color:var(--ink2);font-size:var(--fs-13)}
+.char-hero-meta>.oc-badge{margin:0}
+.char-hero-tag{color:var(--muted);font-size:var(--fs-12);-webkit-user-select:all;user-select:all}
+.char-hero-stats{display:flex;gap:var(--space-24);margin:0}
+.char-hero-stats>div{display:grid;gap:var(--space-2)}
+.char-hero-stats dd{margin:0;color:var(--ink);font-size:var(--fs-20);font-weight:var(--fw-750);font-variant-numeric:tabular-nums}
+/* 未检查：数字本身是开关，按下时只看未检查（aria-pressed） */
+.char-hero-check{margin:0;padding:0 var(--space-6);border:0;border-radius:var(--radius-4);background:transparent;color:var(--tone-sand-ink);font:inherit;cursor:pointer}
+.char-hero-check:hover{background:var(--wash-hover)}
+.char-hero-check[aria-pressed=true]{background:var(--tone-sand-bg)}
+.char-hero-foot{margin:var(--space-16) var(--space-24) 0}
+
+/* ---- 三组资料（ui/character_facts.js）：最近加入、收集曲线、常一起出现。窄窗口排成一列 ---- */
+.char-facts{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,360px));gap:var(--space-12);margin:var(--space-20) var(--space-24) 0}
+.char-fact{min-width:0;padding:var(--space-14);border-radius:var(--radius-12);background:var(--tint-wash)}
+.char-fact-title{margin:0 0 var(--space-10);color:var(--ink2);font-size:var(--fs-12);font-weight:var(--fw-600)}
+.char-recent{display:grid;grid-template-columns:repeat(3,minmax(0,120px));gap:var(--space-6)}
+.char-recent-tile{display:block;aspect-ratio:1;margin:0;padding:0;overflow:hidden;border:0;border-radius:var(--radius-8);background:var(--tint-soft);cursor:pointer}
+.char-recent-tile>img{display:block;width:100%;height:100%;object-fit:cover;transition:transform var(--dur-2) var(--ease)}
+.char-recent-tile:hover>img{transform:scale(1.04)}
+/* 每月的柱子（ui/month_bars.js 画的 <i>） */
+.char-curve{display:flex;align-items:flex-end;gap:var(--space-4);height:64px}
+.char-curve>i{flex:1;min-width:0;border-radius:var(--radius-4) var(--radius-4) 0 0;background:var(--tint)}
+.char-curve>i.is-zero{background:var(--line)}
+.char-curve-axis{display:flex;justify-content:space-between;margin:var(--space-6) 0 0}
+.char-peers{display:flex;flex-wrap:wrap;gap:var(--space-10);margin:0;padding:0;list-style:none}
+.char-peer{display:grid;justify-items:center;gap:var(--space-4);width:56px;color:var(--ink2);font-size:var(--fs-11);text-align:center;text-decoration:none}
+.char-peer>span{width:100%;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.char-peer:hover{color:var(--accent-ink)}
+@media (max-width:860px){
+  .char-facts{grid-template-columns:minmax(0,1fr)}
+  .char-hero-main{margin-top:120px;padding:0 var(--space-14)}
+  .char-hero-name{font-size:var(--fs-display-28)}
+}
+
+}

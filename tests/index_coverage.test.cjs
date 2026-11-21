@@ -4,28 +4,28 @@
 const {test, before} = require('node:test');
 const assert = require('node:assert/strict');
 const web = require('./web.cjs');
-let ui;
+const dom = require('./dom.cjs');
+const {view} = require('./settings_view.cjs');
+let ui, open;
 before(async () => {
   await web.ready();
-  web.fakePage();
+  dom.install();
   const store = new Map();
   globalThis.localStorage = {getItem: k => store.has(k) ? store.get(k) : null, setItem: (k, v) => store.set(k, v), removeItem: k => store.delete(k)};
-  ui = await web.load('ui/settings.js');
+  ui = await web.load('ui/settings_characters.js');
+  open = await view('characters');
 });
 
 test('合计写在折叠区标题，每个作品一行；没有回应的作品不列', () => {
-  const html = ui.coverageFold({works: [{tag: 'work_a', name: '作品甲'}]}, {checked_at: 't', coverage: {
+  const items = ui.coverageItems({works: [{tag: 'work_a', name: '作品甲'}]}, {checked_at: 't', coverage: {
     work_a: {packs: 12, own: 1, missing: 2}, work_b: {packs: 0, own: 0, missing: 3}, work_c: null}});
-  assert.match(html, /data-fold-key="indexCoverage"><summary>数据包覆盖 12 个 · 自己补过 1 个 · 还缺 5 个<\/summary>/);
-  assert.match(html, /<tr><th>作品<\/th><th>数据包覆盖<\/th><th>自己补过<\/th><th>还缺<\/th><\/tr>/);
-  assert.match(html, /<tr><td>作品甲<\/td><td>12<\/td><td>1<\/td><td>2<\/td><\/tr>/);
-  assert.match(html, /<tr><td>work b<\/td><td>0<\/td><td>0<\/td><td>3<\/td><\/tr>/, '不在作品列表里的用 tag 推出名字');
-  assert.doesNotMatch(html, /work_c|work c/);
+  assert.equal(ui.coverageSummary(items), '数据包覆盖 12 个 · 自己补过 1 个 · 还缺 5 个');
+  assert.deepEqual(items.map(x => [x.name, x.packs, x.own, x.missing]), [['作品甲', 12, 1, 2], ['work b', 0, 0, 3]], '不在作品列表里的用 tag 推出名字');
 });
 
 test('还没检查过（路由回 null）或作品都没有回应：不显示', () => {
-  assert.equal(ui.coverageFold({works: []}, null), '');
-  assert.equal(ui.coverageFold({works: []}, {checked_at: 't', coverage: {work_a: null}}), '');
+  assert.deepEqual(ui.coverageItems({works: []}, null), []);
+  assert.deepEqual(ui.coverageItems({works: []}, {checked_at: 't', coverage: {work_a: null}}), []);
 });
 
 // #606：补角色以角色资料包为主。上次检查都不缺时检查新角色收进折叠区；还缺时资料包卡片底部写明还缺几个、给出入口；
@@ -49,13 +49,46 @@ test('都不缺、有关注作品、没在跑或要处理时才折叠', () => {
   for (const status of ['checking', 'fetching', 'error', 'paused']) assert.equal(ui.indexFolded(idle({state: {status}}), none), false, status);
 });
 
-test('资料包卡片底部：还缺时写数字，有待添加的链到「作品」，否则给检查按钮', () => {
-  assert.equal(ui.packCoverageLine(idle(), none), '');
-  assert.equal(ui.packCoverageLine(idle(), null), '');
-  const check = ui.packCoverageLine(idle(), some);
-  assert.match(check, /关注的作品还缺 5 个角色<small class="line-hint">上次检查新角色时，角色资料包和本地都还没有<\/small>/);
-  assert.match(check, /<button class="quiet small" data-index-go>检查新角色…<\/button>/);
-  assert.match(ui.packCoverageLine(idle({state: {status: 'checking'}}), some), /data-index-go disabled/);
-  const add = ui.packCoverageLine(idle({check: {checked_at: 't', missing: [{short_tag: 'x'}]}}), some);
-  assert.match(add, /<a class="setting-line set-link" href="#\/characters\/works">.*查看并添加 ›<\/span><\/a>/);
+test('资料包卡片底部：还缺时写数字，有待添加的链到「作品」，否则给检查按钮', async () => {
+  const core = web.core();
+  const line = async (index, coverage) => {
+    globalThis.fetch = async () => ({status: 200, ok: true, json: async () => coverage});
+    Object.assign(core.state, {route: {page: 'settings', section: 'characters'}, pack: {current: {}, library: {}}, index, names: null});
+    await core.loadCoverage(index, true);
+    const v = open(), row = v.row('packMissing'), link = v.row('packMissingLink');
+    const out = {hidden: row.hidden && link.hidden, text: v.text, link: link.hidden ? null : link.getAttribute('href'),
+      check: row.hidden ? undefined : v.button('packMissing', '检查新角色…')};
+    v.dispose();
+    return out;
+  };
+  assert.equal((await line(idle(), none)).hidden, true);
+  assert.equal((await line(idle(), null)).hidden, true);
+  const check = await line(idle(), some);
+  assert.match(check.text, /关注的作品还缺 5 个角色 \| 上次检查新角色时，角色资料包和本地都还没有/);
+  assert.equal(check.check.disabled, false);
+  assert.equal((await line(idle({state: {status: 'checking'}}), some)).check.disabled, true);
+  const add = await line(idle({check: {checked_at: 't', missing: [{short_tag: 'x'}]}}), some);
+  assert.equal(add.link, '#/characters/works');
+  assert.match(add.text, /查看并添加 ›/);
+  assert.equal(add.check, undefined);
+});
+
+// /api/index 只在 core/jobs.js 读一份（资料库、作品页、设置页共用）：同一时间的几次读取合并成一次；回来时已经换了图库（会话
+// 令牌变了）就不换上。
+test('loadIndex：并发的读取合并成一次；换了图库以后回来的不换上', async () => {
+  const {loadIndex} = await web.load('core/jobs.js'), {state, session} = web.core();
+  const asked = [];
+  let answer;
+  globalThis.fetch = path => { asked.push(path); return new Promise(done => { answer = body => done({status: 200, ok: true, json: async () => body}); }); };
+  state.index = {works: [], watch: {works: []}, tag: 'old'};
+  session.token = 'a';
+  const a = loadIndex(), b = loadIndex();
+  assert.deepEqual(asked, ['/api/index']);
+  answer({works: [], watch: {works: []}, tag: 'new'}); await Promise.all([a, b]);
+  assert.equal(state.index.tag, 'new');
+  const c = loadIndex();
+  session.token = 'b';
+  answer({works: [], watch: {works: []}, tag: 'other library'}); await c;
+  assert.equal(state.index.tag, 'new', '换了图库以后回来的不换上');
+  session.token = '';
 });

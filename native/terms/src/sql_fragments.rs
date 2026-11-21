@@ -49,6 +49,9 @@ pub(crate) fn unrejected(a: &str) -> String {
 pub(crate) fn leads() -> String {
     format!("(SELECT v.* FROM {HINTS} v WHERE {})", unrejected("v"))
 }
+/// `asked` 里仍在七天暂缓期内的「以后再说」。
+pub(crate) const ASK_DEFERRED: &str = "answer='later' AND asked_at>=datetime('now','-7 days')";
+
 /// 从 UUID 的 JSON 数组取每张图的首选线索：没有被否定的线索里，先强证据再弱认领，同类按分数从高到低取第一条。
 /// 分组按它拆组，组头按返回顺序计票（同票时取先出现的角色），网格上每张图的线索也取它（#790）。
 /// 这几处共用这一个排序，改排序会同时改变分组和组头。

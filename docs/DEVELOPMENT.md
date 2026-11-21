@@ -245,8 +245,8 @@ illustash/
 |---|---|
 | `check_all.sh`、`local_acceptance.py` | 本地全量检查与固定路径验收，见 [LOCAL_CHECKS.md](LOCAL_CHECKS.md) |
 | `check_architecture.py` | crate 依赖方向检查 |
-| `check_frontend.py` | 前端结构检查：`web/static` 的依赖方向、state 声明与写入者、全局监听、对话框、超长行、页面名判断、`app.css` 的写死字面量（#349）；基线 `frontend_baseline.json` 只能缩小（#320），新规则首次登记存量用 `--init-rule` |
-| `check_styleguide.py` | 样式清单页（`styleguide/`，只在开发时用、不进发布包，迁移清点不算生产代码）与实现的同步检查：`census.js` 要等于 `styleguide/census.py` 对当前 `app.css` 的输出，样例和条目标题用到的类要在 `app.css` 里有样式；`styleguide/live.js`（调用 `web/static/ui` 的生成函数画样例）导入的名字要在产品代码里导出、要取的外壳 id 要还在、舞台和样例一一对应，组件条目都标明“调用生成”或“手写”（#352） |
+| `check_frontend.py` | 前端结构检查：`web/static` 的依赖方向、state 声明与写入者、全局监听、对话框、超长行、页面名判断、样式（`app.css` 和 `css/`）的写死字面量（#349）、三档令牌、样式文件的层、选择器、变量定义、玻璃和 Safari 17 的兼容（#705）；基线 `frontend_baseline.json` 只能缩小（#320），新规则首次登记存量用 `--init-rule` |
+| `check_styleguide.py` | 样式清单页（`styleguide/`，只在开发时用、不进发布包，迁移清点不算生产代码）与实现的同步检查：`census.js` 要等于 `styleguide/census.py` 对当前样式（`app.css` 和 `css/`）的输出，样例和条目标题用到的类要在这些样式里有；`styleguide/live.js`（调用 `web/static/ui` 的生成函数画样例）导入的名字要在产品代码里导出、要取的外壳 id 要还在、舞台和样例一一对应，组件条目都标明“调用生成”或“手写”（#352） |
 | `migration_inventory.py` | 生产迁移边界清点，规格在 `tests/migration_inventory.json` |
 | `gen_casefold.py`、`gen_http_unicode.py` | 生成 `crates/core` 的 casefold 与 Unicode 表 |
 | `test_native_contracts.sh`、`bench_native_contracts.sh` | 空 PATH 重放固定契约；契约基准，见 [TERMS_PERFORMANCE.md](TERMS_PERFORMANCE.md) |
@@ -256,6 +256,7 @@ illustash/
 | `build_db.py` | 重建旧格式分析源库；`test_native_library_upgrade` 用它造旧库 |
 | `dev_preview.py` | 浏览器走查用的隔离宿主（临时目录、合成图库），`.claude/launch.json` 的 `web-isolated` 调用它，见上文「快速开始」；`--fixture walk` 改用带识别结果的走查图库；再加 `--wd-extension`、`--ccip-longtail` 时提供本机合成的数据包（`web-packs` 调用） |
 | `ui_walk/` | 浏览器界面走查（#453）：合成图库夹具、跨页面流程、两次运行的比较，`python3 -m tools.ui_walk run`，见 [本地验收](LOCAL_CHECKS.md#界面走查浏览器453) |
+| `ui_perf/` | 界面性能测量（#683）：合成大图库夹具，Chromium（DevTools 性能记录）和 WebKit（WKWebView 小程序）跑同一组场景，`python3 -m tools.ui_perf run`，见 [本地验收](LOCAL_CHECKS.md#界面性能测量683) |
 | `version.py` | 版本号的唯一来源是 `native/terms/application.json`（#189）：检查或改写 `tauri.conf.json`、各发布 crate 的 `Cargo.toml` 与 `Cargo.lock` |
 | `updater_release.py` | 应用内更新的发布文件（#279）：打 macOS 更新包、生成 `latest.json`，步骤见上文「发布」 |
 | `pack_catalog.py` | 角色资料包的签名目录（#602）：生成专签数据包的密钥、从两个组成部分的包文件写条目、组目录、签名、核对、打离线包，步骤见上文「发布角色资料包」；测试夹具由 `tests/fixtures/pack_catalog/make.py` 用测试密钥生成 |

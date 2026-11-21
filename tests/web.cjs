@@ -35,7 +35,7 @@ function core() {
 class FakeElement {
   constructor(tag = 'div', id = '') {
     Object.assign(this, {tagName: tag.toUpperCase(), id, hidden: false, textContent: '', innerHTML: '', value: '', title: '', className: '',
-      style: {}, dataset: {}, children: [], parent: null, listeners: {}, attributes: {}, scrollTop: 0, clientWidth: 1000, clientHeight: 800});
+      style: fakeStyle(), dataset: {}, children: [], parent: null, listeners: {}, attributes: {}, scrollTop: 0, clientWidth: 1000, clientHeight: 800});
     const classes = new Set();
     this.classList = {add: (...c) => c.forEach(x => classes.add(x)), remove: (...c) => c.forEach(x => classes.delete(x)),
       toggle: (c, on = !classes.has(c)) => (on ? classes.add(c) : classes.delete(c), on), contains: c => classes.has(c)};
@@ -43,6 +43,8 @@ class FakeElement {
   get firstElementChild() { return this.children[0] || null; }
   get nextElementSibling() { return this.parent?.children[this.parent.children.indexOf(this) + 1] || null; }
   append(...els) { for (const el of els) if (typeof el === 'object') this.insertBefore(el, null); }
+  replaceChildren(...els) { for (const el of [...this.children]) el.remove(); this.append(...els); }
+  get previousElementSibling() { return this.parent?.children[this.parent.children.indexOf(this) - 1] || null; }
   insertBefore(el, before) {
     el.remove?.(); const i = before ? this.children.indexOf(before) : this.children.length;
     this.children.splice(i < 0 ? this.children.length : i, 0, el); el.parent = this; return el;
@@ -64,15 +66,60 @@ class FakeElement {
   focus() {} blur() {} scrollIntoView() {} showModal() { this.open = true; } close() { this.open = false; } click() {}
   getBoundingClientRect() { return {left: 0, top: 0, right: this.clientWidth, bottom: this.clientHeight, width: this.clientWidth, height: this.clientHeight}; }
 }
+// style 上的 setProperty 一类方法不可枚举：测试用 deepEqual 比较 style 时只比写进去的值。
+function fakeStyle() {
+  const style = {};
+  Object.defineProperties(style, {
+    setProperty: {value: (k, v) => { style[k] = String(v); }}, removeProperty: {value: k => { delete style[k]; }},
+    getPropertyValue: {value: k => style[k] ?? ''},
+  });
+  return style;
+}
+// ui/el.js 的静态模板（tpl`…`）要真的解析：交给 tests/dom.cjs 的假 DOM，解析出来的节点照样能放进这里的元素。
+let parser = null;
+function templateDocument() {
+  if (parser) return parser;
+  const saved = {document: globalThis.document, Node: globalThis.Node, HTMLElement: globalThis.HTMLElement};
+  parser = require('./dom.cjs').install();
+  Object.assign(globalThis, saved);
+  return parser;
+}
 function fakePage() {
   const nodes = new Map();
   const document = {
     getElementById: id => { if (!nodes.has(id)) nodes.set(id, new FakeElement('div', id)); return nodes.get(id); },
-    createElement: tag => tag === 'template' ? {set innerHTML(html) { this.content = {firstElementChild: Object.assign(new FakeElement(), {html})}; }} : new FakeElement(tag),
+    // <template>：ui/el.js 读 content.childNodes（真的解析）；content.firstElementChild.html 留着原文。
+    createElement: tag => tag === 'template' ? {set innerHTML(html) {
+      const real = templateDocument().createElement('template');
+      try { real.innerHTML = html; } catch {}
+      this.content = {childNodes: real.content?.childNodes || [], firstElementChild: Object.assign(new FakeElement(), {html})};
+    }} : new FakeElement(tag),
+    importNode: (node, deep) => templateDocument().importNode(node, deep),
+    createDocumentFragment: () => templateDocument().createDocumentFragment(),
+    createTextNode: text => templateDocument().createTextNode(text),
     querySelector: () => null, querySelectorAll: () => [], addEventListener() {}, activeElement: null,
     body: new FakeElement('body'), documentElement: new FakeElement('html'),
   };
   globalThis.document = document;
   return {document, el: id => document.getElementById(id)};
 }
-module.exports = {load, language, ready, core, fakePage, FakeElement};
+// ui/empty.js 画进 box 的空状态：{fact, next: [{label, href} | {label, act}]}；没有空状态时是 null。
+function emptyState(box) {
+  const kids = n => n.childNodes || n.children || [];
+  const find = (n, name) => (n.className || '').split(' ').includes(name) ? n : kids(n).map(c => find(c, name)).find(Boolean);
+  const root = box.children?.[0]; if (!root) return null;
+  const next = kids(find(root, 'empty-next') || {}).map(b => b.href ? {label: b.textContent, href: b.href} : {label: b.textContent, act: b.dataset.empty});
+  return {fact: find(root, 'empty-fact')?.textContent, next};
+}
+// 页头（ui/shell.js renderHeading）画出来的文字：新写法（head）是节点，旧写法（headingHTML）是 innerHTML 文本。
+function headingText(el) {
+  const kids = el.children || [];
+  return kids.length ? kids.map(c => c.textContent ?? '').join(' ') : String(el.innerHTML || '').replace(/<[^>]+>/g, '');
+}
+// 选择栏（ui/grid_bar.js 画在 #selectionBar 里）上的按钮：{act, label, key, disabled, title}，按 act 取用 barButton(bar, act)。
+function barButtons(bar) {
+  return (bar.children || []).filter(b => b.dataset?.act).map(b => ({act: b.dataset.act, label: String(b.textContent).trim(),
+    key: b.children?.[0]?.textContent || '', disabled: !!b.disabled, title: b.title || ''}));
+}
+const barButton = (bar, act) => barButtons(bar).find(b => b.act === act) || null;
+module.exports = {load, language, ready, core, fakePage, FakeElement, emptyState, headingText, barButtons, barButton};

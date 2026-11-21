@@ -1,9 +1,23 @@
-// 由 tools/styleguide/census.py 从 web/static/app.css 生成，不要手改。
+// 由 tools/styleguide/census.py 从 web/static/app.css 和 web/static/css/ 生成，不要手改。
 window.CENSUS = {
- "source": "web/static/app.css",
- "sha256": "83bd9add0eb8cdcc1d0eaeca58dca46bdefca67a2612e5b358b697de8549ea4f",
- "lines": 1420,
- "rules": 1249,
+ "source": "web/static/app.css、web/static/css/base.css、web/static/css/catalog.css、web/static/css/character.css、web/static/css/detail.css、web/static/css/galleries.css、web/static/css/library.css、web/static/css/overlays.css、web/static/css/rail.css、web/static/css/settings.css、web/static/css/tidy.css、web/static/css/tokens.css",
+ "files": {
+  "app.css": "80732ee9fe5ccba79b7a0719e322884682b9196de34666a691916738ad487c4c",
+  "css/base.css": "16a5c876b42ece60820e230773a74c7c480d0c977868af8455a978c3b59550a4",
+  "css/catalog.css": "076a0fcebc95af0a6daff5b99fb5e0d5c407fa7bacc908dcd8383bc4e52a6ba2",
+  "css/character.css": "c700d9eb883a6ef2848b44e5c9d96446dc649e7b9d63e2ae83ebfbfef7151697",
+  "css/detail.css": "a9eaf043f2074eea276c1b235e7da4db3630a280ad99ea15956c62d2ecba2904",
+  "css/galleries.css": "2ce38f58bf8ff9228202c489de9cd3eb9c7448666f7f524404ed7728ad7ed5b2",
+  "css/library.css": "df0286fc7600ea33d43f1639d8539fd6d71f04bd636e3ccbc8a734e6d822d62b",
+  "css/overlays.css": "73dda4f60b805591d5e8be074f37a4665cc0441b8b6906e3d0508bf906d1fc80",
+  "css/rail.css": "589b1e1f2f6a8ec830520f887de33efdf66c3bf28efd2dc7223f2d9c1be13986",
+  "css/settings.css": "cc4715b8dcdd1bb9d1168d5a5067e61ab3d560c7ab42b019afe3c865143f3c71",
+  "css/tidy.css": "63c15db2f00a009f88d0b19a20ab688b72849fc49e487ae3bf9260e55dada604",
+  "css/tokens.css": "6f31fbe3b32f892a26e753e410d7e5ea94d7e4165ed49d04458eecca3314e787"
+ },
+ "sha256": "94191fc90bb1dec0d90c4a53ea7ced087f306e118f7982ecbde1c8e3e69554f7",
+ "lines": 2042,
+ "rules": 1453,
  "themeVars": {
   "light": {
    "--canvas": "#f4f4f6",
@@ -24,7 +38,6 @@ window.CENSUS = {
    "--r18-soft": "#fdeaf0",
    "--sh": "20,20,35",
    "--mono": "ui-monospace,\"SF Mono\",SFMono-Regular,Menlo,monospace",
-   "--ease": "cubic-bezier(.2,.8,.2,1)",
    "--sheet-shadow": "0 0 0 1px var(--hair),0 1px 2px rgba(var(--sh),.03),0 12px 32px -16px rgba(var(--sh),.16)",
    "--tone-warn-bg": "#fdf3e7",
    "--tone-warn-ink": "#8a5a22",
@@ -57,8 +70,7 @@ window.CENSUS = {
    "--hint-bg-hover": "#282b64",
    "--glass-chip": "rgba(255,255,255,.8)",
    "--glass-head": "rgba(255,255,255,.88)",
-   "--bar-bg": "rgba(24,24,30,.86)",
-   "--toast-bg": "rgba(24,24,30,.88)",
+   "--capsule-bg": "#18181e",
    "--menu-group": "var(--sheet)",
    "--splash-bg": "radial-gradient(120% 90% at 50% 42%,#fff 0%,#f6f5fd 55%,#ecebf9 100%)",
    "--switch-off": "#d4d4da",
@@ -70,7 +82,6 @@ window.CENSUS = {
    "--btn-hover-filter": "brightness(.96)",
    "--badge-bg": "var(--soft)",
    "--badge-ink": "var(--ink2)",
-   "--tag-on-ink": "var(--accent)",
    "--scroll-thumb": "#d7d7de",
    "--select-arrow": "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Cpath d='m6 8 4 4 4-4' fill='none' stroke='%238b8b94' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E\")",
    "--r18-on": "#fff",
@@ -78,10 +89,32 @@ window.CENSUS = {
    "--on-image": "#fff",
    "--ok": "#34c38f",
    "--bad": "#d9534f",
-   "--err": "#b5523b"
+   "--err": "#b5523b",
+   "--accent-fill": "#676bcd",
+   "--on-accent": "#fff",
+   "--image-text-shadow": "0 1px 8px rgba(12,12,18,.3)",
+   "--scrim": "linear-gradient(180deg,rgba(12,12,18,0) 35%,rgba(12,12,18,.62))",
+   "--glass-surface": "rgba(255,255,255,.72)",
+   "--glass-solid": "rgba(255,255,255,.96)",
+   "--dialog-dim": "rgba(20,20,30,.22)",
+   "--tour-dim": "rgba(14,14,24,.46)",
+   "--capsule-ink": "#fff",
+   "--capsule-btn": "rgba(255,255,255,.12)",
+   "--capsule-btn-hover": "rgba(255,255,255,.2)",
+   "--capsule-muted": "rgba(255,255,255,.55)",
+   "--capsule-armed": "#ffb4a8",
+   "--capsule-note": "#ffcf99",
+   "--viewer-bg": "#121215",
+   "--viewer-ink": "#e4e4e9",
+   "--viewer-muted": "#a3a3ad",
+   "--viewer-chip": "rgba(255,255,255,.08)",
+   "--viewer-chip-hover": "rgba(255,255,255,.16)",
+   "--viewer-line": "rgba(255,255,255,.2)",
+   "--tint": "#9a9aa6"
   },
   "dark": {
    "--tour-dim": "rgba(0,0,0,.66)",
+   "--dialog-dim": "rgba(0,0,0,.45)",
    "--canvas": "#1d1d21",
    "--sheet": "#28282d",
    "--ink": "#eeeef2",
@@ -131,8 +164,7 @@ window.CENSUS = {
    "--hint-bg-hover": "var(--accent-btn)",
    "--glass-chip": "rgba(46,46,52,.82)",
    "--glass-head": "rgba(40,40,45,.88)",
-   "--bar-bg": "rgba(58,58,66,.9)",
-   "--toast-bg": "rgba(58,58,66,.94)",
+   "--capsule-bg": "#3a3a42",
    "--menu-group": "#34343a",
    "--splash-bg": "radial-gradient(120% 90% at 50% 42%,#2b2b33 0%,#222227 55%,#1b1b1f 100%)",
    "--switch-off": "#46464e",
@@ -144,75 +176,63 @@ window.CENSUS = {
    "--btn-hover-filter": "brightness(1.12)",
    "--badge-bg": "var(--accent-soft)",
    "--badge-ink": "var(--accent-ink)",
-   "--tag-on-ink": "var(--accent-ink)",
    "--scroll-thumb": "#4a4a52",
    "--select-arrow": "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Cpath d='m6 8 4 4 4-4' fill='none' stroke='%238d8d96' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E\")",
    "--r18-on": "#2a0f17",
    "--fav": "#ff6b6f",
-   "--on-image": "#fff"
+   "--on-image": "#fff",
+   "--accent-fill": "#8286e6",
+   "--on-accent": "#14142a",
+   "--glass-surface": "rgba(40,40,45,.72)",
+   "--glass-solid": "rgba(40,40,45,.97)",
+   "--tint": "#8a8a96"
   },
   "uses": {
-   "--ink": 44,
-   "--canvas": 11,
-   "--fs-13": 24,
-   "--hair": 30,
-   "--sh": 36,
-   "--muted": 117,
-   "--sheet": 54,
-   "--soft": 65,
-   "--ink2": 57,
-   "--accent": 32,
-   "--accent-ink": 46,
-   "--accent-btn": 13,
-   "--accent-soft": 32,
-   "--radius-6": 16,
-   "--space-14": 38,
-   "--space-10": 77,
-   "--space-2": 41,
-   "--space-6": 105,
-   "--fs-10": 15,
-   "--radius-round": 15,
-   "--h-32": 11,
-   "--fs-16": 2,
-   "--space-4": 83,
-   "--radius-pill": 46,
-   "--fs-12": 117,
-   "--tone-sand-ink": 3,
-   "--space-8": 109,
-   "--faint": 15,
-   "--z-popover": 1,
-   "--gutter": 12,
-   "--z-page-2": 6,
-   "--line": 51,
-   "--on-image": 2,
-   "--fav": 3,
-   "--fs-11": 98,
+   "--ink": 68,
+   "--canvas": 17,
+   "--fs-13": 35,
+   "--radius-6": 8,
+   "--hair": 9,
+   "--sheet": 56,
+   "--radius-round": 25,
+   "--muted": 115,
+   "--space-6": 130,
+   "--h-32": 9,
+   "--fs-16": 1,
+   "--space-4": 79,
+   "--radius-pill": 49,
+   "--soft": 49,
+   "--accent-soft": 19,
+   "--accent-ink": 31,
+   "--fs-12": 101,
+   "--ink2": 52,
+   "--tone-sand-ink": 2,
+   "--space-8": 130,
+   "--faint": 9,
+   "--z-popover": 2,
+   "--gutter": 5,
+   "--fs-11": 83,
    "--z-page-4": 2,
-   "--z-page-3": 2,
-   "--radius-4": 15,
-   "--chip-hover": 1,
-   "--space-20": 7,
+   "--space-10": 74,
+   "--space-2": 58,
+   "--radius-4": 31,
+   "--chip-hover": 6,
    "--z-bar": 1,
-   "--ease": 42,
-   "--z-toast": 1,
-   "--space-16": 20,
-   "--space-12": 67,
-   "--z-overlay": 2,
-   "--space-24": 3,
-   "--h-36": 14,
-   "--fs-15": 7,
-   "--z-drawer": 1,
-   "--z-page-5": 1,
-   "--space-1": 22,
-   "--dup-hue": 1,
-   "--radius-8": 12,
+   "--z-toast": 2,
+   "--space-16": 36,
+   "--space-12": 80,
+   "--line": 31,
+   "--h-36": 9,
+   "--space-14": 31,
    "--w": 1,
-   "--err": 4,
-   "--radius-10": 22,
+   "--fs-10": 3,
+   "--err": 6,
+   "--accent": 47,
+   "--ease": 98,
+   "--radius-10": 6,
    "--switch-off": 1,
-   "--tag-on-ink": 1,
-   "--badge-bg": 1,
-   "--badge-ink": 1,
+   "--badge-bg": 2,
+   "--badge-ink": 2,
    "--tone-indigo-bg": 1,
    "--tone-indigo-ink": 1,
    "--tone-blue-bg": 1,
@@ -223,61 +243,89 @@ window.CENSUS = {
    "--tone-purple-ink": 1,
    "--tone-clay-bg": 1,
    "--tone-clay-ink": 1,
-   "--radius-2": 6,
-   "--tone-sand-bg": 1,
-   "--fs-14": 3,
-   "--hint-bg": 1,
-   "--hint-ink": 2,
-   "--hint-ring": 1,
-   "--hint-bg-hover": 1,
+   "--radius-2": 3,
    "--palette-hover": 1,
-   "--warn": 13,
-   "--z-menu": 2,
+   "--hint-ink": 2,
+   "--space-20": 18,
+   "--warn": 8,
+   "--space-1": 14,
+   "--z-menu": 3,
    "--tone-steel-ink": 1,
    "--tone-steel-bg": 1,
    "--tone-amber-ink": 1,
    "--tone-amber-bg": 1,
-   "--mono": 4,
-   "--radius-14": 15,
-   "--ok": 3,
-   "--bad": 4,
-   "--radius-18": 5,
-   "--sheet-shadow": 3,
-   "--fs-20": 2,
-   "--r18": 4,
+   "--mono": 3,
+   "--radius-8": 33,
+   "--accent-btn": 10,
+   "--radius-18": 14,
+   "--sheet-shadow": 1,
+   "--fs-20": 13,
+   "--sh": 29,
+   "--r18": 3,
    "--r18-soft": 1,
    "--r18-on": 1,
    "--select-arrow": 1,
-   "--radius-12": 16,
-   "--seg-on": 3,
+   "--radius-12": 24,
+   "--seg-on": 4,
    "--scroll-thumb": 1,
-   "--glass-chip": 1,
-   "--tone-warn-bg": 1,
+   "--tone-warn-bg": 2,
    "--tone-warn-ink": 1,
-   "--glass-head": 1,
-   "--bar-bg": 1,
-   "--toast-bg": 1,
    "--menu-group": 1,
-   "--wash-hover": 1,
+   "--wash-hover": 10,
    "--view-sw-off": 1,
-   "--fs-22": 2,
-   "--fs-display-17": 1,
-   "--btn-hover-filter": 1,
+   "--space-24": 25,
    "--z-guide-tour": 1,
    "--tour-dim": 2,
    "--z-guide-nudge": 1,
    "--z-guide-checklist": 1,
-   "--fs-display-21": 2,
-   "--z-page-6": 1,
-   "--radius-16": 2,
-   "--fs-display-40": 1,
-   "--fs-display-26": 2,
-   "--fs-display-72": 1,
+   "--z-page-6": 2,
+   "--z-splash": 1,
+   "--splash-bg": 1,
+   "--fs-display-32": 1,
+   "--ok": 7,
+   "--bad": 5,
+   "--z-overlay": 2,
+   "--fs-display-40": 4,
+   "--fw-750": 26,
+   "--fs-display-28": 6,
+   "--dur-1": 46,
+   "--fw-600": 46,
+   "--accent-fill": 7,
+   "--on-accent": 10,
+   "--btn-hover-filter": 1,
+   "--h-28": 9,
+   "--fw-400": 9,
+   "--shadow-hover": 18,
+   "--dur-2": 34,
+   "--tint-soft": 17,
+   "--on-image": 26,
+   "--dur-3": 7,
+   "--scrim": 4,
+   "--z-page-1": 15,
+   "--image-text-shadow": 8,
    "--p": 1,
-   "--fs-display-28": 1,
-   "--z-page-1": 1,
-   "--h-28": 1,
-   "--fs-display-30": 1,
+   "--fav": 6,
+   "--glass-solid": 3,
+   "--shadow-pop": 14,
+   "--glass-surface": 2,
+   "--z-page-2": 17,
+   "--z-page-3": 4,
+   "--tint-glow": 8,
+   "--tint-wash": 5,
+   "--tone-sand-bg": 1,
+   "--tint": 12,
+   "--z-page-5": 1,
+   "--viewer-ink": 8,
+   "--viewer-bg": 7,
+   "--viewer-muted": 8,
+   "--viewer-chip": 5,
+   "--viewer-chip-hover": 2,
+   "--viewer-line": 1,
+   "--glass-chip": 3,
+   "--shadow-dialog": 5,
+   "--hint-bg": 1,
+   "--hint-ring": 1,
+   "--hint-bg-hover": 1,
    "--atag-open-bg": 1,
    "--atag-open-ink": 1,
    "--atag-open-ring": 1,
@@ -285,12 +333,19 @@ window.CENSUS = {
    "--atag-yes-ink": 1,
    "--atag-no-bg": 1,
    "--atag-no-ink": 1,
-   "--z-splash": 1,
-   "--splash-bg": 1,
-   "--fs-display-32": 1,
-   "--fs-display-18": 1,
-   "--panel": 1,
-   "--depth": 1
+   "--dup-hue": 1,
+   "--dialog-dim": 1,
+   "--capsule-bg": 2,
+   "--capsule-ink": 5,
+   "--ease-spring": 4,
+   "--capsule-btn": 2,
+   "--capsule-btn-hover": 2,
+   "--capsule-muted": 1,
+   "--capsule-armed": 1,
+   "--capsule-note": 1,
+   "--at": 1,
+   "--z-drawer": 2,
+   "--tint-shadow": 1
   },
   "groups": [
    {
@@ -314,7 +369,6 @@ window.CENSUS = {
      "--r18-soft",
      "--sh",
      "--mono",
-     "--ease",
      "--sheet-shadow"
     ]
    },
@@ -362,8 +416,7 @@ window.CENSUS = {
     "title": "浮层表面：磨砂条、提示条、菜单分组、启动页",
     "names": [
      "--glass-head",
-     "--bar-bg",
-     "--toast-bg",
+     "--capsule-bg",
      "--menu-group",
      "--splash-bg"
     ]
@@ -380,7 +433,6 @@ window.CENSUS = {
      "--btn-hover-filter",
      "--badge-bg",
      "--badge-ink",
-     "--tag-on-ink",
      "--scroll-thumb",
      "--select-arrow",
      "--r18-on"
@@ -400,6 +452,47 @@ window.CENSUS = {
      "--bad",
      "--err"
     ]
+   },
+   {
+    "title": "0.4 新增（#705）：新部件的强调色底（亮色比 --accent-btn 略深，白字到 4.6:1）和底上的文字；海报上的文字阴影与压暗渐变；浮层的磨砂玻璃（没有 backdrop-filter 时用 solid）",
+    "names": [
+     "--accent-fill",
+     "--on-accent",
+     "--image-text-shadow",
+     "--scrim",
+     "--glass-surface",
+     "--glass-solid"
+    ]
+   },
+   {
+    "title": "浮层（#715）：对话框和导览背后的压暗（画成对话框自己的大扩散阴影，::backdrop 里不能用 var()）；提示条、选择栏这类深色条上的字和按钮底，\n     亮暗主题里都是深底，只写这一套",
+    "names": [
+     "--dialog-dim",
+     "--tour-dim",
+     "--capsule-ink",
+     "--capsule-btn",
+     "--capsule-btn-hover",
+     "--capsule-muted",
+     "--capsule-armed",
+     "--capsule-note"
+    ]
+   },
+   {
+    "title": "看图器（#709）：亮暗主题里都是深底，只在这里写一套",
+    "names": [
+     "--viewer-bg",
+     "--viewer-ink",
+     "--viewer-muted",
+     "--viewer-chip",
+     "--viewer-chip-hover",
+     "--viewer-line"
+    ]
+   },
+   {
+    "title": "图的主色（#705）：由 ui/tint.js 的 setTint() 写进元素的 --tint 并加 .tint，派生的底色在文件末尾的 .tint 块里算；没写时是中性色",
+    "names": [
+     "--tint"
+    ]
    }
   ]
  },
@@ -408,32 +501,32 @@ window.CENSUS = {
    {
     "name": "--fs-display-17",
     "value": "17px",
-    "uses": 1
+    "uses": 0
    },
    {
     "name": "--fs-display-18",
     "value": "18px",
-    "uses": 1
+    "uses": 0
    },
    {
     "name": "--fs-display-21",
     "value": "21px",
-    "uses": 2
+    "uses": 0
    },
    {
     "name": "--fs-display-26",
     "value": "26px",
-    "uses": 2
+    "uses": 0
    },
    {
     "name": "--fs-display-28",
     "value": "28px",
-    "uses": 1
+    "uses": 6
    },
    {
     "name": "--fs-display-30",
     "value": "30px",
-    "uses": 1
+    "uses": 0
    },
    {
     "name": "--fs-display-32",
@@ -443,207 +536,207 @@ window.CENSUS = {
    {
     "name": "--fs-display-40",
     "value": "40px",
-    "uses": 1
+    "uses": 4
    },
    {
     "name": "--fs-display-72",
     "value": "72px",
-    "uses": 1
+    "uses": 0
    }
   ],
   "fs": [
    {
     "name": "--fs-10",
     "value": "10px",
-    "uses": 15
+    "uses": 3
    },
    {
     "name": "--fs-11",
     "value": "11px",
-    "uses": 98
+    "uses": 83
    },
    {
     "name": "--fs-12",
     "value": "12px",
-    "uses": 117
+    "uses": 101
    },
    {
     "name": "--fs-13",
     "value": "13px",
-    "uses": 24
+    "uses": 35
    },
    {
     "name": "--fs-14",
     "value": "14px",
-    "uses": 3
+    "uses": 0
    },
    {
     "name": "--fs-15",
     "value": "15px",
-    "uses": 7
+    "uses": 0
    },
    {
     "name": "--fs-16",
     "value": "16px",
-    "uses": 2
+    "uses": 1
    },
    {
     "name": "--fs-20",
     "value": "20px",
-    "uses": 2
+    "uses": 13
    },
    {
     "name": "--fs-22",
     "value": "22px",
-    "uses": 2
+    "uses": 0
    }
   ],
   "radius": [
    {
     "name": "--radius-2",
     "value": "2px",
-    "uses": 6
+    "uses": 3
    },
    {
     "name": "--radius-4",
     "value": "4px",
-    "uses": 15
+    "uses": 31
    },
    {
     "name": "--radius-6",
     "value": "6px",
-    "uses": 16
+    "uses": 8
    },
    {
     "name": "--radius-8",
     "value": "8px",
-    "uses": 12
+    "uses": 33
    },
    {
     "name": "--radius-10",
     "value": "10px",
-    "uses": 22
+    "uses": 6
    },
    {
     "name": "--radius-12",
     "value": "12px",
-    "uses": 16
+    "uses": 24
    },
    {
     "name": "--radius-14",
     "value": "14px",
-    "uses": 15
+    "uses": 0
    },
    {
     "name": "--radius-16",
     "value": "16px",
-    "uses": 2
+    "uses": 0
    },
    {
     "name": "--radius-18",
     "value": "18px",
-    "uses": 5
+    "uses": 14
    },
    {
     "name": "--radius-pill",
     "value": "999px",
-    "uses": 46
+    "uses": 49
    },
    {
     "name": "--radius-round",
     "value": "50%",
-    "uses": 15
+    "uses": 25
    }
   ],
   "space": [
    {
     "name": "--space-1",
     "value": "1px",
-    "uses": 22
+    "uses": 14
    },
    {
     "name": "--space-2",
     "value": "2px",
-    "uses": 41
+    "uses": 58
    },
    {
     "name": "--space-4",
     "value": "4px",
-    "uses": 83
+    "uses": 79
    },
    {
     "name": "--space-6",
     "value": "6px",
-    "uses": 105
+    "uses": 130
    },
    {
     "name": "--space-8",
     "value": "8px",
-    "uses": 109
+    "uses": 130
    },
    {
     "name": "--space-10",
     "value": "10px",
-    "uses": 77
+    "uses": 74
    },
    {
     "name": "--space-12",
     "value": "12px",
-    "uses": 67
+    "uses": 80
    },
    {
     "name": "--space-14",
     "value": "14px",
-    "uses": 38
+    "uses": 31
    },
    {
     "name": "--space-16",
     "value": "16px",
-    "uses": 20
+    "uses": 36
    },
    {
     "name": "--space-20",
     "value": "20px",
-    "uses": 7
+    "uses": 18
    },
    {
     "name": "--space-24",
     "value": "24px",
-    "uses": 3
+    "uses": 25
    }
   ],
   "h": [
    {
     "name": "--h-28",
     "value": "28px",
-    "uses": 1
+    "uses": 9
    },
    {
     "name": "--h-32",
     "value": "32px",
-    "uses": 11
+    "uses": 9
    },
    {
     "name": "--h-36",
     "value": "36px",
-    "uses": 14
+    "uses": 9
    }
   ],
   "z": [
    {
     "name": "--z-page-1",
     "value": "1",
-    "uses": 1
+    "uses": 15
    },
    {
     "name": "--z-page-2",
     "value": "2",
-    "uses": 6
+    "uses": 17
    },
    {
     "name": "--z-page-3",
     "value": "3",
-    "uses": 2
+    "uses": 4
    },
    {
     "name": "--z-page-4",
@@ -658,7 +751,7 @@ window.CENSUS = {
    {
     "name": "--z-page-6",
     "value": "6",
-    "uses": 1
+    "uses": 2
    },
    {
     "name": "--z-bar",
@@ -668,17 +761,17 @@ window.CENSUS = {
    {
     "name": "--z-popover",
     "value": "20",
-    "uses": 1
+    "uses": 2
    },
    {
     "name": "--z-drawer",
     "value": "25",
-    "uses": 1
+    "uses": 2
    },
    {
     "name": "--z-menu",
     "value": "30",
-    "uses": 2
+    "uses": 3
    },
    {
     "name": "--z-overlay",
@@ -688,7 +781,7 @@ window.CENSUS = {
    {
     "name": "--z-toast",
     "value": "60",
-    "uses": 1
+    "uses": 2
    },
    {
     "name": "--z-guide-checklist",
@@ -710,153 +803,94 @@ window.CENSUS = {
     "value": "1000",
     "uses": 1
    }
+  ],
+  "fw": [
+   {
+    "name": "--fw-400",
+    "value": "400",
+    "uses": 9
+   },
+   {
+    "name": "--fw-600",
+    "value": "600",
+    "uses": 46
+   },
+   {
+    "name": "--fw-750",
+    "value": "750",
+    "uses": 26
+   }
+  ],
+  "shadow": [
+   {
+    "name": "--shadow-hover",
+    "value": "0 1px 2px rgba(var(--sh),.06),0 8px 20px -10px rgba(var(--sh),.28)",
+    "uses": 18,
+    "dark": "0 1px 2px rgba(0,0,0,.3),0 8px 20px -10px rgba(0,0,0,.6)"
+   },
+   {
+    "name": "--shadow-pop",
+    "value": "0 0 0 .5px rgba(var(--sh),.08),0 18px 44px -18px rgba(var(--sh),.34)",
+    "uses": 14,
+    "dark": "0 0 0 .5px rgba(255,255,255,.08),0 18px 44px -18px rgba(0,0,0,.7)"
+   },
+   {
+    "name": "--shadow-dialog",
+    "value": "0 0 0 .5px rgba(var(--sh),.08),0 30px 80px -26px rgba(var(--sh),.45)",
+    "uses": 5,
+    "dark": "0 0 0 .5px rgba(255,255,255,.08),0 30px 80px -26px rgba(0,0,0,.8)"
+   }
+  ],
+  "dur": [
+   {
+    "name": "--dur-1",
+    "value": "140ms",
+    "uses": 46
+   },
+   {
+    "name": "--dur-2",
+    "value": "240ms",
+    "uses": 34
+   },
+   {
+    "name": "--dur-3",
+    "value": "380ms",
+    "uses": 7
+   }
+  ],
+  "ease": [
+   {
+    "name": "--ease",
+    "value": "cubic-bezier(.2,.8,.2,1)",
+    "uses": 98
+   },
+   {
+    "name": "--ease-spring",
+    "value": "cubic-bezier(.34,1.42,.5,1)",
+    "uses": 4
+   }
   ]
  },
- "darkOverrideRules": 1,
+ "darkOverrideRules": 0,
  "literalHexColors": {
-  "kinds": 50,
-  "uses": 98,
+  "kinds": 17,
+  "uses": 21,
   "table": [
    {
     "value": "#fff",
-    "uses": 33,
+    "uses": 5,
     "examples": [
-     ".check",
-     ".card.selected .check",
-     ".card.selected .check::after",
-     ".toast"
-    ]
-   },
-   {
-    "value": "#000",
-    "uses": 4,
-    "examples": [
-     ".cast-tabrow",
-     ".cast-recent"
-    ]
-   },
-   {
-    "value": "#ebebef",
-    "uses": 3,
-    "examples": [
-     ".viewer-bar .identity-name",
-     ".ask-bar.on-dark .ask-q",
-     ".ask-bar.on-dark .ask-b"
+     ".rel-no",
+     ".staged-chip",
+     "#countHome",
+     ".primary"
     ]
    },
    {
     "value": "#0003",
-    "uses": 2,
+    "uses": 1,
     "examples": [
-     ".check",
      ".switch::after"
-    ]
-   },
-   {
-    "value": "#3c8d5a",
-    "uses": 2,
-    "examples": [
-     ".aa-card.yes",
-     ".aa-verdict.yes"
-    ]
-   },
-   {
-    "value": "#76768f",
-    "uses": 2,
-    "examples": [
-     ".switch:focus-visible",
-     ".form-grid input:focus"
-    ]
-   },
-   {
-    "value": "#9696a1",
-    "uses": 2,
-    "examples": [
-     ".viewer-missing"
-    ]
-   },
-   {
-    "value": "#a2a2b0",
-    "uses": 2,
-    "examples": [
-     ".viewer-bar .alt kbd,.viewer-bar .add-identity kbd",
-     ".ask-bar.on-dark .ask-q small"
-    ]
-   },
-   {
-    "value": "#c2463d",
-    "uses": 2,
-    "examples": [
-     ".chips .atag button[data-tagact=no]:hover",
-     ".gsec-img.off i"
-    ]
-   },
-   {
-    "value": "#ffffff0d",
-    "uses": 2,
-    "examples": [
-     ".viewer-bar .identity",
-     ".viewer-bar .alt"
-    ]
-   },
-   {
-    "value": "#ffffff14",
-    "uses": 2,
-    "examples": [
-     ".viewer-top .icon:hover",
-     ".ask-bar.on-dark"
-    ]
-   },
-   {
-    "value": "#ffffff1a",
-    "uses": 2,
-    "examples": [
-     ".viewer-bar .icon:hover,.viewer-bar .alt:hover",
-     ".ask-bar.on-dark .ask-b"
-    ]
-   },
-   {
-    "value": "#ffffff24",
-    "uses": 2,
-    "examples": [
-     ".viewer-bar .identity",
-     ".viewer-bar .alt"
-    ]
-   },
-   {
-    "value": "#ffffff33",
-    "uses": 2,
-    "examples": [
-     ".toast-undo:hover",
-     ".viewer-bar .alt kbd,.viewer-bar .add-identity kbd"
-    ]
-   },
-   {
-    "value": "#00000055",
-    "uses": 1,
-    "examples": [
-     ".check:hover"
-    ]
-   },
-   {
-    "value": "#0000008a",
-    "uses": 1,
-    "examples": [
-     ".dup-badge.folded"
-    ]
-   },
-   {
-    "value": "#0004",
-    "uses": 1,
-    "examples": [
-     ".machine-dot"
-    ]
-   },
-   {
-    "value": "#0007",
-    "uses": 1,
-    "examples": [
-     ".gsec-img i"
     ]
    },
    {
@@ -867,24 +901,10 @@ window.CENSUS = {
     ]
    },
    {
-    "value": "#121215",
-    "uses": 1,
-    "examples": [
-     ".viewer"
-    ]
-   },
-   {
     "value": "#1c1c221c",
     "uses": 1,
     "examples": [
      ".combo-menu"
-    ]
-   },
-   {
-    "value": "#2f8f5b",
-    "uses": 1,
-    "examples": [
-     ".chips .atag button[data-tagact=yes]:hover"
     ]
    },
    {
@@ -916,17 +936,10 @@ window.CENSUS = {
     ]
    },
    {
-    "value": "#76768f55",
+    "value": "#76768f",
     "uses": 1,
     "examples": [
-     ".form-grid input:focus"
-    ]
-   },
-   {
-    "value": "#7a7a84",
-    "uses": 1,
-    "examples": [
-     ".viewer-size"
+     ".switch:focus-visible"
     ]
    },
    {
@@ -937,38 +950,10 @@ window.CENSUS = {
     ]
    },
    {
-    "value": "#7fe0b0",
-    "uses": 1,
-    "examples": [
-     ".cast-poster .pill i"
-    ]
-   },
-   {
-    "value": "#86869a",
-    "uses": 1,
-    "examples": [
-     ".dot.machine"
-    ]
-   },
-   {
     "value": "#8a3b2c",
     "uses": 1,
     "examples": [
      ".primary.armed"
-    ]
-   },
-   {
-    "value": "#8f8f9b",
-    "uses": 1,
-    "examples": [
-     ".alts h3,.viewer-bar h3"
-    ]
-   },
-   {
-    "value": "#9696a2",
-    "uses": 1,
-    "examples": [
-     ".viewer-bar .none-yet"
     ]
    },
    {
@@ -979,31 +964,10 @@ window.CENSUS = {
     ]
    },
    {
-    "value": "#9a6a2c",
-    "uses": 1,
-    "examples": [
-     ".group-near"
-    ]
-   },
-   {
-    "value": "#a8a8b2",
-    "uses": 1,
-    "examples": [
-     ".viewer-top"
-    ]
-   },
-   {
     "value": "#b0643d",
     "uses": 1,
     "examples": [
      "button.armed"
-    ]
-   },
-   {
-    "value": "#b3b3c0",
-    "uses": 1,
-    "examples": [
-     ".viewer-bar .add-identity"
     ]
    },
    {
@@ -1021,38 +985,10 @@ window.CENSUS = {
     ]
    },
    {
-    "value": "#c3c3cd",
-    "uses": 1,
-    "examples": [
-     ".viewer-bar .icon"
-    ]
-   },
-   {
-    "value": "#d0d0d9",
-    "uses": 1,
-    "examples": [
-     ".viewer-top .icon"
-    ]
-   },
-   {
     "value": "#e0533d",
     "uses": 1,
     "examples": [
      ".rel-img i"
-    ]
-   },
-   {
-    "value": "#e2e2e8",
-    "uses": 1,
-    "examples": [
-     ".viewer-bar .alt"
-    ]
-   },
-   {
-    "value": "#e4e4e9",
-    "uses": 1,
-    "examples": [
-     ".viewer"
     ]
    },
    {
@@ -1061,43 +997,14 @@ window.CENSUS = {
     "examples": [
      ":root[data-theme=dark]"
     ]
-   },
-   {
-    "value": "#ffb4a8",
-    "uses": 1,
-    "examples": [
-     ".selection-bar .quiet.armed"
-    ]
-   },
-   {
-    "value": "#ffcf99",
-    "uses": 1,
-    "examples": [
-     ".bar-note"
-    ]
-   },
-   {
-    "value": "#ffffff1f",
-    "uses": 1,
-    "examples": [
-     ".toast-undo"
-    ]
    }
   ]
  },
- "rgbaCalls": 89,
+ "rgbaCalls": 71,
  "fontSize": {
-  "kinds": 22,
-  "uses": 285,
+  "kinds": 11,
+  "uses": 248,
   "table": [
-   {
-    "value": "0",
-    "uses": 2,
-    "examples": [
-     ".nav-icon",
-     ".section-label"
-    ]
-   },
    {
     "value": "9px (font 简写)",
     "uses": 1,
@@ -1107,27 +1014,26 @@ window.CENSUS = {
    },
    {
     "value": "var(--fs-10)",
-    "uses": 15,
+    "uses": 3,
     "examples": [
-     ".sidebar-bottom",
-     ".chips span",
      ".like-example>.like-drop",
-     ".caption small"
+     ".oc-badge",
+     "kbd"
     ]
    },
    {
     "value": "var(--fs-11)",
-    "uses": 97,
+    "uses": 82,
     "examples": [
      ".missing",
      ".footer",
-     ".inspector-head",
-     "details.inspector-section summary"
+     ".variant-chip",
+     ".variant-chip button"
     ]
    },
    {
     "value": "var(--fs-12)",
-    "uses": 117,
+    "uses": 101,
     "examples": [
      ".heading-main>.menu-drop p",
      "p",
@@ -1137,99 +1043,39 @@ window.CENSUS = {
    },
    {
     "value": "var(--fs-13)",
-    "uses": 24,
+    "uses": 35,
     "examples": [
      ":root",
      ".icon.small",
-     ".viewer-missing",
-     ".rel-summary"
-    ]
-   },
-   {
-    "value": "var(--fs-14)",
-    "uses": 3,
-    "examples": [
-     ".pair-name a",
-     ".tour-title",
-     ".settings-card h2"
-    ]
-   },
-   {
-    "value": "var(--fs-15)",
-    "uses": 7,
-    "examples": [
-     "#pickerSearch",
-     ".dialog-top h2",
-     ".about-name",
-     ".cast-sec>h3"
+     ".rel-summary",
+     ".modal .field input"
     ]
    },
    {
     "value": "var(--fs-16)",
-    "uses": 2,
-    "examples": [
-     ".icon",
-     ".rule b"
-    ]
-   },
-   {
-    "value": "var(--fs-display-17)",
     "uses": 1,
     "examples": [
-     ".cc-name.muted"
-    ]
-   },
-   {
-    "value": "var(--fs-display-18)",
-    "uses": 1,
-    "examples": [
-     ".prov-stat b"
+     ".icon"
     ]
    },
    {
     "value": "var(--fs-20)",
-    "uses": 2,
+    "uses": 13,
     "examples": [
      "h1",
-     "h1.tag-title"
-    ]
-   },
-   {
-    "value": "var(--fs-display-21)",
-    "uses": 2,
-    "examples": [
-     ".home-dh b",
-     ".home-cap b"
-    ]
-   },
-   {
-    "value": "var(--fs-22)",
-    "uses": 2,
-    "examples": [
-     ".cc-name",
-     ".strip-more b"
-    ]
-   },
-   {
-    "value": "var(--fs-display-26)",
-    "uses": 2,
-    "examples": [
-     ".cast-board .cast-poster:first-child .cap b",
-     ".gsec-img i"
+     ".title-section",
+     ".empty-state>.empty-fact",
+     ".poster-cap>b"
     ]
    },
    {
     "value": "var(--fs-display-28)",
-    "uses": 1,
+    "uses": 6,
     "examples": [
-     ".cast-head h2"
-    ]
-   },
-   {
-    "value": "var(--fs-display-30)",
-    "uses": 1,
-    "examples": [
-     ".ask-img i"
+     ".title-page",
+     ".judge-tile>i",
+     ".cat-poster-wrap.is-big .poster-cap>b",
+     ".cat-rank"
     ]
    },
    {
@@ -1241,23 +1087,12 @@ window.CENSUS = {
    },
    {
     "value": "var(--fs-display-40)",
-    "uses": 1,
+    "uses": 4,
     "examples": [
-     ".cast-poster .rank"
-    ]
-   },
-   {
-    "value": "var(--fs-display-72)",
-    "uses": 1,
-    "examples": [
-     ".cast-board .cast-poster:first-child .rank"
-    ]
-   },
-   {
-    "value": "inherit",
-    "uses": 1,
-    "examples": [
-     ".net-table .link-button.strong"
+     ".title-hero",
+     ".cat-poster-wrap.is-big .cat-rank",
+     ".cat-hero-title",
+     ".stage-lead>b"
     ]
    },
    {
@@ -1270,136 +1105,156 @@ window.CENSUS = {
   ]
  },
  "radius": {
-  "kinds": 13,
-  "uses": 168,
+  "kinds": 16,
+  "uses": 192,
   "table": [
    {
-    "value": "0 var(--radius-12) var(--radius-12) 0",
+    "value": "0",
     "uses": 1,
     "examples": [
-     ".cast-table tbody td:last-child"
+     ".search>input"
+    ]
+   },
+   {
+    "value": "0 var(--radius-4) var(--radius-4) 0",
+    "uses": 1,
+    "examples": [
+     ".rail-ind"
+    ]
+   },
+   {
+    "value": "0 var(--radius-8) var(--radius-8) 0",
+    "uses": 2,
+    "examples": [
+     ".cat-table tbody td:last-child",
+     ".rail-name"
     ]
    },
    {
     "value": "var(--radius-2)",
-    "uses": 6,
+    "uses": 3,
     "examples": [
      ".rel-img i",
-     ".cast-poster .ticks i",
-     ".cast-poster .mini",
-     ".cast-poster .mini i"
+     "#splash .sp-track",
+     "#splash .sp-fill"
     ]
    },
    {
     "value": "var(--radius-4)",
-    "uses": 15,
+    "uses": 27,
     "examples": [
      ".variant-chip button",
      ".progress",
-     ".tag-on",
-     ".oc-badge"
+     ".oc-badge",
+     ".rel-img img"
+    ]
+   },
+   {
+    "value": "var(--radius-4) var(--radius-4) 0 0",
+    "uses": 1,
+    "examples": [
+     ".char-curve>i"
     ]
    },
    {
     "value": "var(--radius-6)",
-    "uses": 16,
+    "uses": 8,
     "examples": [
      "kbd",
-     ".dup-copy img",
      ".like-example>button",
-     "a.sidebar-bottom"
+     "#watchAdd",
+     "#watchMin"
     ]
    },
    {
     "value": "var(--radius-8)",
-    "uses": 12,
+    "uses": 27,
     "examples": [
-     ".dup-copy",
-     ".rule",
      "#countHome",
-     ".icon"
+     ".icon",
+     ".prov-confirm",
+     ".judge-tile"
+    ]
+   },
+   {
+    "value": "var(--radius-8) 0 0 var(--radius-8)",
+    "uses": 1,
+    "examples": [
+     ".cat-table tbody td:first-child"
     ]
    },
    {
     "value": "var(--radius-10)",
-    "uses": 22,
+    "uses": 6,
     "examples": [
      ".switch",
      ".rel-no",
-     ".about-head img",
-     ".modal .dialog-lead"
+     ".combo-menu",
+     ".guide-notice"
     ]
    },
    {
     "value": "var(--radius-12)",
-    "uses": 12,
+    "uses": 24,
     "examples": [
      ".primary",
      "#errorBanner,#damageBanner",
-     ".identity",
-     ".selection-bar .quiet,.selection-bar .icon"
-    ]
-   },
-   {
-    "value": "var(--radius-12) 0 0 var(--radius-12)",
-    "uses": 1,
-    "examples": [
-     ".cast-table tbody td:first-child"
-    ]
-   },
-   {
-    "value": "var(--radius-14)",
-    "uses": 15,
-    "examples": [
-     ".nav",
-     ".sidebar-bottom,a.sidebar-bottom",
-     ".preview",
-     ".toast"
-    ]
-   },
-   {
-    "value": "var(--radius-16)",
-    "uses": 2,
-    "examples": [
-     ".cast-poster",
-     ".ask-card"
+     ".view-group",
+     ".group"
     ]
    },
    {
     "value": "var(--radius-18)",
-    "uses": 5,
+    "uses": 12,
     "examples": [
      ".content",
-     ".inspector",
-     ".menu",
-     ".selection-bar"
+     ".sheet",
+     ".cat-hero",
+     ".char-hero-art"
+    ]
+   },
+   {
+    "value": "var(--radius-18) 0 0 var(--radius-18)",
+    "uses": 1,
+    "examples": [
+     ".rail-tab"
+    ]
+   },
+   {
+    "value": "inherit",
+    "uses": 4,
+    "examples": [
+     ".rail-cover",
+     ".rail-cover>img",
+     ".rail-stack",
+     ".rail-icon"
     ]
    },
    {
     "value": "var(--radius-pill)",
-    "uses": 46,
+    "uses": 49,
     "examples": [
      ".heading-main h1 .icon.small",
-     ".alt",
      ".staged-chip",
-     ".jump"
+     ".jump",
+     ".top-actions .icon,#sidebarToggle,#backButton"
     ]
    },
    {
     "value": "var(--radius-round)",
-    "uses": 15,
+    "uses": 25,
     "examples": [
      ".local-dot",
-     ".check",
-     ".machine-dot",
-     ".dot"
+     ".like-example>.like-drop",
+     ".switch::after",
+     ".view-sw::after"
     ]
    }
   ]
  },
  "gap": {
-  "kinds": 20,
-  "uses": 199,
+  "kinds": 21,
+  "uses": 218,
   "table": [
    {
     "value": "0",
@@ -1410,258 +1265,286 @@ window.CENSUS = {
    },
    {
     "value": "var(--space-1)",
-    "uses": 4,
+    "uses": 1,
     "examples": [
-     ".switch-line>span",
-     ".view-opt span,.view-row span",
-     ".cast-poster .cap",
-     ".task-text"
+     ".view-opt span,.view-row span"
     ]
    },
    {
     "value": "var(--space-2)",
-    "uses": 16,
+    "uses": 23,
     "examples": [
      ".variant-chip",
      ".selection-bar",
-     ".rule",
-     ".link-list"
+     ".link-list",
+     ".link-row > span"
     ]
    },
    {
     "value": "var(--space-2) var(--space-10)",
-    "uses": 1,
+    "uses": 2,
     "examples": [
-     ".cast-wcols"
+     ".cast-wcols",
+     ".tidy-stat"
     ]
    },
    {
     "value": "var(--space-4)",
-    "uses": 26,
+    "uses": 21,
     "examples": [
      ".heading-actions",
-     ".chips",
-     ".caption",
-     ".variant-row"
+     ".like-examples",
+     ".modal .check-row span",
+     ".tour-dots"
+    ]
+   },
+   {
+    "value": "var(--space-4) var(--space-10)",
+    "uses": 1,
+    "examples": [
+     ".tidy-title"
     ]
    },
    {
     "value": "var(--space-4) var(--space-12)",
     "uses": 1,
     "examples": [
-     ".cast-tagged"
+     ".cat-tagged"
+    ]
+   },
+   {
+    "value": "var(--space-4) var(--space-8)",
+    "uses": 1,
+    "examples": [
+     ".dc-other"
     ]
    },
    {
     "value": "var(--space-6)",
-    "uses": 49,
+    "uses": 47,
     "examples": [
-     ".sidebar-bottom",
      ".nsfw-toggle",
      ".chips-row",
-     ".identities"
-    ]
-   },
-   {
-    "value": "var(--space-6) var(--space-14)",
-    "uses": 1,
-    "examples": [
-     ".fold-row"
+     ".selection-bar",
+     "details.more>summary"
     ]
    },
    {
     "value": "var(--space-8)",
-    "uses": 40,
+    "uses": 49,
     "examples": [
      ".search-wrap",
-     ".metadata",
-     ".sync-now",
-     ".rule-row"
+     ".top-actions",
+     ".jump",
+     ".toolbar"
     ]
    },
    {
-    "value": "var(--space-8) var(--space-14)",
+    "value": "var(--space-8) var(--space-12)",
     "uses": 1,
     "examples": [
-     ".form-grid"
+     ".row"
+    ]
+   },
+   {
+    "value": "var(--space-8) var(--space-16)",
+    "uses": 2,
+    "examples": [
+     ".dc-props",
+     ".tidy-head"
     ]
    },
    {
     "value": "var(--space-10)",
-    "uses": 28,
+    "uses": 25,
     "examples": [
      ".footer",
-     ".viewer-top",
      ".palette-item",
-     ".shortcuts"
+     ".shortcuts",
+     ".rel-head"
     ]
    },
    {
     "value": "var(--space-12)",
-    "uses": 11,
+    "uses": 21,
     "examples": [
      ".toast",
-     ".switch-line",
      ".setting-line",
-     ".pair-list"
+     ".page-heading",
+     ".guide-notice"
+    ]
+   },
+   {
+    "value": "var(--space-12) var(--space-24)",
+    "uses": 1,
+    "examples": [
+     ".vw-bar-in"
     ]
    },
    {
     "value": "var(--space-14)",
-    "uses": 8,
+    "uses": 5,
     "examples": [
      ".rel-figs",
-     ".about-head",
      ".oc-split-group",
-     ".topbar"
+     ".day-card",
+     ".day-end"
     ]
    },
    {
     "value": "var(--space-16)",
-    "uses": 6,
+    "uses": 10,
     "examples": [
-     ".pair-body",
      ".modal form",
-     ".cc-stats",
-     ".nudge"
+     ".nudge",
+     ".page-head",
+     ".cat-rings"
     ]
    },
    {
-    "value": "18px",
-    "uses": 1,
+    "value": "var(--space-20)",
+    "uses": 2,
     "examples": [
-     ".cast-head"
+     ".char-hero-main",
+     ".cal-head"
     ]
    },
    {
-    "value": "18px var(--space-10)",
+    "value": "var(--space-20) var(--space-12)",
     "uses": 1,
     "examples": [
-     ".cast-roster"
-    ]
-   },
-   {
-    "value": "18px var(--space-16)",
-    "uses": 1,
-    "examples": [
-     ".group-grid"
+     ".cat-people"
     ]
    },
    {
     "value": "var(--space-24)",
-    "uses": 1,
+    "uses": 2,
     "examples": [
-     ".viewer-bar"
+     ".char-hero-stats",
+     ".set-page"
     ]
    },
    {
-    "value": "26px 18px",
+    "value": "28px var(--space-20)",
     "uses": 1,
     "examples": [
-     ".cast-works"
-    ]
-   },
-   {
-    "value": "28px",
-    "uses": 1,
-    "examples": [
-     ".settings-page"
+     ".gcards"
     ]
    }
   ]
  },
  "padding": {
-  "kinds": 107,
-  "uses": 212,
+  "kinds": 90,
+  "uses": 196,
   "table": [
    {
     "value": "0",
-    "uses": 21,
+    "uses": 24,
     "examples": [
-     ".heading-main h1>.link-button,.heading-main h1>input",
-     ".fav-mark",
-     ".preview",
-     ".alt kbd"
+     "dialog.palette",
+     ".like-example>button",
+     ".link-button.strong",
+     "dialog.modal"
     ]
    },
    {
     "value": "var(--space-1) var(--space-6)",
-    "uses": 10,
+    "uses": 9,
     "examples": [
-     ".tag-on",
-     ".unchecked-link.on",
-     ".pair-label",
-     ".chips .hint-add"
+     ".modal code",
+     ".link-row .guess",
+     ".search>kbd",
+     ".avatar-ring>em"
     ]
    },
    {
-    "value": "var(--space-4) var(--space-8)",
-    "uses": 7,
+    "value": "0 var(--space-12)",
+    "uses": 6,
     "examples": [
-     "#watchAdd",
-     ".icon-seg button",
-     ".tag",
-     ".home-more"
+     ".jump",
+     ".menu-drop input",
+     ".btn.is-small",
+     ".chip"
+    ]
+   },
+   {
+    "value": "0 var(--space-4)",
+    "uses": 5,
+    "examples": [
+     ".variant-chip button",
+     ".sel-count",
+     "#countHome",
+     ".dc-chip-x"
+    ]
+   },
+   {
+    "value": "var(--space-4)",
+    "uses": 5,
+    "examples": [
+     ".icon-seg",
+     ".seg",
+     ".avatar-ring",
+     ".rail-brand"
+    ]
+   },
+   {
+    "value": "var(--space-8)",
+    "uses": 5,
+    "examples": [
+     ".menu-drop",
+     ".missing",
+     ".card-missing",
+     ".rail-peek"
     ]
    },
    {
     "value": "var(--space-8) var(--space-12)",
-    "uses": 7,
+    "uses": 5,
     "examples": [
-     ".rule",
      ".modal .dialog-lead",
      ".quiet",
-     ".guide-notice"
+     ".guide-notice",
+     ".cat-table th"
     ]
    },
    {
-    "value": "var(--space-1) var(--space-8)",
-    "uses": 6,
+    "value": "0 var(--space-14)",
+    "uses": 4,
     "examples": [
-     ".dup-badge",
-     ".chips span",
-     ".group-traits span",
-     ".cast-plus"
+     ".btn,.dialog-actions>button",
+     ".search",
+     ".cat-pin.is-wide",
+     ".char-hero-main"
     ]
    },
    {
     "value": "var(--space-10) var(--space-12)",
-    "uses": 6,
-    "examples": [
-     ".lib-created",
-     ".ask-bar",
-     ".lib-form",
-     ".prov-confirm"
-    ]
-   },
-   {
-    "value": "var(--space-10) 0",
-    "uses": 5,
-    "examples": [
-     ".oc-split-group",
-     ".settings-card details.more",
-     ".settings-card .form-actions,.settings-card .about-actions",
-     ".set-actions"
-    ]
-   },
-   {
-    "value": "var(--space-4) var(--space-10)",
     "uses": 4,
     "examples": [
-     ".staged-chip",
-     ".cast-tags span",
-     ".gsec-head .primary,.gsec-head .secondary,.gsec-head .quiet",
-     ".quiet.small"
+     ".prov-confirm",
+     ".task-item",
+     ".task-ask",
+     ".set-tile"
     ]
    },
    {
-    "value": "var(--space-4) var(--space-12)",
+    "value": "var(--space-12)",
     "uses": 4,
     "examples": [
-     ".segmented button",
-     ".aa-b",
-     ".segmented a",
-     ".settings-card button.quiet"
+     ".palette-head",
+     ".dc-ask",
+     ".library-pop",
+     ".tidy-stat"
+    ]
+   },
+   {
+    "value": "var(--space-2) var(--space-8)",
+    "uses": 4,
+    "examples": [
+     "button.small",
+     ".rel-kind",
+     ".chip.is-small",
+     ".cat-plus"
     ]
    },
    {
@@ -1679,46 +1562,28 @@ window.CENSUS = {
     "uses": 4,
     "examples": [
      ".picker-results",
-     ".dup-copy",
      ".combo-menu",
-     ".workspace"
+     ".dc-dup",
+     ".day-ring>svg"
     ]
    },
    {
-    "value": "var(--space-6) var(--space-12)",
+    "value": "var(--space-6) 0",
     "uses": 4,
     "examples": [
-     ".chip-filter",
-     ".view-opt,.view-row",
-     ".home-retry",
-     ".cast-buckets button"
+     ".setting-line",
+     ".cl-item",
+     ".set-fold>summary",
+     ".row-items>.row"
     ]
    },
    {
-    "value": "0 var(--space-12)",
+    "value": "0 0 var(--space-24)",
     "uses": 3,
     "examples": [
-     ".jump",
-     ".menu-drop input",
-     ".lib-input"
-    ]
-   },
-   {
-    "value": "0 var(--space-14)",
-    "uses": 3,
-    "examples": [
-     ".cast-tab.plain",
-     ".ask-foot .primary,.ask-foot .secondary",
-     ".shelf-bar .watch-add input"
-    ]
-   },
-   {
-    "value": "0 var(--space-4)",
-    "uses": 3,
-    "examples": [
-     ".variant-chip button",
-     ".sel-count",
-     "#countHome"
+     ".home-page",
+     ".char-hero",
+     ".cal"
     ]
    },
    {
@@ -1727,16 +1592,25 @@ window.CENSUS = {
     "examples": [
      "#pickerSearch",
      "kbd",
-     ".lib-picked .quiet"
+     ".char-hero-check"
     ]
    },
    {
-    "value": "0 var(--space-8)",
+    "value": "var(--space-10) var(--space-10) var(--space-10) 0",
     "uses": 3,
     "examples": [
-     ".caption",
-     ".nsfw-toggle",
-     ".num-field input"
+     ".workspace",
+     ".cat-slices",
+     ".inspector"
+    ]
+   },
+   {
+    "value": "var(--space-14)",
+    "uses": 3,
+    "examples": [
+     ".cast-pop",
+     ".char-hero-bar",
+     ".char-fact"
     ]
    },
    {
@@ -1745,7 +1619,7 @@ window.CENSUS = {
     "examples": [
      ".link-button",
      "#watchMin",
-     ".chips .atag button"
+     ".card-chips .atag button"
     ]
    },
    {
@@ -1758,30 +1632,12 @@ window.CENSUS = {
     ]
    },
    {
-    "value": "var(--space-6) var(--space-8)",
+    "value": "var(--space-6) var(--space-12)",
     "uses": 3,
     "examples": [
-     ".palette-item",
-     ".form-grid input",
-     ".cast-wrow"
-    ]
-   },
-   {
-    "value": "var(--space-8) 0",
-    "uses": 3,
-    "examples": [
-     ".switch-line",
-     ".settings-card .setting-line,.settings-card .switch-line",
-     ".settings-card .setting-line,.settings-card .switch-line,.settings-card a.set-link"
-    ]
-   },
-   {
-    "value": "var(--space-8) var(--space-10)",
-    "uses": 3,
-    "examples": [
-     ".identity",
-     ".lib-col",
-     ".prov-stat"
+     ".chip-filter",
+     ".view-opt,.view-row",
+     ".cat-table td"
     ]
    },
    {
@@ -1796,20 +1652,29 @@ window.CENSUS = {
     "uses": 2,
     "examples": [
      ".modal .field input",
-     ".ask-b"
+     ".gallery-shows>button"
+    ]
+   },
+   {
+    "value": "0 var(--space-2)",
+    "uses": 2,
+    "examples": [
+     ".gcard-meta",
+     ".cal-dow>span"
     ]
    }
   ]
  },
  "height": {
-  "kinds": 47,
-  "uses": 89,
+  "kinds": 55,
+  "uses": 124,
   "table": [
    {
     "value": "height: 1px",
-    "uses": 1,
+    "uses": 2,
     "examples": [
-     ".section-label"
+     ".day-end::before,.day-end::after",
+     ".rail-label"
     ]
    },
    {
@@ -1820,18 +1685,27 @@ window.CENSUS = {
     ]
    },
    {
+    "value": "height: 2px",
+    "uses": 1,
+    "examples": [
+     ".rail-sep"
+    ]
+   },
+   {
     "value": "height: 3px",
     "uses": 2,
     "examples": [
-     ".cast-poster .ticks i",
-     "#splash .sp-track"
+     "#splash .sp-track",
+     ".cat-ticks>i"
     ]
    },
    {
     "value": "height: 4px",
-    "uses": 1,
+    "uses": 3,
     "examples": [
-     ".progress"
+     ".progress",
+     ".task-bar",
+     ".row-bar"
     ]
    },
    {
@@ -1843,36 +1717,37 @@ window.CENSUS = {
    },
    {
     "value": "height: 6px",
-    "uses": 4,
+    "uses": 3,
     "examples": [
      ".tour-dots i",
-     ".cast-poster .pill i",
-     ".cast-bar i",
-     ".prov-bar"
+     ".prov-bar",
+     ".cat-bar>i"
     ]
    },
    {
     "value": "height: 7px",
-    "uses": 1,
+    "uses": 3,
     "examples": [
-     ".set-status .local-dot"
+     ".set-status .local-dot",
+     ".rail-dot",
+     ".row-dot"
     ]
    },
    {
     "value": "height: 8px",
-    "uses": 5,
+    "uses": 3,
     "examples": [
-     ".machine-dot",
-     ".dot",
-     ".sidebar-bottom .local-dot",
-     ".home-strip::-webkit-scrollbar"
+     ".grid .machine-dot",
+     ".task-item .local-dot",
+     ".task-badge"
     ]
    },
    {
     "value": "height: 10px",
-    "uses": 1,
+    "uses": 2,
     "examples": [
-     ".card.selected .check::after"
+     ".grid .card[aria-pressed=true] .check::after",
+     ".rail-heart>svg"
     ]
    },
    {
@@ -1880,7 +1755,7 @@ window.CENSUS = {
     "uses": 2,
     "examples": [
      ".switch::after",
-     ".cast-allw svg"
+     ".gcard-kind>svg"
     ]
    },
    {
@@ -1892,35 +1767,39 @@ window.CENSUS = {
    },
    {
     "value": "height: 15px",
-    "uses": 1,
+    "uses": 6,
     "examples": [
-     ".jump svg"
+     ".jump svg",
+     ".btn svg,.chip svg,.seg>button svg,.seg>a svg",
+     ".search>svg",
+     ".glass-bar>button svg"
     ]
    },
    {
     "value": "height: 16px",
-    "uses": 6,
+    "uses": 4,
     "examples": [
-     ".alt kbd",
      ".like-example>.like-drop",
      ".icon-seg svg",
-     ".view-sw::after"
+     ".view-sw::after",
+     ".cl-check"
     ]
    },
    {
     "value": "height: 17px",
-    "uses": 2,
+    "uses": 1,
     "examples": [
-     ".top-actions .icon svg,#sidebarToggle svg,#backButton svg",
-     ".strip-nav svg"
+     ".top-actions .icon svg,#sidebarToggle svg,#backButton svg"
     ]
    },
    {
     "value": "height: 18px",
-    "uses": 2,
+    "uses": 6,
     "examples": [
      ".switch",
-     ".cl-ring"
+     ".cl-ring",
+     ".gcard-kind",
+     ".gcard-plus>svg"
     ]
    },
    {
@@ -1928,38 +1807,42 @@ window.CENSUS = {
     "uses": 2,
     "examples": [
      ".fav-mark svg",
-     ".nav-icon svg"
+     ".rail-foot-button>svg:not(.sync-ring)"
     ]
    },
    {
     "value": "height: 20px",
-    "uses": 3,
+    "uses": 5,
     "examples": [
      ".r18",
      ".view-sw",
-     ".home-cc img,.home-cc i"
+     ".chip>.avatar",
+     ".piece-tape"
     ]
    },
    {
     "value": "height: 21px",
     "uses": 1,
     "examples": [
-     ".check"
+     ".rail-entry>svg"
     ]
    },
    {
     "value": "height: 22px",
-    "uses": 2,
+    "uses": 4,
     "examples": [
      ".bar-divider",
-     ".palette-add"
+     ".palette-add",
+     ".show-collage .piece-cap",
+     ".grid .check"
     ]
    },
    {
     "value": "height: 24px",
-    "uses": 1,
+    "uses": 2,
     "examples": [
-     ".icon.small"
+     ".icon.small",
+     ".dc-who.is-compact .dc-icon"
     ]
    },
    {
@@ -1971,54 +1854,61 @@ window.CENSUS = {
    },
    {
     "value": "height: 26px",
-    "uses": 1,
+    "uses": 2,
     "examples": [
-     ".fav-mark"
+     ".fav-mark",
+     ".rail-ind"
     ]
    },
    {
     "value": "height: 28px",
-    "uses": 1,
+    "uses": 3,
     "examples": [
-     ".caption"
+     ".avatar.is-small",
+     ".day-load>i",
+     ".sync-ring"
     ]
    },
    {
     "value": "height: var(--h-28)",
-    "uses": 1,
+    "uses": 6,
     "examples": [
-     ".ask-b"
+     ".btn.is-small",
+     ".chip",
+     ".seg>button,.seg>a",
+     ".glass-bar>button"
     ]
    },
    {
     "value": "height: 30px",
     "uses": 1,
     "examples": [
-     ".nav-icon"
+     ".rail-brand .logo-mark"
     ]
    },
    {
     "value": "height: 32px",
-    "uses": 1,
+    "uses": 2,
     "examples": [
-     ".brand .logo-mark"
+     ".dc-bars",
+     ".doubt-faces>.avatar"
     ]
    },
    {
     "value": "height: var(--h-32)",
-    "uses": 8,
+    "uses": 7,
     "examples": [
      ".icon",
      ".menu-drop input",
      "select",
-     ".inspector-head .icon"
+     ".btn,.dialog-actions>button"
     ]
    },
    {
     "value": "min-height: var(--h-32)",
     "uses": 1,
     "examples": [
-     ".shelf-todo-row"
+     ".cat-todo-row"
     ]
    },
    {
@@ -2030,14 +1920,15 @@ window.CENSUS = {
    },
    {
     "value": "height: 36px",
-    "uses": 1,
+    "uses": 2,
     "examples": [
-     ".footer"
+     ".footer",
+     ".cat-who>.avatar"
     ]
    },
    {
     "value": "height: var(--h-36)",
-    "uses": 12,
+    "uses": 8,
     "examples": [
      "#pickerSearch",
      ".modal .field input",
@@ -2047,16 +1938,27 @@ window.CENSUS = {
    },
    {
     "value": "min-height: 36px",
-    "uses": 1,
+    "uses": 2,
     "examples": [
-     ".palette-foot"
+     ".palette-foot",
+     ".row-items>.row"
     ]
    },
    {
     "value": "height: 40px",
+    "uses": 5,
+    "examples": [
+     ".like-example img",
+     ".avatar",
+     ".dc-avatar-none",
+     ".gcard-plus"
+    ]
+   },
+   {
+    "value": "height: 42px",
     "uses": 1,
     "examples": [
-     ".like-example img"
+     ".empty-icon>svg"
     ]
    },
    {
@@ -2067,63 +1969,79 @@ window.CENSUS = {
     ]
    },
    {
+    "value": "height: 44px",
+    "uses": 1,
+    "examples": [
+     ".day-ring"
+    ]
+   },
+   {
     "value": "min-height: 44px",
     "uses": 1,
     "examples": [
-     ".settings-card .setting-line,.settings-card .switch-line,.settings-card a.set-link"
+     ".row"
     ]
    },
    {
     "value": "height: 46px",
-    "uses": 1,
+    "uses": 2,
     "examples": [
-     ".cc-bars"
+     ".day-ask-peek>img",
+     ".rail-item"
     ]
    },
    {
-    "value": "min-height: 46px",
+    "value": "height: 48px",
     "uses": 2,
     "examples": [
-     ".settings-card .setting-line,.settings-card .switch-line",
-     ".shelf-row"
+     ".rail-entry",
+     ".rail-tab"
     ]
    },
    {
     "value": "height: 55px",
     "uses": 1,
     "examples": [
-     ".dup-copy img"
+     ".dc-dup>img"
     ]
    },
    {
-    "value": "min-height: 70px",
-    "uses": 1,
+    "value": "height: 64px",
+    "uses": 3,
     "examples": [
-     ".topbar"
+     ".char-curve",
+     ".lift",
+     ".lift>img"
+    ]
+   },
+   {
+    "value": "height: 68px",
+    "uses": 2,
+    "examples": [
+     ".avatar.is-large",
+     ".avatar-ring"
     ]
    },
    {
     "value": "height: 72px",
-    "uses": 2,
+    "uses": 1,
     "examples": [
-     ".oc-split-thumbs img",
-     ".cast-rc .ring"
+     ".oc-split-thumbs img"
     ]
    },
    {
     "value": "height: 96px",
-    "uses": 3,
+    "uses": 2,
     "examples": [
-     ".ask-img",
-     ".gsec-img",
-     ".gsec-rest"
+     ".empty-state>.empty-icon",
+     ".char-hero-avatar"
     ]
    },
    {
-    "value": "height: 112px",
+    "value": "height: 120px",
     "uses": 1,
     "examples": [
-     ".cast-head .cast-fan"
+     ".is-tiles .judge-tile"
     ]
    },
    {
@@ -2134,17 +2052,32 @@ window.CENSUS = {
     ]
    },
    {
-    "value": "height: 132px",
+    "value": "height: 180px",
     "uses": 1,
     "examples": [
-     ".ask-img"
+     ".cal-head::before"
     ]
    },
    {
-    "value": "height: 190px",
+    "value": "min-height: 200px",
+    "uses": 2,
+    "examples": [
+     ".cat-bento>.cat-poster-wrap",
+     ".dc-art"
+    ]
+   },
+   {
+    "value": "height: 210px",
     "uses": 1,
     "examples": [
-     ".cast-fan"
+     ".cat-work"
+    ]
+   },
+   {
+    "value": "height: 250px",
+    "uses": 1,
+    "examples": [
+     ".cat-hero"
     ]
    },
    {
@@ -2158,38 +2091,64 @@ window.CENSUS = {
     "value": "height: 280px",
     "uses": 1,
     "examples": [
-     ".preview"
+     ".char-hero-art"
+    ]
+   },
+   {
+    "value": "height: 440px",
+    "uses": 1,
+    "examples": [
+     ".dc::before"
+    ]
+   },
+   {
+    "value": "height: 520px",
+    "uses": 1,
+    "examples": [
+     ".cat-glow"
     ]
    }
   ]
  },
  "zIndex": {
-  "kinds": 16,
-  "uses": 25,
+  "kinds": 17,
+  "uses": 58,
   "table": [
    {
-    "value": "var(--z-page-1)",
+    "value": "0",
     "uses": 1,
     "examples": [
-     ".cast-table thead th"
+     ".cat-glow"
+    ]
+   },
+   {
+    "value": "var(--z-page-1)",
+    "uses": 15,
+    "examples": [
+     ".poster-cap",
+     ".cat-rank",
+     ".cat-plus",
+     ".cat-table th"
     ]
    },
    {
     "value": "var(--z-page-2)",
-    "uses": 6,
+    "uses": 17,
     "examples": [
-     ".check",
-     ".fav-mark",
-     ".settings-nav",
-     ".strip-nav"
+     ".cat-ticks",
+     ".cat-mini",
+     ".cat-hero-top",
+     ".cat-hero-in"
     ]
    },
    {
     "value": "var(--z-page-3)",
-    "uses": 2,
+    "uses": 4,
     "examples": [
-     ".inspector-head",
-     ".home-dh"
+     ".cat-pin",
+     ".lift>img:first-child",
+     ".rail-name",
+     ".rail-item.is-dragging"
     ]
    },
    {
@@ -2197,7 +2156,7 @@ window.CENSUS = {
     "uses": 2,
     "examples": [
      ".marquee",
-     ".cast-tabs"
+     ".drop-badge"
     ]
    },
    {
@@ -2209,9 +2168,10 @@ window.CENSUS = {
    },
    {
     "value": "var(--z-page-6)",
-    "uses": 1,
+    "uses": 2,
     "examples": [
-     ".cast-pop"
+     ".cast-pop",
+     ".show-collage .piece:hover"
     ]
    },
    {
@@ -2223,9 +2183,10 @@ window.CENSUS = {
    },
    {
     "value": "var(--z-drawer)",
-    "uses": 1,
+    "uses": 2,
     "examples": [
-     ".sidebar"
+     ".rail",
+     ".rail-l2"
     ]
    },
    {
@@ -2251,25 +2212,27 @@ window.CENSUS = {
    },
    {
     "value": "var(--z-menu)",
-    "uses": 2,
+    "uses": 3,
     "examples": [
      ".combo-menu",
-     ".view-pop"
+     ".view-pop",
+     ".library-pop"
     ]
    },
    {
     "value": "var(--z-overlay)",
     "uses": 2,
     "examples": [
-     ".viewer",
-     ".task-pop"
+     ".task-pop",
+     ".viewer"
     ]
    },
    {
     "value": "var(--z-popover)",
-    "uses": 1,
+    "uses": 2,
     "examples": [
-     ".menu-drop"
+     ".menu-drop",
+     ".rail-peek"
     ]
    },
    {
@@ -2281,9 +2244,10 @@ window.CENSUS = {
    },
    {
     "value": "var(--z-toast)",
-    "uses": 1,
+    "uses": 2,
     "examples": [
-     ".toast"
+     ".toast",
+     ".lift"
     ]
    }
   ]

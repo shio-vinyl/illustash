@@ -12,21 +12,32 @@ import {setLatest} from './core/edits.js';
 import {onJob} from './core/jobs.js';
 import {$, platformHints, toast, wireToast, error, wireDom} from './ui/dom.js';
 import {wireTasks, taskTick, openTasks} from './ui/tasks.js';
-import {confirmAction} from './ui/dialog.js';
-import {openModal, wireOverlays} from './ui/overlay.js';
+import {confirmAction, openStatic} from './ui/dialog.js';
+import {wireOverlays} from './ui/overlay.js';
 import {wireSettings} from './ui/settings.js';
-import {wireCatalog} from './ui/catalog.js';
+import './ui/catalog_page.js';
+import {wireWorkPage} from './ui/work_page.js';
 import {refreshMeta} from './core/meta.js';
 import {pageOf} from './core/pages.js';
 import {parseHash, stepHistory} from './core/route.js';
 import {applyRoute, wireShell} from './ui/shell.js';
-import {renderGrid, undo, wireGrid} from './ui/grid.js';
+import {undo, wireGrid} from './ui/grid.js';
+// 选择栏载入时把自己登记进网格（ui/grid_bar.js 的 setBar）；视图选项浮层由 wireViewOptions 接上。
+import './ui/grid_bar.js';
+import {wireViewOptions} from './ui/grid_view.js';
 import {wirePalette} from './ui/palette.js';
 import {wireDetail} from './ui/detail.js';
 // 相似结果页（#449）只在载入时登记它的标题，没有 wire。
 import './ui/like.js';
-import {wireHome} from './ui/home.js';
-import {wireReview} from './ui/review.js';
+// 角色页（#712）的横幅和页头也只在载入时登记。
+import './ui/character.js';
+import {wireDays} from './ui/days.js';
+import './ui/groups.js';
+import './ui/doubts.js';
+import './ui/similar.js';
+import './ui/identity.js';
+import './ui/artist_audit.js';
+import {wireTidyPeek} from './ui/tidy_group.js';
 import {guideAfterBoot, guideOnOpen, wireGuide} from './ui/guide.js';
 import {afterWrite, afterJob, afterPack} from './ui/effects.js';
 import {pollIntegrity} from './core/integrity.js';
@@ -34,6 +45,12 @@ import {wireModels} from './ui/models.js';
 import {wirePacks} from './ui/packs.js';
 import {onPack} from './core/packs.js';
 import {wireIntegrity} from './ui/integrity.js';
+import {wireRail} from './ui/rail.js';
+import {wireLibraryPop} from './ui/library_pop.js';
+import './ui/library.js';
+import './ui/calendar.js';
+import './ui/galleries.js';
+import './ui/tidy.js';
 platformHints(document.body);
 wireDom();
 onPost(afterWrite);
@@ -43,24 +60,26 @@ wireToast(() => undo());
 // 浮层管理器的 Esc / 点外监听要排在最前（捕获阶段先于页面其余处理）；其余按页面原来注册它们的顺序。
 wireOverlays();
 wireShell();
+wireRail();
+wireLibraryPop();
 // 桌面 App 菜单的「后退／前进」（desktop/src/main.rs）调它。
 window.illustashHistory = stepHistory;
 // 点系统通知时外壳调它：回到窗口并打开任务面板（desktop/src/background.rs，#451）。
 window.illustashOpenTasks = () => openTasks();
 wireGrid();
+wireViewOptions();
 wirePalette();
 wireDetail();
-wireHome();
-wireReview();
+wireDays();
+wireWorkPage();
+wireTidyPeek();
 wireSettings();
-wireCatalog();
 wireTasks();
 wireGuide();
 wireIntegrity();
 wireModels();
 wirePacks();
-$('undoButton').onclick = undo; $('helpButton').onclick = () => openModal($('help'), {backdropClose: true, id: 'help'});
-$('sidebarToggle').onclick = () => { if (innerWidth <= 760) $('sidebar').classList.toggle('mobile-open'); else $('sidebar').hidden = !$('sidebar').hidden; requestAnimationFrame(() => renderGrid()); };
+$('undoButton').onclick = undo; $('helpButton').onclick = () => openStatic($('help'), {backdropClose: true, id: 'help'});
 
 // 启动：本会话的 token 和撤销步骤、各项计数，然后是地址指向的页面。
 (async () => {

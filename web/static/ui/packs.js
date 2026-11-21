@@ -1,6 +1,6 @@
 // 角色资料包（#602，合并了 #550 WD 角色扩展和 #559 CCIP 长尾包的两张卡片）：「设置 › 角色资料」里的一张卡片的状态行、
-// 按钮、失败列表、新版本和包信息，确认框，任务面板里的一项，以及结束时的提示。卡片本身由 ui/settings.js 画（cardHead 在
-// 那里），任务面板的项由 ui/tasks.js 列出；状态、轮询和请求在 core/packs.js。对用户是一个包、一个版本、一个开关；
+// 按钮、失败列表、新版本和包信息（都是数据，卡片由 ui/settings_characters.js 用行画，#714），确认框，任务面板里的一项，
+// 以及结束时的提示。任务面板的项由 ui/tasks.js 列出；状态、轮询和请求在 core/packs.js。对用户是一个包、一个版本、一个开关；
 // 两个组成部分（WD 扩展头、CCIP 长尾锚点）只在包信息的折叠区里分开列。
 // 用户点「下载」之前什么都不下载（首次准备时点了下载识别模型的，后端一起下了这个包）；导入只读用户选的文件；启用、换包和
 // 撤回都不联网。签名目录里有更新的版本时多一行「有新版本」：点了才下载，下好以后点了才换。
@@ -8,11 +8,10 @@ import {t, tb, I18N} from '../core/i18n.js';
 import {esc, bytes, number, localTime, home} from '../core/format.js';
 import {state} from '../core/state.js';
 import {packDownloading, packRunning, packFinished, packDownloadFinished, loadPack, onPack, packAction, enablePack, withdrawPack,
-  declinePack, cancelPack, packOffer} from '../core/packs.js';
-import {$, toast, fold, busy} from './dom.js';
+  declinePack, cancelPack, packOffer, packChanged} from '../core/packs.js';
+import {toast} from './dom.js';
 import {confirmAction} from './dialog.js';
 
-export const PACK_CARD = 'packCard';
 export const packName = () => t('角色资料包');
 const current = () => state.pack;
 const pkg = x => x?.current || {};
@@ -90,128 +89,130 @@ export function packDot(x = current()) {
   if (x.task?.status === 'failed' || importFailed(x.download) || (!ready(x) && x.download?.status === 'failed') || (on(x) && ccipError)) return 'warn';
   return on(x) ? '' : 'off';
 }
-export function packBar(x = current()) {
+// 进度 {done, total}（ui/rows.js 的 progress）；写入阶段不报百分比。
+export function packProgress(x = current()) {
   const job = packRunning(x) ? x.task : packDownloading(x) ? x.download : null;
-  if (!job?.total || (x.task === job && job.phase === 'write')) return '';
-  const width = Math.min(100, (job.done || 0) / job.total * 100).toFixed(1);
-  return `<div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="${job.total}" aria-valuenow="${job.done || 0}"><span style="width:${width}%"></span></div>`;
+  return !job?.total || (x.task === job && job.phase === 'write') ? null : {done: job.done || 0, total: job.total};
 }
-// 按钮带 data-pack="动作"；监听在 wirePacks。
-const button = (act, label, cls = 'quiet', extra = '') => `<button class="${cls} small" data-pack="${act}"${extra}>${label}</button>`;
+// 按钮的数据（[{act, label, primary, disabled, title}]，#714）：设置页的卡片用 ui/rows.js 的 buttons 接，任务面板的行
+// （ui/task_row.js）建成按钮；点了都走 runPack(act)。
+const button = (act, label, primary = false, title = '') => ({act, label, primary, disabled: !!title, title});
 // 当前状态下的按钮；`compact` 只留主要的那个（任务面板）。
-export function packActions(x = current(), compact = false) {
-  if (!x) return '';
+export function packButtons(x = current(), compact = false) {
+  if (!x) return [];
   const l = lib(x), task = x.task, blocked = blockedReason(x);
   if (packRunning(x)) {
-    if (task.kind === 'withdraw') return '';
-    return task.phase === 'write' ? button('cancel', t('取消'), 'quiet', ` disabled title="${t('正在写入，不能取消')}"`) : button('cancel', t('取消'));
+    if (task.kind === 'withdraw') return [];
+    return [task.phase === 'write' ? button('cancel', t('取消'), false, t('正在写入，不能取消')) : button('cancel', t('取消'))];
   }
-  if (packDownloading(x)) return x.download.kind === 'catalog' ? '' : button('package-cancel', t('取消'));
-  const off = blocked ? ` disabled title="${esc(blocked)}"` : '';
-  const withdraw = on(x) ? button('withdraw', t('撤回…')) : '';
-  // 重新检查失败时照样能撤回，不只能重试。
+  if (packDownloading(x)) return x.download.kind === 'catalog' ? [] : [button('package-cancel', t('取消'))];
+  const withdraw = on(x) ? [button('withdraw', t('撤回…'))] : [];
+  // 重新检查失败时照样能撤回，不只能重试。重试照失败的那个任务的目标版本再做一遍（换包失败就再换那个版本）。显示的失败
+  // 任务不是这个页面记下的那一个（页面重新载入过，或者后来的操作被宿主拒绝、没有起任务），又有下好的新版本时，不给
+  // 「重试」：说不准它是查旧版本还是换包，换包走下面「有新版本」那一行。
   if (task?.status === 'failed') {
-    return task.kind === 'withdraw' ? button('withdraw-retry', t('重试'), 'primary')
-      : button('enable-retry', t('重试'), 'primary', off) + (compact ? '' : withdraw);
+    if (task.kind === 'withdraw') return [button('withdraw-retry', t('重试'), true)];
+    const unsure = retryVersion(task) === undefined && on(x) && packOffer(x)?.status === 'ready';
+    return [...(unsure ? [] : [button('enable-retry', t('重试'), true, blocked)]), ...(compact ? [] : withdraw)];
   }
   if (!ready(x)) {
-    const main = on(x) ? 'quiet' : 'primary';
     const failed = x.download?.kind === 'download' && x.download.status === 'failed' && !packOffer(x)?.downloading;
     const partial = pkg(x).status === 'partial';
     const download = button('download', failed ? t('重试') : partial ? t('继续下载（还差 {left}）', {left: bytes(left(x))})
-      : t('下载角色资料包（约 {size}）', {size: bytes(left(x))}), main);
-    if (compact) return download;
-    return download + button('import', t('从文件导入…')) + (partial ? button('discard', t('删除未完成的部分')) : '') + withdraw;
+      : t('下载角色资料包（约 {size}）', {size: bytes(left(x))}), !on(x));
+    if (compact) return [download];
+    return [download, button('import', t('从文件导入…')), ...(partial ? [button('discard', t('删除未完成的部分'))] : []), ...withdraw];
   }
   // CCIP 部分的角色索引更新过：重新检查后才用上，按钮升为主按钮。
-  if (on(x)) return compact ? '' : button('enable', t('重新检查'), x.ccip?.library?.needs_scan ? 'primary' : 'quiet', off) + withdraw;
-  if (l.prompt === 'ask') return button('enable-confirm', t('启用…'), 'primary', off) + (compact ? '' : button('decline', t('不用')));
-  return button('enable-confirm', t('启用…'), 'primary', off);
+  if (on(x)) return compact ? [] : [button('enable', t('重新检查'), !!x.ccip?.library?.needs_scan, blocked), ...withdraw];
+  if (l.prompt === 'ask') return [button('enable-confirm', t('启用…'), true, blocked), ...(compact ? [] : [button('decline', t('不用'))])];
+  return [button('enable-confirm', t('启用…'), true, blocked)];
+}
+// 没就位时的手动下载说明（链接）。
+export function packManual(x = current()) {
+  const manual = x?.wd?.package?.manual;
+  return x && !ready(x) && manual && !packRunning(x) && !packDownloading(x) ? {href: manual, label: t('手动下载说明')} : null;
 }
 // 状态行下面的小字：包不在本机、索引更新后要重新检查、上次自动检查的错误、上次检查时间、启用会补归属，以及没就位时的
 // 手动下载说明。
-export function packHint(x = current()) {
+export function packHintText(x = current()) {
   if (!x || packRunning(x) || packDownloading(x)) return '';
   const l = lib(x), parts = [], ccip = x.ccip?.library || {};
-  if (on(x) && !ready(x)) parts.push(esc(t('角色资料包不在这台电脑上，新识别的图不检查')));
-  if (on(x) && ccip.needs_scan) parts.push(esc(t('角色索引更新过，重新检查后才用上')));
-  if (on(x) && ccip.error) parts.push(esc(t('上次自动检查没有完成：{reason}', {reason: tb(ccip.error)})));
-  if (on(x) && l.checked_at) parts.push(esc(t('上次检查 {time}', {time: localTime(l.checked_at)})));
-  if (!on(x) && l.prompt === 'ask' && ready(x)) parts.push(esc(t('启用会给还没有归属的图补上机器归属')));
-  if (!on(x) && l.prompt === 'pending' && !ready(x)) parts.push(esc(t('下载完成后启用')));
-  const manual = x.wd?.package?.manual;
-  if (!ready(x) && manual) parts.push(`<a class="link" href="${esc(manual)}" target="_blank" rel="noreferrer noopener">${t('手动下载说明')}</a>`);
+  if (on(x) && !ready(x)) parts.push(t('角色资料包不在这台电脑上，新识别的图不检查'));
+  if (on(x) && ccip.needs_scan) parts.push(t('角色索引更新过，重新检查后才用上'));
+  if (on(x) && ccip.error) parts.push(t('上次自动检查没有完成：{reason}', {reason: tb(ccip.error)}));
+  if (on(x) && l.checked_at) parts.push(t('上次检查 {time}', {time: localTime(l.checked_at)}));
+  if (!on(x) && l.prompt === 'ask' && ready(x)) parts.push(t('启用会给还没有归属的图补上机器归属'));
+  if (!on(x) && l.prompt === 'pending' && !ready(x)) parts.push(t('下载完成后启用'));
   return parts.join(' · ');
-}
-// 下载卡住时每个来源各自失败的原因。
-export function packFailures(x = current()) {
-  const d = x?.download, list = d?.status === 'failed' ? d.failures || [] : [];
-  return list.length ? `<ul class="models-results">${list.map(f => `<li class="mismatch">${esc(t('{source}：{why}', {source: f.source, why: tb(f.why)}))}</li>`).join('')}</ul>` : '';
 }
 // 导入对所选的每个文件做了什么（两个组成部分的结果已经在后端按文件名合并）。只在这个页面发起的导入结束后列出：包文件
 // 整个 App 一份，导入结果也是，换了图库（页面重新载入）或别的窗口导入的不列。只留在发起导入的那一页（state.route 每次换页
 // 都是新的），切走再回来就不列了（#643）。离线包里随附的许可和说明（extra）不是要导入的文件，不列。
 let importedHere = null;
+// 宿主接受了的启用、重新检查或换包：{task: 起的任务 ID, version: 换包是那个版本号，启用和重新检查是 null（卡片上的版本）}。
+// 宿主拒绝的（409 之类，没起任务）不记。失败以后的「重试」只对同一个任务照它再做。
+let enableTarget = null;
+async function enable(version) {
+  const value = await enablePack(version);
+  if (value?.task?.id) enableTarget = {task: value.task.id, version: version || null};
+  return value;
+}
+// 这个失败任务重试时用的版本：是这个页面记下的那个任务就照记下的；对不上时 undefined。
+const retryVersion = task => enableTarget && task?.id === enableTarget.task ? enableTarget.version : undefined;
 const RESULT = {accepted: () => t('已接收'), mismatch: () => t('SHA-256 不符，已拒绝'), already: () => t('已经有了'),
   unknown: () => t('不是角色资料包'),
   // 离线包里的包目录和签名（#602）。
   catalog: () => t('包目录，已读取'), catalog_old: () => t('包目录比本机的旧，没有采用'), catalog_invalid: () => t('包目录签名不对，已拒绝')};
-export function packImportSummary(x = current()) {
-  const d = x?.download, list = (d?.results || []).filter(r => r.result !== 'extra');
-  if (importedHere !== state.route || d?.kind !== 'import' || !list.length || packDownloading(x)) return '';
-  return `<ul class="models-results">${list.map(r => `<li class="${esc(r.result)}"><bdi>${esc(r.name)}</bdi> · ${RESULT[r.result]?.() || esc(r.result)}</li>`).join('')}</ul>`;
+// 包信息（设置卡片的折叠区，#714 改成数据）：存放位置（所有图库共用）、两个组成部分的文件、版本和许可，每项
+// {key, text, hint}；没有包信息时为空。
+export function packInfoItems(x = current()) {
+  const p = pkg(x); if (!p.components) return [];
+  const file = (key, label, c) => ({key, text: label, hint: `${c.file.path} · ${bytes(c.file.size)} · ${String(c.file.sha256).slice(0, 12)}… · ${t('{n} 个角色', {n: number(c.heads || 0)})}`,
+    title: 'SHA-256 ' + c.file.sha256});
+  return [
+    ...(x.location ? [{key: 'location', text: t('存放位置'), hint: `${home(x.location)} · ${t('所有图库共用')}`, title: x.location}] : []),
+    file('wd', t('WD 扩展头'), p.components.wd), file('ccip', t('CCIP 长尾锚点'), p.components.ccip),
+    {key: 'version', text: t('版本'), hint: `${packVersion(p)} · ${t('{n} 个角色', {n: number(p.heads || 0)})}`},
+    {key: 'license', text: t('许可'), hint: tb(p.license || '')}];
 }
-// 折叠区：存放位置（所有图库共用）、两个组成部分的文件、版本和许可；已就位时可以删除。
-export function packInfo(x = current()) {
-  const p = pkg(x); if (!p.components) return '';
-  const working = packDownloading(x) || packRunning(x);
-  const del = ready(x) ? `<div class="models-acts">${button('delete', t('删除角色资料包'), 'quiet', working ? ` disabled title="${t('正在下载或检查，等它结束再删除')}"` : '')}</div>` : '';
-  const file = (label, c) => `<tr><td>${label}</td><td class="mono" title="SHA-256 ${esc(c.file.sha256)}">`
-    + `<bdi>${esc(c.file.path)}</bdi> · ${bytes(c.file.size)} · ${esc(String(c.file.sha256).slice(0, 12))}… · `
-    + `${t('{n} 个角色', {n: number(c.heads || 0)})}</td></tr>`;
-  const location = x.location;
-  return fold('pack', t('角色资料包'), `<table class="settings-table models-files">
-    ${location ? `<tr><td>${t('存放位置')}</td><td class="mono" title="${esc(location)}">${esc(home(location))} · ${t('所有图库共用')}</td></tr>` : ''}
-    ${file(t('WD 扩展头'), p.components.wd)}${file(t('CCIP 长尾锚点'), p.components.ccip)}
-    <tr><td>${t('版本')}</td><td>${esc(packVersion(p))} · ${t('{n} 个角色', {n: number(p.heads || 0)})}</td></tr>
-    <tr><td>${t('许可')}</td><td>${esc(tb(p.license || ''))}</td></tr></table>${del}`);
-}
-// 「有新版本」一行（#602）：签名目录里比卡片上的版本新的最新一个。没下载时可以下载；正在下载时进度在上面的状态行；
-// 下好以后已启用的图库可以换成它（没启用的图库卡片上直接就是它）。没有新版本时为空。
-export function packOfferLine(x = current(), offer = packOffer(x)) {
-  if (!x || !offer) return '';
+// 已就位时可以删除，正在下载或检查时不行。
+export const packDeleteButtons = (x = current()) => !ready(x) || !pkg(x).components ? []
+  : [button('delete', t('删除角色资料包'), false, packDownloading(x) || packRunning(x) ? t('正在下载或检查，等它结束再删除') : '')];
+// 「有新版本」（#602）：签名目录里比卡片上的版本新的最新一个。没下载时可以下载；正在下载时进度在上面的状态行；下好以后
+// 已启用的图库可以换成它（没启用的图库卡片上直接就是它）。返回 {what, hint, buttons}，没有新版本时为 null。
+export function packOfferInfo(x = current(), offer = packOffer(x)) {
+  if (!x || !offer) return null;
   const n = number(offer.heads || 0), m = offer.candidate_only || 0, version = packVersion(offer);
   const what = m ? t('有新版本 {version}：{n} 个角色，其中 {m} 个只给候选', {version, n, m: number(m)})
     : t('有新版本 {version}：{n} 个角色', {version, n});
   const note = offer.note && (I18N.language === 'zh-CN' ? offer.note['zh-CN'] : offer.note.en);
   const downloading = offer.downloading && packDownloading(x);
   const failed = offer.downloading && x.download?.kind === 'download' && x.download.status === 'failed' && offer.status !== 'ready';
-  const busyNow = packDownloading(x) || packRunning(x), off = busyNow ? ` disabled title="${t('正在下载或检查，等它结束')}"` : '';
-  let act = '';
+  const busyNow = packDownloading(x) || packRunning(x) ? t('正在下载或检查，等它结束') : '';
+  let buttons = [];
   if (offer.status === 'ready') {
-    const blocked = blockedReason(x);
-    act = on(x) ? button('offer-switch', t('换成新版本…'), 'primary', blocked ? ` disabled title="${esc(blocked)}"` : off) : '';
+    if (on(x)) buttons = [button('offer-switch', t('换成新版本…'), true, blockedReason(x) || busyNow)];
   } else if (!downloading) {
     // 按还要下的算：新版本只换了一个组成部分时，另一个已经在本机。
     const rest = bytes(Math.max(0, (offer.size || 0) - (offer.have || 0)));
     const label = failed ? t('重试') : offer.status === 'partial' ? t('继续下载新版本（还差 {left}）', {left: rest}) : t('下载新版本（约 {size}）', {size: rest});
-    act = button('offer-download', label, on(x) ? 'quiet' : 'primary', off);
+    buttons = [button('offer-download', label, !on(x), busyNow)];
   }
-  const hint = [failed ? esc(t('新版本没能下载：{reason}', {reason: tb(x.download.message || '') || t('每个来源都试过了')})) : '',
-    note ? `<bdi>${esc(note)}</bdi>` : ''].filter(Boolean).join(' · ');
-  return `<div class="setting-line"><span>${esc(what)}${hint ? `<small class="line-hint">${hint}</small>` : ''}</span></div>`
-    + (act ? `<div class="models-acts">${act}</div>` : '');
+  const hint = [failed ? t('新版本没能下载：{reason}', {reason: tb(x.download.message || '') || t('每个来源都试过了')}) : '', note || ''].filter(Boolean).join(' · ');
+  return {what, hint, buttons};
 }
-// 卡片的状态行：和别的任务卡片一样带圆点；有过下载或任务时可以转到任务面板。
-export function packStatus(x = current()) {
-  const dot = packDot(x), hint = packHint(x), link = x?.download || x?.task;
-  const text = `<span>${esc(packLine(x))}${hint ? `<small class="line-hint">${hint}</small>` : ''}</span>`;
-  return `<div class="setting-line set-status"><span><span class="local-dot${dot ? ' ' + dot : ''}"></span>${text}</span>`
-    + `${link ? `<button class="quiet small" data-open-tasks>${t('在任务面板查看')}</button>` : ''}</div>`;
+// 下载卡住时每个来源各自失败的原因，导入时对每个文件做了什么：设置卡片里列出的几项 {key, text}（#714 改成数据）。
+export function packResultItems(x = current()) {
+  const d = x?.download;
+  const fails = d?.status === 'failed' ? (d.failures || []).map((f, i) => ({key: 'f' + i, text: t('{source}：{why}', {source: f.source, why: tb(f.why)})})) : [];
+  const list = (d?.results || []).filter(r => r.result !== 'extra');
+  const imported = importedHere !== state.route || d?.kind !== 'import' || packDownloading(x) ? []
+    : list.map((r, i) => ({key: 'r' + i, text: r.name, hint: RESULT[r.result]?.() || r.result}));
+  return [...fails, ...imported];
 }
-// 卡片正文（标题之后）：状态行、进度、失败或导入结果、按钮、新版本和折叠区。
-export const packCardBody = (x = current()) => !x ? '<p class="muted-note">…</p>'
-  : `${packStatus(x)}${packBar(x)}${packFailures(x)}${packImportSummary(x)}<div class="models-acts">${packActions(x)}</div>${packOfferLine(x)}${packInfo(x)}`;
+// 卡片状态行的「在任务面板查看」：有过下载或任务时。
+export const packHasTask = (x = current()) => !!(x?.download || x?.task);
 export const packNote = (x = current()) => t('多认 {n} 个 WD 词表和角色索引里没有的角色。', {n: number(pkg(x).heads || 0)});
 
 // 任务面板的一项：下载或导入、启用、撤回共用。运行中和结束后都列出来（同导入、导出）。
@@ -223,7 +224,7 @@ export function packTask(x = current()) {
   const d = x.download;
   const failed = importFailed(d) ? d : x.task?.status === 'failed' ? x.task : !ready(x) && d?.status === 'failed' ? d : null;
   return {key: 'pack', name: packName(), busy: busyText, active: running || downloading, warn: !!failed, off: packDot(x) === 'off',
-    line: packLine(x), body: packBar(x), action: packActions(x, true), diagnostic: failed?.diagnostic};
+    line: packLine(x), progress: packProgress(x), body: '', buttons: packButtons(x, true).map(b => ({...b, attr: 'pack'})), diagnostic: failed?.diagnostic};
 }
 
 // 结束时的提示。`before` 是任务运行时最后一次读到的状态：那时已经启用的，这一次是重新检查或换包。同步后对新识别的图自动
@@ -267,17 +268,23 @@ export function switchMessage(offer = packOffer(), x = current()) {
     + tierText(offer?.candidate_only) + t('以后可以撤回。');
 }
 
-async function act(what) {
-  // 导入的结果只留到下一个动作：启用、重新检查、撤回、删除以后不再列出（#559 走查）。
-  if (what !== 'import') importedHere = null;
+export async function runPack(what) {
+  // 导入的结果只留到下一个动作：启用、重新检查、撤回、删除、再导入一次以后不再列出（#559 走查）。
+  importedHere = null;
   try {
     if (what === 'download') await packAction('download');
     else if (what === 'offer-download') await packAction('download', packOffer()?.version);
     else if (what === 'offer-switch') {
       const offer = packOffer(); if (!offer) return;
       if (!await confirmAction(switchMessage(offer), t('换成新版本'), t('换成新版本'))) return;
-      await enablePack(offer.version);
-    } else if (what === 'import') { const route = state.route, r = await packAction('import'); if (!r?.cancelled) importedHere = route; }
+      await enable(offer.version);
+    } else if (what === 'import') {
+      // 宿主受理了这次导入（选了文件）才登记发起的那一页，并马上通知卡片重画：导入很快就到终态时结果立刻列出来。选择框
+      // 开着的时候不登记，等待中的重画不会列出上一次导入的结果；关掉选择框和请求失败都不登记。
+      const route = state.route;
+      const r = await packAction('import');
+      if (!r?.cancelled) { importedHere = route; await packChanged(); }
+    }
     else if (what === 'package-cancel') await packAction('cancel');
     else if (what === 'discard') {
       if (!await confirmAction(t('删除已经下载但还没完成的部分？下次要从头下载。'), t('删除未完成的部分'), t('删除'))) return;
@@ -288,8 +295,9 @@ async function act(what) {
       toast(t('角色资料包已删除'));
     } else if (what === 'enable-confirm') {
       if (!await confirmAction(enableMessage(), t('启用角色资料包'), t('启用'))) return;
-      await enablePack();
-    } else if (what === 'enable' || what === 'enable-retry') await enablePack();
+      await enable();
+    } else if (what === 'enable') await enable();
+    else if (what === 'enable-retry') await enable(retryVersion(current()?.task) || undefined);
     else if (what === 'decline') await declinePack();
     else if (what === 'withdraw') {
       if (!await confirmAction(withdrawMessage(), t('撤回角色资料包'), t('撤回'))) return;
@@ -305,12 +313,8 @@ async function act(what) {
     }
   } catch (e) { toast(e.message); }
 }
-// 处理函数。页面启动时调用一次。按钮在设置页的卡片和任务面板里，监听挂在这两处，不挂在 document 上。
+// 处理函数。页面启动时调用一次。任务面板里的按钮由 ui/tasks.js 分派，设置页的卡片用行，点了都直接调 runPack。
 export function wirePacks() {
-  for (const root of [$('settingsPage'), $('taskPanel')]) root.addEventListener('click', e => {
-    const b = e.target.closest('[data-pack]'); if (!b || b.disabled) return;
-    busy(b, () => act(b.dataset.pack));
-  });
   onPack(before => {
     const x = current(), task = packFinished(before, x), d = packDownloadFinished(before, x);
     const note = task ? finishedText(task, before) : d ? downloadText(d, before) : '';

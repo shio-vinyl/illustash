@@ -1,6 +1,7 @@
 // 筛选条（#445）：图库、角色页和画廊页工具栏里的条件胶囊和「＋ 条件」选择器。条件怎么读写在 core/filters.js；
 // 这里只画胶囊、读名字、开选择器。胶囊的名字是链接：点一下在「含」和「不含」之间切换；× 去掉。图库页的标题和「?」
 // 也从这里读（#644）：旧的单值参数和条件数组两种写法，标题、说明和名字都一样。
+import {ownConditionOf} from '../core/galleries.js';
 import {loadWorkTree} from '../core/catalog.js';
 import {dayLabel, esc, number} from '../core/format.js';
 import {I18N, t} from '../core/i18n.js';
@@ -14,6 +15,7 @@ import {listNav} from './combo.js';
 import {openDialog} from './dialog.js';
 import {$, charOption, toast} from './dom.js';
 import {createLayer} from './overlay.js';
+import {popOpen, showPop} from './pop.js';
 
 // ---------- 条件的文字 ----------
 // 角色、作品、画师、画面标签的名字第一次用到时去读；读到后只换胶囊和标题上的那段文字（整条工具栏重画会打断正在输入的
@@ -89,7 +91,9 @@ export function filterBar(r) {
   const when = x.from || x.to ? datesLabel(x.from, x.to) : x.day ? t('{day} 加入', {day: dayLabel(x.day)}) : '';
   const dates = when ? `<span class="variant-chip"><span>${esc(when)}</span><button data-drop-dates title="${t('去掉日期')}" aria-label="${t('去掉日期')}">×</button></span>` : '';
   const full = count(r) >= LIMIT;
-  return [...x.has.map(c => pill(c, false)), ...x.not.map(c => pill(c, true))].join('') + dates +
+  // 画廊页上定义这个画廊的那个条件（手选画廊的 gallery:<id>、收藏的 fav，#710）不画：它就是这一页，去掉它就不是这个画廊了。
+  const own = ownConditionOf(r);
+  return [...x.has.filter(c => c !== own).map(c => pill(c, false)), ...x.not.map(c => pill(c, true))].join('') + dates +
     `<div class="tag-control"><button id="condButton" class="quiet"${full ? ` disabled title="${t('最多 {n} 个条件', {n: LIMIT})}"` : ''}>＋ ${t('条件')}</button>` +
     `<div id="condPopover" class="menu menu-drop" hidden>` +
     `<input id="condSearch" type="search" spellcheck="false" autocorrect="off" autocapitalize="off" placeholder="${t('标签、角色、作品、画师、出处或年份')}" aria-label="${t('搜索条件')}">` +
@@ -100,15 +104,15 @@ export function wireFilterBar(r) {
   const bar = $('toolbar');
   for (const b of bar.querySelectorAll('[data-drop]')) b.onclick = () => go(dropCondition(r, b.dataset.drop));
   bar.querySelector('[data-drop-dates]')?.addEventListener('click', () => go(setDates(r)));
-  $('condButton').onclick = () => { setMenu($('condPopover').hidden); if (!$('condPopover').hidden) { userTags = null; $('condSearch').focus(); loadOptions(); } };
+  $('condButton').onclick = () => { const open = !popOpen($('condPopover')); setMenu(open); if (open) { userTags = null; $('condSearch').focus(); loadOptions(); } };
   onTyped($('condSearch'), loadOptions, 120);
   // 焦点留在搜索框里：↑ ↓ 在选项之间循环，↵ 或点击加上这个条件，Esc 关菜单、焦点回到按钮（同标签菜单，#432）。
-  nav = listNav($('condSearch'), $('condOptions'), {shown: () => !$('condPopover').hidden, count: () => options.length, pick: i => choose(options[i])});
+  nav = listNav($('condSearch'), $('condOptions'), {shown: () => popOpen($('condPopover')), count: () => options.length, pick: i => choose(options[i])});
 }
 // 选择器是非模态浮层，Esc、点外关闭由浮层管理器处理；元素随工具栏重画换掉，所以按 id 找。
 const layer = createLayer({kind: 'popover', id: 'condition-menu', el: () => $('condPopover'), anchor: () => $('condButton'), focusIn: 'first', onDismiss: reason => setMenu(false, reason)});
 function setMenu(open, reason) {
-  const el = $('condPopover'); if (el) el.hidden = !open;
+  showPop($('condPopover'), open);
   if (open) layer.open(); else layer.close(reason);
 }
 let nav = null, options = [], userTags = null;

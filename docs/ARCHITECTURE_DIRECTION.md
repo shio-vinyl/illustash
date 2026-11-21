@@ -214,6 +214,8 @@ macOS 外壳创建主窗口和 Pixiv 登录窗口时显式开启 WKWebView 的 `
 
 `GET /api/character/together?id=<角色>&nsfw=<筛选>&limit=<数量>` 返回指定角色的同框次数。结果为 `[{id, count}]`，按次数降序、同数按角色 ID 升序排列。`limit` 为正整数，默认 6。`nsfw` 与角色统计共用分级和可见性条件。双方均须在同一张图上有正式归属（人工确认或机器认定），并排除自身及只当标签的角色。
 
+`GET /api/ambiguous?nsfw=<筛选>`（#786）按有向角色对（A，B）列出打平的归属：A 是当前机器归属，B 是证据几乎一样强的备选角色。结果为 `{groups: [{a: {id, name}, b: {id, name}, count, items: [uuid, …]}]}`，只含可见图，排除最近七天对（图，A）答过 `kind:"ambiguous"` 的「以后再说」的项；组按张数降序、同数按 A、B 的 ID，组内按入库时间降序、同一时间按 UUID 升序（和不带 `order` 的 `/api/assets` 同序），`count` 等于 `items` 的长度。`GET /api/review-pools` 在数组末尾追加 `{kind:"ambiguous", name:"可能认错", count, cover:null}`，`count` 是同一筛选下各组张数之和。「都不是」的写入见下文[人工标签与统一撤销](#人工标签与统一撤销的原生入口边界)的 `/api/ask/answer`。
+
 ### 本地、外部与任务读取
 
 `/api/ask`、静态/图片、设置、图库、宿主信息、同步、名称、索引、账号和溯源状态均由原生实现处理。本地分组和已有特征/缓存可以在 worker 缺席时读取；按需研究计算走显式可选 worker，不启动旧 HTTP 宿主。未知接口或缺失研究能力明确返回 unavailable；Host/Origin/会话校验失败直接拒绝。远程名字/作品查询、网络授权及各任务具体协议见本篇对应章节。全部人工 POST、统一历史与撤销由原生业务模块提交。
@@ -266,7 +268,7 @@ terms 5（`5e7e7f7`）/6（`d9c49b4`）的历史源库定义均含可为 NULL �
 
 关联创建（含复用）、资料编辑成功后同事务写入 `backend_effects.kind = names:{"entity":角色ID,"refresh":false}`；本地链接写入相同结构而 entity 为 null，表示全范围。这是可恢复的名称更新请求，绑定事件所在包实例，不是完成通知。原生名称消费者按范围执行、重查来源指纹并更新正式名称/投影，成功后确认；失败、确认故障或中断保留 pending，重启幂等补跑。名称运行、网络授权与回退的现行边界统一见 [名字](TERMS_NAMES.md#9-显示名来源与后台更新)「原生运行与恢复」。
 
-原生角色裁决入口为 `POST /api/change`、`/api/audit/answer`、`/api/ask/answer`、`/api/reassign` 与 `/api/sweep`。HTTP 参数、筛选/exclude/confirm 和未展开副本的选择集在同一 Rust 写事务解析，角色核心继续负责副本范围、父角色/子标签裁决、原归属核验、历史及投影。全部 change 动作、多角色确认、问答 yes/no/later 与 switch、随机审核、单图和批量替换及扫除沿用现行语义；只解析接口消费的参数，未使用字段中的超大整数和非有限浮点不改变操作结果；写入仍要求当前 schema 和完整四项词条核心切换；later-only 返回 `undo:null`，不返回此前历史。裁决和 verdict 事件同事务提交，提交后无 learner 的事件处理及恢复由原生会话完成；角色与标签、画师、整理及身份命令共用最近一步撤销。生产回退使用相容产物及升级前备份。
+原生角色裁决入口为 `POST /api/change`、`/api/audit/answer`、`/api/ask/answer`、`/api/reassign` 与 `/api/sweep`。HTTP 参数、筛选/exclude/confirm 和未展开副本的选择集在同一 Rust 写事务解析，角色核心继续负责副本范围、父角色/子标签裁决、原归属核验、历史及投影。全部 change 动作、多角色确认、问答 yes/no/later 与 switch、可能认错的「都不是」（`kind:"ambiguous"` 加 `also_no:B`，对 A、B 各记一条否定，单独提交，提交时 A、B 必须仍是所选图的当前候选对，否则 400；一步撤销，撤销恢复这一步覆盖的旧问答记录，#786）、随机审核、单图和批量替换及扫除沿用现行语义；只解析接口消费的参数，未使用字段中的超大整数和非有限浮点不改变操作结果；写入仍要求当前 schema 和完整四项词条核心切换；later-only 返回 `undo:null`，不返回此前历史。裁决和 verdict 事件同事务提交，提交后无 learner 的事件处理及恢复由原生会话完成；角色与标签、画师、整理及身份命令共用最近一步撤销。生产回退使用相容产物及升级前备份。
 
 原生会话同时接管 `POST /api/identity/decision`、`/api/identity/skip` 和 `/api/merge`。关系裁决复用核心的提议、证据指纹、状态决议与身份图重建；hybrid 合并保存 `duplicate_of` 决议，保留原始认领、资料和作品记录，通过身份图改变正式投影。未设置策略时沿现有合并链解析当前角色，再执行破坏式合并，搬移人工认领、候选、子标签、名称别名、置顶和审核归属，撤销恢复对应状态。已有身份未定记录继续参与投影和迁移；队列跳过仅保存排序后的身份键，不要求角色存在或 hybrid 策略。跳过本身不写事件，其最近一步撤销沿用既有 verdict 通知；重复跳过及撤销保留偏好 JSON 和 rowid 的现行写法。三个入口与既有人工命令共用会话切库隔离、统一历史与提交后事件恢复，不升级格式。
 
@@ -280,7 +282,7 @@ terms 5（`5e7e7f7`）/6（`d9c49b4`）的历史源库定义均含可为 NULL �
 
 ## 原生静态资源与图片服务
 
-显式原生模式直接提供 `/`、`/app.js`、`/app.css`、`/theme.js`、`/favicon.svg`、`/splash.js` 的既有资源字节、Content-Type 和安全响应头，`web/static/core/`、`web/static/ui/` 里的页面模块按 `/core/<名>.js`、`/ui/<名>.js` 提供（名字只含小写字母、数字、`-`、`_`，见 [WEB_V2.md](WEB_V2.md#前端模块2026-10-18199)），以及 `/image?id=&size=`；`/i18n.js` 是 `web/static/i18n.js` 前面写入当前语言设置、可用语言和译文表（见 [WEB_V2.md](WEB_V2.md#界面语言2026-10-18173)）。资产路径只从本次会话的应用库读取，不扫描来源，不启动 Python。尺寸上限沿用 thumb 400、medium 800、preview 1600、full 3000，不放大；原图定位失败和不可读返回 404，非法尺寸返回 400。full 同样输出有界 JPEG，并非原文件下载。
+显式原生模式直接提供 `/`、`/app.js`、`/app.css`、`/theme.js`、`/favicon.svg`、`/splash.js` 的既有资源字节、Content-Type 和安全响应头，`web/static/core/`、`web/static/ui/` 里的页面模块按 `/core/<名>.js`、`/ui/<名>.js` 提供，`web/static/css/` 里的样式表按 `/css/<名>.css` 提供（`text/css`，名字只含小写字母、数字、`-`、`_`，见 [WEB_V2.md](WEB_V2.md#前端模块2026-10-18199)、#705），以及 `/image?id=&size=`；`/i18n.js` 是 `web/static/i18n.js` 前面写入当前语言设置、可用语言和译文表（见 [WEB_V2.md](WEB_V2.md#界面语言2026-10-18173)）。资产路径只从本次会话的应用库读取，不扫描来源，不启动 Python。尺寸上限沿用 thumb 400、medium 800、preview 1600、full 3000，不放大；原图定位失败和不可读返回 404，非法尺寸返回 400。full 同样输出有界 JPEG，并非原文件下载。
 
 缓存键沿用 `sha256(ident:mtime_ns:size_bytes:size).jpg`；命中直接返回旧文件字节，绕过解码槽。未命中先遵循 EXIF 方向（缺失或非法值不旋转），再等比缩小、将透明区域压平到 `#f4f4f2`，输出质量 84 的 JPEG。JPEG 使用 vendored mozjpeg 的 libjpeg 快速配置和分数解码；其他格式使用 image 解码，SIMD 缩放保留 alpha 预乘与调色板及一位 PNG/BMP 的 nearest 规则。锁绑定包内缓存路径，同键在一个服务进程内只生成一次，最多四个解码任务并行；先独占创建随机临时文件，再原子替换，只清理本次临时文件。不宣称跨服务进程只生成一次或缓存写入的断电持久性。图片请求捕获旧会话的源路径与缓存目录后释放会话锁；解码、缓存和慢客户端不阻塞切库，也不会改用新包路径。
 

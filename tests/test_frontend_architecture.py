@@ -19,15 +19,30 @@ class Tree(tempfile.TemporaryDirectory):
         base.mkdir(parents=True)
         shutil.copyfile(ROOT / STATIC / 'app.js', base / 'app.js')
         shutil.copyfile(ROOT / STATIC / 'app.css', base / 'app.css')
-        for folder in ('core', 'ui'):
+        shutil.copyfile(ROOT / STATIC / 'index.html', base / 'index.html')
+        (self.root / 'tools/styleguide').mkdir(parents=True)
+        shutil.copyfile(ROOT / 'tools/styleguide/index.html', self.root / 'tools/styleguide/index.html')
+        for script in ('i18n.js', 'splash.js', 'theme.js'):
+            shutil.copyfile(ROOT / STATIC / script, base / script)
+        for folder in ('core', 'ui', 'css'):
             shutil.copytree(ROOT / STATIC / folder, base / folder)
-        (self.root / BASELINE).parent.mkdir(parents=True)
+        (self.root / BASELINE).parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(ROOT / BASELINE, self.root / BASELINE)
         return self
 
     def append(self, relative, text):
         path = self.root / STATIC / relative
         path.write_text(path.read_text(encoding='utf-8') + text, encoding='utf-8')
+
+    def append_same_length(self, relative, text):
+        """往文件末尾加代码，同时去掉同样多的空行：行数不变，已经超过 600 行的 ui/ 文件不会因此碰到规则 21。"""
+        path = self.root / STATIC / relative
+        old = path.read_text(encoding='utf-8')
+        added, new = text.count('\n'), old
+        for _ in range(added):
+            new = new.replace('\n\n', '\n', 1)
+        assert new.count('\n') == old.count('\n') - added, f'{relative} 里没有足够的空行'
+        path.write_text(new + text, encoding='utf-8')
 
     def errors(self):
         return check(self.root)[0]
@@ -184,8 +199,8 @@ class FrontendArchitectureTest(unittest.TestCase):
     def test_dialog_markup_in_a_string_counts(self):
         for text in ("el.innerHTML = '<dialog class=\"x\"></dialog>';", "el.insertAdjacentHTML('beforeend', `<dialog>${x}</dialog>`);"):
             with self.subTest(text=text), Tree() as tree:
-                tree.append('ui/home.js', '\n' + text + '\n')
-                self.assertViolation(tree, 'dialog-element', 'ui/home.js')
+                tree.append('ui/days.js', '\n' + text + '\n')
+                self.assertViolation(tree, 'dialog-element', 'ui/days.js')
 
     def test_other_events_and_element_listeners_are_fine(self):
         with Tree() as tree:
@@ -249,8 +264,8 @@ class FrontendArchitectureTest(unittest.TestCase):
 
     def test_new_runtime_dialog(self):
         with Tree() as tree:
-            tree.append('ui/home.js', "\nconst d = document.createElement('dialog');\n")
-            message = self.assertViolation(tree, 'dialog-element', 'ui/home.js')
+            tree.append('ui/days.js', "\nconst d = document.createElement('dialog');\n")
+            message = self.assertViolation(tree, 'dialog-element', 'ui/days.js')
             self.assertIn('ui/dialog.js', message)
         with Tree() as tree:  # 用户 2026-11-15 批准（#470）：ui/dialog.js 是唯一放行的文件，别的文件照旧报错
             dialog = (tree.root / STATIC / 'ui/dialog.js').read_text(encoding='utf-8')
@@ -276,11 +291,50 @@ class FrontendArchitectureTest(unittest.TestCase):
 
     def test_long_line_boundary(self):
         with Tree() as tree:
-            tree.append('ui/home.js', '\nconst ok = "' + 'x' * (200 - len('const ok = "";')) + '";\n')
+            tree.append('ui/days.js', '\nconst ok = "' + 'x' * (200 - len('const ok = "";')) + '";\n')
             self.assertEqual(tree.errors(), [])
-            tree.append('ui/home.js', 'const tooLong = "' + 'x' * 190 + '";\n')
-            message = self.assertViolation(tree, 'long-line', 'ui/home.js')
+            tree.append('ui/days.js', 'const tooLong = "' + 'x' * 190 + '";\n')
+            message = self.assertViolation(tree, 'long-line', 'ui/days.js')
             self.assertIn('200', message)
+
+    def test_ui_file_length(self):
+        # 规则 21：ui/ 下新文件超过 600 行报错；已经超长的文件再加一行也报错，缩短了算可收紧
+        with Tree() as tree:
+            tree.append('ui/days.js', '\n'.join(['// 行'] * 200) + '\n')
+            self.assertEqual(tree.errors(), [])
+            path = tree.root / STATIC / 'ui/brand_new.js'
+            path.write_text('// 新模块\n' + 'export const x = 1;\n' * 600, encoding='utf-8')
+            message = self.assertViolation(tree, 'ui-file-length', 'ui/brand_new.js')
+            self.assertIn('600', message)
+        with Tree() as tree:
+            tree.append('ui/grid.js', '// 再加一行\n')
+            self.assertViolation(tree, 'ui-file-length', 'ui/grid.js')
+        with Tree() as tree:
+            # core/ 不管行数
+            tree.append('core/format.js', '\n'.join(['// 行'] * 700) + '\n')
+            self.assertEqual(tree.errors(), [])
+
+    def test_ui_must_not_send_requests(self):
+        # 规则 22：ui/ 从 core/session.js 导入 api、post、shared（改名、import * as 也算），或者直接调 fetch（带 window.、globalThis.、?.() 也算），
+        # 都报；core/ 里照写；同名的方法定义、别的对象上的 fetch 方法不算
+        cases = ["\nimport {api} from '../core/session.js';\n",
+                 "\nimport {readError, post as send} from '../core/session.js';\n",
+                 "\nimport * as session from '../core/session.js';\n",
+                 "\nexport const raw = () => fetch('/api/home');\n",
+                 "\nexport const raw = () => window.fetch('/b');\n",
+                 "\nexport const raw = () => globalThis.fetch?.('/c');\n",
+                 "\nexport const beacon = () => navigator.sendBeacon('/d', '');\n",
+                 "\nexport const stream = () => new EventSource('/e');\n",
+                 "\nexport const xhr = () => new XMLHttpRequest();\n"]
+        for text in cases:
+            with self.subTest(text=text), Tree() as tree:
+                tree.append('ui/rail.js', text)
+                self.assertViolation(tree, 'ui-request', 'ui/rail.js')
+        with Tree() as tree:
+            tree.append('core/rail.js', "\nimport {post} from './session.js';\nexport const more = () => fetch('/api/home');\n")
+            tree.append('ui/rail.js', "\nimport {readError} from '../core/session.js';\nconst x = {post() {}, api() {}};\n"
+                                      "export const y = () => x.post('b') + cache.fetch('c') + '\\napi(';\n// fetch('/api/home')\n")
+            self.assertEqual(tree.errors(), [])
 
     def test_long_comment_line_counts(self):
         with Tree() as tree:
@@ -289,8 +343,8 @@ class FrontendArchitectureTest(unittest.TestCase):
 
     def test_baseline_is_not_keyed_by_line_number(self):
         with Tree() as tree:
-            # 在文件开头插入无关行、让所有行号后移，检查结果不变
-            path = tree.root / STATIC / 'ui/settings.js'
+            # 在文件开头插入无关行、让所有行号后移，检查结果不变（换一个不到 600 行的文件，免得碰到规则 21）
+            path = tree.root / STATIC / 'ui/catalog.js'
             path.write_text('// one\n// two\n// three\n' + path.read_text(encoding='utf-8'), encoding='utf-8')
             self.assertEqual(tree.errors(), [])
 
@@ -308,13 +362,13 @@ class FrontendArchitectureTest(unittest.TestCase):
     def test_shrink_lowers_but_never_adds(self):
         with Tree() as tree:
             tree.replace('ui/models.js', "document.addEventListener('click'", "$('models').addEventListener('click'")
-            tree.append('ui/home.js', "\ndocument.addEventListener('click', e => {});\n")  # 一处新违规
+            tree.append('ui/days.js', "\ndocument.addEventListener('click', e => {});\n")  # 一处新违规
             before = tree.baseline()
             code, _ = tree.run_main('--shrink')
             after = tree.baseline()
             self.assertEqual(code, 1, 'the new violation still fails after shrinking')
             self.assertNotIn('ui/models.js::click', after['document-listener'])
-            self.assertNotIn('ui/home.js::click', after['document-listener'])
+            self.assertNotIn('ui/days.js::click', after['document-listener'])
             self.assertEqual(baseline_growth(after, before), [])
 
     def test_baseline_growth_is_detected(self):
@@ -336,9 +390,9 @@ class FrontendArchitectureTest(unittest.TestCase):
             code, _ = tree.run_main('--base-ref', 'HEAD')
             self.assertEqual(code, 0)
             # 把新违规写进基线来“让它通过”
-            tree.append('ui/home.js', "\ndocument.addEventListener('click', e => {});\n")
+            tree.append('ui/days.js', "\ndocument.addEventListener('click', e => {});\n")
             grown = tree.baseline()
-            grown['document-listener']['ui/home.js::click'] = 1
+            grown['document-listener']['ui/days.js::click'] = 1
             (tree.root / BASELINE).write_text(json.dumps({'rules': grown}), encoding='utf-8')
             self.assertEqual(tree.errors(), [])
             code, output = tree.run_main('--base-ref', 'HEAD')
@@ -379,8 +433,8 @@ class FrontendArchitectureTest(unittest.TestCase):
     # ---------- 规则 7：state 字段的写入者（#353） ----------
     def test_state_written_outside_its_writer(self):
         # cursor 的写入者是 ui/grid.js，focused 的是 ui/detail.js，route 的是 core/route.js
-        cases = [('ui/home.js', 'state.cursor = 3;', 'state.cursor', 'ui/grid.js'),
-                 ('ui/home.js', 'state.focused ??= null;', 'state.focused', 'ui/detail.js'),
+        cases = [('ui/days.js', 'state.cursor = 3;', 'state.cursor', 'ui/grid.js'),
+                 ('ui/days.js', 'state.focused ??= null;', 'state.focused', 'ui/detail.js'),
                  ('ui/palette.js', 'state.dataVersion++;', 'state.dataVersion', 'ui/grid.js'),
                  ('ui/palette.js', '--state.generation;', 'state.generation', 'ui/grid.js'),
                  ('ui/shell.js', 'state.route.sort = "x";', 'state.route', 'core/route.js'),
@@ -397,10 +451,10 @@ class FrontendArchitectureTest(unittest.TestCase):
 
     def test_state_reads_and_the_writer_itself_are_fine(self):
         with Tree() as tree:
-            tree.append('ui/home.js', '\nif (state.cursor === 3 || state.cursor >= 2 || state.cursor <= 1 || state.cursor !== 0) go(state.cursor == 1);\n'
+            tree.append('ui/days.js', '\nif (state.cursor === 3 || state.cursor >= 2 || state.cursor <= 1 || state.cursor !== 0) go(state.cursor == 1);\n'
                                       'const f = state.items.filter(x => x).length; state.pending.add(1); const s = "state.cursor = 3";\n'
                                       '// state.cursor = 3;\n')
-            tree.append('ui/grid.js', '\nstate.cursor = 3; state.items[0] = null; state.sel.ids = new Set();\n')
+            tree.append_same_length('ui/grid.js', '\nstate.cursor = 3; state.items[0] = null; state.sel.ids = new Set();\n')
             tree.append('core/route.js', '\nObject.assign(state.route, {q: ""});\n')
             self.assertEqual(tree.errors(), [])
 
@@ -409,19 +463,19 @@ class FrontendArchitectureTest(unittest.TestCase):
         with Tree() as tree:
             path = tree.root / STATIC / state
             text = path.read_text(encoding='utf-8')
-            path.write_text(text.replace('// ---- 详情栏与大图：ui/detail.js ----', '// ---- 详情栏与大图：ui/detail.js、ui/home.js ----'), encoding='utf-8')
+            path.write_text(text.replace('// ---- 详情栏开着的那张：ui/detail.js ----', '// ---- 详情栏开着的那张：ui/detail.js、ui/days.js ----'), encoding='utf-8')
             self.assertViolation(tree, 'state-writer', '写了 2 个')
         with Tree() as tree:
             path = tree.root / STATIC / state
             text = path.read_text(encoding='utf-8')
-            path.write_text(text.replace('// ---- 详情栏与大图：ui/detail.js ----', '// ---- 详情栏与大图 ----'), encoding='utf-8')
+            path.write_text(text.replace('// ---- 详情栏开着的那张：ui/detail.js ----', '// ---- 详情栏开着的那张 ----'), encoding='utf-8')
             self.assertViolation(tree, 'state-writer', '写了 0 个')
         with Tree() as tree:
             # 换了写入者：原来的写入者再赋值就报错，新写入者不报
             path = tree.root / STATIC / state
             text = path.read_text(encoding='utf-8')
-            path.write_text(text.replace('// ---- 详情栏与大图：ui/detail.js ----', '// ---- 详情栏与大图：ui/home.js ----'), encoding='utf-8')
-            message = self.assertViolation(tree, 'state-writer', 'ui/detail.js: state.focused（声明的写入者是 ui/home.js）')
+            path.write_text(text.replace('// ---- 详情栏开着的那张：ui/detail.js ----', '// ---- 详情栏开着的那张：ui/days.js ----'), encoding='utf-8')
+            message = self.assertViolation(tree, 'state-writer', 'ui/detail.js: state.focused（声明的写入者是 ui/days.js）')
             self.assertIn('setCursor', message)
 
 
@@ -469,15 +523,38 @@ class FrontendArchitectureTest(unittest.TestCase):
 
     def test_tokens_zero_and_registered_exceptions_are_fine(self):
         self.assertCssClean(
-            # 令牌定义处：两个 :root 块里的变量声明
-            ':root{--new-tone:#abcdef;--fs-9:9px}\n:root[data-theme=dark]{--new-tone:#123}\n'
             # 引用令牌、0、auto、var() 通道的颜色函数、透明和 currentColor
             '.new-thing{font-size:var(--fs-12);padding:0 var(--space-8) 0 0;gap:0;z-index:0;border-radius:0;color:currentColor;'
-            'background:transparent;box-shadow:0 1px 2px rgba(var(--sh),.2);border:1px solid var(--line)}\n'
+            'background:transparent;box-shadow:0 0 0 1px rgba(var(--sh),.2);border:1px solid var(--line)}\n'
             # 按 #339 的登记不查：margin，以及不在档位上的 18px 以上 padding、gap
             '.new-thing{margin:7px 13px;padding:26px 18px;gap:18px 40px}\n'
             # 注释、字符串和 url() 里的内容
             '/* .new-thing{color:#fff;font-size:9px} */\n.new-thing::after{content:"#fff; z-index:3";background:url("data:x;#fff")}')
+
+    def test_token_definitions_live_in_tokens_css(self):
+        # 令牌定义处只有 css/tokens.css（#705）：那里的变量声明不查，app.css 和别的文件里的照常查颜色
+        with Tree() as tree:
+            tree.replace('css/tokens.css', ':root{--fw-400:400;', ':root{--new-tone:#abcdef;--fs-9:9px;--fw-400:400;')
+            tree.replace('css/tokens.css', ':root[data-theme=dark]{--shadow-hover:', ':root[data-theme=dark]{--new-tone:#123;--shadow-hover:')
+            self.assertEqual(tree.errors(), [])
+        self.assertCss(':root{--new-tone:#abcdef}', '--new-tone: #abcdef')
+
+    def test_css_folder_literals_have_no_baseline(self):
+        # css/ 下的文件没有基线，键带文件名：从 app.css 挪过去的字面量算新增
+        with Tree() as tree:
+            tree.replace('css/base.css', '.text-meta{color:var(--muted);', '.text-meta{color:#e0e0e6;')
+            message = self.assertViolation(tree, 'css-literal', 'css/base.css: color: #e0e0e6')
+            self.assertIn('web/static/css/base.css:', message)
+            self.assertIn('基线允许 0 处', message)
+        with Tree() as tree:
+            tree.replace('css/rail.css', '@layer pages{\n', '@layer pages{\n.new-rail{gap:6px;font-size:13px}\n')
+            self.assertViolation(tree, 'css-literal', 'css/rail.css: gap: 6px')
+            self.assertViolation(tree, 'css-literal', 'css/rail.css: font-size: 13px')
+        # css/ 下给的改法只在新档位里找，和规则 13 一致：照着改不会又被规则 13 拦
+        message = self.assertPage('css-literal', '.x{font-size:14px}', 'css/library.css: font-size: 14px', 'var(--fs-13)', '新写的界面能用的档位')
+        self.assertNotIn('--fs-14', message)
+        message = self.assertPage('css-literal', '.x{border-radius:7px}', 'css/library.css: border-radius: 7px', 'var(--radius-8)')
+        self.assertNotIn('--radius-6', message)
 
     def test_existing_css_literals_are_frozen(self):
         with Tree() as tree:
@@ -491,7 +568,7 @@ class FrontendArchitectureTest(unittest.TestCase):
 
     def test_fixed_css_literal_must_be_shrunk(self):
         with Tree() as tree:
-            tree.replace('app.css', 'font:800 9px/1', 'font:800 var(--fs-10)/1')
+            tree.replace('app.css', 'font:800 9px/1', 'font:800 var(--fs-11)/1')
             errors, stale = check(tree.root)
             self.assertEqual(errors, [])
             self.assertTrue(any('css-literal' in line and 'font: 9px' in line for line in stale))
@@ -509,6 +586,166 @@ class FrontendArchitectureTest(unittest.TestCase):
                          [('.x', 'color', 2), ('.x', 'background', 2), ('.y', 'gap', 3), ('to', 'opacity', 4)])
         self.assertEqual(decls[2].context, ('@media(x)', '.y'))
         self.assertEqual(decls[1].value, 'url("a;b{c}")')
+
+    # ---------- 规则 13–17：样式文件的结构和三档令牌（#705） ----------
+    def assertPage(self, rule, css, *needles, file='css/library.css'):
+        """往 css/ 下一个文件的层里加一段，确认报 rule 的错，报错里有 needles。"""
+        layer = {'css/base.css': '@layer base{\n', 'css/overlays.css': '@layer overlays{\n'}.get(file, '@layer pages{\n')
+        with Tree() as tree:
+            tree.replace(file, layer, layer + css + '\n')
+            message = self.assertViolation(tree, rule, needles[0])
+            for needle in needles[1:]:
+                self.assertIn(needle, message)
+            return message
+
+    def assertPageClean(self, css):
+        with Tree() as tree:
+            tree.replace('css/library.css', '@layer pages{\n', '@layer pages{\n' + css + '\n')
+            self.assertEqual(tree.errors(), [])
+
+    def test_weights_shadows_motion_and_tiers(self):
+        self.assertPage('css-scale', '.x{font-weight:700}', 'css/library.css: font-weight: 700', 'var(--fw-750)')
+        self.assertPage('css-scale', '.x{font-weight:bold}', 'font-weight: bold', 'var(--fw-750)')
+        self.assertPage('css-scale', '.x{font:500 var(--fs-12)/1.4 inherit}', 'font-weight: 500', 'var(--fw-400)')
+        self.assertPage('css-scale', '.x{box-shadow:0 4px 12px rgba(var(--sh),.2)}', 'box-shadow: 0 4px 12px', 'var(--shadow-hover)', '描边环')
+        self.assertPage('css-scale', '.x{box-shadow:var(--sheet-shadow)}', 'box-shadow: var(--sheet-shadow)')
+        self.assertPage('css-scale', '.x{transition:opacity .2s ease}', 'transition-duration: .2s', 'var(--dur-1)')
+        self.assertPage('css-scale', '.x{transition:opacity .2s ease}', 'transition-timing-function: ease', 'var(--ease)')
+        self.assertPage('css-scale', '.x{transition:transform var(--dur-2) cubic-bezier(.3, 1, .3, 1)}',
+                        'transition-timing-function: cubic-bezier(.3,1,.3,1)')
+        self.assertPage('css-scale', '.x{animation:pop 300ms var(--ease)}', 'animation-duration: 300ms')
+        self.assertPage('css-scale', '.x{font-size:var(--fs-14)}', 'font-size: var(--fs-14)', 'var(--fs-13)')
+        self.assertPage('css-scale', '.x{font-size:var(--fs-display-32)}', 'font-size: var(--fs-display-32)', 'var(--fs-display-28)')
+        self.assertPage('css-scale', '.x{border-radius:var(--radius-10)}', 'border-radius: var(--radius-10)', 'var(--radius-8)', '只留给旧样式')
+
+    def test_scale_tokens_and_exempt_forms_are_fine(self):
+        self.assertPageClean(
+            '.x{font-weight:var(--fw-600);font:var(--fw-750) var(--fs-display-40)/1.1 inherit;font-size:var(--fs-11);border-radius:var(--radius-18)}\n'
+            # 三档阴影、不带模糊的描边环、none
+            '.x{box-shadow:var(--shadow-pop)}\n.y{box-shadow:0 0 0 2px var(--accent),inset 0 1px 0 var(--line)}\n.z{box-shadow:none}\n'
+            # 三档时长和两条缓动、0 时长；延迟不查；循环动画不查
+            '.x{transition:opacity var(--dur-1) var(--ease),transform var(--dur-3) var(--ease-spring) 40ms}\n.y{transition:none;transition-duration:0s}\n'
+            '.z{animation:spin 1s linear infinite}\n'
+            # 嵌套的内圆角：外层 − 间距
+            '.x{border-radius:calc(var(--radius-18) - var(--space-6))}')
+
+    def test_existing_scale_issues_are_frozen_per_file(self):
+        with Tree() as tree:
+            frozen = tree.baseline()['css-scale']
+            self.assertIn('app.css: font-weight: 700', frozen)
+            self.assertEqual(tree.errors(), [])
+            tree.append('app.css', '\n.new-thing{font-weight:700}\n')
+            message = self.assertViolation(tree, 'css-scale', 'app.css: font-weight: 700')
+            self.assertIn(f'基线允许 {frozen["app.css: font-weight: 700"]} 处', message)
+
+    def test_css_files_live_in_their_layer(self):
+        with Tree() as tree:
+            tree.append('css/library.css', '.loose{color:var(--ink)}\n')
+            message = self.assertViolation(tree, 'css-layer', 'css/library.css: .loose')
+            self.assertIn('@layer pages', message)
+            self.assertIn('[规则 18 · css-layer]', message)
+        self.assertPage('css-layer', '@layer base{.x{opacity:1}}', 'css/library.css: 嵌套的 @layer base')
+        with Tree() as tree:
+            tree.replace('css/detail.css', '@layer pages{', '@layer base{')
+            self.assertIn('@layer pages', self.assertViolation(tree, 'css-layer', 'css/detail.css: @layer base'))
+        with Tree() as tree:
+            tree.replace('css/overlays.css', '@layer overlays{', '@layer pages{')
+            self.assertIn('@layer overlays', self.assertViolation(tree, 'css-layer', 'css/overlays.css'))
+        with Tree() as tree:
+            tree.replace('css/rail.css', '@layer pages{', '@layer legacy, pages;\n@layer pages{')
+            self.assertIn('第一行', self.assertViolation(tree, 'css-layer', 'css/rail.css: @layer legacy, pages'))
+        with Tree() as tree:
+            tree.replace('css/tokens.css', '@layer legacy, tokens, base, pages, overlays;', '')
+            self.assertViolation(tree, 'css-layer', 'css/tokens.css: 没有层的声明')
+
+    def test_stylesheet_order_keeps_the_layers_in_order(self):
+        with Tree() as tree:
+            tree.replace('index.html', '<link rel="stylesheet" href="/css/tokens.css">', '')
+            tree.replace('index.html', '<link rel="stylesheet" href="/css/base.css">',
+                         '<link rel="stylesheet" href="/css/base.css"><link rel="stylesheet" href="/css/tokens.css">')
+            self.assertIn('最前面', self.assertViolation(tree, 'css-order', 'web/static/index.html: 第一个样式表不是 tokens.css'))
+        with Tree() as tree:
+            (tree.root / STATIC / 'css/new-page.css').write_text('@layer pages{\n}\n', encoding='utf-8')
+            self.assertViolation(tree, 'css-order', 'web/static/index.html: 没有引 css/new-page.css')
+        with Tree() as tree:
+            path = tree.root / 'tools/styleguide/index.html'
+            text = path.read_text(encoding='utf-8')
+            path.write_text(text.replace('<link rel="stylesheet" href="../../web/static/css/tokens.css">\n', ''), encoding='utf-8')
+            self.assertViolation(tree, 'css-order', 'tools/styleguide/index.html: 第一个样式表不是 tokens.css')
+        with Tree() as tree:
+            # 层的声明不是第一条：先写的 @layer tokens{…} 会让 tokens 排到最前
+            tree.replace('css/tokens.css', '@layer legacy, tokens, base, pages, overlays;\n@layer tokens{',
+                         '@layer tokens{:root{--zz:1}}\n@layer legacy, tokens, base, pages, overlays;\n@layer tokens{')
+            self.assertViolation(tree, 'css-order', 'css/tokens.css: 层的声明不在最前')
+
+    def test_stylesheet_order_reads_unquoted_href(self):
+        with Tree() as tree:
+            tree.replace('index.html', '<link rel="stylesheet" href="/css/tokens.css">', '<link rel=stylesheet href=/css/tokens.css>')
+            self.assertEqual(tree.errors(), [])
+            tree.replace('index.html', '<link rel=stylesheet href=/css/tokens.css>', '')
+            tree.replace('index.html', '<link rel="stylesheet" href="/css/base.css">', '<link rel="stylesheet" href="/css/base.css"><link rel=stylesheet href=/css/tokens.css>')
+            self.assertViolation(tree, 'css-order', 'web/static/index.html: 第一个样式表不是 tokens.css')
+
+    def test_tint_is_written_only_by_set_tint(self):
+        with Tree() as tree:
+            tree.append('ui/grid.js', "\nexport const paint = (el, c) => el.style.setProperty('--tint', c);\n")
+            self.assertIn('setTint', self.assertViolation(tree, 'tint-writer', 'ui/grid.js'))
+        with Tree() as tree:
+            tree.append('ui/tint.js', "\nexport const again = el => el.style.getPropertyValue('--tint');\n")
+            self.assertEqual(tree.errors(), [])
+        # 样式里也不直接声明 --tint；tokens.css 里 :root 的中性默认值除外
+        self.assertPage('tint-writer', '.card{--tint:var(--accent)}', 'css/library.css: --tint')
+
+    def test_class_substring_and_descendant_has(self):
+        self.assertPage('css-selector', '.grid [class*=card-]{opacity:.5}', 'css/library.css: 类名子串选择器', '2.4 倍')
+        self.assertPage('css-selector', 'div[class^="x"]{opacity:.5}', '类名子串选择器')
+        self.assertPage('css-selector', '.page:has(.selected){opacity:.5}', '后代形式的 :has()', ':has(> …)')
+        self.assertPageClean('.row:has(> .avatar){gap:0}\n.item:has(+ .item:hover){opacity:.9}\n.x[class~=y]{opacity:.9}')
+
+    def test_variables_must_be_defined(self):
+        self.assertPage('css-var', '.x{color:var(--inkk)}', 'css/library.css: --inkk', 'JS_VARIABLES')
+        # 别的文件里的局部变量不能借用
+        self.assertPage('css-var', '.x{padding:0 var(--gutter)}', 'css/library.css: --gutter')
+        # 回退值里的变量同样要有定义
+        self.assertPage('css-var', '.x{color:var(--tint-wash,var(--nope))}', 'css/library.css: --nope')
+        # css/ 下不认局部变量：`--x: 13px` 规则 8、13 都不查，借它就绕过三档令牌
+        self.assertPage('css-var', '.a{--d:500ms;--g:13px;transition:opacity var(--d);gap:var(--g)}', 'css/library.css: --d')
+        # tokens.css 的令牌、登记的 JS 变量可以；app.css 还认同一个文件里的旧局部变量
+        self.assertPageClean('.x{background:var(--tint-wash);width:calc(var(--p) * 1%)}')
+        self.assertCssClean('.new-thing{--cols:4;grid-template-columns:repeat(var(--cols),1fr)}')
+
+    def test_backdrop_filter_only_on_glass(self):
+        self.assertPage('backdrop-filter', '.card{backdrop-filter:blur(8px)}', 'css/library.css: backdrop-filter', '.glass', '显存')
+        self.assertPage('backdrop-filter', '.glass-card{-webkit-backdrop-filter:blur(8px)}', 'css/base.css: backdrop-filter', file='css/base.css')
+        # 玻璃选择器前面只许「降低透明度」的根属性（#755），别的前缀不放行
+        self.assertPage('backdrop-filter', '.card .glass{backdrop-filter:blur(8px)}', 'css/base.css: backdrop-filter', file='css/base.css')
+        with Tree() as tree:
+            tree.replace('css/base.css', '@layer base{\n', '@layer base{\n.glass,.glass-scrim::backdrop{backdrop-filter:blur(4px)}\n'
+                         ':root[data-reduce-transparency] .glass{backdrop-filter:none}\n')
+            self.assertEqual([e for e in tree.errors() if 'backdrop-filter' in e], [])
+        with Tree() as tree:
+            tree.append('app.css', '\n.new-thing{backdrop-filter:blur(4px)}\n')
+            self.assertViolation(tree, 'backdrop-filter', 'app.css: backdrop-filter')
+
+    def test_newer_css_only_in_registered_enhancements(self):
+        self.assertPage('css-compat', '.x{content-visibility:auto}', 'css/library.css: content-visibility', '@supports', '退路')
+        self.assertPage('css-compat', '.x{transition-timing-function:linear(0,1)}', 'linear() 缓动')
+        self.assertPage('css-compat', '@starting-style{.x{opacity:0}}', '@starting-style')
+        self.assertPage('css-compat', '::view-transition-old(root){opacity:0}', 'View Transitions 的伪元素')
+        self.assertPage('css-compat', '.x{color:light-dark(var(--ink),var(--sheet))}', 'light-dark()')
+        # 在 @supports 里但前面没写退路，或者 @supports 测的是别的东西，都不算登记
+        self.assertPage('css-compat', '@supports (content-visibility:auto){.x{content-visibility:auto}}', 'content-visibility')
+        self.assertPage('css-compat', '/* 增强。退路：照常画。 */\n@supports (display:grid){.x{content-visibility:auto}}', 'content-visibility')
+        self.assertPage('css-compat', '/* 增强。退路：照常画。 */\n@supports not (content-visibility:auto){.x{content-visibility:auto}}', 'content-visibility')
+        # Safari 17.4 之前 ::backdrop 不继承自定义属性
+        self.assertPage('css-compat', 'dialog.x::backdrop{background:var(--scrim)}', '::backdrop 里的 var()', '写死色值')
+        # 嵌套和相对颜色是硬规则，没有增强的写法
+        self.assertPage('css-compat', '.x{color:var(--ink);.y{color:var(--muted)}}', 'CSS 嵌套', '展开')
+        self.assertPage('css-compat', '.x{color:rgb(from var(--accent) r g b / .5)}', '相对颜色语法', 'color-mix()')
+        self.assertPageClean('.x{opacity:1}\n/* 增强：content-visibility（Safari 18.0）。退路：上面照常画全部。 */\n'
+                             '@supports (content-visibility:auto){.x{content-visibility:auto}}\n'
+                             '/* 增强：入场的起始样式（Safari 17.5）。退路：没有起始样式时直接出现。 */\n@starting-style{.x{opacity:0}}\n'
+                             '@keyframes k{from{opacity:0}to{opacity:1}}')
 
     # ---------- 新规则首次登记存量：--init-rule（#349） ----------
     def test_init_rule_registers_only_a_new_rule(self):
@@ -562,6 +799,119 @@ class FrontendArchitectureTest(unittest.TestCase):
             self.assertEqual(code, 1)
             self.assertIn('基线变大', output)
             self.assertNotIn('首次登记', output)
+
+
+    # ---------- 规则 10：数据不拼进 innerHTML（#704） ----------
+    def write(self, tree, relative, text):
+        (tree.root / STATIC / relative).write_text(text, encoding='utf-8')
+
+    def test_data_in_inner_html(self):
+        with Tree() as tree:
+            tree.append('ui/days.js', "\nexport function bad(el, name) { el.innerHTML = `<b>${name}</b>`; }\n")
+            error = self.assertViolation(tree, 'inner-html', 'ui/days.js')
+            self.assertIn('ui/el.js', error)
+            self.assertIn('tpl`', error)
+        with Tree() as tree:
+            self.write(tree, 'ui/fresh.js', "export const a = (el, html) => { el.innerHTML = html; };\n")
+            self.assertViolation(tree, 'inner-html', 'ui/fresh.js（现有 1 处，基线允许 0 处）')
+        for line in ("el.outerHTML = '<p>' + text + '</p>';", "el.innerHTML += row(x);",
+                     "el.insertAdjacentHTML('beforeend', `<li>${x}</li>`);", "el.innerHTML = on ? '' : '<b></b>';",
+                     "el['innerHTML'] = text;", 'el["outerHTML"] = x;', 'el.setHTMLUnsafe(text);',
+                     'document.createRange().createContextualFragment(text);', "new DOMParser().parseFromString(text, 'text/html');",
+                     'Document.parseHTMLUnsafe(text);', 'el.srcdoc = text;', 'tpl([text])();'):
+            with self.subTest(line=line), Tree() as tree:
+                self.write(tree, 'ui/fresh.js', f'export function f(el, text, x, on) {{ {line} }}\n')
+                self.assertViolation(tree, 'inner-html', 'ui/fresh.js')
+
+    def test_static_inner_html_and_the_template_parser_are_fine(self):
+        with Tree() as tree:
+            self.write(tree, 'ui/fresh.js', "export function f(el) {\n  el.innerHTML = '';\n  el.innerHTML = `<i class=\"a\"></i>`;\n"
+                       "  el.insertAdjacentHTML('beforeend', \"<hr>\");\n  if (el.innerHTML === '') return;\n}\n")
+            tree.append('ui/el.js', '\nexport function again(holder, source) { holder.innerHTML = source; }\n')
+            self.assertEqual(tree.errors(), [])
+        # 不写分号：右边到行尾为止，下一句不算进来；续行（运算符在行尾或下一行开头）照样连起来算
+        with Tree() as tree:
+            self.write(tree, 'ui/fresh.js', "export function f(el, x) {\n  el.innerHTML = ''\n  x.go()\n  el.innerHTML = `<i>\n</i>`\n  x.done()\n}\n")
+            self.assertEqual(tree.errors(), [])
+        with Tree() as tree:
+            self.write(tree, 'ui/fresh.js', "export function f(el, x) {\n  el.innerHTML = '<b>' +\n    x\n  el.innerHTML = '<i>'\n    + x\n}\n")
+            self.assertViolation(tree, 'inner-html', 'ui/fresh.js（现有 2 处，基线允许 0 处）')
+
+    # ---------- 规则 11：帧调度和动效的入口（#704） ----------
+    def test_animation_frame_outside_frame_js(self):
+        with Tree() as tree:
+            tree.append('ui/days.js', '\nexport const later = fn => requestAnimationFrame(fn);\n')
+            error = self.assertViolation(tree, 'animation-entry', 'ui/days.js: requestAnimationFrame')
+            self.assertIn('ui/frame.js', error)
+        with Tree() as tree:
+            tree.append('ui/frame.js', '\nexport const fade = el => el.animate([{opacity: 0}, {opacity: 1}], 200);\n')
+            self.assertViolation(tree, 'animation-entry', 'ui/frame.js: .animate(')
+        with Tree() as tree:
+            self.write(tree, 'ui/fresh.js', 'export const go = fn => document.startViewTransition(fn);\n')
+            self.assertViolation(tree, 'animation-entry', 'ui/fresh.js: startViewTransition')
+            # 模块里的 startViewTransition 只由规则 11 报，规则 12 不重复报
+            self.assertFalse([e for e in tree.errors() if 'safari17-js' in e])
+        with Tree() as tree:
+            self.write(tree, 'ui/fresh.js', "import * as motion from './motion.js';\nexport const fade = el => motion.animate(el, 'fade');\n")
+            self.assertFalse([e for e in tree.errors() if 'animation-entry' in e])
+
+    def test_frame_and_motion_are_the_allowed_entries(self):
+        with Tree() as tree:
+            tree.append('ui/frame.js', '\nexport const again = fn => requestAnimationFrame(fn);\n')
+            self.write(tree, 'ui/motion.js', "// 不支持 View Transitions 时直接换（Safari 17）\n"
+                       "export const swap = fn => document.startViewTransition ? document.startViewTransition(fn) : fn();\n"
+                       "export const fade = el => el.animate([{opacity: 0}, {opacity: 1}], 200);\n"
+                       "export const next = fn => requestAnimationFrame(fn);\n// requestAnimationFrame in a comment\n"
+                       "export const name = 'requestIdleCallback';\n")
+            self.assertEqual(tree.errors(), [])
+
+    # ---------- 规则 12：Safari 17.0 没有的 JS 能力（#704） ----------
+    def test_js_newer_than_safari_17(self):
+        for code, needle in (('const {promise, resolve} = Promise.withResolvers();', 'Promise.withResolvers（Safari 17.4 才有）'),
+                             ('const groups = Object.groupBy(list, x => x.day);', 'Object.groupBy'),
+                             ('const ok = el.checkVisibility();', 'checkVisibility'),
+                             ('requestIdleCallback(work);', 'requestIdleCallback（Safari 正式版没有）'),
+                             ('scheduler.postTask(work);', 'scheduler（postTask、yield）'),
+                             ('await scheduler.yield();', 'scheduler（postTask、yield）'),
+                             ('const any = AbortSignal.any([a, b]);', 'AbortSignal.any（Safari 17.4 才有）'),
+                             ('const names = list.values().map(x => x.name).toArray();', '迭代器方法（Safari 18.4 才有）'),
+                             ('const it = Iterator.from(list);', '迭代器方法'),
+                             ('el.parentNode.moveBefore(el, null);', 'Element.moveBefore（Safari 正式版没有）'),
+                             ('const w = new CloseWatcher();', 'CloseWatcher'),
+                             ('navigation.navigate(url);', 'Navigation API'),
+                             ('const d = Temporal.Now.plainDateISO();', 'Temporal'),
+                             ('using res = open();', '显式资源管理'),
+                             ('const s = new DisposableStack();', '显式资源管理'),
+                             ("const m = await import('./x.json', {with: {type: 'json'}});", 'import 属性（with {type}）（Safari 17.2 才有）')):
+            with self.subTest(code=code), Tree() as tree:
+                self.write(tree, 'ui/fresh.js', f'export function f(list, el, work) {{ {code} }}\n')
+                error = self.assertViolation(tree, 'safari17-js', needle)
+                self.assertIn('Safari 17.0', error)
+
+    def test_registered_enhancements_only_cover_their_feature(self):
+        with Tree() as tree:
+            self.write(tree, 'ui/motion.js', 'export const swap = fn => document.startViewTransition ? document.startViewTransition(fn) : fn();\n'
+                       'export const idle = fn => requestIdleCallback(fn);\n')
+            errors = [e for e in tree.errors() if 'safari17-js' in e]
+            self.assertEqual(len(errors), 1, errors)
+            self.assertIn('requestIdleCallback', errors[0])
+            self.assertNotIn('startViewTransition（', errors[0])
+        with Tree() as tree:
+            tree.append_same_length('ui/grid.js', "\nexport const idle = 'requestIdleCallback' in window;\n"
+                        "export const pairs = obj => Object.entries(obj).map(([k, v]) => k + v);\n"
+                        "export const list = map => [...map.values()].map(x => x);\n")
+            self.assertEqual(tree.errors(), [])
+
+    def test_safari_17_rule_covers_the_classic_scripts(self):
+        for script in ('i18n.js', 'splash.js', 'theme.js'):
+            with self.subTest(script=script), Tree() as tree:
+                tree.append(script, '\nconst {promise, resolve} = Promise.withResolvers();\nrequestIdleCallback(() => {});\n')
+                errors = [e for e in tree.errors() if 'safari17-js' in e]
+                self.assertEqual(len(errors), 2, errors)
+                self.assertTrue(all(f'web/static/{script}:' in e for e in errors))
+        with Tree() as tree:
+            tree.append('splash.js', '\ndocument.startViewTransition?.(() => {});\n')
+            self.assertViolation(tree, 'safari17-js', 'splash.js: startViewTransition（Safari 18.0 才有）')
 
 
 if __name__ == '__main__':

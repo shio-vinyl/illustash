@@ -1,37 +1,18 @@
-// 用图动作的界面（#450）：详情栏的「打开」「在访达中显示」、把图拖到别的应用、选择栏的「导出…」对话框。
+// 用图动作的界面（#450）：把图拖到别的应用、选择栏的「导出…」对话框。详情卡片的「打开」「在访达中显示」在 ui/detail_card.js。
 // 请求和导出状态在 core/files.js；导出的进度在任务面板（ui/tasks.js）。
 import {t} from '../core/i18n.js';
 import {number} from '../core/format.js';
-import {DRAG_LIMIT, canDrag, canReveal, dragFiles, openFile, revealFile, revealLabel, startExport} from '../core/files.js';
+import {DRAG_LIMIT, canDrag, dragFiles, startExport} from '../core/files.js';
 import {openDialog} from './dialog.js';
 import {toast} from './dom.js';
+import {wirePress} from './press.js';
 
-// 详情栏「文件」下面的两个按钮。
-export function fileActions() {
-  return `<section class="inspector-section"><div class="chips-row"><button class="quiet small" data-file="open" title="${t('用默认应用打开原图')}">${t('打开')}</button>`
-    + (canReveal() ? `<button class="quiet small" data-file="reveal">${revealLabel()}</button>` : '') + '</div></section>';
-}
-export function bindFileActions(root, id) {
-  for (const b of root.querySelectorAll('[data-file]')) b.onclick = () => (b.dataset.file === 'open' ? openFile(id) : revealFile(id)).catch(e => toast(e.message));
-}
-
-// 鼠标按下后移动超过这么多像素，就算开始拖。
-const SLOP = 6;
-// 在 el 上按住拖动时，把 ids() 给的图拖到别的应用（外壳起系统的拖放，只允许复制）。when() 为假时（比如大图放大了在
-// 平移）不拖。拖出之后吞掉松手时的那次点击，免得点开大图。只在桌面 App 里有效。
+// 在 el 上按住拖动时，把 ids(down) 给的图拖到别的应用（外壳起系统的拖放，只允许复制）。down 是按下时的 pointerdown 事件：
+// 在容器上委托时，用 down.target.closest(…) 找按的是哪张。when(down) 为假时（比如大图放大了在平移）不拖。拖出之后吞掉
+// 松手时的那次点击，免得点开大图。只在桌面 App 里有效。返回 off()，取下这些监听（交给作用域：s.add(wireDragOut(…))）。
+// 手势本身在 ui/press.js（和拖进画廊的 wireLift 共用）。
 export function wireDragOut(el, ids, when = () => true) {
-  let start = null, dragged = false;
-  el.addEventListener('pointerdown', e => {
-    dragged = false;
-    start = e.button === 0 && e.pointerType !== 'touch' && canDrag() && when() ? [e.clientX, e.clientY] : null;
-  });
-  el.addEventListener('pointermove', e => {
-    if (!start || !(e.buttons & 1) || Math.hypot(e.clientX - start[0], e.clientY - start[1]) < SLOP) return;
-    start = null; dragged = true;
-    startDrag(ids());
-  });
-  for (const type of ['pointerup', 'pointercancel']) el.addEventListener(type, () => { start = null; });
-  el.addEventListener('click', e => { if (dragged) { e.preventDefault(); e.stopImmediatePropagation(); } dragged = false; }, true);
+  return wirePress(el, {when: e => canDrag() && when(e), start: down => { startDrag(ids(down)); return true; }});
 }
 // 拖出这几张。超过上限时只提示，不拖。
 export function startDrag(ids) {

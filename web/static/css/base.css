@@ -1,0 +1,186 @@
+/* 公共部件（#705，0.4 第 A2 步）：排版、表面、胶囊控件与「选中」、页头、空状态、海报、圆头像、玻璃。各页步骤用这里的部件，
+   不另画一套；样子和用法见样式清单 tools/styleguide/（「新部件」一组）。设计约定在 docs/WEB_V2.md「界面结构与渲染底座」。
+   - 只用 css/tokens.css 的令牌。新写的界面字号只用 11 / 12 / 13 / 20 / 28 / 40，圆角只用 4 / 8 / 12 / 18、胶囊和圆形，
+     字重、阴影、时长和缓动各用三档（tools/check_frontend.py 规则 8、13 拦）。
+   - 「选中」一种画法：强调色浅底；分段控件里白底浮起。状态写在 aria-pressed / aria-selected / aria-checked / aria-current 上，
+     不另起 .on、.active 这类类名（旧样式里到处有，会串）。
+   - 旧样式在更低的 legacy 层，按元素名写的旧规则（button、input…）仍会落到新部件上，部件把自己在意的属性都写全。 */
+@layer base{
+
+/* ---- 排版：大字标题三档 + 次要文字 ---- */
+.title-hero{margin:0;font-size:var(--fs-display-40);font-weight:var(--fw-750);letter-spacing:-.025em;line-height:1.1}
+.title-page{margin:0;font-size:var(--fs-display-28);font-weight:var(--fw-750);letter-spacing:-.025em;line-height:1.1;overflow-wrap:anywhere}
+.title-section{margin:0;font-size:var(--fs-20);font-weight:var(--fw-750);letter-spacing:-.02em;line-height:1.2}
+.text-meta{color:var(--muted);font-size:var(--fs-11)}
+
+/* ---- 表面两层：画布和内容页；内容页里的分组用浅底，不描边、不套卡 ---- */
+.canvas{background:var(--canvas);color:var(--ink)}
+.sheet{background:var(--sheet);color:var(--ink);border-radius:var(--radius-18)}
+.group{padding:var(--space-16);border-radius:var(--radius-12);background:var(--soft)}
+
+/* ---- 胶囊控件：按钮（主要 / 普通 / 安静）、芯片、分段、搜索框 ---- */
+.btn,.dialog-actions>button,.chip,.seg>button,.seg>a{display:inline-flex;align-items:center;justify-content:center;gap:var(--space-6);margin:0;border:0;border-radius:var(--radius-pill);
+  font:inherit;font-size:var(--fs-12);line-height:1;white-space:nowrap;text-decoration:none;box-shadow:none;
+  transition:background-color var(--dur-1) var(--ease),color var(--dur-1) var(--ease),box-shadow var(--dur-1) var(--ease)}
+/* openDialog 操作区里的按钮（调用方传 .primary / .quiet）和 .btn 是同一个样子：.quiet 就是默认的 .btn（#715） */
+.btn,.dialog-actions>button{height:var(--h-32);padding:0 var(--space-14);background:var(--soft);color:var(--ink2);font-weight:var(--fw-600);cursor:pointer}
+.btn:hover,.dialog-actions>button:hover{background:var(--chip-hover);color:var(--ink)}
+.btn.is-primary,.dialog-actions>button.primary{background:var(--accent-fill);color:var(--on-accent)}
+.btn.is-primary:hover,.dialog-actions>button.primary:hover{background:var(--accent-fill);filter:var(--btn-hover-filter)}
+.btn.is-quiet{background:transparent}
+.btn.is-quiet:hover{background:var(--wash-hover)}
+.btn.is-small{height:var(--h-28);padding:0 var(--space-12)}
+.btn:disabled,.btn[aria-disabled=true],.dialog-actions>button:disabled{opacity:.5;cursor:default;filter:none}
+.btn svg,.chip svg,.seg>button svg,.seg>a svg{width:15px;height:15px;flex:none;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.chip{height:var(--h-28);padding:0 var(--space-12);background:var(--soft);color:var(--ink2);font-weight:var(--fw-400)}
+button.chip,a.chip{cursor:pointer}
+button.chip:hover,a.chip:hover{background:var(--chip-hover);color:var(--ink)}
+/* 带头像的芯片：头像贴左边，左内边距收窄 */
+.chip:has(> .avatar:first-child){padding-left:var(--space-4)}
+.chip>.avatar{width:20px;height:20px}
+.chip.is-small{height:auto;padding:var(--space-2) var(--space-8);font-size:var(--fs-11)}
+.chip>.chip-count{color:var(--muted);font-size:var(--fs-11)}
+/* 带一个小 × 的芯片（造型、我的标签：名字可以是链接，× 在右边，右内边距收窄）；「＋ 加一个」的芯片是描边、没有底色 */
+.chip.is-variant{gap:var(--space-2);padding-right:var(--space-4)}
+.chip.is-variant>a{color:inherit;text-decoration:none}
+.chip.is-add{background:transparent;box-shadow:inset 0 0 0 1px var(--line);color:var(--muted)}
+/* 选中的芯片底色换成强调色浅底，计数跟着文字色走（--muted 在 --accent-soft 上暗色只有 4.0:1） */
+.chip[aria-pressed=true]>.chip-count,.chip[aria-selected=true]>.chip-count,.chip[aria-current]>.chip-count{color:inherit}
+.seg{display:inline-flex;align-items:center;gap:var(--space-2);padding:var(--space-4);border-radius:var(--radius-pill);background:var(--soft)}
+/* 分段控件的项可以是按钮（同一页里切换）或链接（换地址，选中的那个 aria-current，#706 的图库视图、整理页签） */
+.seg>button,.seg>a{height:var(--h-28);padding:0 var(--space-12);background:transparent;color:var(--ink2);font-weight:var(--fw-400);cursor:pointer}
+.seg>button:hover,.seg>a:hover{color:var(--ink)}
+.seg>a>.seg-count{color:var(--muted);font-size:var(--fs-11);font-weight:var(--fw-400)}
+/* 选中：强调色浅底；分段控件里白底浮起。选中的文字同时变深、变粗，不只靠底色区分 */
+.chip[aria-pressed=true],.chip[aria-selected=true],.chip[aria-current=page],.chip[aria-current=true],
+.btn[aria-pressed=true]:not(.is-primary){background:var(--accent-soft);color:var(--accent-ink);font-weight:var(--fw-600)}
+.seg>button[aria-pressed=true],.seg>button[aria-checked=true],.seg>button[aria-selected=true],.seg>a[aria-current=page]{background:var(--seg-on);color:var(--ink);font-weight:var(--fw-600);box-shadow:var(--shadow-hover)}
+.search{display:flex;align-items:center;gap:var(--space-8);height:var(--h-32);padding:0 var(--space-14);border-radius:var(--radius-pill);background:var(--soft);color:var(--muted);font-size:var(--fs-12)}
+.search>svg{width:15px;height:15px;flex:none;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round}
+.search>input{flex:1;min-width:0;height:100%;margin:0;padding:0;border:0;border-radius:0;background:transparent;color:var(--ink);font:inherit;box-shadow:none;outline:none}
+.search>input::placeholder{color:var(--muted)}
+.search>kbd{padding:var(--space-1) var(--space-6);border:0;border-radius:var(--radius-4);background:var(--sheet);color:var(--muted);font:inherit;font-size:var(--fs-11)}
+.search:focus-within{box-shadow:0 0 0 2px var(--accent)}
+.btn:focus-visible,.dialog-actions>button:focus-visible,.chip:focus-visible,.seg>button:focus-visible,.seg>a:focus-visible,.glass-bar>button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+/* ---- 页头：大标题 + 副标题 + 右侧控件组，下面最多一行工具。大标题就是 .title-page，不另起一套 ---- */
+.page-head{display:flex;align-items:flex-end;gap:var(--space-16);padding:var(--space-24) 0 var(--space-14)}
+.page-head>hgroup{min-width:0}
+.page-head .page-sub{margin:var(--space-4) 0 0;color:var(--muted);font-size:var(--fs-12)}
+.page-actions{display:flex;align-items:center;gap:var(--space-8);margin-left:auto}
+.page-tools{display:flex;align-items:center;gap:var(--space-8);padding:0 0 var(--space-16)}
+/* 应用里的页头（index.html 的 #pageHead，#706）：内容页顶上一行，左边是后退和窄窗口的导航按钮，中间是标题区（标题、本页按钮、分段切换），
+   右边是全局的控件组；下面是 #toolbar（.page-tools），空的时候藏起来 */
+.content>.page-head{flex:none;align-items:center;gap:var(--space-12);padding:var(--space-20) 0 var(--space-12)}
+.page-head>.page-heading{display:flex;flex:1;align-items:center;flex-wrap:wrap;gap:var(--space-12);min-width:0}
+.page-head .page-sub:empty,.page-head .title-page:empty{display:none}
+/* 窄的时候标题截成一行加省略号，不被挤成一个字一行 */
+.page-heading>.heading-main{min-width:0}
+.page-heading .title-page{overflow:hidden;white-space:nowrap;text-overflow:ellipsis;overflow-wrap:normal}
+/* 页头的标题暂时藏着（ui/shell.js 的 tuckHeading：角色页的横幅上已经写着名字），露出来时淡入 */
+.page-heading>.heading-main{transition:opacity var(--dur-2) var(--ease)}
+.page-heading>.heading-main.is-tucked{opacity:0}
+/* 拖到别的应用以后、下一次按下之前：页面不可选（ui/press.js 的 handedOff） */
+body.handed-off{-webkit-user-select:none;user-select:none}
+.page-head>.page-actions{flex:none;margin-left:0}
+.content>.page-tools[hidden]{display:none}
+
+/* ---- 空状态：大图标 + 一句事实 + 一个去处 ---- */
+.empty-state{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:var(--space-10);padding:48px var(--space-24);text-align:center}
+.empty-state>.empty-icon{display:grid;place-items:center;width:96px;height:96px;margin-bottom:6px;border-radius:var(--radius-round);background:var(--soft);color:var(--muted)}
+.empty-icon>svg{width:42px;height:42px;fill:none;stroke:currentColor;stroke-width:1.3;stroke-linecap:round;stroke-linejoin:round}
+.empty-state>.empty-fact{max-width:420px;margin:0;color:var(--ink);font-size:var(--fs-20);font-weight:var(--fw-750);letter-spacing:-.02em;line-height:1.3}
+.empty-state>.empty-note{max-width:420px;margin:0;color:var(--muted);font-size:var(--fs-13)}
+
+/* ---- 海报：满版图 + 渐变压暗 + 白字。读图之前是图的主色（--tint-soft） ---- */
+.poster{position:relative;display:block;overflow:hidden;isolation:isolate;aspect-ratio:3/4;border-radius:var(--radius-12);background:var(--tint-soft);color:var(--on-image);
+  text-decoration:none;transition:transform var(--dur-2) var(--ease),box-shadow var(--dur-2) var(--ease)}
+.poster>img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:50% 25%;transition:transform var(--dur-3) var(--ease)}
+.poster::after{content:"";position:absolute;inset:0;background:var(--scrim);pointer-events:none}
+.poster-cap{position:absolute;right:var(--space-14);bottom:var(--space-12);left:var(--space-14);z-index:var(--z-page-1);display:grid;gap:var(--space-2);text-shadow:var(--image-text-shadow)}
+.poster-cap>b{overflow:hidden;font-size:var(--fs-20);font-weight:var(--fw-750);letter-spacing:-.02em;line-height:1.2;white-space:nowrap;text-overflow:ellipsis}
+.poster-cap>small{font-size:var(--fs-11);opacity:.85}
+a.poster:hover,button.poster:hover{transform:translateY(-3px);box-shadow:var(--shadow-hover)}
+a.poster:hover>img,button.poster:hover>img{transform:scale(1.04)}
+
+/* ---- 圆头像（圆形代表人）和带进度圆环的头像：进度是 JS 写的 --p（0–100） ---- */
+.avatar{display:block;flex:none;width:40px;height:40px;border-radius:var(--radius-round);background:var(--tint-soft);object-fit:cover}
+.avatar.is-small{width:28px;height:28px}
+.avatar.is-large{width:68px;height:68px}
+.avatar-ring{position:relative;display:inline-grid;flex:none;width:68px;height:68px;padding:var(--space-4);border-radius:var(--radius-round);
+  background:conic-gradient(var(--accent) calc(var(--p,0) * 1%),var(--accent-soft) 0)}
+.avatar-ring>.avatar{width:100%;height:100%;box-shadow:0 0 0 2px var(--sheet)}
+.avatar-ring>em{position:absolute;right:-4px;bottom:-2px;padding:var(--space-1) var(--space-6);border-radius:var(--radius-pill);background:var(--accent-fill);color:var(--on-accent);
+  font-size:var(--fs-11);font-style:normal;font-weight:var(--fw-750);line-height:1.2;box-shadow:0 0 0 2px var(--sheet)}
+
+/* ---- 判断卡（ui/judge.js，#787）：一组图，点一张是「点掉」，回答按钮排成一行。认一认、按组整理、可能认错共用。
+   「点掉」只有这一种画法：图变淡、盖一个 ✕（aria-pressed=true）。tiles 按宽高比排成一样高，strip 是占满一行的方图 ---- */
+.judge-list{display:contents}
+.judge-tiles.is-tiles{display:flex;flex-wrap:wrap;gap:var(--space-8);width:100%}
+/* 方图的网格和身份整理只看的方图（css/tidy.css 的 .tidy-strip）是同一套，改的时候两处一起改 */
+.judge-tiles.is-strip{display:grid;grid-template-columns:repeat(auto-fill,minmax(88px,1fr));gap:var(--space-6)}
+.judge-tile{position:relative;display:block;margin:0;padding:0;overflow:hidden;border:0;border-radius:var(--radius-8);background:var(--tint-soft);cursor:pointer}
+.is-tiles .judge-tile{height:120px}
+.is-strip .judge-tile{aspect-ratio:1}
+.judge-tile>img{display:block;width:100%;height:100%;object-fit:cover;transition:opacity var(--dur-1) var(--ease)}
+.judge-tile>i{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;opacity:0;color:var(--on-image);font-size:var(--fs-display-28);font-style:normal;
+  text-shadow:var(--image-text-shadow);transition:opacity var(--dur-1) var(--ease)}
+.judge-tile:enabled:hover>i{opacity:.6}
+.judge-tile[aria-pressed=true]>img{opacity:.3}
+.judge-tile[aria-pressed=true]>i{opacity:1;color:var(--err);text-shadow:none}
+.judge-tile:disabled{cursor:default}
+.judge-tile:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.judge-tile.is-more{display:flex;align-items:center;justify-content:center;color:var(--ink2);font-size:var(--fs-13);font-weight:var(--fw-600);text-decoration:none}
+.judge-tile.is-more:hover{color:var(--ink)}
+.judge-acts{display:flex;flex-wrap:wrap;align-items:center;gap:var(--space-6)}
+.judge-state{margin-right:auto;color:var(--muted);font-size:var(--fs-12)}
+.judge-state:empty{display:none}
+
+/* ---- 心形（收藏）：图上的心形按钮（ui/favorites.js 的 HEART_ICON）。这里只写样子；位置和「悬停才出现」由各处自己写
+   （网格在 css/library.css）。收藏过的一直在，still 是只显示、不能点的 ---- */
+.fav-mark{display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;margin:0;padding:0;border:0;background:transparent;color:var(--on-image);
+  opacity:0;cursor:pointer;transition:opacity var(--dur-1) var(--ease),transform var(--dur-1) var(--ease)}
+.fav-mark svg{width:19px;height:19px;fill:transparent;stroke:currentColor;stroke-width:1.7;stroke-linejoin:round;filter:drop-shadow(0 0 1.5px rgba(var(--sh),.55))}
+.fav-mark:hover{transform:scale(1.1)}
+.fav-mark.on{color:var(--fav);opacity:1}
+.fav-mark.on svg{fill:currentColor;stroke:var(--on-image);stroke-width:1.4}
+.fav-mark.still{pointer-events:none}
+.fav-mark.still:not(.on){display:none}
+
+/* ---- 玻璃表面（只给浮层），和浮在图上的玻璃按钮组（翻页、收藏、放大、关闭） ----
+   backdrop-filter 只写在这里（tools/check_frontend.py 规则 16）：每张卡片上的模糊各占一块显存（#683）。
+   不支持模糊时是几乎不透明的底，文字照样看得清。Safari 17 只认带 -webkit- 前缀的写法。 */
+.glass{border-radius:var(--radius-12);background:var(--glass-solid);color:var(--ink);box-shadow:var(--shadow-pop)}
+.glass-bar{display:inline-flex;align-items:center;gap:var(--space-2);padding:var(--space-2);border-radius:var(--radius-pill);background:var(--glass-solid);color:var(--ink);box-shadow:var(--shadow-hover)}
+@supports (backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px)){
+  .glass{background:var(--glass-surface);-webkit-backdrop-filter:blur(26px) saturate(1.7);backdrop-filter:blur(26px) saturate(1.7)}
+  .glass-bar{background:var(--glass-surface);-webkit-backdrop-filter:blur(14px) saturate(1.6);backdrop-filter:blur(14px) saturate(1.6)}
+  /* 对话框背后（#715）：页面轻轻糊一点，压暗由对话框自己的大扩散阴影画（css/overlays.css）。::backdrop 里不用 var()（规则 17）。 */
+  .glass-scrim::backdrop{-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px)}
+}
+/* 系统要求降低透明度时不用模糊、用不透明底（规则 16 只许在玻璃表面上写模糊）。WebKit 17 不认这个媒体查询，桌面外壳在 <html> 上
+   写 data-reduce-transparency（#755）：两条并列，哪条成立都退。 */
+@media (prefers-reduced-transparency:reduce){
+  .glass{background:var(--sheet);-webkit-backdrop-filter:none;backdrop-filter:none}
+  .glass-bar{background:var(--sheet);-webkit-backdrop-filter:none;backdrop-filter:none}
+  .glass-scrim::backdrop{-webkit-backdrop-filter:none;backdrop-filter:none}
+}
+:root[data-reduce-transparency] .glass{background:var(--sheet);-webkit-backdrop-filter:none;backdrop-filter:none}
+:root[data-reduce-transparency] .glass-bar{background:var(--sheet);-webkit-backdrop-filter:none;backdrop-filter:none}
+:root[data-reduce-transparency] .glass-scrim::backdrop{-webkit-backdrop-filter:none;backdrop-filter:none}
+/* 浮在横幅图上的玻璃按钮（.btn.glass：作品页、角色页的返回、标为已检查、⋯）：照样是胶囊，链接不带下划线 */
+.btn.glass{border-radius:var(--radius-pill);text-decoration:none}
+.glass-bar>button{display:grid;place-items:center;width:28px;height:var(--h-28);margin:0;padding:0;border:0;border-radius:var(--radius-pill);background:transparent;color:inherit;
+  font:inherit;box-shadow:none;cursor:pointer;transition:background-color var(--dur-1) var(--ease),color var(--dur-1) var(--ease)}
+.glass-bar>button:hover{background:var(--wash-hover)}
+.glass-bar>button[aria-pressed=true]{color:var(--accent-ink)}
+.glass-bar>button svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+
+/* 增强：View Transitions（Safari 18.0）。退路：没有 document.startViewTransition 时 ui/motion.js 的 share() 用 Web Animations 做 FLIP，这块不生效。 */
+@supports (view-transition-name:none){
+  ::view-transition-group(*){animation-duration:var(--dur-3);animation-timing-function:var(--ease)}
+  /* 共享元素（ui/motion.js 的 share，带 view-transition-class: share）：新旧快照宽高比不同（方形缩略图和竖图），按 cover 裁，不拉伸。
+     不认 view-transition-class 的版本（Chromium 124 及以前）整条选择器无效，退回默认的拉伸交叉淡化。 */
+  ::view-transition-old(*.share),::view-transition-new(*.share){width:100%;height:100%;object-fit:cover}
+}
+}

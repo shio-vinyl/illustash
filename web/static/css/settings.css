@@ -1,0 +1,89 @@
+/* 设置页（0.4 第 I 步，#714）：ui/settings.js 的外壳和七节导航、ui/settings_*.js 的分组、ui/rows.js 的几种行。
+   只用 css/tokens.css 的令牌和 css/base.css 的公共部件；重写一块，就删掉 app.css 里对应的旧规则。
+   摆法：左边一列节导航，右边内容限宽 720px、靠左；每组一块浅底（.group），组里是一行一行，行与行之间一条细线，
+   不描边、不套卡。窄窗口（760px 以下）导航改成顶上一行横排，行里的控件放不下时折到文字下面。 */
+@layer pages{
+
+.set-page{display:grid;grid-template-columns:160px minmax(0,720px);gap:var(--space-24);align-items:start;padding:var(--space-4) 0 var(--space-24)}
+.set-nav{position:sticky;top:var(--space-4);display:flex;flex-direction:column;gap:var(--space-2)}
+.set-nav>a{padding:var(--space-8) var(--space-12);border-radius:var(--radius-pill);color:var(--ink2);font-size:var(--fs-13);text-decoration:none}
+.set-nav>a:hover{background:var(--wash-hover);color:var(--ink)}
+.set-nav>a[aria-current=page]{background:var(--accent-soft);color:var(--accent-ink);font-weight:var(--fw-600)}
+.set-main{display:flex;flex-direction:column;gap:var(--space-16);min-width:0}
+
+/* 分组：标题、范围标签、说明，下面是行，最后一行小字 */
+.set-group{display:flex;flex-direction:column;min-width:0}
+.set-group-title{display:flex;flex-wrap:wrap;align-items:center;gap:var(--space-8);margin:0;font-size:var(--fs-13);font-weight:var(--fw-750)}
+.set-scope{height:auto;padding:var(--space-1) var(--space-8);background:var(--sheet);color:var(--muted);font-size:var(--fs-11);font-weight:var(--fw-400);cursor:help}
+.set-group-note,.set-group-foot,.set-foot,.set-sub-note{margin:var(--space-4) 0 0;color:var(--muted);font-size:var(--fs-12);line-height:1.55}
+.set-group-foot,.set-foot{margin-top:var(--space-10);font-size:var(--fs-11)}
+.set-more{margin-left:var(--space-4);color:var(--accent-ink);border-bottom:1px dotted currentColor;cursor:help}
+.set-sub{margin:var(--space-16) 0 0;color:var(--ink2);font-size:var(--fs-12);font-weight:var(--fw-600)}
+.set-body{display:flex;flex-direction:column;min-width:0;margin-top:var(--space-8)}
+.set-fold{margin-top:var(--space-8)}
+.set-fold>summary{display:flex;align-items:center;gap:var(--space-6);padding:var(--space-6) 0;color:var(--ink2);font-size:var(--fs-12);list-style:none;cursor:pointer;user-select:none}
+.set-fold>summary::-webkit-details-marker{display:none}
+.set-fold>summary::before{content:'▸';width:10px;color:var(--muted);transition:transform var(--dur-1) var(--ease)}
+.set-fold[open]>summary::before{transform:rotate(90deg)}
+.set-fold>summary:hover{color:var(--ink)}
+
+/* 行（ui/rows.js）：左边文字，右边控件；放不下时控件折到下面 */
+.row{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:var(--space-8) var(--space-12);min-height:44px;padding:var(--space-8) 0;font-size:var(--fs-13)}
+.set-body>.row+.row,.set-body>.row-list+.row,.set-body>.row+.row-list,.row-items>.row+.row{border-top:1px solid var(--line)}
+label.row{cursor:pointer}
+.row-text{display:flex;flex:1 1 240px;flex-direction:column;gap:var(--space-2);min-width:0}
+.row-title{display:flex;align-items:center;gap:var(--space-8);min-width:0}
+.row-title b{min-width:0;font-weight:var(--fw-600);overflow-wrap:anywhere}
+.row-to{color:inherit;text-decoration:none}
+/* 整行是链接的行（info 带 href）：右边的值「3 部 ›」用强调色，看得出能点 */
+a.row.is-link{color:inherit;text-decoration:none}
+a.row.is-link .row-value{color:var(--accent-ink)}
+a.row.is-link:hover .row-title b{color:var(--accent-ink)}
+.row-to:hover{color:var(--accent-ink)}
+.row-hint{color:var(--muted);font-size:var(--fs-12);overflow-wrap:anywhere}
+.row-link{align-self:flex-start;color:var(--accent-ink);font-size:var(--fs-12)}
+.row-warn{color:var(--err);font-size:var(--fs-12);font-style:normal;overflow-wrap:anywhere}
+.row-dot{flex:none;width:7px;height:7px;border-radius:var(--radius-round);background:var(--ok)}
+.row-dot[data-dot=busy]{background:var(--warn)}
+.row-dot[data-dot=warn]{background:var(--bad)}
+.row-dot[data-dot=off]{background:var(--faint)}
+.row-bar{display:block;height:4px;margin-top:var(--space-6);border-radius:var(--radius-4);background:var(--sheet);overflow:hidden}
+.row-bar>span{display:block;height:100%;background:var(--accent);transform:scaleX(0);transform-origin:left;transition:transform var(--dur-3) var(--ease)}
+.row-ctrl{display:flex;flex:0 1 auto;flex-wrap:wrap;align-items:center;justify-content:flex-end;gap:var(--space-6);min-width:0}
+.row-value{color:var(--muted);font-size:var(--fs-12);font-variant-numeric:tabular-nums;white-space:nowrap}
+.row-unit{color:var(--muted);font-size:var(--fs-12)}
+.row-input,.row-select{height:var(--h-32);min-width:0;max-width:100%;padding:0 var(--space-12);border:0;border-radius:var(--radius-pill);background:var(--sheet);color:var(--ink);font:inherit;font-size:var(--fs-12);box-shadow:inset 0 0 0 1px var(--hair)}
+.row-input:focus,.row-select:focus{outline:2px solid var(--accent-soft);box-shadow:inset 0 0 0 1px var(--accent)}
+.row-input[type=number]{width:96px}
+.row-input.is-wide{width:320px}
+.row .seg{flex-wrap:wrap;background:var(--sheet)}
+/* 次要按钮用默认的 .btn（用户 2026-11-20 定，#714）：组的浅底和 .btn 的浅底同是 --soft，组里改用纸面底，和分段控件、输入框一样 */
+.set-group .btn:not(.is-primary){background:var(--sheet)}
+.set-group .btn:not(.is-primary):hover{box-shadow:var(--shadow-hover)}
+.row-list{display:flex;flex-direction:column;min-width:0}
+.row-list>.is-head{min-height:0}
+.row-items>.row{min-height:36px;padding:var(--space-6) 0;font-size:var(--fs-12)}
+.row-items .row-text{flex-basis:200px}
+
+/* 留成各自小块的：关于页的头、排除规则的数字格、找回画师的覆盖率 */
+.set-about{display:flex;align-items:center;gap:var(--space-14)}
+.set-about>img{border-radius:var(--radius-12)}
+.set-about-name{margin:0;font-size:var(--fs-20);font-weight:var(--fw-750)}
+.set-about-version{margin:var(--space-2) 0 0;color:var(--muted);font-size:var(--fs-12)}
+.set-tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(112px,1fr));gap:var(--space-8);margin-top:var(--space-8)}
+.set-tile{display:flex;flex-direction:column;gap:var(--space-2);padding:var(--space-10) var(--space-12);border-radius:var(--radius-12);background:var(--sheet);color:inherit;text-decoration:none}
+a.set-tile:hover{background:var(--wash-hover)}
+.set-tile>b{font-size:var(--fs-20);font-weight:var(--fw-750);font-variant-numeric:tabular-nums}
+.set-tile>span{color:var(--muted);font-size:var(--fs-11)}
+
+@media (max-width:760px){
+  .set-page{grid-template-columns:minmax(0,1fr);gap:var(--space-12)}
+  .set-nav{z-index:var(--z-page-2);flex-direction:row;overflow-x:auto;padding:var(--space-4) 0 var(--space-8);background:var(--sheet);scrollbar-width:none}
+  .set-nav>a{flex:none;white-space:nowrap}
+  .set-nav::-webkit-scrollbar{display:none}   /* scrollbar-width 要 Safari 18.2；macOS 14 的 WKWebView 靠这一条 */
+  .row-input.is-wide{width:100%}
+  .row-ctrl{flex-basis:100%;justify-content:flex-start}
+  label.row .switch{margin-left:auto}
+}
+
+}

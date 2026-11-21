@@ -5,8 +5,9 @@
 // 新增一个页面要做什么，见 docs/WEB_UI_MAP.md「新增一个页面」。
 import {isMac} from './format.js';
 import {t} from './i18n.js';
-import {count as conditionCount, queryParams} from './filters.js';
+import {conditions as conditionLists, count as conditionCount, queryParams} from './filters.js';
 import {likeParams} from './like.js';
+import {showFor, showOf} from './gallery_shows.js';
 import {state} from './state.js';
 
 // 字段：
@@ -31,20 +32,24 @@ import {state} from './state.js';
 //   tabs/tab   同一个侧栏入口下的子页签组，以及本页对应哪个页签
 //   toolbar    工具栏组成：'none' 空、'tabs' 只有子页签、'index' 资料库、'library' 图库网格（搜索、筛选、排序、选择、显示方式）、
 //              'filters' 只有搜索框和筛选条（按天、日历）、'grid' 网格页
-//   sorts      排序下拉的选项
+//   sorts      排序下拉的选项；也可以是 r => […]（随地址变，画廊的色彩只有「按颜色」）
 //   sortPref   改了排序记在哪个偏好里（core/route.js 的 sortKey）；不写就是这页自己的「sort.<页面名>」
 //   pool/params 后端 /api/assets 的 pool 参数，以及该页其余查询参数
 //   bar        选择栏的种类；同时决定 S／X／Y／N 几个快捷键在这页是否生效
 //   card       卡片上额外的角标
 //   directory  需要完整的角色目录（不是摘要行）
 //   guideTick  进入本页算上手清单的哪一步
-//   gallery    画廊页（#445）：地址总带着条件，不带查询时按保存的条件打开
+//   gallery    画廊的网格页（#445）：地址总带着条件，不带查询时按保存的条件打开；gridLayout(r) 是这个画廊的展示方式要的分行
+//              （core/gallery_shows.js，ui/grid.js 按它分行）
+//   stage      画廊的展示页（拼贴、杂志、展厅，#710）：只放前几张，不能选
 const NEWEST = ['newest', 'oldest'];
+// 地址上的条件（has 里的），画廊页的空状态用。
+const conditions = r => conditionLists(r).has;
 const narrowed = r => !!(r.q || r.tag || r.utag || r.check || r.doubt || conditionCount(r) || r.from || r.to);
 
 // 图库和角色页共用的一组字段：角色页是图库加 char 参数，不是独立页面。
-// 只按收藏筛选、没有别的条件的图库（#447、#679）：活页条上亮「画廊 › 收藏」（core/rail.js 的 railAt），标题写「收藏」，空着时说怎么收藏。
-// 写在注册表这里（core/favorites.js 转出它）：注册表的空状态要用，放在 favorites.js 会互相导入。
+// 只按收藏筛选、没有别的条件的图库（#447、#679）：收藏的旧地址，core/route.js 把它改写到收藏画廊 #/gallery/fav（#710），
+// 所以运行时的路由不会是它。
 const NOT_FAV_ONLY = ['q', 'tag', 'utag', 'work', 'day', 'artist', 'char', 'from', 'to', 'like'];
 const asList = v => { if (Array.isArray(v)) return v; try { const x = JSON.parse(v || '[]'); return Array.isArray(x) ? x : []; } catch { return []; } };
 export function favoritesOnly(route = state.route) {
@@ -72,13 +77,22 @@ const libraryBase = {
 const list = [
   // 图库的三种视图（#706）：按天（原来的首页，#677）、网格（原来的图库）、日历。打开 App 落在按天。
   {name: 'days', root: true, area: 'homePage', panel: true, keys: 'shown', click: 'own', entry: 'library', view: 'days', filters: true, toolbar: 'filters', emptyIcon: 'image'},
-  // 只按收藏筛选时（#679）空着说怎么收藏；隐藏或只看 NSFW 时空着不等于没有收藏，照图库的说法。
-  {name: 'library', ...libraryBase, click: 'browse', sortPref: 'sortLibrary', emptyIcon: r => favoritesOnly(r) ? 'heart' : 'image',
-    empty: (r, ctx = {}) => favoritesOnly(r) && !ctx.nsfw ? t('还没有收藏。在详情面板或大图里点心形，或者按 F 收藏。') : libraryBase.empty(r, ctx)},
+  {name: 'library', ...libraryBase, click: 'browse', sortPref: 'sortLibrary', emptyIcon: 'image'},
   {name: 'calendar', area: 'calendarPage', panel: true, click: 'own', entry: 'library', view: 'calendar', filters: true, toolbar: 'filters', emptyIcon: 'calendar'},
-  // 画廊（#445）：全部画廊的封面卡片，和一个画廊里的图（就是带着它的条件的图库）。
+  // 画廊（#445、#710）：全部画廊（收藏在最前），和一个画廊。一个画廊按它的展示方式（core/gallery_shows.js）落在两页之一：
+  // gallery 是显示全部图的几种（瀑布、色彩），就是带着它的条件的图库网格，分行和排序随展示方式（gridLayout、params）；
+  // showcase 是展示页（拼贴、杂志、展厅），只放前几张。收藏是 id 为 fav 的内置手选画廊（core/galleries.js）。
   {name: 'galleries', area: 'groupsPage', panel: true, click: 'own', entry: 'galleries', toolbar: 'none', emptyIcon: 'gallery'},
-  {name: 'gallery', prefix: 'gallery', ...libraryBase, view: '', click: 'browse', entry: 'galleries', sortPref: 'sortLibrary', gallery: true},
+  {name: 'gallery', prefix: 'gallery', ...libraryBase, view: '', click: 'browse', entry: 'galleries', sortPref: 'sortLibrary', gallery: true,
+    params: r => ({...libraryBase.params(r), ...showOf(showFor(r.id)).params}),
+    sorts: r => showOf(showFor(r.id)).params?.order ? [showOf(showFor(r.id)).params.order] : NEWEST,
+    gridLayout: r => showOf(showFor(r.id)).grid || null,
+    emptyIcon: r => r.id === 'fav' ? 'heart' : 'gallery',
+    // 收藏空着时说怎么收藏（#679）；隐藏或只看 NSFW 时空着不等于没有收藏，照图库的说法。手选画廊空着时说怎么放进来。
+    empty: (r, ctx = {}) => ctx.nsfw || conditionCount(r) > 1 || r.q ? libraryBase.empty(r, ctx)
+      : r.id === 'fav' ? t('还没有收藏。在详情面板或大图里点心形，或者按 F 收藏。')
+        : conditions(r).includes(`gallery:${r.id}`) ? t('这个画廊还没有图。把图拖到活页条上的画廊封面，或者在选择栏里点「放进画廊…」。') : libraryBase.empty(r, ctx)},
+  {name: 'showcase', prefix: 'showcase', area: 'groupsPage', panel: true, keys: 'shown', click: 'own', entry: 'galleries', toolbar: 'none', emptyIcon: 'gallery', stage: true},
   {name: 'characters', sections: true, area: 'charIndex', panel: true, click: 'own', entry: 'catalog', toolbar: 'index', directory: true, guideTick: 'look', emptyIcon: 'person'},
   {name: 'settings', sections: true, area: 'settingsPage', panel: true, click: 'own', entry: 'settings', toolbar: 'none'},
   // 整理（#706）：未识别、重复、已排除三个页签（tabs 是页签组），随机抽查、身份整理有题时出现在二级层。各页签原来的子页保留。

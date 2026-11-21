@@ -111,7 +111,6 @@
    "ui/dialog.js": 1,
    "ui/dom.js": 4,
    "ui/filters.js": 1,
-   "ui/galleries.js": 7,
    "ui/grid.js": 2,
    "ui/guide.js": 2,
    "ui/human.js": 2,
@@ -194,7 +193,7 @@
    "app.css: backdrop-filter": 13
   },
   "ui-file-length": {
-   "ui/grid.js": 153,
+   "ui/grid.js": 150,
    "ui/settings.js": 395
   },
   "ui-request": {

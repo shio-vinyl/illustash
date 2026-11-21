@@ -2,7 +2,6 @@
 // 网格本身在 ui/grid.js（C2 #708），日历在 ui/calendar.js（#708）。角色页的页头还在 ui/shell.js 的 drawCharHeading，
 // 由角色页那一步（G #712）搬进 ui/character.js。三种视图之间的切换画在页头上（ui/shell.js 按注册表的 view）。
 import {t} from '../core/i18n.js';
-import {favoritesOnly} from '../core/favorites.js';
 import {implement} from '../core/pages.js';
 import {state} from '../core/state.js';
 import {conditionHelp, conditionTitle} from './filters.js';
@@ -11,10 +10,10 @@ import {conditionHelp, conditionTitle} from './filters.js';
 const showAll = () => state.nsfw === 'only' ? [{label: t('显示全部'), act: 'nsfw'}] : [];
 
 implement({
-  // 图库的标题：只按收藏筛选时写「收藏」（#679）；只有一个条件时写这个条件（ui/filters.js，旧的单值参数和条件数组一样，#644）。
+  // 图库的标题：只有一个条件时写这个条件（ui/filters.js，旧的单值参数和条件数组一样，#644）。收藏是画廊（#710）。
   // 还是旧写法 headingHTML：conditionTitle 返回带名字占位的 HTML（读到名字后由 ui/filters.js 换上），C2 把它改成节点时再迁到 head。
-  library: {headingHTML: (r, {n}) => [favoritesOnly(r) ? t('收藏') : conditionTitle(r) || t('图库'), t('{n} 张', {n})],
-    help: r => favoritesOnly(r) ? [t('在详情面板或大图里点心形，或者按 F 收藏。')] : conditionHelp(r), helpHint: true,
+  library: {headingHTML: (r, {n}) => [conditionTitle(r) || t('图库'), t('{n} 张', {n})],
+    help: r => conditionHelp(r), helpHint: true,
     // 图库页不因计数变化重画。
     onMeta: () => {}, emptyNext: showAll},
   character: {emptyNext: showAll},

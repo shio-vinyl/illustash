@@ -482,23 +482,27 @@ fn answer(c: &Connection, args: &Value) -> Result<Value> {
         return invalid("回答格式不正确");
     }
     let switch = args.get("switch").filter(|v| !v.is_null());
-    if switch.is_some() && (no.is_empty() || !yes.is_empty()) {
+    let also_no = args.get("also_no").filter(|v| !v.is_null());
+    if (switch.is_some() && (no.is_empty() || !yes.is_empty()))
+        || (also_no.is_some()
+            && (kind != "ambiguous" || switch.is_some() || no.is_empty() || !yes.is_empty() || !later.is_empty()))
+    {
         return invalid("回答格式不正确");
     }
     let (entity, parent) = require_entity(c, &args["entity"])?;
     if parent.is_some() {
         return invalid("请选择父角色");
     }
-    let other = match switch {
-        Some(s) => {
-            let (other, parent) = require_entity(c, s)?;
-            if parent.is_some() || other == entity {
-                return invalid("请选择不同的父角色");
-            }
-            Some(other)
+    let other = if let Some(target) = switch.or(also_no) {
+        let (other, parent) = require_entity(c, target)?;
+        if parent.is_some() || other == entity {
+            return invalid("请选择不同的父角色");
         }
-        None => None,
+        Some(other)
+    } else {
+        None
     };
+    let rejected_rival = other.as_deref().filter(|_| also_no.is_some());
     let mut writes: Vec<(Vec<String>, String, &str)> = Vec::new();
     for (asked, status) in [(&yes, "confirmed"), (&no, "rejected")] {
         if !asked.is_empty() {
@@ -507,7 +511,13 @@ fn answer(c: &Connection, args: &Value) -> Result<Value> {
             writes.push((scope.clone(), entity.clone(), status));
             if status == "rejected" {
                 if let Some(other) = &other {
-                    writes.push((scope, other.clone(), "confirmed"));
+                    let status = if also_no.is_some() {
+                        require_ambiguous_pair(c, &once, &entity, other)?;
+                        "rejected"
+                    } else {
+                        "confirmed"
+                    };
+                    writes.push((scope, other.clone(), status));
                 }
             }
         }
@@ -520,12 +530,30 @@ fn answer(c: &Connection, args: &Value) -> Result<Value> {
                 before.push(snapshot(c, ident, Some(e))?);
             }
         }
+        if let Some(rival) = rejected_rival {
+            for ident in &no {
+                for e in [entity.as_str(), rival] {
+                    let previous = row_json(
+                        c,
+                        "SELECT uuid,entity,kind,answer,action_id,asked_at FROM asked WHERE uuid=? AND entity=?",
+                        &[ident, &e],
+                    )?;
+                    if !previous.is_null() {
+                        before.push(json!({"ask_history": previous}));
+                    }
+                }
+            }
+        }
         let mut shown = Shown::new();
         let action = if yes.is_empty() {
             match &other {
                 Some(o) => {
                     let (name, other) = (shown.name(c, &entity)?, shown.name(c, o)?);
-                    begin_counted(c, UndoLabel::Swap, no.len(), &name, &other)?
+                    if also_no.is_some() {
+                        begin_counted(c, UndoLabel::Remove, no.len(), &format!("{name}、{other}"), "")?
+                    } else {
+                        begin_counted(c, UndoLabel::Swap, no.len(), &name, &other)?
+                    }
                 }
                 None => begin_counted(c, UndoLabel::Remove, no.len(), &shown.name(c, &entity)?, "")?,
             }
@@ -557,12 +585,24 @@ fn answer(c: &Connection, args: &Value) -> Result<Value> {
     }
     let mut put =
         c.prepare_cached("INSERT OR REPLACE INTO asked(uuid,entity,kind,answer,action_id) VALUES (?,?,?,?,?)")?;
-    for (ids, answer) in [(&yes, "yes"), (&no, "no"), (&later, "later")] {
+    let answers = [(&yes, entity.as_str(), "yes"), (&no, &entity, "no"), (&later, &entity, "later")];
+    for (ids, e, answer) in answers.into_iter().chain(rejected_rival.map(|rival| (&no, rival, "no"))) {
         for i in ids {
-            put.execute(params![i, entity, kind, answer, if answer != "later" { step } else { None }])?;
+            put.execute(params![i, e, kind, answer, if answer != "later" { step } else { None }])?;
         }
     }
     Ok(json!({"action": step}))
+}
+
+/// 卡片可能在另一次裁决或识别刷新后过期，核对原选区上的有向角色对。
+fn require_ambiguous_pair(c: &Connection, ids: &[String], entity: &str, rival: &str) -> Result<()> {
+    let mut stmt = c.prepare_cached("SELECT 1 FROM ambiguous_claims WHERE uuid=? AND entity=? AND rival=?")?;
+    for id in ids {
+        if stmt.query_row(params![id, entity, rival], |_| Ok(())).optional()?.is_none() {
+            return invalid("图片的备选归属已变更，请刷新");
+        }
+    }
+    Ok(())
 }
 
 fn answer_audit(c: &Connection, args: &Value) -> Result<Value> {
@@ -830,9 +870,9 @@ fn shape(item: &Value) -> Option<&'static str> {
     None
 }
 
-/// 两种角色标记的快照始于 v2 信封，裸列表不认这两种形状。
+/// v2 信封新增的快照形状，裸列表不认。
 fn edit_shape(item: &Value) -> Option<&'static str> {
-    ["character_kind", "character_mascot"].into_iter().find(|key| has_keys(item, &[*key]))
+    ["character_kind", "character_mascot", "ask_history"].into_iter().find(|key| has_keys(item, &[*key]))
 }
 
 pub fn undo(c: &Connection, args: &Value) -> Result<Value> {
@@ -879,6 +919,17 @@ pub fn undo(c: &Connection, args: &Value) -> Result<Value> {
             Some("profile") => {
                 profile_links_changed |= crate::character_profile::undo(c, &item["profile"])?;
                 profile = true;
+            }
+            Some("ask_history") => {
+                let row = item["ask_history"]
+                    .as_array()
+                    .filter(|row| row.len() == 6)
+                    .ok_or_else(|| Error::invalid("问答快照不完整"))?;
+                // 保留这一步之后才记下的「以后再说」。
+                c.prepare_cached(
+                    "INSERT OR IGNORE INTO asked(uuid,entity,kind,answer,action_id,asked_at) VALUES (?,?,?,?,?,?)",
+                )?
+                .execute(rusqlite::params_from_iter(row.iter().map(sql_value)))?;
             }
             Some("character_kind") => crate::character_structure::undo_kind(c, &item["character_kind"])?,
             Some("character_mascot") => crate::character_structure::undo_mascot(c, &item["character_mascot"])?,

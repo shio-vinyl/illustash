@@ -19,7 +19,7 @@ import unittest
 from contextlib import closing
 from urllib.parse import quote
 
-from tests.fixed_expectations import RECORDED_TODAY, Expectations
+from tests.fixed_expectations import RECORDED_TODAY, Expectations, with_ambiguous_pool
 from tests.test_read_http import SPAWN, free_port, stop_process, wait_until
 from tools import verify_read_http as verify
 from tools.wait_limit import WAIT
@@ -115,12 +115,13 @@ class HTTPHarness(unittest.TestCase):
 
     def pair(self, path, route='core', headers=None):
         item = {'url': quote(path, safe='/?&=;%+#'), 'headers': headers or {}}
-        a, b = self.reference(item), verify.fetch(self.origin, item, self.origin)
+        reference = self.reference(item)
+        a, b = with_ambiguous_pool(path, reference), verify.fetch(self.origin, item, self.origin)
         self.assertIsNone(verify.difference(a, b), (path, verify.difference(a, b)))
         self.assertEqual(b['route'], route, path)
         for h in HEADERS:
             self.assertEqual(a['headers'].get(h), b['headers'].get(h), (path, h))
-        return a
+        return reference
 
     # ---- 图库切换到核心之前录制的响应（#201）----
     #
@@ -167,7 +168,7 @@ class HTTPHarness(unittest.TestCase):
             report['compared'] += 1
             report['stages'].add(item.get('stage'))
             right = verify.fetch(self.origin, item, self.origin)
-            diff = verify.difference(left, right)
+            diff = verify.difference(with_ambiguous_pool(item['url'], left), right)
             if diff is None and right['route'] == 'core':
                 report['core_equal'] += 1
             elif diff is None:

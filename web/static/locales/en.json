@@ -206,6 +206,7 @@
   "无法打开": "Cannot open",
   "角色": "Characters",
   "还没认出角色的图": "Pictures with no character identified yet",
+  "算给了某个角色、和另一个角色分不太清的图": "Pictures given to a character that could just as well be another",
   "随机抽查还剩几张": "Pictures left in the spot check",
   "角色不一致的副本组": "Copy groups whose characters disagree",
   "像截图、待确认的图": "Pictures that look like screenshots, to confirm",
@@ -791,6 +792,29 @@
     "one": "Show {n} more group",
     "other": "Show {n} more groups"
   },
+  "把点掉的图设为已有的角色": "Set the ones left out to an existing character",
+  "是 {a} 还是 {b}？": "{a} or {b}?",
+  "其余 {n} 张是 {name}": "The other {n} are {name}",
+  "点掉的记成不是 {name}": "The ones left out are marked as not {name}",
+  "{n} 张都记成 {name}": "Mark all {n} as {name}",
+  "{a}、{b} 都记成不是": "Mark as neither {a} nor {b}",
+  "{n} 张 · 这一对共 {total} 张": {
+    "one": "{n} picture · {total} for this pair",
+    "other": "{n} pictures · {total} for this pair"
+  },
+  "{n} 对角色 · 共 {images} 张": {
+    "one": "{n} pair of characters · {images} pictures",
+    "other": "{n} pairs of characters · {images} pictures"
+  },
+  "再显示 {n} 张卡": {
+    "one": "Show {n} more card",
+    "other": "Show {n} more cards"
+  },
+  "没有可能认错的图。": "No possibly wrong pictures.",
+  "去未识别": "Go to Unidentified",
+  "机器算给了某个角色、但和另一个角色分不太清的图。": "Pictures given to a character that could just as well be another.",
+  "点一下缩略图把它点掉，长按或鼠标停在上面按 Space 看大图。": "Click a thumbnail to leave it out. Long-press it, or hover and press Space, to view it large.",
+  "回答只作用于卡上的图。": "An answer applies only to the pictures on its card.",
   "正在重新分组…": "Regrouping…",
   "{n} 张的线索都指向 TA": {
     "one": "the hints of {n} picture point to them",

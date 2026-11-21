@@ -208,10 +208,11 @@ export async function readAsk(nsfw, skip = [], {signal} = {}) {
 // 不带的是没收到回复（断连），这时用 askLanded 核对这一步是不是已经写进去了。
 export const answerAsk = body => post('/api/ask/answer', body);
 // 断连以后核对：这一批要写的每条人工结论（「是」的图对原角色 confirmed、「不是」的图对原角色 rejected、「点掉的是…」的图对
-// 选中的角色 confirmed）是不是都已经在详情的 assertions 里。都在才算写进去了；读不到也算没有。
+// 选中的角色 confirmed、可能认错的「都不是」对另一个角色 rejected，core/doubts.js）是不是都已经在详情的 assertions 里。
+// 都在才算写进去了；读不到也算没有。
 export async function askLanded(body, {signal} = {}) {
   const want = [...body.yes.map(u => [u, body.entity, 'confirmed']), ...body.no.map(u => [u, body.entity, 'rejected']),
-    ...(body.switch ? body.no.map(u => [u, body.switch, 'confirmed']) : [])];
+    ...(body.switch ? body.no.map(u => [u, body.switch, 'confirmed']) : []), ...(body.also_no ? body.no.map(u => [u, body.also_no, 'rejected']) : [])];
   try {
     for (const [uuid, entity, status] of want) {
       const d = await api('/api/detail?id=' + encodeURIComponent(uuid), {signal});

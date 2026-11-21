@@ -1,0 +1,50 @@
+// 整理 › 可能认错（#787）的数据：机器已经算给角色 A、但另一个角色 B 的证据几乎一样强的图（ambiguous_claims），按（A，B）分组。
+// 读取、切成卡、各种回答的请求体。不碰 DOM，Node 里能直接测（tests/doubts.test.cjs）。画在 ui/doubts.js。
+//
+// 接口（#786）：GET /api/ambiguous?nsfw=… → {groups: [{a: {id, name}, b: {id, name}, count, items: [uuid…]}]}，items 新加入的在前、
+// 给全；只有看得见的图，7 天里对（图，A）答过「以后再说」的不列出。张数另在 /api/review-pools 里（core/rail.js 的 DOUBT_POOL，活页条用）。
+// 回答沿用 /api/ask/answer（kind=ambiguous，entity 是 A），和认一认一样一步一个撤销，见 doubtAnswer。
+import {askAnswer} from './days.js';
+import {api, post} from './session.js';
+
+/** 一张卡最多放几张图：图多的一对分成几张卡，回答只作用于卡上露出来的图。 */
+export const CARD_MAX = 16;
+
+/** 读这一批（失败时抛错）。 */
+export async function loadDoubts(nsfw, signal) {
+  return (await api('/api/ambiguous?' + new URLSearchParams({nsfw}), {signal})).groups || [];
+}
+
+/**
+ * 切成卡：每对（A，B）的图按次序每 max 张一张卡，同一对的卡排在一起。卡的键是这一对加上卡上第一张图：答掉一张卡、重读以后，
+ * 其余的卡键不变（ui/keyed.js 按键复用，不重新加载图）。
+ * 返回 [{key, a, b, items: [{uuid}], part, parts, total}]：part 是这一对的第几张卡（从 1 起），parts 是共几张，total 是这一对的张数。
+ */
+export function doubtCards(groups, max = CARD_MAX) {
+  const out = [];
+  for (const g of groups || []) {
+    const ids = g.items || [], parts = Math.ceil(ids.length / max);
+    for (let i = 0; i < parts; i++) {
+      const items = ids.slice(i * max, (i + 1) * max).map(uuid => ({uuid}));
+      out.push({key: `${g.a.id}|${g.b.id}|${items[0].uuid}`, a: g.a, b: g.b, items, part: i + 1, parts, total: Math.max(g.count || 0, ids.length)});
+    }
+  }
+  return out;
+}
+
+/**
+ * 一张卡的回答（交给 /api/ask/answer，一步、一个撤销）：
+ *   'a'      其余是 A，点掉的（off）不是 A（和认一认的「其余 N 张是」一样）
+ *   'b'      卡上全部是 B：不是 A、是 B（switch）
+ *   'none'   都不是：卡上全部对 A、对 B 都记「不是」（also_no，#786）
+ *   'other'  点掉的是另一个角色 other：只提交点掉的那几张（不是 A、是 other）
+ */
+export function doubtAnswer(card, how, off, other = '') {
+  const batch = {entity: card.a.id, kind: 'ambiguous', items: card.items}, all = new Set(card.items.map(x => x.uuid));
+  if (how === 'a') return askAnswer(batch, 'ok', off);
+  if (how === 'b') return askAnswer(batch, 'other', all, card.b.id);
+  if (how === 'none') return {...askAnswer(batch, 'none', off), also_no: card.b.id};
+  return askAnswer(batch, 'other', off, other);
+}
+/** 以后再说：记下卡上这几张问过了（7 天里不再列出），不改图库，不进撤销。 */
+export const doubtLater = card => post('/api/ask/answer', {entity: card.a.id, kind: 'ambiguous', later: card.items.map(x => x.uuid)});

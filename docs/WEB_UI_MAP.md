@@ -11,7 +11,7 @@
 | 区域 | 元素 | 内容 | 谁写它 |
 |---|---|---|---|
 | 活页条 | `#rail` | 标志（点开是图库切换：当前图库、其他图库、「打开其他图库…」、图库设置，`#libraryPop`）；一级四个入口：图库、资料库、画廊、整理（整理有待处理时亮一个点）；二级层随一级变：图库的时间轴、资料库钉住的作品和角色、画廊（收藏在最前）、整理的队列（带数字）；底部：更新、同步圆环（任务按钮 `#taskButton`）、设置 | `rail.js`（数据在 `core/rail.js`）；`library_pop.js`（图库切换）；`tasks.js`（任务按钮）；`updates.js`（更新按钮）、`settings.js`（标志上的图库名） |
-| 页头 | `#pageHead`（在内容页顶上） | 窄窗口时打开二级层的按钮 `#sidebarToggle`；后退 `#backButton`；`#heading` 页面标题、副标题、本页的链接，图库三种视图或整理三个页签的分段切换；右侧控件组：跳到角色（⌘K）、NSFW、视图选项、撤销、快捷键 | `shell.js renderHeading`（标题由各页登记）；`grid.js`（NSFW、视图选项）；`app.js`（撤销、帮助） |
+| 页头 | `#pageHead`（在内容页顶上） | 窄窗口时打开二级层的按钮 `#sidebarToggle`；后退 `#backButton`；`#heading` 页面标题、副标题、本页的链接，图库三种视图或整理四个页签的分段切换；右侧控件组：跳到角色（⌘K）、NSFW、视图选项、撤销、快捷键 | `shell.js renderHeading`（标题由各页登记）；`grid.js`（NSFW、视图选项）；`app.js`（撤销、帮助） |
 | 工具栏 | `#toolbar` | 每页自己的一行：搜索、子页签、筛选胶囊、排序、选择、显示方式 | `shell.js renderChrome` |
 | 横幅 | `#errorBanner`、`#damageBanner`、`#guideNotice` | 读写出错或页面停止；数据库损坏；识别组件缺失、同步中断、模型未就位 | `dom.js error()`；`integrity.js`；`guide.js` |
 | 主区 | `#viewport` 内 7 个互斥面板 | `#grid`（图片网格，配 `#marquee`、`#empty`）、`#charIndex`、`#settingsPage`、`#groupsPage`、`#homePage`（按天）、`#calendarPage`（日历） | 各页面的渲染函数，见 §2 |
@@ -57,6 +57,7 @@
 | 未识别 · 已跳过 | `#/skipped` | `#grid` | 同上 | 有 | 有 | 整理：选中 | 整理 › 未识别 |
 | 未识别 · 按组整理 | `#/groups`；`#/tidy` 改写到这里 | `#groupsPage` | 仅子页签 | 无 | 无 | 点缩略图＝从本组排除；长按或 Space 看大图 | 整理 › 未识别 |
 | 未识别 · 第 N 组 | `#/g/<id>` | `#grid` | 子页签、排序、全选、显示方式 | 有 | 有 | 整理：选中 | 整理 › 未识别 |
+| 可能认错 | `#/doubts` | `#groupsPage` | 空 | 无 | 无 | 一张卡问「是 A 还是 B？」，同一对的图排在一起，最多 16 张一张卡。点缩略图＝点掉（再点算回）；长按或 Space 看大图。按钮：是 A（有点掉的时「其余 N 张是 A」）、是 B、都不是、点掉的是…、以后再说；回答只作用于卡上的图（#787） | 整理 › 可能认错 |
 | 重复 · 全部 / 角色不一致 | `#/duplicates[?dup=mixed]` | `#grid` | 子页签、排序、选择、显示方式 | 有（需先进选择） | 有 | 浏览：打开详情 | 整理 › 重复 |
 | 重复 · 相似的图 | `#/similar[?kind=…][&seen=1]` | `#groupsPage` | 仅子页签 | 无 | 无 | 卡片是链接，进 `#/s/<id>`；卡片写「相似组 N」，和进去后的标题一致（未识别的分组叫「第 N 组」）。标过「看过了」的组不列出，`seen=1` 只列它们（#427）。先显示 40 组，「再显示 N 组」接着往下；换页签、切换看过的组、切换 NSFW 时回到前 40 组，撤销后留在已显示的组数（#601） | 整理 › 重复 |
 | 重复 · 相似组 N | `#/s/<id>` | `#grid` | 子页签、排序、全选、显示方式 | 有 | 有 | 整理：选中 | 整理 › 重复 |
@@ -70,7 +71,7 @@
 
 ### 2.2 活页条亮哪一项
 
-注册表每个页面的 `entry`（一级入口）和 `item`（二级层的哪一项），`core/rail.js` 的 `railAt(route)` 按它们算：图库三种视图亮「图库」；`unmatched`、`skipped`、`groups`、`group` 亮「整理 › 未识别」，`duplicates`、`similar`、`sgroup` 亮「整理 › 重复」，`excluded`、`pending` 亮「整理 › 已排除」，`audit`、`identity` 亮各自那一项；`settings` 点亮底部的设置；资料库亮「资料库」，角色页也亮「资料库」，这个角色钉住了时选中它；画廊、一个画廊亮「画廊」和那一个；收藏（`#/gallery/fav`；只按收藏筛选的图库地址改写到它，#710）亮「画廊 › 收藏」；`artist-audit` 的 `entry` 为空，哪个都不亮。按天视图滚到哪一天由按天视图调 `ui/rail.js` 的 `selectDay`（#707）。
+注册表每个页面的 `entry`（一级入口）和 `item`（二级层的哪一项），`core/rail.js` 的 `railAt(route)` 按它们算：图库三种视图亮「图库」；`unmatched`、`skipped`、`groups`、`group` 亮「整理 › 未识别」，`doubts` 亮「整理 › 可能认错」，`duplicates`、`similar`、`sgroup` 亮「整理 › 重复」，`excluded`、`pending` 亮「整理 › 已排除」，`audit`、`identity` 亮各自那一项；`settings` 点亮底部的设置；资料库亮「资料库」，角色页也亮「资料库」，这个角色钉住了时选中它；画廊、一个画廊亮「画廊」和那一个；收藏（`#/gallery/fav`；只按收藏筛选的图库地址改写到它，#710）亮「画廊 › 收藏」；`artist-audit` 的 `entry` 为空，哪个都不亮。按天视图滚到哪一天由按天视图调 `ui/rail.js` 的 `selectDay`（#707）。
 
 ### 2.3 点击语义
 
@@ -80,7 +81,7 @@
 - `cleanup()`（`click: 'cleanup'`）：角色筛选，或 `unmatched`、`skipped`、`excluded`、`pending`、`group`、`sgroup`、`audit`。点击切换选中；工具栏按钮是「全选」；↵ 切换光标处那张的选中。
 - 按天视图和面板页是 `'own'`，不走网格。按天视图有自己的点击处理（`ui/days.js`）：`.day-tile` 打开详情，双击看大图，「+N 张」进网格看这一天，不涉及选择。
 
-另有 `panel` 字段：主区不是 `#grid` 的页面都为真（`days`、`calendar`、`characters`、`settings`、`groups`、`similar`、`identity`、`artist-audit`）。R、`reload()`、同步到达新图和 NSFW 切换后的重绘都用它判断：面板页自己重画，不会被换成网格。
+另有 `panel` 字段：主区不是 `#grid` 的页面都为真（`days`、`calendar`、`characters`、`settings`、`groups`、`doubts`、`similar`、`identity`、`artist-audit`）。R、`reload()`、同步到达新图和 NSFW 切换后的重绘都用它判断：面板页自己重画，不会被换成网格。
 
 `keys` 字段（`keyScope()`）是单图快捷键的范围：网格页为 `'grid'`（全部生效）；按天视图为 `'shown'`，没有网格光标，只在详情栏或大图打开时对那张图生效（见 §5）；其余面板页不响应，只有在下面「面板页看大图」开的大图里按 `'shown'` 处理。
 

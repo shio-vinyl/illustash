@@ -119,7 +119,7 @@
 .cal-count{position:absolute;right:var(--space-6);bottom:var(--space-6);z-index:var(--z-page-2);padding:var(--space-1) var(--space-6);border-radius:var(--radius-pill);
   background:rgba(var(--sh),.55);color:var(--on-image);font-size:var(--fs-11);font-weight:var(--fw-600);font-variant-numeric:tabular-nums}
 .cal-empty{padding:var(--space-24) 0}
-/* ======== 按天（C1 #707）：ui/days.js、ui/day.js、ui/day_cards.js、ui/day_ask.js ======== */
+/* ======== 按天（C1 #707）：ui/days.js、ui/day.js、ui/day_cards.js、ui/day_ask.js；认一认的图和按钮是 css/base.css 的判断卡 ======== */
 /* 顶上两张卡：同步状态、认一认。认一认展开后占满一行 */
 .day-cards{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.25fr);gap:var(--space-12);margin-bottom:var(--space-20)}
 .day-card{display:flex;align-items:center;gap:var(--space-14);min-width:0;margin:0;border:0;color:var(--ink);font:inherit;text-align:left}
@@ -140,17 +140,10 @@ button.day-sync:focus-visible{outline:2px solid var(--accent);outline-offset:2px
 .day-ask.is-open{grid-column:1/-1}
 .day-ask-peek{display:flex;flex:none;gap:var(--space-6)}
 .day-ask-peek>img{width:46px;height:46px;border-radius:var(--radius-8);background:var(--tint-soft);object-fit:cover}
-.day-ask-tiles{display:flex;flex-wrap:wrap;gap:var(--space-8);width:100%}
-.day-ask-tile{position:relative;height:120px;margin:0;padding:0;overflow:hidden;border:0;border-radius:var(--radius-8);background:var(--tint-soft);cursor:pointer;
-  transition:opacity var(--dur-1) var(--ease)}
-.day-ask-tile>img{display:block;width:100%;height:100%;object-fit:cover}
-.day-ask-tile>i{position:absolute;inset:0;display:none;place-items:center;background:var(--scrim);color:var(--on-image);font-size:var(--fs-20);font-style:normal;font-weight:var(--fw-750)}
-.day-ask-tile[aria-pressed=true]{opacity:.55}
-.day-ask-tile[aria-pressed=true]>i{display:grid}
-.day-ask-tile:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
-.day-ask-foot{display:flex;flex:none;align-items:center;gap:var(--space-8);margin-left:auto}
+.day-ask-tiles{width:100%}
+.day-ask-foot{display:flex;flex:none;margin-left:auto}
+.day-ask-foot>.judge-acts{flex:1;gap:var(--space-8)}
 .day-ask.is-open>.day-ask-foot{width:100%}
-.day-ask-state{margin-right:auto;color:var(--muted);font-size:var(--fs-12)}
 
 /* 一天：页头、芯片行、马赛克的高度都由 ui/day.js 按 daySizes 写（唯一的出处），这里不写高度 */
 .day{box-sizing:border-box}

@@ -69,7 +69,7 @@ test('键盘：⌘1–4 认 e.code；⌥↓ 走到下一项（按它的链接去
   await tick();
   e = key({key: 'ArrowDown', altKey: true});
   assert.equal(rail.railKey(e), true);
-  assert.equal(location.hash, '#/duplicates');
+  assert.equal(location.hash, '#/doubts');
   e = key({key: 'ArrowDown', altKey: true, target: {closest: () => ({})}});
   assert.equal(rail.railKey(e), false);
   assert.equal(rail.railKey(key({key: 'x'})), false);

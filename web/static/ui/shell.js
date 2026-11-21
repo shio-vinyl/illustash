@@ -84,7 +84,7 @@ export async function applyRoute() {
 // 自己渲染的页面在各条历史记录里停在哪里：{序号: scrollTop}。
 const panelScroll = new Map();
 
-// ---------- 页头：标题、副标题、本页的按钮，切换（图库的三种视图、整理的三个页签），右侧的控件组 ----------
+// ---------- 页头：标题、副标题、本页的按钮，切换（图库的三种视图、整理的四个页签），右侧的控件组 ----------
 // 各页用 head(r, ctx) 登记页头：返回 {title, sub?, alert?, actions?}，只收文字和节点（core/pages.js 的 implement 说明）：
 // title、sub、alert 是纯文字，经 ui/el.js 的 text() 写进 .title-page、.page-sub；actions 是这一页自己的按钮节点。
 // 旧的写法 headingHTML（返回 HTML 字符串）是存量，各页步骤改到哪页就迁到 head；drawHeading（整个页头自己画）也是。
@@ -104,15 +104,15 @@ function drawHead(h, {title = '', sub = '', alert = '', actions: buttons = []} =
   actions.replaceChildren(...buttons);
   h.replaceChildren(head.el, ...(buttons.length ? [actions] : []));
 }
-// 图库三种视图之间、整理三个页签之间的分段切换。是链接（换地址），选中的那个 aria-current。图库的切换只在活页条落在「图库」时画
+// 图库三种视图之间、整理四个页签之间的分段切换。是链接（换地址），选中的那个 aria-current。图库的切换只在活页条落在「图库」时画
 // （收藏、作品页虽然也是网格，活页条在画廊、资料库下，没有这个切换）。
 function switches(r, view) {
   if (view.view && railAt(r).entry === 'library') {
     const label = {days: t('按天'), grid: t('网格'), calendar: t('日历')};
     return {label: t('视图'), list: ['days', 'grid', 'calendar'].map(v => ({label: label[v], href: hashFor(viewRoute(r, v)), on: view.view === v}))};
   }
-  if (['unmatched', 'duplicates', 'excluded'].includes(view.tabs)) {
-    return {label: t('整理'), list: queues(r).slice(0, 3).map(q => ({label: q.label, n: q.count, href: q.href, on: view.item === q.key}))};
+  if (['unmatched', 'doubts', 'duplicates', 'excluded'].includes(view.tabs)) {
+    return {label: t('整理'), list: queues(r).slice(0, 4).map(q => ({label: q.label, n: q.count, href: q.href, on: view.item === q.key}))};
   }
   return null;
 }

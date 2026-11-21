@@ -239,6 +239,10 @@
     <p class="sg-src">调用：<code>ui/detail_card.js</code> 的 <code>askBar()</code>，<code>update(q)</code>；详情卡片顶上和大图底栏各一个。首页「认一认」卡片的 <code>.ask-card</code> 在 <code>ui/home.js</code>，这里没画。</p>
     <div class="sg-stage col" style="align-items:stretch" data-sg-live="ask"></div>
   </div>
+  <div class="sg-item" id="n-judge"><header><h3>判断卡</h3><span class="sg-tag live">调用生成</span><span class="sg-cls"><code>.judge-tiles</code><code>.judge-tile</code><code>.judge-acts</code><code>.judge-state</code></span></header>
+    <p class="sg-src">调用：<code>ui/judge.js</code> 的 <code>judgeCard({look, tip, actions})</code>，<code>update(items, {off})</code>。点一张是「点掉」（变淡、盖 ✕，<code>aria-pressed</code>），回答按钮随点掉的张数变。认一认、按组整理、可能认错三处共用；卡头（问句、头像）由各页自己画。</p>
+    <div class="sg-stage col" style="align-items:stretch" data-sg-live="judge"></div>
+  </div>
   <div class="sg-item"><header><h3>大图底栏</h3><span class="sg-tag live">调用生成</span><span class="sg-cls"><code>.viewer-bar</code><code>.vw-bar-in</code><code>.vw-acts</code><code>.is-compact</code><code>.dc-other</code></span></header>
     <p class="sg-src">调用：<code>ui/detail_card.js</code> 的 <code>identities({compact: true})</code>；动作按钮（跳过、排除、收藏、信息、更多像这张的）由 <code>ui/viewer.js</code> 画成 <code>.chip</code> + <code>kbd</code>。看图器本身（三张轮换、从缩略图展开和缩回）在 <code>ui/viewer.js</code>，深底在亮暗主题里相同（<code>--viewer-*</code> 令牌）。</p>
     <div class="sg-stage col" style="align-items:stretch" data-sg-live="viewer-bar"></div>

@@ -1,20 +1,21 @@
 // 整理页（#713）共用的部件：浅底分组（css/base.css 的 .group）、一排方图、收起动效、看大图的列表，以及各页共用的底栏清理和
 // 读失败时的「重试」。样式在 css/tidy.css。按组整理的一组、身份整理的一对用 tidyGroup()：组头一行写标题、张数和一句话，操作
-// 收在组头右边；按组整理下面是一排方图，身份整理把方图换成左右两边的样图。画师抽查的一张图只借用 .group.tidy-group 的样子。
+// 收在组头右边；按组整理下面是一排可以点掉的方图（共用的判断卡 ui/judge.js，#787），身份整理把方图换成左右两边的样图。
+// 画师抽查的一张图只借用 .group.tidy-group 的样子。
 //
 //   const g = tidyGroup();                      // {el, refs: {title, meta, q, acts, strip, note}}
-//   const strip = thumbStrip(g.refs.strip, {scope, max: 16});
-//   strip.update(ids, {off, rest: '#/g/3'});    // 方图按 uuid 复用；off 里的标为不算；rest 给了时超出的收成最后一格「+N」
+//   const strip = thumbStrip(g.refs.strip, {scope, max: 6});
+//   strip.update(ids);                          // 只看的方图（身份整理）：按 uuid 复用，点一下看大图
 //   setPeekList(g.el, () => ids);               // 长按或 Space 看大图时翻这一组（ui/viewer.js 的 wirePeek，见 wireTidyPeek）
 //
 // 一组处理完：先 leaving(el) 记下它，再从列表里拿掉；ui/keyed.js 的 exit 钩子 collapse(el) 只对记下的那组播收起——向右淡出，
 // 视口附近、在它下面的组从原来的位置滑上来（FLIP，只动 transform 和 opacity），其余直接到位；没记下的（重新分组后整表换掉）
 // 直接摘掉。系统开了「减少动态效果」时组直接消失。
-import {imageUrl, number} from '../core/format.js';
+import {imageUrl} from '../core/format.js';
 import {t} from '../core/i18n.js';
 import {readError} from '../core/session.js';
 import {$} from './dom.js';
-import {attr, cls, make, text, tpl} from './el.js';
+import {attr, make, tpl} from './el.js';
 import {drawEmpty} from './empty.js';
 import {keyed} from './keyed.js';
 import {exit, flip} from './motion.js';
@@ -28,40 +29,23 @@ const GROUP = tpl`<section class="group tidy-group">
   <div class="tidy-strip" data-ref="strip"></div>
   <p class="tidy-note" data-ref="note" hidden></p>
 </section>`;
-const THUMB = tpl`<button type="button" class="tidy-thumb"><img alt="" decoding="async" loading="lazy" draggable="false"><i aria-hidden="true">✕</i></button>`;
-const MORE = tpl`<a class="tidy-thumb is-more"></a>`;
+const THUMB = tpl`<button type="button" class="tidy-thumb"><img alt="" decoding="async" loading="lazy" draggable="false"></button>`;
 
 /** 一个空的分组，内容由各页填。 */
 export const tidyGroup = () => GROUP();
 
-/**
- * 一排方图。ids 是这一组的 uuid，只画前 max 张；off（Set）里的标为「不算在这组里」；rest 给了时超出的收成最后一格「+N」链接。
- * 带 data-gimg 的方图点一下由页面处理（按组整理：算不算在这组里），身份整理的方图（gimg: false）点一下看大图。
- */
-export function thumbStrip(box, {scope, max = 16, gimg = true} = {}) {
-  // keyed 管 thumbs 里的全部子节点，「+N」放在它后面（.tidy-thumbs 是 display: contents，方图和「+N」排在同一个网格里）。
-  const thumbs = make('span', 'tidy-thumbs'), more = MORE().el;
+/** 一排只看的方图（身份整理）：ids 是 uuid，只画前 max 张；点一下看大图。要点掉的方图用 ui/judge.js 的判断卡。 */
+export function thumbStrip(box, {scope, max = 16} = {}) {
+  // keyed 管 thumbs 里的全部子节点（.tidy-thumbs 是 display: contents，方图排在 box 的网格里）。
+  const thumbs = make('span', 'tidy-thumbs');
   box.replaceChildren(thumbs);
-  const list = keyed(thumbs, {key: x => x.id, scope, create: x => {
+  const list = keyed(thumbs, {key: x => x, scope, create: id => {
     const {el} = THUMB(), img = el.firstElementChild;
-    attr(el, 'data-peek', x.id);
-    if (gimg) attr(el, 'data-gimg', x.id);
-    attr(img, 'src', imageUrl(x.id, 'thumb'));
-    const update = y => {
-      cls(el, 'is-off', !!y.off);
-      attr(el, 'aria-pressed', gimg ? String(!!y.off) : null);
-      attr(el, 'title', gimg ? (y.off ? t('点一下：算回这组') : t('点一下：不算在这组里')) + ' · ' + t('长按或 Space 看大图') : t('看大图'));
-    };
-    update(x);
-    return {el, update};
+    attr(el, 'data-peek', id); attr(el, 'title', t('看大图'));
+    attr(img, 'src', imageUrl(id, 'thumb'));
+    return {el, update() {}};
   }});
-  return {update(ids, {off = null, rest = null} = {}) {
-    list.set(ids.slice(0, max).map(id => ({id, off: !!off?.has(id)})));
-    if (rest && ids.length > max) {
-      attr(more, 'href', rest); text(more, '+' + number(ids.length - max));
-      if (more.parentNode !== box) box.append(more);
-    } else more.remove();
-  }};
+  return {update(ids) { list.set(ids.slice(0, max)); }};
 }
 
 // 各组看大图时翻哪些图：节点 → 返回 uuid 列表的函数。

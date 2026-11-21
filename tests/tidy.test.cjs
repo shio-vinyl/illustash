@@ -97,9 +97,10 @@ test('按组整理：重读时组按 cid 复用；排除一张只改那一格；
   await pages.PAGES.groups.refresh('undo'); await settle();
   assert.deepEqual(sections().slice(0, 3), [a, b, c]);
   // 点第 2 组的第一张：它标为不算，节点还是原来的。
-  const list = box.querySelector('.tidy-list'), thumb = b.querySelector('[data-gimg]');
-  click(list, thumb);
-  assert.equal(sections()[1], b); assert.ok(thumb.classList.contains('is-off'));
+  // 方图是判断卡（ui/judge.js）的图，点击在图的容器上接；dom.cjs 不冒泡，直接派发给容器。
+  const thumb = b.querySelector('[data-peek]');
+  click(thumb.parentNode, thumb);
+  assert.equal(sections()[1], b); assert.equal(thumb.getAttribute('aria-pressed'), 'true');
   // 第 1 组答完了（写入走 ui/grid.js 的 mutate，这里只看重读）：它收起、摘掉，其余的组还是原来的节点。
   clusters = [2, 3, 4].map(cluster);
   await pages.PAGES.groups.refresh('learned'); await settle();
@@ -212,12 +213,12 @@ test('按组整理：同一路由上先发的读取晚到，不把点掉的图�
   const first = pages.PAGES.groups.render({samePage: false, scope}); await tick();
   const second = pages.PAGES.groups.refresh('learned'); await tick();
   pending[1]({clusters: [cluster(5)], learner: {}}); await second; await settle();
-  const sec = sections()[0], thumb = sec.querySelector('[data-gimg]');
-  click(box.querySelector('.tidy-list'), thumb);
-  assert.ok(thumb.classList.contains('is-off'));
+  const sec = sections()[0], thumb = sec.querySelector('[data-peek]');
+  click(thumb.parentNode, thumb);
+  assert.equal(thumb.getAttribute('aria-pressed'), 'true');
   pending[0]({clusters: [cluster(5)], learner: {}}); await first; await settle();
-  assert.ok(thumb.classList.contains('is-off'), '晚到的第一次读取没有把点掉的图复位');
-  assert.match(sec.querySelector('[data-gact="assign"]').textContent, /设为/);
+  assert.equal(thumb.getAttribute('aria-pressed'), 'true', '晚到的第一次读取没有把点掉的图复位');
+  assert.match(sec.querySelector('[data-act="assign"]').textContent, /设为/);
 });
 
 test('相似的图：检查进行中撤销、学习落定几次，也只有一条 3 秒轮询', async () => {

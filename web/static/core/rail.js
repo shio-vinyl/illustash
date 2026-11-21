@@ -78,13 +78,16 @@ export function entryHref(id) {
 // 整理有没有待处理的（一级入口上亮一个点）。
 export const tidyWaiting = () => queues().some(q => q.count);
 
-// ---------- 整理：三个队列，另有题时随机抽查、身份整理 ----------
+// ---------- 整理：四个队列，另有题时随机抽查、身份整理 ----------
+// 可能认错（#787）的张数是 /api/review-pools 里的哪一项（state.pools 的键，#786）。
+export const DOUBT_POOL = 'ambiguous';
 // 数字和点进去落在哪个页签与原来侧栏的计数一致（docs/WEB_UI_MAP.md「侧栏计数」）。route 给出现在在哪：在随机抽查、身份整理上
 // 时，即使没题了也留着它们这一项。
 export function queues(route = state.route) {
   const at = pageOf(route).item;
   const q = [
     {key: 'unmatched', kind: 'queue', label: t('未识别'), count: state.pools.unmatched || 0, href: '#/groups', meta: t('还没认出角色的图')},
+    {key: 'doubts', kind: 'queue', label: t('可能认错'), count: state.pools[DOUBT_POOL] || 0, href: '#/doubts', meta: t('算给了某个角色、和另一个角色分不太清的图')},
     {key: 'duplicates', kind: 'queue', label: t('重复'), count: state.dupInfo.mixed || 0, href: state.dupInfo.mixed ? '#/duplicates?dup=mixed' : '#/duplicates',
       meta: t('角色不一致的副本组')},
     {key: 'excluded', kind: 'queue', label: t('已排除'), count: state.pendingCount || 0, href: state.pendingCount ? '#/pending' : '#/excluded', meta: t('像截图、待确认的图')},

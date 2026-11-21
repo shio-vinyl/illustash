@@ -21,7 +21,7 @@ import {state} from './state.js';
 //   click      点卡片做什么：'browse' 打开详情（选择要主动进入）、'cleanup' 切换选中、'own' 页面自己处理
 //   entry      属于活页条的哪个一级入口（core/rail.js 的 ENTRIES）：'library' 图库、'catalog' 资料库、'galleries' 画廊、'tidy' 整理、
 //              'settings' 设置（底部的齿轮）；'' 哪个都不亮（画师抽查，入口在设置里）
-//   item       在那个入口的二级层里选中哪一项的键（整理的五个队列）；随地址变的（某个画廊、钉住的角色）由 core/rail.js 的
+//   item       在那个入口的二级层里选中哪一项的键（整理的六个队列）；随地址变的（某个画廊、钉住的角色）由 core/rail.js 的
 //              railAt 按地址算，不写在这里
 //   view       图库的三种视图：'days' 按天、'grid' 网格、'calendar' 日历（页头的分段切换按它画）
 //   filters    读图库的筛选参数（has、not、from、to 和旧的单值参数）：图库三种视图和画廊；切换视图时这些参数跟着走
@@ -95,7 +95,7 @@ const list = [
   {name: 'showcase', prefix: 'showcase', area: 'groupsPage', panel: true, keys: 'shown', click: 'own', entry: 'galleries', toolbar: 'none', emptyIcon: 'gallery', stage: true},
   {name: 'characters', sections: true, area: 'charIndex', panel: true, click: 'own', entry: 'catalog', toolbar: 'index', directory: true, guideTick: 'look', emptyIcon: 'person'},
   {name: 'settings', sections: true, area: 'settingsPage', panel: true, click: 'own', entry: 'settings', toolbar: 'none'},
-  // 整理（#706）：未识别、重复、已排除三个页签（tabs 是页签组），随机抽查、身份整理有题时出现在二级层。各页签原来的子页保留。
+  // 整理（#706）：未识别、可能认错（#787）、重复、已排除四个页签（tabs 是页签组），随机抽查、身份整理有题时出现在二级层。各页签原来的子页保留。
   {name: 'unmatched', sortPref: 'sortUnmatched', area: 'grid', panel: false, click: 'cleanup', entry: 'tidy', item: 'unmatched', lead: true, tabs: 'unmatched', tab: 'all',
     toolbar: 'grid', sorts: ['hinted', ...NEWEST], pool: 'unmatched', bar: 'unmatched', skip: true, emptyIcon: 'check',
     empty: () => t('没有未识别的图。'), hint: () => t('点击或拖动选择 · Space 看大图 · C 设为角色 · S 跳过'), card: {hintMin: 70}},
@@ -103,6 +103,8 @@ const list = [
     toolbar: 'grid', sorts: ['hinted', ...NEWEST], pool: 'skipped', bar: 'skipped', emptyIcon: 'check',
     empty: () => t('没有跳过的图片。'), hint: () => t('点击或拖动选择 · Space 看大图')},
   {name: 'groups', area: 'groupsPage', panel: true, click: 'own', entry: 'tidy', item: 'unmatched', tabs: 'unmatched', tab: 'groups', toolbar: 'tabs', emptyIcon: 'check'},
+  // 可能认错（#787）：机器算给了某个角色、但和另一个角色分不太清的图，一张卡问「是 A 还是 B？」。没有子页签。
+  {name: 'doubts', area: 'groupsPage', panel: true, click: 'own', entry: 'tidy', item: 'doubts', tabs: 'doubts', tab: 'doubts', toolbar: 'none', emptyIcon: 'check'},
   {name: 'group', prefix: 'g', sortPref: 'sortUnmatched', area: 'grid', panel: false, click: 'cleanup', entry: 'tidy', item: 'unmatched', lead: true, tabs: 'unmatched', tab: 'groups',
     toolbar: 'grid', sorts: ['hinted', ...NEWEST], bar: 'unmatched', skip: true, emptyIcon: 'check',
     pool: 'cluster', params: r => ({cluster: r.id}), empty: () => t('这一组都整理完了。'),

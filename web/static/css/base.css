@@ -37,6 +37,7 @@ button.chip:hover,a.chip:hover{background:var(--chip-hover);color:var(--ink)}
 /* 带头像的芯片：头像贴左边，左内边距收窄 */
 .chip:has(> .avatar:first-child){padding-left:var(--space-4)}
 .chip>.avatar{width:20px;height:20px}
+.chip.is-small{height:auto;padding:var(--space-2) var(--space-8);font-size:var(--fs-11)}
 .chip>.chip-count{color:var(--muted);font-size:var(--fs-11)}
 /* 带一个小 × 的芯片（造型、我的标签：名字可以是链接，× 在右边，右内边距收窄）；「＋ 加一个」的芯片是描边、没有底色 */
 .chip.is-variant{gap:var(--space-2);padding-right:var(--space-4)}

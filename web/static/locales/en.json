@@ -774,7 +774,6 @@
   "没读到要认的图": "Could not load pictures to check",
   "外观相似：第 {n} 组": "Similar look: group {n}",
   "可能和第 {n} 组是同一人": "May be the same person as group {n}",
-  "点一下图片：不算在这组里 · 长按或 Space 看大图 · 组头的按钮对整组生效": "Click a picture to leave it out of the group · long-press or Space for large view · the buttons on a group act on the whole group",
   "{n} 组 · 共 {images} 张": {
     "one": "{n} group · {images} pictures",
     "other": "{n} groups · {images} pictures"
@@ -804,6 +803,11 @@
   "点一下：算回这组": "Click: back in this group",
   "点一下：不算在这组里": "Click: leave out of this group",
   "逐张看": "One by one",
+  "去图库": "Go to Library",
+  "回到相似的图": "Back to Similar pictures",
+  "去资料库": "Go to Catalog",
+  "关系类型": "Relation type",
+  "还没有找回画师的图。": "No pictures with recovered artists yet.",
   "这 {n} 张是…": "These {n} are…",
   "把这 {n} 张设为 {name}": "Assign these {n} to {name}",
   "完全相同": "Identical",
@@ -824,7 +828,6 @@
   "出错：{reason}": "Failed: {reason}",
   "本次启动关闭了相似检测": "Similar-picture detection is off for this launch",
   "上次检查 {time}": "Last checked {time}",
-  "点一组进去看": "Click a group to open it",
   "比较新加入的图和还没比较过的候选": "Compare new pictures and candidates not compared yet",
   "还在检查，找到的组会陆续出现。": "Still checking; groups appear as they are found.",
   "没有找到相似的图。": "No similar pictures found.",
@@ -858,7 +861,6 @@
   "参考图外观距离 {d}": "Reference look distance {d}",
   "（几乎分不开）": " (nearly indistinguishable)",
   "参考图外观很接近": "Reference pictures look very close",
-  "没有可显示的图": "No pictures to show",
   "记为同一角色（不搬图）": "Mark as the same character (pictures stay)",
   "把两个角色合在一起显示，图和人工结论留在原处": "Show the two characters as one; pictures and your decisions stay where they are",
   "B 是 A 的一个造型": "B is a form of A",
@@ -869,7 +871,6 @@
   "记为不同角色，以后不再问这一对": "Note them as different characters; this pair is not asked again",
   "暂不判断": "Decide later",
   "先放一边，队列里不再出现": "Set aside; it leaves the queue",
-  "点角色名看全部图 · 高亮的是外部资料建议的做法": "Click a name to see all its pictures · the highlighted choice is what external data suggests",
   "{n} 对待判断": {
     "one": "{n} pair to decide",
     "other": "{n} pairs to decide"
@@ -1322,7 +1323,6 @@
   "和 TA 公开作品的小图逐张比对一致": "Matches a small picture of their public works",
   "签名识别": "Signature reading",
   "图上的签名或水印": "A signature or watermark on the picture",
-  "点原帖或画师主页对照 · 看不出来就先留着": "Compare with the original post or artist page · leave it if unsure",
   "对": "Right",
   "改": "Change",
   "不对": "Wrong",

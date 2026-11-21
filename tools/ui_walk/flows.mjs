@@ -96,6 +96,7 @@ export const FLOWS = [
         ['未识别 · 按组整理', '#/groups', 'panel'], ['未识别 · 第 1 组', `#/g/${f.groups[0]?.id}`, 'grid'],
         ['全部未识别', '#/unmatched', 'grid'], ['已跳过', '#/skipped', 'grid'], ['重复', '#/duplicates', 'grid'],
         ['相似的图', '#/similar', 'panel'], ['相似的图 · 第 1 组', `#/s/${f.similar[0]?.id}`, 'grid'], ['已排除', '#/excluded', 'grid'],
+        ['身份整理', '#/identity', 'empty'], ['画师抽查', '#/artist-audit', 'panel'],
         ['设置 · 通用', '#/settings', 'panel'], ['设置 · 图库', '#/settings/library', 'panel'],
         ['设置 · 角色资料', '#/settings/characters', 'panel'], ['设置 · 画师', '#/settings/artists', 'panel'],
         ['设置 · 网络与隐私', '#/settings/network', 'panel'], ['设置 · 数据', '#/settings/data', 'panel'], ['设置 · 关于', '#/settings/about', 'panel'],
@@ -104,6 +105,12 @@ export const FLOWS = [
         const snap = await w.step(`打开${label}`, () => goto(page, hash), {shot: true});
         w.check(`${label}：标题不空`, !!snap.heading, snap.heading);
         if (kind === 'grid') w.check(`${label}：网格有图`, snap.total > 0, `total=${snap.total}`);
+        // 合成图库里没有长得像的角色对：身份整理是空状态，看它在、写了事实（中文那句不到 20 个字，不用下面的字数判断）。
+        if (kind === 'empty') {
+          const fact = await page.waitFor(`(document.querySelector('#groupsPage .empty-state:not([hidden]) .empty-fact')?.textContent || '').trim()`, 3000);
+          w.check(`${label}：空状态写了事实`, fact, '');
+          continue;
+        }
         if (kind !== 'grid') {
           const filled = await page.eval(`(() => { const v = document.getElementById('viewport'); return [...v.children].some(el => !el.hidden && el.id !== 'grid' && el.id !== 'marquee' && el.id !== 'empty' && (el.innerText || '').trim().length > 20); })()`);
           w.check(`${label}：页面有内容`, filled, '');
@@ -228,8 +235,8 @@ export const FLOWS = [
     covers: ['#424 2-2', '#709'],
     async run(w, page) {
       await w.step('打开未识别 › 按组整理', () => goto(page, '#/groups'));
-      const before = await inPage(page, `return document.querySelectorAll('#groupsPage .gsec').length;`);
-      const at = await page.center('#groupsPage .gsec [data-peek]');
+      const before = await inPage(page, `return document.querySelectorAll('#groupsPage .tidy-group[data-cid]').length;`);
+      const at = await page.center('#groupsPage .tidy-group [data-peek]');
       w.check('组里有能看大图的图', !!at, at);
       if (!at) return;
       let snap = await w.step('长按第一张', async p => {
@@ -247,7 +254,7 @@ export const FLOWS = [
       snap = await w.step('Esc 关大图', p => p.key('Escape'));
       w.check('大图关了', !snap.overlays.includes('viewer'), snap.overlays);
       w.check('没有开详情卡片', !snap.overlays.includes('inspector'), snap.overlays);
-      const after = await inPage(page, `return document.querySelectorAll('#groupsPage .gsec').length;`);
+      const after = await inPage(page, `return document.querySelectorAll('#groupsPage .tidy-group[data-cid]').length;`);
       w.check('分组原样', after === before, {before, after});
     },
   },
@@ -334,12 +341,12 @@ export const FLOWS = [
     async run(w, page) {
       const f = w.config.fixture, who = f.chars[2].name, group = f.groups[0];
       const counts = () => inPage(page, `const S = (await import('/core/state.js')).state;
-        return {unmatched: S.pools?.unmatched ?? null, sections: document.querySelectorAll('#groupsPage .gsec').length,
-          first: document.querySelector('#groupsPage .gsec')?.dataset.cid ?? null};`);
+        return {unmatched: S.pools?.unmatched ?? null, sections: document.querySelectorAll('#groupsPage .tidy-group[data-cid]').length,
+          first: document.querySelector('#groupsPage .tidy-group[data-cid]')?.dataset.cid ?? null};`);
       await w.step('打开未识别 › 按组整理', () => goto(page, '#/groups'), {shot: true});
       const before = await counts();
       w.check('有分组', before.sections > 0, before);
-      await w.step(`第 ${group.id} 组点「设为…」`, p => p.click(`#groupsPage .gsec[data-cid="${group.id}"] [data-gact="assign"]`));
+      await w.step(`第 ${group.id} 组点「设为…」`, p => p.click(`#groupsPage .tidy-group[data-cid="${group.id}"] [data-gact="assign"]`));
       await w.step(`搜「${who}」`, p => pickerFind(p, who));
       await w.step('回车：整组设为', p => p.key('Enter'), {settle: {quiet: 600}});
       const after = await counts();
@@ -356,6 +363,33 @@ export const FLOWS = [
       // 活页条整理的二级层里「未识别」那一项的数字（#706）。
       const side = await page.eval(`(document.querySelector('#railItems .rail-item[data-key="unmatched"] .rail-count')?.textContent || '').trim()`);
       w.check('活页条的未识别数字和页面一致', Number(side.replace(/\D/g, '') || 0) === now.unmatched, {side, unmatched: now.unmatched});
+    },
+  },
+
+  {
+    name: 'similar-seen',
+    title: '重复 › 相似的图：进一组 → 页头点「看过了」→ 回到列表，这组不在了 → ⌘Z 撤销：这组回到列表（#427、#713）',
+    covers: ['#427', '#713'],
+    async run(w, page) {
+      const gid = String(w.config.fixture.similar[0]?.id ?? '');
+      w.check('合成图库里有相似组', !!gid, gid);
+      if (!gid) return;
+      const listed = () => inPage(page, `return [...document.querySelectorAll('#groupsPage .tidy-card')].map(a => a.getAttribute('href'));`);
+      await w.step('打开重复 › 相似的图', () => goto(page, '#/similar'), {shot: true});
+      const before = await listed();
+      w.check('列表里有这一组', before.includes('#/s/' + gid), before);
+      await w.step(`点进相似组 ${gid}`, p => p.click(`#groupsPage .tidy-card[href="#/s/${gid}"]`), {settle: {quiet: 600}});
+      const button = await page.eval(`(document.getElementById('sgroupSeen')?.textContent || '').trim()`);
+      w.check('页头有「看过了」', button === '看过了' || button === 'Mark as seen', button);
+      await w.step('点「看过了」', p => p.click('#sgroupSeen'), {settle: {quiet: 600}, shot: true});
+      const hash = await page.eval('location.hash');
+      w.check('回到相似的图', hash.startsWith('#/similar'), hash);
+      const after = await listed();
+      w.check('这一组不在列表里了', !after.includes('#/s/' + gid), after);
+      await w.step('⌘Z 撤销', p => p.key('z', {modifiers: ['Meta']}), {settle: {quiet: 600}});
+      let now = await listed();
+      for (const end = Date.now() + 5000; Date.now() < end && !now.includes('#/s/' + gid);) { await sleep(300); now = await listed(); }
+      w.check('撤销后这一组回到列表', now.includes('#/s/' + gid), now);
     },
   },
 

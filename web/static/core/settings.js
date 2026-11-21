@@ -6,7 +6,7 @@ import {t, said} from './i18n.js';
 import {session, api, post, shared, leaveSession} from './session.js';
 import {state} from './state.js';
 import {listeners} from './events.js';
-import {mergeNames} from './jobs.js';
+import {mergeNames, setIndex, setNames} from './jobs.js';
 const changed = listeners();
 export const onSettings = changed.on;
 
@@ -27,6 +27,22 @@ export function loadSettingsData(refresh = false) {
     await changed.emit('data', {key, error});
   })).finally(() => { loading = null; });
   return loading;
+}
+// 「设置 › 角色资料」两张卡片的数据重新读一次（进这一节时，#714 前在 ui/settings.js 里）。
+export const loadIndex = async () => { const token = session.token, value = await shared('/api/index'); if (token === session.token) setIndex(value); return value; };
+export const loadNames = async () => { const token = session.token, value = await shared('/api/names'); if (token === session.token) setNames(value); return value; };
+// 上次检查新角色时每个关注作品的情况（#561，GET /api/index/coverage）：本图库启用的数据包已经覆盖几个、自己补过几个、
+// 还缺几个。/api/index 的回复冻结，所以另读一次；检查或添加角色之后（检查时间或最近一条历史变了）重新读。返回是否读了新的。
+// 读成功了才记下键：读失败的同一次检查，下次进这一节或检查结束时还会再读；正在读的键不重复发。
+let coverage = null, coverageKey = '', coverageLoading = '';
+export const indexCoverage = () => coverage;
+export async function loadCoverage(x = state.index, fresh = false) {
+  const key = JSON.stringify([x?.check?.checked_at, x?.history?.[0]?.at]);
+  if ((!fresh && key === coverageKey) || key === coverageLoading) return false;
+  coverageLoading = key;
+  try { coverage = await shared('/api/index/coverage'); coverageKey = key; } catch { coverage = null; coverageKey = ''; }
+  finally { if (coverageLoading === key) coverageLoading = ''; }
+  return true;
 }
 // /api/settings 的最新回应；任务面板读到新的也经这里换上。
 export function setSettings(value) { state.settings = value; }
@@ -71,9 +87,18 @@ export const currentLibraryId = () => libraryId ??= api('/api/libraries').then(x
 // POST /api/libraries/<action>，带着发起请求的那个页面的 token：确认框可能比它的会话活得久。
 export const libraryRequest = (action, body = {}, token = session.token) =>
   api('/api/libraries/' + action, {method: 'POST', body: JSON.stringify(body), headers: {'X-CSRF-Token': token}});
-// 跟踪进行中的导出，最多一小时。
-export async function pollExport() {
-  for (let i = 0; i < 2400 && state.libraries?.export?.status === 'running'; i++) { await new Promise(r => setTimeout(r, 1500)); await loadLibraries(); }
+// 跟踪进行中的导出，最多一小时；同一时间只有一个轮询。读一次失败时保留上次的状态，退避以后接着读，读到终态才停。
+let exporting = null;
+export function pollExport() {
+  exporting ??= (async () => {
+    let wait = 1500;
+    for (let i = 0; i < 2400 && state.libraries?.export?.status === 'running'; i++) {
+      await new Promise(r => setTimeout(r, wait));
+      try { state.libraries = await api('/api/libraries'); wait = 1500; await changed.emit('libraries'); }
+      catch { wait = Math.min(wait * 2, 15000); }
+    }
+  })().finally(() => { exporting = null; });
+  return exporting;
 }
 // 系统的文件夹选择框，可一次选多个；没有选择框的地方抛出「Unsupported…」。
 export async function chooseFolders(multiple = true) {
@@ -142,13 +167,19 @@ export function waitPixivLogin() {
 // 用户允许之前关闭。允许之后，后端在每次启动时检查，App 一直开着时每天检查一次；页面只询问是否该检查了。
 // 「下载并重启」（#279）由桌面外壳做，状态在 state.updates.install（不在桌面 App 里时为 null）：这里转达 download、cancel、
 // install，下载期间每秒读一次进度，下完或失败就停。
-let updatesAt = 0, updatesPending = null, installTimer = 0;
+// 下载期间读一次失败时不停：保留上次的状态，退避以后接着读（最长 15 秒一次），读到就照宿主的实际状态（ready、failed…）。
+let updatesAt = 0, updatesPending = null, installTimer = 0, installWait = 1000;
+const watchInstall = () => {
+  clearTimeout(installTimer);
+  installTimer = setTimeout(() => api('/api/updates').then(value => { installWait = 1000; adoptUpdates(value); }, () => {
+    installWait = Math.min(installWait * 2, 15000);
+    if (state.updates?.install?.stage === 'downloading') watchInstall();
+  }).finally(() => changed.emit('updates')), installWait);
+};
 const adoptUpdates = value => {
   state.updates = value; updatesAt = Date.now();
   clearTimeout(installTimer);
-  if (value?.install?.stage === 'downloading') {
-    installTimer = setTimeout(() => api('/api/updates').then(adoptUpdates).catch(() => {}).finally(() => changed.emit('updates')), 1000);
-  }
+  if (value?.install?.stage === 'downloading') watchInstall();
   return value;
 };
 export async function updatesPost(body) {
@@ -160,7 +191,8 @@ export const checkUpdates = () => updatesPost({action: 'check'});
 export function updatesTick() {
   if (updatesPending) return updatesPending;
   updatesPending = (async () => {
-    if (!state.updates || Date.now() - updatesAt > 600000) adoptUpdates(await api('/api/updates'));
+    // 正在下载更新时每次都读（上一次轮询可能失败过），否则十分钟读一次。
+    if (!state.updates || state.updates.install?.stage === 'downloading' || Date.now() - updatesAt > 600000) adoptUpdates(await api('/api/updates'));
     if (state.updates.due) await updatesPost({action: 'check', auto: true});
   })().catch(() => {}).finally(() => { updatesPending = null; changed.emit('updates'); });
   return updatesPending;

@@ -122,7 +122,8 @@ export const FLOWS = [
         ['相似的图', '#/similar', 'panel'], ['相似的图 · 第 1 组', `#/s/${f.similar[0]?.id}`, 'grid'], ['已排除', '#/excluded', 'grid'],
         ['身份整理', '#/identity', 'empty'], ['画师抽查', '#/artist-audit', 'panel'],
         ['设置 · 通用', '#/settings', 'panel'], ['设置 · 图库', '#/settings/library', 'panel'],
-        ['设置 · 画师', '#/settings/artists', 'panel'], ['设置 · 关于', '#/settings/about', 'panel'],
+        ['设置 · 角色资料', '#/settings/characters', 'panel'], ['设置 · 画师', '#/settings/artists', 'panel'],
+        ['设置 · 网络与隐私', '#/settings/network', 'panel'], ['设置 · 数据', '#/settings/data', 'panel'], ['设置 · 关于', '#/settings/about', 'panel'],
       ];
       for (const [label, hash, kind] of pages) {
         const snap = await w.step(`打开${label}`, () => goto(page, hash), {shot: true});
@@ -575,7 +576,7 @@ export const FLOWS = [
     covers: ['#386 1-9'],
     async run(w, page) {
       await w.step('打开设置', () => goto(page, '#/settings'));
-      let snap = await w.step('点「原比例」', p => p.click('[data-setting="fit"] button[data-value="1"]'), {shot: true});
+      let snap = await w.step('点「原比例」', p => p.click('[data-row="fit"] button[data-value="1"]'), {shot: true});
       const fit = await stateOf(page, 'S.fit');
       w.check('切换生效', fit === true, {fit});
       w.check('点的时候没有报错', !w.steps.at(-1).console.length, w.steps.at(-1).console);

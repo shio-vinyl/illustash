@@ -1,10 +1,12 @@
 // 运行：node --test tests/name_network.test.cjs
 const {test, before} = require('node:test');
-const web = require('./web.cjs');   // core/ 和 ui/settings.js（#199）
+const web = require('./web.cjs');
+const dom = require('./dom.cjs');
+const {view, toastNodes} = require('./settings_view.cjs');   // core/ 和 ui/settings.js（#199）
 let settings;
-before(async () => { await web.ready(); settings = await web.load('ui/settings.js'); });
+before(async () => { await web.ready(); settings = await web.load('ui/settings_network.js'); });
 const assert = require('node:assert/strict');
-// 查询在 core/settings.js（remoteNames、remoteNote）；征求同意是 ui/settings.js 的 setNamesNetwork()，
+// 查询在 core/settings.js（remoteNames、remoteNote）；征求同意是 ui/settings_network.js 的 setNamesNetwork()，
 // 用页面自己的对话框（ui/dialog.js）和提示条（ui/dom.js），这里放在假页面上。
 function harness({fail, confirm = true} = {}) {
   const calls = [], toasts = [], dialogs = [], core = web.core(), nodes = {};
@@ -60,69 +62,63 @@ test('granting asks first and sends nothing when declined; revoking does not ask
   assert.deepEqual(h.toasts, ['已撤销名称联网查询']);
 });
 
+// 名称翻译那一组在 ui/settings_characters.js；保存经过 core/settings.js 的 saveModelApi()。
+async function modelCard(names, fetch) {
+  const {state} = web.core();
+  dom.install();
+  const toastText = toastNodes(), open = await view('characters');
+  Object.assign(state, {route: {page: 'library'}, names, pack: null, index: null});
+  globalThis.fetch = fetch;
+  const v = open();
+  const press = async label => { v.press('modelSave', label); for (let i = 0; i < 3; i++) await new Promise(resolve => setImmediate(resolve)); };
+  const type = (key, value) => { const input = v.row(key).querySelector('input'); input.value = value; input.dispatchEvent(dom.event('change')); };
+  return {state, v, press, type, toast: () => toastText.textContent, done: () => { v.dispose(); dom.uninstall(); }};
+}
+
 test('saving or clearing model settings keeps the grant and revoke control available', async () => {
-  // 模型卡片在 ui/settings.js；保存经过 core/settings.js 的 saveModelApi()。
-  const {renderModelCard} = await web.load('ui/settings.js');
   for (const authorized of [true, false]) {
-    const network = {authorized, this_run: false, granted_at: authorized ? 'synthetic-time' : null}, {state} = web.core();
-    const controls = Object.fromEntries(['modelCard', 'modelSave', 'modelClear', 'modelTest', 'modelBase', 'modelName', 'modelKey', 'toast', 'toastText', 'toastAct', 'toastUndo']
-      .map(id => [id, {value: '', contains: () => false}]));
-    const calls = [];
-    Object.assign(state, {route: {page: 'library'}, names: {network, model_api: {configured: true}}});
-    globalThis.document = {getElementById: id => controls[id], activeElement: null};
-    globalThis.fetch = async (path, options) => {
+    const network = {authorized, this_run: false, granted_at: authorized ? 'synthetic-time' : null}, calls = [];
+    const c = await modelCard({network, model_api: {configured: true}}, async (path, options) => {
       const body = JSON.parse(options.body); calls.push([path, body]);
       return {status: 200, ok: true, json: async () => ({model_api: {configured: body.key !== null}, counts: {total: 2}})};
-    };
-    renderModelCard();
-    await controls.modelSave.onclick();
-    await new Promise(resolve => setImmediate(resolve));
-    assert.equal(state.names.network, network);
-    await controls.modelClear.onclick();
-    await new Promise(resolve => setImmediate(resolve));
-    assert.equal(state.names.network, network);
-    assert.equal(state.names.model_api.configured, false);
+    });
+    await c.press('保存');
+    assert.equal(c.state.names.network, network);
+    c.v.update();
+    await c.press('清除 key');
+    assert.equal(c.state.names.network, network);
+    assert.equal(c.state.names.model_api.configured, false);
     assert.equal(calls.length, 2);
     assert.ok(calls.every(([path, body]) => path === '/api/names' && body.action === 'model_api'));
+    c.done();
   }
 });
 
 test('a model credential error keeps the settings save and clear controls available', async () => {
-  const {state} = web.core();
-  const controls = Object.fromEntries(['modelCard', 'modelSave', 'modelClear', 'modelBase', 'modelName', 'modelKey', 'toast', 'toastText', 'toastAct', 'toastUndo']
-    .map(id => [id, {value: '', contains: () => false}]));
-  const credentialError = '模型 API key 尚未迁移，请重新打开图库或保存模型设置';
-  const calls = [];
-  Object.assign(state, {route: {page: 'library'}, names: {model_api: {configured: false, credential_error: credentialError}}});
-  globalThis.document = {getElementById: id => controls[id], activeElement: null};
-  globalThis.fetch = async (path, options) => {
+  // 系统凭据存储读不出 key（#780）：「名称翻译」那一组的状态写这个原因，可以清除 key、重新保存，不给测试连接。
+  const credentialError = '模型 API key 尚未迁移，请重新打开图库或保存模型设置', calls = [];
+  const c = await modelCard({network: {}, model_api: {configured: false, credential_error: credentialError}}, async (path, options) => {
     calls.push([path, JSON.parse(options.body)]);
     return {status: 200, ok: true, json: async () => ({model_api: {configured: false}})};
-  };
-  settings.renderModelCard();
-  assert.ok(controls.modelCard.innerHTML.includes(credentialError));
-  assert.match(controls.modelCard.innerHTML, /id="modelClear"/);
-  assert.match(controls.modelCard.innerHTML, /id="modelSave"/);
-  assert.doesNotMatch(controls.modelCard.innerHTML, /id="modelTest"/);
-  await controls.modelClear.onclick();
+  });
+  assert.ok(c.v.row('modelSave').textContent.includes(credentialError));
+  const labels = c.v.buttons('modelSave').map(b => b.textContent);
+  assert.deepEqual(labels, ['清除 key', '保存']);
+  assert.ok(c.v.buttons('modelSave').every(b => !b.disabled));
+  await c.press('清除 key');
   assert.deepEqual(calls, [['/api/names', {action: 'model_api', key: null}]]);
+  c.done();
 });
 
 test('saving a new model address that drops the key says the key must be entered again', async () => {
   // 后端只为填写 key 时的那个地址保留 key（app_names.rs 的 configure）。
-  const {renderModelCard} = await web.load('ui/settings.js');
   for (const [kept, said] of [[true, '设置已保存'], [false, '接口地址已更改，原来的 API key 已清除，请重新填写']]) {
-    const {state} = web.core();
-    const controls = Object.fromEntries(['modelCard', 'modelSave', 'modelClear', 'modelTest', 'modelBase', 'modelName', 'modelKey', 'toast', 'toastText', 'toastAct', 'toastUndo']
-      .map(id => [id, {value: '', contains: () => false}]));
-    controls.modelBase.value = 'https://synthetic.invalid';
-    Object.assign(state, {route: {page: 'library'}, names: {network: {}, model_api: {configured: true, base: 'https://api.deepseek.com'}}});
-    globalThis.document = {getElementById: id => controls[id], activeElement: null};
-    globalThis.fetch = async () => ({status: 200, ok: true, json: async () => ({model_api: {configured: kept}})});
-    renderModelCard();
-    controls.modelSave.onclick();
-    await new Promise(resolve => setImmediate(resolve));
-    assert.equal(controls.toastText.textContent, said);
+    const c = await modelCard({network: {}, model_api: {configured: true, base: 'https://api.deepseek.com'}},
+      async () => ({status: 200, ok: true, json: async () => ({model_api: {configured: kept}})}));
+    c.type('modelBase', 'https://synthetic.invalid');
+    await c.press('保存');
+    assert.equal(c.toast(), said);
+    c.done();
   }
 });
 

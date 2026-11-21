@@ -21,6 +21,7 @@ async function wired() {
   ({state} = web.core());
   shell = await web.load('ui/shell.js'); grid = await web.load('ui/grid.js'); rows = await web.load('ui/grid_rows.js');
   await web.load('ui/settings.js');   // 设置页登记在它自己的模块里（app.js 也加载它）
+  await web.load('ui/catalog_page.js');
   globalThis.fetch = path => {
     const q = new URLSearchParams(path.split('?')[1] || '');
     let body = [];

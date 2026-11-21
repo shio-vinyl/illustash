@@ -88,12 +88,14 @@ test('图库搜索框：组字时不改地址、不重读网格，上屏后按�
 });
 
 test('资料库的角色搜索框：组字时不搜，上屏后按「张」搜一次', async () => {
-  const shell = await web.load('ui/shell.js');
+  await web.load('ui/catalog_page.js');
+  const {PAGES} = await web.load('core/pages.js'), scopes = await web.load('ui/scope.js');
   for (const [name, webkit] of ORDERS) {
     Object.assign(state, {route: {page: 'characters'}, chars: [], tagged: []});
     page = web.fakePage(); requests = [];
-    shell.renderChrome();
-    await typeZhang(page.el('charSearch'), webkit, 250);
+    scopes.page('characters');
+    const input = PAGES.characters.tools(state.route).querySelector('input');
+    await typeZhang(input, webkit, 250);
     await wait(250);   // 防抖 200 ms
     assert.equal(asked('zh').length, 0, `${name}：没有按拼音搜`);
     assert.equal(asked('张').length, 1, name);
@@ -143,13 +145,13 @@ test('combo 下拉：组字时不搜，上屏后按「张」搜一次', async ()
 });
 
 test('画师目录的搜索框：组字时不搜，上屏后按「张」搜一次', async () => {
-  const dirs = await web.load('ui/artist_dir.js');
+  const dirs = await web.load('ui/artist_dir.js'), scopes = await web.load('ui/scope.js');
   for (const [name, webkit] of ORDERS) {
     Object.assign(state, {route: {page: 'characters', section: 'artists'}, nsfw: ''});
     Object.assign(dirs.dir, {q: '', order: 'count', items: [], total: null, next: 0, failed: null, key: ''});
     page = web.fakePage(); requests = [];
-    dirs.wireDirToolbar();
-    await typeZhang(page.el('artistSearch'), webkit, 250);
+    const view = dirs.artistsView(scopes.scope('ime'));
+    await typeZhang(view.tools.querySelector('input'), webkit, 250);
     await wait(250);   // 防抖 200 ms
     assert.equal(asked('q=zh').length, 0, `${name}：没有按拼音搜`);
     assert.equal(asked('/api/artist-directory?q=张').length, 1, name);

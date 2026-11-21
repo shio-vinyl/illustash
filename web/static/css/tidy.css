@@ -1,19 +1,19 @@
 /* 整理页（#713）：按组整理、相似的图、身份整理、画师抽查。分组用 css/base.css 的 .group（浅底，不描边），组头一行、下面一排方图
-   （ui/tidy_group.js）；只用 css/tokens.css 的令牌和 css/base.css 的公共部件。子页签是 .chip（ui/tidy.js）。 */
+   （ui/tidy_group.js）；只用 css/tokens.css 的令牌和 css/base.css 的公共部件。子页签是 .chip（ui/tidy.js）。
+   还借用 app.css 里的 .progress、.local-dot、.chips-row、.artist-name、.link：清旧样式时要知道整理页在用。 */
 @layer pages{
 .tidy-page{display:flex;flex-direction:column;gap:var(--space-16);max-width:1240px;padding-bottom:var(--space-24)}
 .tidy-bar{display:flex;flex-wrap:wrap;align-items:center;gap:var(--space-8)}
 .tidy-status{display:inline-flex;align-items:center;gap:var(--space-8);margin-right:auto;color:var(--muted);font-size:var(--fs-12);font-variant-numeric:tabular-nums}
 .tidy-list{display:flex;flex-direction:column;gap:var(--space-12)}
 .tidy-more{display:flex;justify-content:center}
-.tidy-meta{color:var(--muted);font-size:var(--fs-12);font-variant-numeric:tabular-nums}
 
 /* 一组：组头左边是标题、张数、问题，右边是操作。 */
 .tidy-group{display:flex;flex-direction:column;gap:var(--space-12);min-width:0}
 .tidy-head{display:flex;flex-wrap:wrap;align-items:center;gap:var(--space-8) var(--space-16)}
 .tidy-title{display:flex;flex-wrap:wrap;align-items:baseline;gap:var(--space-4) var(--space-10);flex:1 1 320px;min-width:0}
-.tidy-name{font-size:var(--fs-13);font-weight:var(--fw-750);color:var(--ink)}
-.tidy-meta:empty{display:none}
+.tidy-name{font-size:var(--fs-13);font-weight:var(--fw-600);color:var(--ink)}
+.tidy-title>.text-meta:empty{display:none}
 .tidy-q{color:var(--ink2);font-size:var(--fs-13)}
 .tidy-q a{color:var(--ink);font-weight:var(--fw-600)}
 .tidy-q small{margin-left:var(--space-6);color:var(--muted);font-size:var(--fs-11)}
@@ -56,11 +56,10 @@
 .tidy-card-meta{display:flex;align-items:baseline;gap:var(--space-8)}
 .tidy-card-meta b{font-size:var(--fs-13);font-weight:var(--fw-600)}
 .tidy-kinds{display:flex;flex-wrap:wrap;gap:var(--space-4)}
-.tidy-kinds .chip{height:auto;padding:var(--space-2) var(--space-8);font-size:var(--fs-11)}
 
 /* 画师抽查：统计一行；每张图一组，图在左，画师在右。 */
 .tidy-stats{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:var(--space-8)}
-.tidy-stat{display:grid;grid-template-columns:auto 1fr;align-items:baseline;gap:var(--space-2) var(--space-10);padding:var(--space-12);border-radius:var(--radius-12);background:var(--soft)}
+.tidy-stat{display:grid;grid-template-columns:auto 1fr;align-items:baseline;gap:var(--space-2) var(--space-10);padding:var(--space-12)}
 .tidy-stat b{grid-row:span 2;font-size:var(--fs-20);font-weight:var(--fw-750);font-variant-numeric:tabular-nums}
 .tidy-stat span{font-size:var(--fs-12)}
 .tidy-audit{flex-direction:row;align-items:flex-start;gap:var(--space-16)}
@@ -68,8 +67,8 @@
 .tidy-audit.is-no{box-shadow:inset 3px 0 0 var(--err)}
 .tidy-audit-img{position:relative;flex:none;display:block;width:200px;aspect-ratio:1;border-radius:var(--radius-8);overflow:hidden;background:var(--line);cursor:zoom-in}
 .tidy-audit-img img{display:block;width:100%;height:100%;object-fit:contain}
-.tidy-audit-no{position:absolute;top:var(--space-6);left:var(--space-6);padding:var(--space-2) var(--space-6);border-radius:var(--radius-pill);background:var(--scrim);
-  color:var(--on-image);font-size:var(--fs-11);font-weight:var(--fw-600)}
+.tidy-audit-no{position:absolute;top:var(--space-6);left:var(--space-6);padding:var(--space-2) var(--space-6);border-radius:var(--radius-pill);background:var(--badge-bg);
+  color:var(--badge-ink);font-size:var(--fs-11);font-weight:var(--fw-600)}
 .tidy-audit-body{display:flex;flex-direction:column;gap:var(--space-12);flex:1;min-width:0}
 .tidy-audit-body p{margin:0}
 .tidy-artist{display:flex;flex-direction:column;gap:var(--space-4)}

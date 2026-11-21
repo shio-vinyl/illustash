@@ -8,7 +8,7 @@ const dom = require('./dom.cjs');
 
 const tick = () => new Promise(resolve => setImmediate(resolve));
 const settle = async () => { for (let i = 0; i < 4; i++) await tick(); };
-let T, S, pages, state, box, fetchImpl = null, posts = [], requests = [];
+let T, S, G, pages, state, box, fetchImpl = null, posts = [], requests = [];
 before(async () => {
   await web.ready();
   const document = dom.install();
@@ -25,9 +25,9 @@ before(async () => {
   };
   ({state} = web.core());
   T = await web.load('core/tidy.js'); S = await web.load('ui/scope.js'); pages = await web.load('core/pages.js');
-  await web.load('ui/groups.js'); await web.load('ui/similar.js');
-  // 提示条、错误条、结果数：写入以后的 toast 和身份整理的「N 对待判断」写在这里。
-  for (const id of ['toast', 'toastText', 'toastUndo', 'toastAct', 'errorBanner', 'resultCount']) {
+  G = await web.load('ui/groups.js'); await web.load('ui/similar.js'); await web.load('ui/identity.js'); await web.load('ui/artist_audit.js');
+  // 提示条、错误条、底栏、活页条的一级入口：写入以后的 toast、身份整理的「N 对待判断」、活页条的提示点写在这里。
+  for (const id of ['toast', 'toastText', 'toastUndo', 'toastAct', 'errorBanner', 'resultCount', 'hint', 'railEntries']) {
     const el = document.createElement('div'); el.setAttribute('id', id); document.body.appendChild(el);
   }
   box = document.createElement('div'); box.setAttribute('id', 'groupsPage'); document.body.appendChild(box);
@@ -42,6 +42,14 @@ const open = async (route, page = route.page) => {
   await settle();
   return scope;
 };
+// 同一页换了地址（子视图、看过的组）：框架给新的路由对象，沿用作用域，render({samePage: true})。
+const again = async route => { state.route = route; requests = []; await pages.PAGES[route.page].render({samePage: true, scope: S.currentPage()}); await settle(); };
+// 接住 setTimeout：ms 对得上的回调记下来不跑（轮询），别的照常。
+function catchTimers(ms) {
+  const real = globalThis.setTimeout, caught = [];
+  globalThis.setTimeout = (fn, wait, ...rest) => wait === ms ? (caught.push(fn), caught.length) : real(fn, wait, ...rest);
+  return {caught, restore: () => { globalThis.setTimeout = real; }};
+}
 const click = (root, target) => root.dispatchEvent(dom.event('click', {target}));
 
 // ---------- core/tidy.js ----------
@@ -181,4 +189,106 @@ test('相似组 N：页头的「看过了」标记这组、回到列表；看过
   await pages.PAGES.sgroup.prepare(r7);
   head = pages.PAGES.sgroup.head(r7, {n: '2'});
   assert.equal(head.actions.find(b => b.id === 'sgroupSeen').textContent, '标为没看过');
+});
+
+// ---------- 审核之后补的（#773 review） ----------
+test('相似的图：同一页从没看过切到看过的组，关系类型的链接都带 seen=1；切回来都不带', async () => {
+  fetchImpl = similarFetch; scan = {status: 'done'}; groups = [sgroup(3, false), sgroup(7, true)];
+  await open({page: 'similar'});
+  const kinds = () => box.querySelector('.seg').children.map(a => String(a.getAttribute('href') || a.href));
+  assert.ok(kinds().every(h => !h.includes('seen=1')), kinds().join());
+  await again({page: 'similar', seen: '1'});
+  assert.ok(kinds().length && kinds().every(h => h.includes('seen=1')), kinds().join());
+  await again({page: 'similar'});
+  assert.ok(kinds().every(h => !h.includes('seen=1')), kinds().join());
+});
+
+test('按组整理：同一路由上先发的读取晚到，不把点掉的图复位（不会把排除的图也写进去）', async () => {
+  const pending = [];
+  fetchImpl = path => new Promise(resolve => pending.push(body => resolve({status: 200, ok: true, json: async () => body})));
+  Object.assign(state, {nsfw: '', pools: {unmatched: 10}, viewer: -1});
+  state.route = {page: 'groups'};
+  const scope = S.page('groups');
+  const first = pages.PAGES.groups.render({samePage: false, scope}); await tick();
+  const second = pages.PAGES.groups.refresh('learned'); await tick();
+  pending[1]({clusters: [cluster(5)], learner: {}}); await second; await settle();
+  const sec = sections()[0], thumb = sec.querySelector('[data-gimg]');
+  click(box.querySelector('.tidy-list'), thumb);
+  assert.ok(thumb.classList.contains('is-off'));
+  pending[0]({clusters: [cluster(5)], learner: {}}); await first; await settle();
+  assert.ok(thumb.classList.contains('is-off'), '晚到的第一次读取没有把点掉的图复位');
+  assert.match(sec.querySelector('[data-gact="assign"]').textContent, /设为/);
+});
+
+test('相似的图：检查进行中撤销、学习落定几次，也只有一条 3 秒轮询', async () => {
+  fetchImpl = similarFetch; scan = {status: 'comparing', done: 1, total: 4}; groups = [sgroup(3, false)];
+  const timers = catchTimers(3000);
+  try {
+    await open({page: 'similar'});
+    await pages.PAGES.similar.refresh('undo'); await settle();
+    await pages.PAGES.similar.refresh('learned'); await settle();
+    assert.equal(timers.caught.length, 3, '每次读取回来都排了一次');
+    requests = [];
+    for (const fn of timers.caught.splice(0)) fn();
+    await settle();
+    assert.equal(requests.filter(p => p.startsWith('/api/similar?')).length, 1, '只有最后一次读取排的那条接着读');
+  } finally { timers.restore(); scan = {status: 'done'}; S.page('idle'); }
+});
+
+const side = (id, name, count) => ({id, tag: id.toLowerCase() + '_tag', name, count, samples: ['s1', 's2'].map(x => x + id)});
+const pair = (a, b) => ({a: side(a, '合成' + a, 5), b: side(b, '合成' + b, 3), hint: null, distance: 0.02});
+test('身份整理：判过一对就收起，其余的对留着，按现在显示的对数从头重读', async () => {
+  let queue = [pair('A', 'B'), pair('C', 'D'), pair('E', 'F')], total = 3;
+  const reads = [];
+  fetchImpl = path => {
+    if (!path.startsWith('/api/identity/queue')) return ok({});
+    const q = new URL(path, 'http://x').searchParams; reads.push([q.get('limit'), q.get('offset')]);
+    const offset = Number(q.get('offset')), limit = Number(q.get('limit'));
+    return ok({items: queue.slice(offset, offset + limit), total});
+  };
+  state.nsfw = '';
+  await open({page: 'identity'});
+  const cards = () => box.querySelectorAll('[data-pair]');
+  assert.deepEqual(cards().map(c => c.dataset.pair), ['A|B', 'C|D', 'E|F']);
+  const [ab, cd] = cards();
+  assert.match(ab.textContent, /合成A.*↔.*合成B/);
+  queue = queue.slice(1); total = 2;
+  click(box.querySelector('.tidy-list'), ab.querySelector('[data-act="different"]')); await settle();
+  assert.deepEqual(posts[0], ['/api/identity/decision', {status: 'accepted', reason: '身份整理', a: 'A', b: 'B', kind: 'different_from'}]);
+  assert.ok(!ab.parentNode, '判过的那对摘掉了');
+  assert.equal(cards()[0], cd, '其余的对还是原来的节点');
+  assert.deepEqual(reads.at(-1), ['12', '0']);
+});
+
+test('画师抽查：判过一张只换那一块的画师行；还没有找回画师的图时有空状态', async () => {
+  let items = [{uuid: 'p1', artists: [{id: 'r1', name: '合成画师', count: 4, homes: [], methods: ['ocr']}], posts: []},
+    {uuid: 'p2', artists: [{id: 'r2', name: '合成画师乙', count: 2, homes: [], methods: ['pixel_hash']}], posts: []}];
+  fetchImpl = path => ok(path.startsWith('/api/artist-audit') ? {items, pool: items.length} : {});
+  await open({page: 'artist-audit'});
+  const blocks = () => box.querySelectorAll('.tidy-audit');
+  const [one, two] = blocks(), twoBody = two.querySelector('.tidy-audit-body').firstElementChild;
+  assert.match(box.querySelector('.tidy-stats').textContent, /0 \/ 2/);
+  items = [{...items[0], artists: [{...items[0].artists[0], confirmed: true}]}, items[1]];
+  click(box.querySelector('.tidy-list'), one.querySelector('[data-aa="yes"]')); await settle();
+  assert.deepEqual(posts[0], ['/api/artist/verdict', {ids: ['p1'], artist: 'r1', verdict: 'yes', name: '合成画师'}]);
+  assert.deepEqual(blocks(), [one, two]);
+  assert.ok(one.classList.contains('is-yes'));
+  assert.equal(two.querySelector('.tidy-audit-body').firstElementChild, twoBody, '没判的那块没重画');
+  items = [];
+  await open({page: 'artist-audit'});
+  assert.match(box.querySelector('.empty-state').textContent, /还没有找回画师的图。/);
+});
+
+test('第一次读取就失败：空状态的位置写原因和「重试」，点了再读一次', async () => {
+  let fail = true;
+  fetchImpl = path => fail ? Promise.resolve({status: 500, ok: false, headers: {get: () => null}, json: async () => ({error: '合成的读取错误'})})
+    : ok({clusters: [cluster(9)], learner: {}});
+  Object.assign(state, {nsfw: '', pools: {unmatched: 2}});
+  await open({page: 'groups'});
+  const retry = box.querySelector('[data-empty="retry"]');
+  assert.ok(retry, '有重试按钮');
+  fail = false;
+  const empty = retry.parentNode.parentNode.parentNode;
+  empty.dispatchEvent(dom.event('click', {target: retry})); await settle();
+  assert.deepEqual(sections().map(x => x.dataset.cid), ['9']);
 });

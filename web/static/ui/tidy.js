@@ -40,12 +40,12 @@ const tidy = () => ({title: t('整理')});
 function groupActions() {
   const out = [];
   if (state.total) {
-    const b = make('button', 'quiet', t('整组标为原创角色'));
+    const b = make('button', 'btn is-quiet is-small', t('整组标为原创角色')); b.type = 'button';
     b.title = t('把这组图都设为「原创角色（未细分）」');
     b.onclick = () => markOc({filter: filters(), exclude: [], confirm: state.total > 500}, false);
     out.push(b);
   }
-  if (state.groupNear) { const a = make('a', 'quiet link', state.groupNear + ' →'); a.href = '#/g/' + encodeURIComponent(state.groupNearId); out.push(a); }
+  if (state.groupNear) { const a = make('a', 'btn is-quiet is-small', state.groupNear + ' →'); a.href = '#/g/' + encodeURIComponent(state.groupNearId); out.push(a); }
   return out;
 }
 

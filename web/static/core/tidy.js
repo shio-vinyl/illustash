@@ -2,6 +2,7 @@
 // 身份整理的建议和写入内容、画师抽查的统计这些纯函数。不碰 DOM，Node 里能直接测；画在 ui/groups.js、ui/similar.js、
 // ui/identity.js、ui/artist_audit.js。读取都带 signal：换页或换了子视图时由页面作用域取消。
 import {t} from './i18n.js';
+import {AUDIT_METHODS} from './labels.js';
 import {api, post} from './session.js';
 
 // ---------- 按组整理（未识别的相似分组） ----------
@@ -18,6 +19,9 @@ export function nextGroupId(order, at, clusters) {
   const left = new Set(clusters.map(x => String(x.cid))); left.delete(at);
   return order.slice(order.indexOf(at) + 1).find(id => left.has(id)) || groupOrder(clusters).map(x => String(x.cid)).find(id => id !== at) || null;
 }
+
+/** 一组处理完时，页面上的计数先按本地算的减掉（元数据回来再写真值）。 */
+export const minus = (n, by) => Math.max(0, (Number(n) || 0) - by);
 
 // ---------- 相似的图（整个图库，native/terms/src/research_compute/similar.rs） ----------
 /** 相似组列表（含看过的组，由调用方按 seen 分开）：{groups: [{gid, size, covers, kinds, seen}], state}。 */
@@ -74,7 +78,6 @@ export async function decideIdentity(x, act) {
 export const loadArtistAudit = (n, signal) => api('/api/artist-audit?n=' + n, {signal});
 /** 对一张图上的一个画师下结论：verdict 是 'yes'、'no' 或 null（改回没判断）。 */
 export const artistVerdict = ({uuid, artist, verdict, name}) => post('/api/artist/verdict', {ids: [uuid], artist, verdict: verdict || null, name});
-export const AUDIT_METHODS = ['pixel_hash', 'gallery_match', 'ocr'];
 /** 这个画师是怎么找回来的：像素哈希优先，否则第一种方法。 */
 export const auditMethod = a => a.methods?.includes('pixel_hash') ? 'pixel_hash' : a.methods?.[0] || '';
 /** 统计：全部、按方法各一份 {yes, no, done, all}；accuracy 没判断过时是 null。 */
@@ -83,5 +86,5 @@ export function auditTally(items) {
   const tally = list => { const yes = list.filter(a => a.confirmed).length, no = list.filter(a => a.rejected).length; return {yes, no, done: yes + no, all: list.length}; };
   const all = tally(pairs);
   return {all, accuracy: all.done ? all.yes / all.done : null,
-    methods: AUDIT_METHODS.map(m => [m, tally(pairs.filter(a => a.method === m))]).filter(([, x]) => x.all)};
+    methods: Object.keys(AUDIT_METHODS).map(m => [m, tally(pairs.filter(a => a.method === m))]).filter(([, x]) => x.all)};
 }

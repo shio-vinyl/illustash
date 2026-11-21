@@ -1,7 +1,8 @@
-// 身份整理（#713，#/identity）：长得像的角色对，一对一组（ui/tidy_group.js）。组头写 A ↔ B 和为什么排进来，右边是五个判断；
-// 下面左右两边各是这个角色的几张样图，点一下看大图。数据在 core/tidy.js。
+// 身份整理（#713，#/identity）：长得像的角色对，一对一组（ui/tidy_group.js 的 tidyGroup）。组头写 A ↔ B 和为什么排进来，右边是
+// 五个判断；方图那一行换成左右两边各自的几张样图，点一下看大图。数据在 core/tidy.js。
 // 一次点击决定一对；每个决定都是一条可撤销的关系，原始记录从不移动。判过的那对原地收起，活页条上的数字跟着滚下去；
 // 之后按现在显示的对数从头重读，撤销的那对回到原处，点过「再显示一些」的人不被带回前 12 对（#386 的 2-36）。
+// 同一路由上的几次重读只认最后发出的那次。
 import {edits} from '../core/edits.js';
 import {number} from '../core/format.js';
 import {t} from '../core/i18n.js';
@@ -10,13 +11,13 @@ import {implement} from '../core/pages.js';
 import {charHash} from '../core/route.js';
 import {readError} from '../core/session.js';
 import {state} from '../core/state.js';
-import {decideIdentity, identityEvidence, identitySuggestion, loadIdentity, pairKey} from '../core/tidy.js';
+import {decideIdentity, identityEvidence, identitySuggestion, loadIdentity, minus, pairKey} from '../core/tidy.js';
 import {$, error, toast, written} from './dom.js';
-import {attr, cls, make, show, text, tpl} from './el.js';
+import {attr, cls, make, refill, show, text, tpl} from './el.js';
 import {drawEmpty} from './empty.js';
 import {keyed} from './keyed.js';
 import {count, refresh as refreshRail} from './rail.js';
-import {collapse, minus, setPeekList, thumbStrip, tidyGroup} from './tidy_group.js';
+import {clearFooter, collapse, drawFailure, leaving, setPeekList, thumbStrip, tidyGroup} from './tidy_group.js';
 import {peekAt} from './viewer.js';
 
 const PAGE = 12;
@@ -32,27 +33,30 @@ const ACTS = tpl`<span class="tidy-acts-in">
   <button type="button" class="btn is-small" data-act="different" title="记为不同角色，以后不再问这一对" data-t-attr="title" data-t>不同角色</button>
   <button type="button" class="btn is-quiet is-small" data-act="skip" title="先放一边，队列里不再出现" data-t-attr="title" data-t>暂不判断</button>
 </span>`;
+const TITLE = tpl`<span><span data-ref="a"></span><span class="text-meta"> ↔ </span><span data-ref="b"></span></span>`;
 const SIDES = tpl`<div class="tidy-pair">
-  <div class="tidy-side"><p class="tidy-side-name"><b>A</b><a data-ref="aName"></a><span class="tidy-meta" data-ref="aN"></span></p><div class="tidy-strip" data-ref="a"></div></div>
-  <div class="tidy-side"><p class="tidy-side-name"><b>B</b><a data-ref="bName"></a><span class="tidy-meta" data-ref="bN"></span></p><div class="tidy-strip" data-ref="b"></div></div>
+  <div class="tidy-side"><p class="tidy-side-name"><b>A</b><a data-ref="aName"></a><span class="text-meta" data-ref="aN"></span></p><div class="tidy-strip" data-ref="a"></div></div>
+  <div class="tidy-side"><p class="tidy-side-name"><b>B</b><a data-ref="bName"></a><span class="text-meta" data-ref="bN"></span></p><div class="tidy-strip" data-ref="b"></div></div>
 </div>`;
 
-function pairCard(view, x) {
-  const s = view.scope.child('pair'), card = tidyGroup(), acts = ACTS(), sides = SIDES(), r = card.refs, p = sides.refs;
+function pairCard(page, x) {
+  const s = page.scope.child('pair'), card = tidyGroup(), acts = ACTS(), sides = SIDES(), title = TITLE(), r = card.refs, p = sides.refs;
   r.acts.append(acts.el);
+  r.title.append(title.el);
   r.strip.replaceWith(sides.el);
   const a = thumbStrip(p.a, {scope: s, max: 6, gimg: false}), b = thumbStrip(p.b, {scope: s, max: 6, gimg: false});
+  const buttons = [...acts.el.querySelectorAll('[data-act]')];
   let current = x;
   setPeekList(p.a, () => current.a.samples); setPeekList(p.b, () => current.b.samples);
   const side = (name, n, c) => { text(name, c.name); attr(name, 'href', charHash(c.id)); attr(name, 'title', c.tag || c.name); text(n, t('{n} 张', {n: number(c.count)})); };
   const update = y => {
     current = y;
     attr(card.el, 'data-pair', pairKey(y));
-    r.title.replaceChildren(make('span', '', y.a.name), make('span', 'tidy-meta', ' ↔ '), make('span', '', y.b.name));
-    text(r.meta, '');
+    text(title.refs.a, y.a.name); text(title.refs.b, y.b.name);
     text(r.q, identityEvidence(y));
+    // 外部资料建议的做法高亮成主按钮。
     const hint = identitySuggestion(y);
-    for (const btn of acts.el.querySelectorAll('[data-act]')) { cls(btn, 'is-primary', btn.dataset.act === hint); cls(btn, 'is-quiet', btn.dataset.act === 'skip' && hint !== 'skip'); }
+    for (const btn of buttons) if (btn.dataset.act !== 'skip') cls(btn, 'is-primary', btn.dataset.act === hint);
     side(p.aName, p.aN, y.a); side(p.bName, p.bN, y.b);
     a.update(y.a.samples); b.update(y.b.samples);
   };
@@ -63,41 +67,53 @@ function pairCard(view, x) {
 function identityView(scope) {
   const {el, refs} = VIEW();
   $('groupsPage').replaceChildren(el);
-  const view = {scope, items: [], total: 0, busy: new Set(), loaded: false};
-  const list = keyed(refs.list, {key: pairKey, create: x => pairCard(view, x), exit: collapse, scope});
+  clearFooter();
+  const page = {scope, items: [], total: 0, busy: new Set(), loaded: false, seq: 0};
+  const list = keyed(refs.list, {key: pairKey, create: x => pairCard(page, x), exit: collapse, scope});
   function draw() {
-    list.set(view.items);
-    show(refs.moreBox, view.items.length < view.total);
-    const empty = view.loaded && !view.items.length;
+    list.set(page.items);
+    show(refs.moreBox, page.items.length < page.total);
+    const empty = page.loaded && !page.items.length;
     show(refs.empty, empty);
-    if (empty) drawEmpty(refs.empty, {icon: 'person', fact: t('没有需要判断的角色了。'), next: [{label: t('去资料库'), href: '#/characters'}]});
+    if (empty) refill(refs.empty, 'empty', () => {
+      drawEmpty(refs.empty, {icon: 'person', fact: t('没有需要判断的角色了。'), next: [{label: t('去资料库'), href: '#/characters'}]});
+      return [...refs.empty.childNodes];
+    });
   }
   // how：'more' 在后面再接一页；'keep' 判断或撤销之后按现在显示的对数从头重读；不给就是从头显示前 12 对。
   async function load(how = '') {
-    const route = state.route, keep = how === 'keep', offset = how === 'more' ? view.items.length : 0;
-    const limit = keep ? Math.max(PAGE, view.items.length) : PAGE;
-    let page;
-    try { page = await loadIdentity({limit, offset, nsfw: state.nsfw}, scope.signal); } catch (e) { if (scope.alive && state.route === route) error(readError(e)); return; }
-    if (!scope.alive || state.route !== route) return;
-    view.items = how === 'more' ? [...view.items, ...page.items.filter(x => !view.items.some(y => pairKey(y) === pairKey(x)))] : page.items;
-    view.total = page.total; view.loaded = true;
-    setIdentityCount(page.total); refreshRail('tidy');
-    text($('resultCount'), t('{n} 对待判断', {n: number(page.total)}));
+    const route = state.route, keep = how === 'keep', offset = how === 'more' ? page.items.length : 0, seq = ++page.seq;
+    const limit = keep ? Math.max(PAGE, page.items.length) : PAGE;
+    const fresh = () => scope.alive && state.route === route && seq === page.seq;
+    let got;
+    try { got = await loadIdentity({limit, offset, nsfw: state.nsfw}, scope.signal); } catch (e) {
+      if (!fresh()) return;
+      if (page.loaded) error(readError(e)); else { show(refs.empty, true); refill(refs.empty, 'fail', () => { drawFailure(refs.empty, e); return [...refs.empty.childNodes]; }); }
+      return;
+    }
+    if (!fresh()) return;
+    const have = new Set(page.items.map(pairKey));
+    page.items = how === 'more' ? [...page.items, ...got.items.filter(x => !have.has(pairKey(x)))] : got.items;
+    page.total = got.total; page.loaded = true;
+    setIdentityCount(got.total); refreshRail('tidy');
+    const footer = $('resultCount'); if (footer) footer.textContent = t('{n} 对待判断', {n: number(got.total)});
     draw();
   }
   async function decide(key, act) {
-    const x = view.items.find(y => pairKey(y) === key); if (!x || view.busy.has(key) || edits.busy) return;
-    view.busy.add(key);
+    const x = page.items.find(y => pairKey(y) === key); if (!x || page.busy.has(key) || edits.busy) return;
+    page.busy.add(key);
     try {
       const {result, message} = await decideIdentity(x, act);
       written(result.undo, message);
       if (!scope.alive) return;
-      view.items = view.items.filter(y => y !== x); view.total = minus(view.total, 1);
-      count('identity', view.total);
+      // 按 pairKey 拿掉：写入期间重读换了一份新对象也能收起。
+      leaving([...refs.list.children].find(n => n.dataset.pair === key));
+      page.items = page.items.filter(y => pairKey(y) !== key); page.total = minus(page.total, 1);
+      count('identity', page.total);
       draw();
       await load('keep');
       refreshMeta().catch(e => error(readError(e)));
-    } catch (e) { toast(e.message); } finally { view.busy.delete(key); }
+    } catch (e) { toast(e.message); } finally { page.busy.delete(key); }
   }
   scope.on(refs.list, 'click', e => {
     const look = e.target.closest('[data-peek]');
@@ -105,8 +121,9 @@ function identityView(scope) {
     const btn = e.target.closest('[data-act]'), card = btn?.closest('[data-pair]');
     if (card) decide(card.dataset.pair, btn.dataset.act);
   });
+  scope.on(refs.empty, 'click', e => { if (e.target.closest('[data-empty="retry"]')) load(); });
   scope.on(refs.more, 'click', () => load('more'));
-  return {scope, load};
+  return {scope, load, page};
 }
 let view = null;
 

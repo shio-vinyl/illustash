@@ -96,6 +96,7 @@ export const FLOWS = [
         ['未识别 · 按组整理', '#/groups', 'panel'], ['未识别 · 第 1 组', `#/g/${f.groups[0]?.id}`, 'grid'],
         ['全部未识别', '#/unmatched', 'grid'], ['已跳过', '#/skipped', 'grid'], ['重复', '#/duplicates', 'grid'],
         ['相似的图', '#/similar', 'panel'], ['相似的图 · 第 1 组', `#/s/${f.similar[0]?.id}`, 'grid'], ['已排除', '#/excluded', 'grid'],
+        ['身份整理', '#/identity', 'panel'], ['画师抽查', '#/artist-audit', 'panel'],
         ['设置 · 通用', '#/settings', 'panel'], ['设置 · 图库', '#/settings/library', 'panel'],
         ['设置 · 画师', '#/settings/artists', 'panel'], ['设置 · 关于', '#/settings/about', 'panel'],
       ];
@@ -372,7 +373,7 @@ export const FLOWS = [
       w.check('列表里有这一组', before.includes('#/s/' + gid), before);
       await w.step(`点进相似组 ${gid}`, p => p.click(`#groupsPage .tidy-card[href="#/s/${gid}"]`), {settle: {quiet: 600}});
       const button = await page.eval(`(document.getElementById('sgroupSeen')?.textContent || '').trim()`);
-      w.check('页头有「看过了」', button === '看过了' || button === 'Mark as seen' || !!button, button);
+      w.check('页头有「看过了」', button === '看过了' || button === 'Mark as seen', button);
       await w.step('点「看过了」', p => p.click('#sgroupSeen'), {settle: {quiet: 600}, shot: true});
       const hash = await page.eval('location.hash');
       w.check('回到相似的图', hash.startsWith('#/similar'), hash);

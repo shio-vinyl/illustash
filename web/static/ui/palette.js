@@ -58,7 +58,7 @@ async function paletteSearch() {
     if (rest.length) sections.push({label: t('我的标签'), items: rest.map(x => ({tag: x.tag, name: x.tag, hint: t('{n} 张', {n: number(x.count)}), counted: true}))});
     if (q) {
       let wd; try { wd = await api('/api/general-tags?q=' + encodeURIComponent(q)); } catch (e) { if (gen === p.generation && palette === p) renderPalette([{label: t('本地标签'), items: [], note: readError(e)}], q); return; }
-      if (gen !== p.generation) return;
+      if (gen !== p.generation || palette !== p) return;   // 换了一次搜索，或面板已经关了
       const known = new Set(state.userTags.map(x => x.tag));
       if (wd.length) sections.push({label: t('采纳 WD 通用标签'), items: wd.filter(tag => !known.has(tag)).slice(0, 8).map(tag => ({tag, name: tag, hint: t('机器词表，采纳后成为你的标签')}))});
       if (!known.has(q) && !wd.includes(q)) sections.push({label: '', items: [{tag: q, name: q, create: q, hint: t('新建标签')}]});
@@ -66,7 +66,7 @@ async function paletteSearch() {
   } else if (p.items) sections = [{label: '', items: p.items.filter(e => !q || e.name.toLowerCase().includes(q.toLowerCase()))}];
   else if (q) {
     let list; try { list = await api('/api/entities?q=' + encodeURIComponent(q)); } catch (e) { if (gen === p.generation && palette === p) renderPalette([{label: t('本地角色'), items: [], note: readError(e)}], q); return; }
-    if (gen !== p.generation) return;
+    if (gen !== p.generation || palette !== p) return;   // 换了一次搜索，或面板已经关了
     const items = list.filter(e => !(p.exclude || []).includes(e.id)).map(e => ({...e, hint: e.matched ? t('别名：{name}', {name: e.matched}) : '', count: e.count}));
     sections = [{label: '', items}];
     if (!p.jump) {
@@ -90,7 +90,7 @@ async function paletteSearch() {
   } else {
     if (p.suggest) {
       let sug; try { sug = await post('/api/suggest', p.suggest); } catch (e) { if (gen === p.generation && palette === p) renderPalette([{label: t('本地候选'), items: [], note: readError(e)}], q); return; }
-      if (gen !== p.generation) return;
+      if (gen !== p.generation || palette !== p) return;   // 换了一次搜索，或面板已经关了
       if (sug.length) sections.push({label: t('也可能是'), items: sug.filter(e => !(p.exclude || []).includes(e.id)).map(e => ({...e, hint: e.count > 1 ? t('{n} 张的机器候选', {n: number(e.count)}) : t('机器候选'), counted: e.count > 1}))});
     }
     const seen = new Set(sections.flatMap(s => s.items.map(e => e.id)));
@@ -99,9 +99,10 @@ async function paletteSearch() {
     const top = state.chars.filter(e => !seen.has(e.id) && !(p.exclude || []).includes(e.id)).slice(0, 8);
     if (top.length) sections.push({label: t('常用'), items: top});
   }
-  renderPalette(sections, q);
+  if (palette === p) renderPalette(sections, q);
 }
 function renderPalette(sections, q, keep = false) {
+  if (!palette) return;   // 面板在退场中（Esc 时已经作废）：迟到的结果不写
   const p = palette, current = keep ? p.list[pickerNav.index] : null;
   p.list = sections.flatMap(s => s.items);
   pickerNav.index = current ? Math.max(0, p.list.indexOf(current)) : 0;
@@ -170,8 +171,10 @@ async function choose(i, more = false, explicit = false) {
     if (more) { if (e) stage(e); return; }
     const list = finalList(e, explicit || p.touched); if (!list.length) return;
     const entities = [];
-    try { for (const x of list) entities.push(await resolveEntity(x)); } catch (err) { if (palette === p) toast(err.message); return; }
-    if (palette !== p) return;   // 等新建角色时面板已经关了（或换了一次）：这次选择作废
+    // 一个个建：每个回来都核对面板还是这一次的，关掉以后剩下的不再发（不多建角色）
+    try {
+      for (const x of list) { entities.push(await resolveEntity(x)); if (palette !== p) return; }
+    } catch (err) { if (palette === p) toast(err.message); return; }
     palette = null; closeModal($('picker')); p.pick(entities); return;
   }
   if (!e) return;

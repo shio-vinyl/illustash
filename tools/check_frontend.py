@@ -140,6 +140,7 @@ CLASSIC_SCRIPTS = ('i18n.js', 'splash.js', 'theme.js')
 
 # ---------------------------------------------------------------------------------------------------------- scanning
 _BLANK = re.compile(r'[^\n]')
+_CODE_RUN = re.compile(r'''[^'"`/{}]+''')
 _TEMPLATE_RUN = re.compile(r'[^\\`$]+|\$(?!\{)')
 _REGEX_KEYWORDS = {'return', 'typeof', 'case', 'in', 'of', 'void', 'delete', 'throw', 'new', 'else', 'do', 'yield', 'await'}
 
@@ -157,7 +158,7 @@ def strip_comments(src, strings=True):
     def emit(piece):
         nonlocal tail
         out.append(piece)
-        tail = (tail + piece)[-64:]
+        tail = (tail + piece[-64:])[-64:]
 
     while i < n:
         c = src[i]
@@ -171,6 +172,9 @@ def strip_comments(src, strings=True):
             else:
                 m = _TEMPLATE_RUN.match(src, i)
                 emit(keep(m.group(0))); i = m.end()
+        elif (m := _CODE_RUN.match(src, i)):
+            # 普通代码不改变扫描状态，整段输出；花括号、引号和斜杠仍逐个处理。
+            emit(m.group(0)); i = m.end()
         elif c in '\'"':
             j = i + 1
             while j < n and src[j] != c and src[j] != '\n':
@@ -221,7 +225,7 @@ def _regex_allowed(before):
     return bool(m and m.group(1) in _REGEX_KEYWORDS)
 
 
-@dataclass
+@dataclass(frozen=True)
 class Source:
     path: str  # 相对 web/static 的 posix 路径
     raw: str
@@ -1316,7 +1320,7 @@ def load_css(root):
             for pattern in CSS_GLOBS for path in sorted(base.glob(pattern))}
 
 
-def safari17(rules, p, s, classic=False):
+def safari17(p, s, classic=False):
     """规则 12：一个文件里 Safari 17.0 没有的 JS 能力。"""
     for what, (pattern, since) in SAFARI17_JS.items():
         if since and what in SAFARI17_ENHANCEMENTS.get(p, ()):
@@ -1326,13 +1330,117 @@ def safari17(rules, p, s, classic=False):
         for m in re.finditer(pattern, s.bare):
             line = s.line_of(m.start())
             when = f'{since} 才有' if since else 'Safari 正式版没有'
-            rules['safari17-js'].add(f'{p}: {what}（{when}）', f'{STATIC}/{p}:{line}: {s.raw_line(line)[:110]}')
+            yield f'{p}: {what}（{when}）', f'{STATIC}/{p}:{line}: {s.raw_line(line)[:110]}'
+
+
+@functools.lru_cache(maxsize=128)
+def _css_file_issues(path, raw):
+    where = f'{STATIC}/{path}'
+    found = []
+    # 规则 13：三档令牌和新代码的档位（键带文件名）
+    for key, d, how in scale_issues(css_declarations(raw)):
+        selector = d.selector if len(d.selector) <= 60 else d.selector[:59] + '…'
+        found.append(('css-scale', f'{path}: {key}', f'{where}:{d.line}: {selector} {{ {d.prop}: {d.value[:70]} }}  → {how}'))
+    # 规则 14、16、17、18（层）、19（tokens.css 里声明的位置）
+    for rid, key, line, text, how in structure_issues(path, raw):
+        found.append((rid, key, f'{where}:{line}: {text[:90]}  → {how}'))
+    return tuple(found)
+
+
+@functools.lru_cache(maxsize=16)
+def _css_issues(css_items):
+    # 建议依赖所有样式里的令牌和使用次数，缓存键包含按扫描顺序排列的文件和原文。
+    css = dict(css_items)
+    found = [issue for path, raw in css_items for issue in _css_file_issues(path, raw)]
+    # 规则 8：写死的字面量
+    for path, key, d, literal, how in css_literals(css):
+        selector = d.selector if len(d.selector) <= 60 else d.selector[:59] + '…'
+        found.append(('css-literal', key, f'{STATIC}/{path}:{d.line}: {selector} {{ {d.prop}: {d.value[:70]} }}  → {how}'))
+    # 规则 15：没定义的变量
+    for path, name, line in undefined_variables(css):
+        found.append(('css-var', f'{path}: {name}', f'{STATIC}/{path}:{line}: var({name})'))
+    # 规则 20：样式里也不直接声明 --tint（tokens.css 里 :root 的中性默认值除外）
+    for path, raw in css.items():
+        for d in css_declarations(raw):
+            if d.prop == '--tint' and not (path == TOKENS_FILE and d.selector in TOKEN_SELECTORS):
+                found.append(('tint-writer', f'{path}: --tint', f'{STATIC}/{path}:{d.line}: {d.selector} {{ --tint: {d.value[:40]} }}'))
+    return tuple(found)
+
+
+@functools.lru_cache(maxsize=512)
+def _module_issues(p, s):
+    # 这些规则只读当前模块；导入图和 state 约束在每次扫描时用当前的文件集合求值。
+    found = []
+
+    def add(rule, key, place):
+        found.append((rule, key, place))
+
+    # 规则 3、4、5
+    for m in LISTENER_RE.finditer(s.code):
+        if p in GLOBAL_LISTENER_ALLOWED:
+            continue
+        line = s.line_of(m.start())
+        add('document-listener', f'{p}::{m.group(2) or m.group(3)}', f'{STATIC}/{p}:{line}: {s.raw_line(line)[:110]}')
+    for m in DIALOG_RE.finditer(s.code):
+        if p in DIALOG_ALLOWED:
+            continue
+        line = s.line_of(m.start())
+        add('dialog-element', p, f'{STATIC}/{p}:{line}: {s.raw_line(line)[:110]}')
+    # 规则 9
+    if p != COMPOSING_HOME:
+        for m in RAW_COMPOSING_RE.finditer(s.bare):
+            line = s.line_of(m.start())
+            add('ime-composing', f'{p}: 直接读 {m.group(0).lstrip(". ")}', f'{STATIC}/{p}:{line}: {s.raw_line(line)[:110]}')
+        for line, body in key_handlers(s):
+            if not COMPOSING_CALL_RE.search(body):
+                add('ime-composing', f'{p}: 键盘处理函数没有调用 composing()', f'{STATIC}/{p}:{line}: {s.raw_line(line)[:110]}')
+    # 规则 10、11、12
+    if p not in HTML_SINK_ALLOWED:
+        for start, rhs in html_sinks(s):
+            if not STATIC_HTML_RE.fullmatch(rhs.strip()):
+                line = s.line_of(start)
+                add('inner-html', p, f'{STATIC}/{p}:{line}: {s.raw_line(line)[:110]}')
+        for m in HTML_NAMED_RE.finditer(s.bare):
+            line = s.line_of(m.start())
+            add('inner-html', p, f'{STATIC}/{p}:{line}: {s.raw_line(line)[:110]}')
+    for what, pattern, allowed in ANIMATION_ENTRIES:
+        if p in allowed:
+            continue
+        for m in pattern.finditer(s.bare):
+            line = s.line_of(m.start())
+            add('animation-entry', f'{p}: {what}', f'{STATIC}/{p}:{line}: {s.raw_line(line)[:110]}')
+    for key, place in safari17(p, s):
+        add('safari17-js', key, place)
+    if p != 'core/pages.js':
+        for m in PAGE_NAME_RE.finditer(s.code):
+            line = s.line_of(m.start())
+            add('page-name', p, f'{STATIC}/{p}:{line}: {s.raw_line(line)[:110]}')
+    for number, text in enumerate(s.raw.splitlines(), 1):
+        if len(text) > MAX_LINE:
+            add('long-line', p, f'{STATIC}/{p}:{number}: ({len(text)} chars) {text.strip()[:70]}…')
+    # 规则 21、22：只管 ui/
+    if p.startswith('ui/'):
+        lines = s.raw.count('\n') + (0 if s.raw.endswith('\n') else 1)
+        # 每超出一行记一次：基线是超出的行数，所以加了行就超出基线，缩短了才能收紧
+        for _ in range(MAX_UI_LINES, lines):
+            add('ui-file-length', p, f'{STATIC}/{p}: 共 {lines} 行，超出 {lines - MAX_UI_LINES} 行')
+        for m in SESSION_IMPORT_RE.finditer(s.code):
+            names = ['*'] if m.group(2) else [n.split(' as ')[0].strip() for n in m.group(1).split(',')]
+            line = s.line_of(m.start())
+            for name in names:
+                if name == '*' or name in REQUEST_NAMES:
+                    add('ui-request', p, f'{STATIC}/{p}:{line}: 从 core/session.js 导入 {name}')
+        for m in FETCH_RE.finditer(s.bare):
+            line = s.line_of(m.start())
+            add('ui-request', p, f'{STATIC}/{p}:{line}: {s.raw_line(line)[:110]}')
+    return tuple(found)
 
 
 def run_rules(sources, css=None, classic=None, pages=None):
     rules = new_rules()
     for p, s in (classic or {}).items():
-        safari17(rules, p, s, classic=True)
+        for key, place in safari17(p, s, classic=True):
+            rules['safari17-js'].add(key, place)
     # 规则 19：页面里样式表的先后
     for rel, key, text, how in stylesheet_order(pages or {}, css or {}):
         rules['css-order'].add(key, f'{rel}: {text}  → {how}')
@@ -1345,36 +1453,18 @@ def run_rules(sources, css=None, classic=None, pages=None):
             rules['tint-writer'].add(p, f'{STATIC}/{p}:{line}: {s.raw_line(line)[:110]}')
     if isinstance(css, str):
         css = {CSS_FILE: css}
-    for path, raw in (css or {}).items():
-        where = f'{STATIC}/{path}'
-        # 规则 13：三档令牌和新代码的档位（键带文件名）
-        for key, d, how in scale_issues(css_declarations(raw)):
-            selector = d.selector if len(d.selector) <= 60 else d.selector[:59] + '…'
-            rules['css-scale'].add(f'{path}: {key}', f'{where}:{d.line}: {selector} {{ {d.prop}: {d.value[:70]} }}  → {how}')
-        # 规则 14、16、17、18（层）、19（tokens.css 里声明的位置）
-        for rid, key, line, text, how in structure_issues(path, raw):
-            rules[rid].add(key, f'{where}:{line}: {text[:90]}  → {how}')
     if css:
-        # 规则 8：写死的字面量
-        for path, key, d, literal, how in css_literals(css):
-            selector = d.selector if len(d.selector) <= 60 else d.selector[:59] + '…'
-            rules['css-literal'].add(key, f'{STATIC}/{path}:{d.line}: {selector} {{ {d.prop}: {d.value[:70]} }}  → {how}')
-        # 规则 15：没定义的变量
-        for path, name, line in undefined_variables(css):
-            rules['css-var'].add(f'{path}: {name}', f'{STATIC}/{path}:{line}: var({name})')
-        # 规则 20：样式里也不直接声明 --tint（tokens.css 里 :root 的中性默认值除外）
-        for path, raw in css.items():
-            for d in css_declarations(raw):
-                if d.prop == '--tint' and not (path == TOKENS_FILE and d.selector in TOKEN_SELECTORS):
-                    rules['tint-writer'].add(f'{path}: --tint', f'{STATIC}/{path}:{d.line}: {d.selector} {{ --tint: {d.value[:40]} }}')
-    graph = {p: [t for t, _ in imports(s, sources)] for p, s in sources.items()}
-    edges = {(p, t): s.raw_line(line) for p, s in sources.items() for t, line in imports(s, sources)}
+        for rid, key, place in _css_issues(tuple(css.items())):
+            rules[rid].add(key, place)
+    linked = {p: imports(s, sources) for p, s in sources.items()}
+    graph = {p: [t for t, _ in targets] for p, targets in linked.items()}
+    edges = {(p, t): sources[p].raw_line(line) for p, targets in linked.items() for t, line in targets}
     # 规则 1：core -> ui，硬规则
     for (p, t), text in sorted(edges.items()):
         if p.startswith('core/') and (t.startswith('ui/') or t == 'app.js'):
             rules['import-core-ui'].add(f'{p} -> {t}', f'{STATIC}/{p}: {text}')
     # 规则 1：环内的导入边
-    for comp in strongly_connected({p: [t for t in ts] for p, ts in graph.items()}):
+    for comp in strongly_connected(graph):
         members = set(comp)
         for (p, t), text in sorted(edges.items()):
             if p in members and t in members:
@@ -1398,64 +1488,9 @@ def run_rules(sources, css=None, classic=None, pages=None):
             if owner and owner != p:
                 line = s.line_of(m.start())
                 rules['state-writer'].add(f'{p}: state.{name}（声明的写入者是 {owner}）', f'{STATIC}/{p}:{line}: {s.raw_line(line)[:110]}')
-    # 规则 3、4、5
     for p, s in sources.items():
-        for m in LISTENER_RE.finditer(s.code):
-            if p in GLOBAL_LISTENER_ALLOWED:
-                continue
-            line = s.line_of(m.start())
-            rules['document-listener'].add(f'{p}::{m.group(2) or m.group(3)}', f'{STATIC}/{p}:{line}: {s.raw_line(line)[:110]}')
-        for m in DIALOG_RE.finditer(s.code):
-            if p in DIALOG_ALLOWED:
-                continue
-            line = s.line_of(m.start())
-            rules['dialog-element'].add(p, f'{STATIC}/{p}:{line}: {s.raw_line(line)[:110]}')
-        # 规则 9
-        if p != COMPOSING_HOME:
-            for m in RAW_COMPOSING_RE.finditer(s.bare):
-                line = s.line_of(m.start())
-                rules['ime-composing'].add(f'{p}: 直接读 {m.group(0).lstrip(". ")}', f'{STATIC}/{p}:{line}: {s.raw_line(line)[:110]}')
-            for line, body in key_handlers(s):
-                if not COMPOSING_CALL_RE.search(body):
-                    rules['ime-composing'].add(f'{p}: 键盘处理函数没有调用 composing()', f'{STATIC}/{p}:{line}: {s.raw_line(line)[:110]}')
-        # 规则 10、11、12
-        if p not in HTML_SINK_ALLOWED:
-            for start, rhs in html_sinks(s):
-                if not STATIC_HTML_RE.fullmatch(rhs.strip()):
-                    line = s.line_of(start)
-                    rules['inner-html'].add(p, f'{STATIC}/{p}:{line}: {s.raw_line(line)[:110]}')
-            for m in HTML_NAMED_RE.finditer(s.bare):
-                line = s.line_of(m.start())
-                rules['inner-html'].add(p, f'{STATIC}/{p}:{line}: {s.raw_line(line)[:110]}')
-        for what, pattern, allowed in ANIMATION_ENTRIES:
-            if p in allowed:
-                continue
-            for m in pattern.finditer(s.bare):
-                line = s.line_of(m.start())
-                rules['animation-entry'].add(f'{p}: {what}', f'{STATIC}/{p}:{line}: {s.raw_line(line)[:110]}')
-        safari17(rules, p, s)
-        if p != 'core/pages.js':
-            for m in PAGE_NAME_RE.finditer(s.code):
-                line = s.line_of(m.start())
-                rules['page-name'].add(p, f'{STATIC}/{p}:{line}: {s.raw_line(line)[:110]}')
-        for number, text in enumerate(s.raw.splitlines(), 1):
-            if len(text) > MAX_LINE:
-                rules['long-line'].add(p, f'{STATIC}/{p}:{number}: ({len(text)} chars) {text.strip()[:70]}…')
-        # 规则 21、22：只管 ui/
-        if p.startswith('ui/'):
-            lines = s.raw.count('\n') + (0 if s.raw.endswith('\n') else 1)
-            # 每超出一行记一次：基线是超出的行数，所以加了行就超出基线，缩短了才能收紧
-            for _ in range(MAX_UI_LINES, lines):
-                rules['ui-file-length'].add(p, f'{STATIC}/{p}: 共 {lines} 行，超出 {lines - MAX_UI_LINES} 行')
-            for m in SESSION_IMPORT_RE.finditer(s.code):
-                names = ['*'] if m.group(2) else [n.split(' as ')[0].strip() for n in m.group(1).split(',')]
-                line = s.line_of(m.start())
-                for name in names:
-                    if name == '*' or name in REQUEST_NAMES:
-                        rules['ui-request'].add(p, f'{STATIC}/{p}:{line}: 从 core/session.js 导入 {name}')
-            for m in FETCH_RE.finditer(s.bare):
-                line = s.line_of(m.start())
-                rules['ui-request'].add(p, f'{STATIC}/{p}:{line}: {s.raw_line(line)[:110]}')
+        for rid, key, place in _module_issues(p, s):
+            rules[rid].add(key, place)
     return rules
 
 

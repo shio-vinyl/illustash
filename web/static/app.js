@@ -29,6 +29,8 @@ import {wirePalette} from './ui/palette.js';
 import {wireDetail} from './ui/detail.js';
 // 相似结果页（#449）只在载入时登记它的标题，没有 wire。
 import './ui/like.js';
+// 角色页（#712）的横幅和页头也只在载入时登记。
+import './ui/character.js';
 import {wireDays} from './ui/days.js';
 import './ui/groups.js';
 import './ui/similar.js';

@@ -71,8 +71,6 @@ export function wireToast(undo) {
   $('toast').addEventListener('mouseleave', () => { toastTimer = setTimeout(hideToast, 2500); });
   $('toastUndo').onclick = () => undo();
 }
-// 角色名字后面用灰色小字写的作品（core/labels.js workLabel）。
-export const workSmall = c => { const w = workLabel(c); return w ? `<small class="char-work">${esc(w)}</small>` : ''; };
 // 角色选项里的名字（#294、#678）：名字后面跟作品小字。「跳到角色」等命令面板（ui/palette.js）和筛选条「＋ 条件」
 // （ui/filters.js）都用它，以后新加的角色选择器也用它，不各自拼。work 默认按 workLabel 算；Danbooru 上的候选还不在
 // 图库里，由调用处给它在 D 站的作品名。
@@ -106,10 +104,17 @@ export function setDrawn(el, html = null) { if (html === null) drawn.delete(el);
 export const drawnHTML = el => drawn.get(el);
 // 按钮忙碌（#429）：等待期间禁用，结束后一定恢复，不管是成功、取消（关掉系统选择框或确认框）还是失败。不能靠重画来
 // 恢复：内容没变时 redraw 不会重画，按钮就一直是灰的。等待中按钮被重画换掉的，恢复的是已经不在页面上的旧按钮。
+// 按钮的 disabled 由两件事共同决定：本地点了还没回来（busy），和数据说它不能点（setDisabled，例如任务已经在跑）。
+// busy 收尾时回到数据说的样子，不一律启用；数据在忙的期间变了，也等收尾时一起写（#715）。
+const pressed = new WeakSet(), wanted = new WeakMap();
+export function setDisabled(b, disabled) {
+  wanted.set(b, !!disabled);
+  if (!pressed.has(b) && b.disabled !== !!disabled) b.disabled = !!disabled;
+}
 export async function busy(buttons, run) {
   const list = [buttons].flat();
-  for (const b of list) b.disabled = true;
-  try { return await run(); } finally { for (const b of list) b.disabled = false; }
+  for (const b of list) { if (!wanted.has(b)) wanted.set(b, false); pressed.add(b); b.disabled = true; }
+  try { return await run(); } finally { for (const b of list) { pressed.delete(b); b.disabled = wanted.get(b); } }
 }
 // 按钮的数据（[{act, label, primary, disabled, title}]，ui/rows.js 的 buttons 也是这个形状）拼成 HTML，给还在拼 HTML 的
 // 向导横条和更新提示用；attr 是放动作名的属性（data-models、data-pack…）。不能点时 title 写原因。

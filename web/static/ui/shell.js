@@ -1,28 +1,25 @@
 // 页面的框架（桌面布局，#199、#706）：按地址切到对应页面、换页时的页面作用域、活页条的选中、每个页面的页头和工具栏。
 // 页面在哪由 core/route.js 负责；计数的数据由 core/meta.js 负责；活页条在 ui/rail.js。各页的标题、说明、空状态的去处
 // 由各页自己的模块登记（core/pages.js 的 implement），这里只画框架。一页怎么写见 docs/WEB_V2.md「页面样板」。
-import {esc, isMac, localDate, number, short, shortcut} from '../core/format.js';
-import {nameTip} from '../core/labels.js';
+import {esc, isMac, number, short, shortcut} from '../core/format.js';
 import {t} from '../core/i18n.js';
 import {onTyped} from '../core/keys.js';
 import {fetchChar, onMeta, setChar} from '../core/meta.js';
 import {prefs} from '../core/prefs.js';
-import {implement, pageOf, viewOf} from '../core/pages.js';
+import {pageOf, viewOf} from '../core/pages.js';
 import {queues, railAt, viewRoute} from '../core/rail.js';
 import {canGoBack, cleanup, defaultSort, go, hashFor, historyEntry, noteHistory, parseHash, reRoute, replaceRoute, setRoute, sortKey, stepHistory} from '../core/route.js';
 import {readError} from '../core/session.js';
 import {state} from '../core/state.js';
-import {$, error, helpTip, searchIcon, showArea, wireHelpTip, workSmall} from './dom.js';
-import {attr, make, show, text, tpl} from './el.js';
+import {$, error, helpTip, searchIcon, showArea, wireHelpTip} from './dom.js';
+import {attr, cls, make, show, text, tpl} from './el.js';
 import {closeInspector} from './detail.js';
 import {closeViewer} from './viewer.js';
 import {fixedLayout} from './grid_rows.js';
-import {markSelectButton, placeFor, rememberPlace, reload, resetForRoute, selectAll, setNsfw, sweep, toggleFit, toggleSelecting} from './grid.js';
+import {markSelectButton, placeFor, rememberPlace, reload, resetForRoute, selectAll, setNsfw, toggleFit, toggleSelecting} from './grid.js';
 import {guideTick} from './guide.js';
 import {filterBar, wireFilterBar} from './filters.js';
 import {saveButton, wireGalleries, wireSaveButton} from './gallery_save.js';
-import {createLayer} from './overlay.js';
-import {editProfile, mergeCharacter, toggleMascot, toggleOc} from './palette.js';
 import {enter} from './motion.js';
 import {railRoute, refresh as refreshRail} from './rail.js';
 import {page as pageScope, currentPage} from './scope.js';
@@ -73,6 +70,8 @@ export async function applyRoute() {
   // 决定留在哪里。网格页由 reload 定位（回到记过的地址时恢复，否则回顶部）。
   const saved = traversed ? panelScroll.get(historyEntry()) : undefined;
   if (page.render && !samePage) $('viewport').scrollTop = 0;
+  // 网格页顶上跟着滚动的头部（角色页的横幅，#712）：进页和同一页又画一次时交给这一页（core/pages.js 的 gridHead）。
+  viewOf(route, state.char).gridHead?.({samePage, scope});
   if (!page.render) { await reload(true, placeFor(route)); return; }   // 没有自己渲染入口的页面是网格页
   const drawn = page.render({samePage, restore: saved !== undefined, scope});
   if (saved === undefined) return;
@@ -90,10 +89,14 @@ const HEAD = tpl`<hgroup class="heading-main"><h1 class="title-page"><span data-
   title="这一页的说明" aria-label="这一页的说明" data-t-attr="title aria-label" aria-expanded="false" aria-controls="pageHelpPop" hidden>?</button></h1><p
   class="page-sub" data-ref="line"><span data-ref="sub"></span><strong data-ref="alert"></strong></p><div id="pageHelpPop" class="menu menu-drop glass" role="dialog"
   aria-label="这一页的说明" data-t-attr="aria-label" tabindex="-1" data-ref="pop" hidden></div></hgroup>`;
-let head = null, actions = null;   // 建一次，之后只改变了的地方（模块载入时不建节点）
+let head = null, actions = null, tucked = false;   // 建一次，之后只改变了的地方（模块载入时不建节点）
+// 页头的标题这会儿藏不藏（角色页：横幅上已经写着名字，横幅的名字滚出视口以后才显示，#712）。由那一页调，离开时调回 false。
+export function tuckHeading(on) { tucked = !!on; if (head) markTucked(); }
+function markTucked() { cls(head.el, 'is-tucked', tucked); attr(head.el, 'aria-hidden', tucked ? 'true' : null); }
 function drawHead(h, {title = '', sub = '', alert = '', actions: buttons = []} = {}, help) {
   head ||= HEAD(); actions ||= make('div', 'heading-actions');
   const {refs} = head;
+  markTucked();
   text(refs.title, title);
   text(refs.sub, sub); text(refs.alert, alert && sub ? ' · ' + alert : alert);
   show(refs.line, !!(sub || alert));
@@ -149,31 +152,6 @@ export function renderHeading() {
   }
   const sw = drawSwitches(r, view); if (sw) h.append(sw);
   wireHelpTip(); view.wireHeading?.(h, r);
-}
-
-// ---------- 角色页的页头（独立函数，角色页那一步 G #712 搬进 ui/character.js） ----------
-// 更多菜单是非模态浮层：Esc、点外关闭由浮层管理器（ui/overlay.js）统一处理。它的元素随标题重画而换掉，所以层按 id 找元素；
-// 重画后旧的层自己会从栈里清掉。打开时焦点进第一项，↑ ↓ 在各项之间移动焦点（menu，#422）。
-const moreMenu = createLayer({kind: 'popover', id: 'more-menu', el: () => $('morePopover'), anchor: () => $('moreButton'), menu: true, focusIn: 'first',
-  onDismiss: reason => setMenu(false, reason)});
-function setMenu(open, reason) {
-  const el = $('morePopover'); if (el) el.hidden = !open;
-  if (open) moreMenu.open(); else moreMenu.close(reason);
-}
-// 名称、张数、未检查、检查日期，右侧是标为已检查和 ⋯ 菜单。
-function drawCharHeading(h, r, c) {
-  const tagOnly = !!c.mascot;   // 只当标签：没有要复核的，所以没有检查、清扫、OC 这些控件
-  const checked = !tagOnly && c.reviewed_at ? ' · ' + t('上次检查 {date}', {date: localDate(c.reviewed_at)}) : '';   // 后端存的是 UTC（#386 的 2-15）
-  const unchecked = !tagOnly && (c.unchecked || r.check) ? ` · <a class="unchecked-link${r.check ? ' on' : ''}" href="${hashFor({...r, check: r.check ? '' : '1', maybe: ''})}" title="${r.check ? t('显示全部') : t('只看机器识别、还没检查过的图')}">${t('未检查 {n}', {n: number(c.unchecked)})}${r.check ? ' ×' : ''}</a>` : '';
-  h.innerHTML = `<hgroup class="heading-main"><h1 class="tag-title title-page" title="${esc(nameTip(c))}">${esc(c.name)}${c.mascot ? '' : workSmall(c)}</h1><p class="page-sub">${c.mascot ? `<span class="oc-badge" title="${c.mascot_origin === 'default' ? t('老师、博士、训练员这类没有固定形象的玩家化身和吉祥物默认只当标签。') : ''}${t('不算角色：不出现在角色列表里，也不算多人图；图上仍挂着这个标签')}">${t('只当标签')}</span> ` : ''}${t('{n} 张', {n: number(c.count)})}${unchecked}${checked}${!c.tag && c.kind !== 'oc' && !c.label_only ? ` · <button class="link-button" id="profileNudge" title="${t('补上中文名、别名和所属作品')}">${t('关联 Danbooru…')}</button>` : ''}</p></hgroup>
-      <div class="heading-actions">${tagOnly ? '' : `<button class="quiet" id="sweepButton" ${c.unchecked ? '' : 'disabled'} title="${t('把剩下的机器识别都记为已检查；以后新识别的图会重新计入未检查')}">${t('标为已检查')}</button>`}<div class="tag-control more-control"><button class="quiet" id="moreButton" title="${t('更多操作')}" aria-label="${t('更多操作')}">⋯</button><div id="morePopover" class="menu menu-drop more-menu" hidden>${c.label_only || tagOnly ? '' : `<button class="menu-item" id="ocButton" title="${t('画师自己的原创角色，不属于任何作品')}">${c.kind === 'oc' ? t('取消原创角色') : t('标为原创角色')}</button>`}${c.label_only ? '' : `<button class="menu-item" id="mascotButton" title="${c.mascot ? t('恢复成角色：出现在角色列表里，同框就算多人图') : t('像佩洛洛这样的吉祥物、玩家化身：不算角色，不算多人图；图上仍挂着这个标签，可以按它筛选')}">${c.mascot ? t('算作角色') : t('不算角色，只当标签')}</button>`}<button class="menu-item" id="profileButton" title="${t('名称、别名、所属作品、Danbooru 关联')}">${t('编辑资料…')}</button><button class="menu-item" id="mergeButton" title="${t('把这个角色的图和人工结论并到另一个角色')}">${t('合并到另一个角色…')}</button></div></div></div>`;
-  $('sweepButton')?.addEventListener('click', sweep);
-  $('moreButton').onclick = () => setMenu($('morePopover').hidden);
-  $('mergeButton').onclick = () => { setMenu(false); mergeCharacter(c); };
-  $('profileButton').onclick = () => { setMenu(false); editProfile(c); };
-  $('profileNudge')?.addEventListener('click', () => editProfile(c));
-  $('ocButton')?.addEventListener('click', () => { setMenu(false); toggleOc(c); });
-  $('mascotButton')?.addEventListener('click', () => { setMenu(false); toggleMascot(c); });
 }
 
 // ---------- 工具栏 ----------
@@ -255,4 +233,3 @@ export function wireShell() {
   window.addEventListener('hashchange', applyRoute);
 }
 
-implement({character: {drawHeading: drawCharHeading}});

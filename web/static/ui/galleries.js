@@ -19,10 +19,9 @@ import {saveNew} from './gallery_save.js';
 import {renderIndex, refreshIndex} from './gallery_cards.js';
 import {renderStage, refreshStage, stageTotal} from './gallery_stage.js';
 import {reload} from './grid.js';
-import {createLayer} from './overlay.js';
+import {moreMenu} from './more_menu.js';
 import {currentPage} from './scope.js';
 import {renderChrome} from './shell.js';
-import {popOpen, showPop} from './pop.js';
 
 // ---------- 一个画廊：进页面之前 ----------
 // 先读画廊列表和各画廊的展示方式。地址的页面和这个画廊的展示方式不符（记着的是展示页，地址是网格页，或反过来）时换到对的那页。
@@ -104,41 +103,24 @@ function galleryHead(r, {n}) {
 }
 
 // ---------- 「⋯」菜单 ----------
-// 改名、设封面（用详情栏里那张）、封面改回自动、往前移、往后移、删除画廊。每一步都进撤销栈。菜单建一次，打开时按画廊排项。
-const MORE = tpl`<div class="tag-control more-control"><button class="btn is-quiet" data-ref="button" title="更多操作" aria-label="更多操作"
-  data-t-attr="title aria-label">⋯</button><div class="menu menu-drop more-menu" id="galleryMenu" data-ref="menu" hidden></div></div>`;
+// 改名、设封面（用详情栏里那张）、封面改回自动、往前移、往后移、删除画廊。每一步都进撤销栈。菜单建一次（ui/more_menu.js），
+// 打开时按画廊排项。
 let more = null;
-const menu = createLayer({kind: 'popover', id: 'gallery-menu', el: () => more?.refs.menu, anchor: () => more?.refs.button, menu: true, focusIn: 'first',
-  onDismiss: reason => setMenu(false, reason)});
-function setMenu(open, reason) {
-  if (!more) return;
-  showPop(more.refs.menu, open);
-  if (open) menu.open(); else menu.close(reason);
-}
 function moreButton() {
-  if (!more) {
-    more = MORE();
-    more.refs.button.onclick = () => { const open = !popOpen(more.refs.menu); if (open) fillMenu(galleryOf(state.route.id)); setMenu(open); };
-  }
+  more ||= moreMenu({id: 'gallery-menu', menuId: 'galleryMenu', items: () => menuItems(galleryOf(state.route.id))});
   return more.el;
 }
-function fillMenu(g) {
-  if (!g) return;
+function menuItems(g) {
+  if (!g) return [];
   const list = state.galleries || [], at = list.findIndex(x => String(x.id) === String(g.id)), movable = list.every(x => Number.isInteger(x.position));
-  const item = (label, run, title = '') => {
-    const b = make('button', 'menu-item', label);
-    if (title) b.title = title;
-    b.onclick = () => { setMenu(false); run(); };
-    return b;
-  };
-  more.refs.menu.replaceChildren(...[
-    item(t('改名…'), () => rename(g)),
-    item(t('把详情栏里这张设为封面'), () => state.focused ? change(g, {cover: state.focused}) : toast(t('先点开一张图。'))),
-    g.cover_manual && item(t('封面改回自动'), () => change(g, {cover: null}), t('用这个画廊排序下的第一张')),
-    movable && at > 0 && item(t('往前移'), () => move(g, -1)),
-    movable && at >= 0 && at < list.length - 1 && item(t('往后移'), () => move(g, 1)),
-    item(t('删除画廊'), () => remove(g)),
-  ].filter(Boolean));
+  return [
+    [t('改名…'), () => rename(g)],
+    [t('把详情栏里这张设为封面'), () => state.focused ? change(g, {cover: state.focused}) : toast(t('先点开一张图。'))],
+    g.cover_manual && [t('封面改回自动'), () => change(g, {cover: null}), t('用这个画廊排序下的第一张')],
+    movable && at > 0 && [t('往前移'), () => move(g, -1)],
+    movable && at >= 0 && at < list.length - 1 && [t('往后移'), () => move(g, 1)],
+    [t('删除画廊'), () => remove(g)],
+  ];
 }
 async function change(g, patch) {
   const result = await write(() => updateGallery(g.id, patch));

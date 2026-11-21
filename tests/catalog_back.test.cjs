@@ -30,6 +30,28 @@ test('cameFrom：新的一条记上一条的地址，后退、前进、刷新回
   assert.equal(route.cameFrom(), '#/w/a');
 });
 
+test('同一页上新增的几条（换造型、只看未检查）沿用进这一页之前的来路，返回一次退掉这几条（#712）', () => {
+  const stack = []; let at = -1, went = 0;
+  globalThis.location = {hash: ''};
+  globalThis.history = {get state() { return stack[at]?.state ?? null; }, replaceState(s, t, url) { stack[at] = {state: s, url}; location.hash = url; }, go(n) { went = n; }};
+  const visit = hash => { stack.splice(at + 1); stack.push({state: null, url: hash}); at++; location.hash = hash; route.noteHistory(); };
+  visit('#/calendar');
+  visit('#/library?char=c1');
+  assert.equal(route.cameFrom(), '#/calendar'); assert.equal(route.backSteps(), 1);
+  visit('#/library?char=c1&variant=v1');
+  visit('#/library?char=c1&variant=v1&check=1');
+  assert.equal(route.cameFrom(), '#/calendar', '同一角色换了筛选，来路还是日历');
+  assert.equal(route.backSteps(), 3);
+  route.stepHistory(-route.backSteps());
+  assert.equal(went, -3, '一次退三步回到日历');
+  at -= 3; location.hash = stack[at].url; route.noteHistory();
+  assert.equal(location.hash, '#/calendar');
+  visit('#/library?char=c1');
+  visit('#/library?char=c2');
+  assert.equal(route.cameFrom(), '#/library?char=c1', '换了角色是另一页');
+  assert.equal(route.backSteps(), 1);
+});
+
 test('backTo：作品、角色写名字，资料库的页签写页签名，别的页写入口名；没有来路时用调用方给的', () => {
   Object.assign(state, {chars: [{id: 'c1', name: '合成甲', work_id: 'a', work_name: '合成作品', count: 3}], workTree: [{id: 'a', name: '合成作品'}]});
   state.charMap = new Map(state.chars.map(c => [c.id, c]));

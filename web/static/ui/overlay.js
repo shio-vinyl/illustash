@@ -1,6 +1,6 @@
 // 浮层管理器（#343）：页面上所有"盖在别的东西上面"的层，开、关的先后顺序在这里记成一个栈。
 // 各浮层只声明自己是什么类型、怎么关；Esc、点外关闭、焦点归还由这里统一做，别处不再监听 document 的 keydown / click。
-// 规则写在 docs/WEB_UI_MAP.md 第 3 节。这个模块不碰具体页面，不 import 别的 ui/ 模块，可以单独在 Node 里测试。
+// 规则写在 docs/WEB_UI_MAP.md 第 3 节。这个模块不碰具体页面，ui/ 下只 import 没有依赖的 ui/inert.js，可以单独在 Node 里测试。
 //
 // 三种类型（kind）：
 //   modal    模态对话框（<dialog>.showModal）。点背景是否关闭由 backdropClose 声明；它之下的层不响应点外关闭。
@@ -13,6 +13,7 @@
 // 它盖住了哪些元素（inert），开着时这些元素设成 inert，Tab 走不到看不见的按钮上。
 
 import {composing} from '../core/keys.js';
+import {lockInert, unlockInert} from './inert.js';
 
 const stack = [];
 let wired = null;
@@ -39,7 +40,7 @@ const alive = layer => {
 const prune = () => { let gone = false; for (let i = stack.length - 1; i >= 0; i--) if (!alive(stack[i])) { stack.splice(i, 1); gone = true; } if (gone) syncInert(); };
 
 // 盖满页面的层开着时，它声明盖住的元素设成 inert；在它上面又开的层（例如大图上开的任务面板）所在的元素不设。
-// 由这里设上的才由这里去掉。
+// 由这里设上的才由这里去掉：按 ui/inert.js 的锁记，出场动画同时加的锁不受影响。
 const inerted = new Set();
 function syncInert() {
   const want = new Set();
@@ -48,8 +49,8 @@ function syncInert() {
     const above = stack.slice(i + 1).map(x => get(x.el)).filter(Boolean);
     for (const el of get(layer.inert) || []) if (el && !el.contains?.(get(layer.el)) && !above.some(x => el.contains?.(x))) want.add(el);
   });
-  for (const el of inerted) if (!want.has(el)) { el.inert = false; inerted.delete(el); }
-  for (const el of want) if (!inerted.has(el)) { el.inert = true; inerted.add(el); }
+  for (const el of inerted) if (!want.has(el)) { unlockInert(el, 'overlay'); inerted.delete(el); }
+  for (const el of want) if (!inerted.has(el)) { lockInert(el, 'overlay'); inerted.add(el); }
 }
 // 层里现在能拿焦点的项（看得见的）。
 const items = el => [...(el?.querySelectorAll?.(ITEMS) || [])].filter(x => !x.closest('[hidden]') && (!x.getClientRects || x.getClientRects().length));
@@ -176,7 +177,7 @@ export function openModal(dialog, {backdropClose = false, id = '', onDismiss} = 
 }
 
 // 清空栈、忘掉已挂的监听。只给测试用：每个测试换一个新的 document。
-export function resetLayers() { stack.length = 0; wired = null; inerted.clear(); }
+export function resetLayers() { for (const el of inerted) unlockInert(el, 'overlay'); stack.length = 0; wired = null; inerted.clear(); }
 // 有没有开着的非模态浮层（菜单、任务面板……）：开着时网格的键盘处理不吃方向键（#422）。
 export const popoverOpen = () => { prune(); return stack.some(layer => layer.kind === 'popover'); };
 // target 在不在一个开着的非模态浮层里：在的话按键归浮层自己的控件，网格的单键快捷键不响应。

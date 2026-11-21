@@ -169,7 +169,6 @@
   background:linear-gradient(90deg,rgba(var(--sh),.55),transparent 70%),var(--scrim)}
 .cat-hero-top{position:absolute;top:var(--space-16);right:var(--space-16);left:var(--space-16);z-index:var(--z-page-2);display:flex;align-items:center;gap:var(--space-8)}
 .cat-hero-top>.spacer{flex:1}
-.cat-hero .btn.glass{border-radius:var(--radius-pill);text-decoration:none}
 .cat-hero-watch{gap:var(--space-8);cursor:pointer}
 .cat-hero-watch[hidden],.cat-hero-acts>[hidden]{display:none}
 .cat-hero-in{position:absolute;right:var(--space-24);bottom:var(--space-20);left:var(--space-24);z-index:var(--z-page-2);text-shadow:var(--image-text-shadow)}

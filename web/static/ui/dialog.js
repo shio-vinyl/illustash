@@ -48,7 +48,9 @@ const dismisser = (d, before) => () => { before?.(); closeModal(d); return false
 export function openStatic(d, {backdropClose = false, id = '', onDismiss} = {}) {
   cancelExit(d);
   wireSubmit(d);
-  return openModal(d, {backdropClose, id, onDismiss: dismisser(d, onDismiss)});
+  const layer = openModal(d, {backdropClose, id, onDismiss: dismisser(d, onDismiss)});
+  layer.onDismiss = dismisser(d, onDismiss);   // 退场中重开时层还在栈里：换成这一次的回调，不沿用上一次的
+  return layer;
 }
 export function openDialog({title, body = '', actions = '', cls = '', backdropClose = false, focus = '', onClose, dirty} = {}) {
   const d = document.createElement('dialog'); d.className = ('modal glass-scrim ' + cls).trim();
@@ -61,6 +63,7 @@ export function openDialog({title, body = '', actions = '', cls = '', backdropCl
   wireSubmit(d);
   d.onclose = () => { try { return onClose?.(d); } finally { d.remove(); } };
   const onDismiss = dirty ? () => {
+    if (exitingNow(d)) return false;   // 已经提交、正在退场：不再问「放弃改动？」
     if (!dirty()) { closeModal(d); return false; }
     confirmAction(t('填写的内容还没有保存，关掉后不会保留。'), t('放弃改动？'), t('放弃改动')).then(yes => { if (yes) closeModal(d); });
     return false;

@@ -18,6 +18,8 @@ export const dayLabel = day => { const [y, m, d] = day.split('-').map(Number); c
   const diff = Math.round((new Date(now.getFullYear(), now.getMonth(), now.getDate()) - date) / 864e5);
   return diff === 0 ? t('今天') : diff === 1 ? t('昨天') : dateText(y, m, d, y !== now.getFullYear()); };
 export const monthText = (y, m) => I18N.language === 'zh-CN' ? `${y} 年 ${m} 月` : new Intl.DateTimeFormat(I18N.locale, {year: 'numeric', month: 'short'}).format(new Date(+y, m - 1, 1));
+// 「2026-03」这样的月份键写成本地的年月（角色页的收集曲线、详情卡片的每月柱子）。
+export const monthLabel = key => monthText(Number(String(key).slice(0, 4)), Number(String(key).slice(5, 7)));
 export const work = w => (w || '').replaceAll('_', ' ');
 // 太长的名字截短（卡片上的芯片、页头的角色筛选、选择栏的按钮）。
 export const short = name => name.length > 28 ? name.slice(0, 26) + '…' : name;

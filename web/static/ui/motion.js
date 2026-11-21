@@ -26,6 +26,8 @@
 // - 缩略图在哪里不登记，现查：各视图在缩略图节点上写 data-thumb（thumbs.mark），看图器打开时 thumbs.find 按它找。
 //   不持有节点，摘掉的缩略图连同解码好的位图照常释放（#683）。
 
+import {lockInert, unlockInert} from './inert.js';
+
 const DEFAULT_MS = {1: 140, 2: 240, 3: 380};
 const DEFAULT_EASE = {ease: 'cubic-bezier(.2,.8,.2,1)', spring: 'cubic-bezier(.34,1.42,.5,1)'};
 // 计时兜底比时长多等的毫秒数。
@@ -129,13 +131,13 @@ export function enter(el, {from = 'rise', dur = 2, delay = 0, ease = 'ease'} = {
  * 给了 done 就只调 done()，由调用方自己收尾（对话框要 close()，#715），同样在撤掉动画之前调。
  * 同一个节点上没走完的出场先取消（返回 false），由这一次接手。
  * 出场一开始节点就设 inert（不能点、不能聚焦、不收键盘，#715）：看得见的那一小段里不会再被操作，关掉的浮层不会再写入。
- * 收尾或 cancelExit 时只去掉这里设的那一份；节点本来就是 inert 的（浮层管理器、keyed 列表设的）不动。
+ * 用 ui/inert.js 的锁：收尾或 cancelExit 时只解开出场这一把，浮层管理器同时加的锁（大图盖住任务面板）照旧锁着。
  */
 export async function exit(el, {to = 'rise', dur = 1, delay = 0, remove = true, done} = {}) {
   const keyframes = Array.isArray(to) ? to : EXIT[to] || EXIT.rise;
   const off = reduced();
   cancelExit(el);
-  if (el && !el.inert) { el.inert = true; inerted.add(el); }
+  lockInert(el, 'exit');
   if (typeof el?.animate !== 'function') { finishExit(el, remove, done); return true; }
   const ms = off ? 0 : duration(dur);
   const wait = off ? 0 : Math.max(0, delay);
@@ -149,8 +151,8 @@ export async function exit(el, {to = 'rise', dur = 1, delay = 0, remove = true, 
   animation.cancel();
   return true;
 }
-const exiting = new WeakMap(), inerted = new WeakSet();
-function restoreInert(el) { if (inerted.has(el)) { inerted.delete(el); el.inert = false; } }
+const exiting = new WeakMap();
+const restoreInert = el => unlockInert(el, 'exit');
 function finishExit(el, remove, done) {
   if (done) done();
   else if (remove) el?.remove?.();

@@ -1,5 +1,5 @@
 // 作品页（#711，地址 #/w/<作品键>）：顶部是这部作品最近加入的图切成竖条拼成的横幅，背后是作品配色的环境光；横幅左上是返回（写
-// 回到哪里，按来路一级一级退，core/catalog.js 的 backTo），右上是「钉到活页条／已钉住」和「关注新角色」，左下是作品名、数量，
+// 回到哪里，按来路走，ui/back_link.js），右上是「钉到活页条／已钉住」和「关注新角色」，左下是作品名、数量，
 // 旁边是「在图库里看全部」和「编辑作品…」。下面是角色海报（点进角色页）和最近加入（点了在图库里看这部作品）。
 // 原创角色、未归作品（oc、other）也有这一页：没有关注、钉住、编辑和图库链接，图是各角色的封面。
 //
@@ -9,13 +9,13 @@ import {castWorks, catalogChanged, forgetActivity, loadActivity, loadIndex, PSEU
 import {imageUrl, number} from '../core/format.js';
 import {t} from '../core/i18n.js';
 import {implement, onPage} from '../core/pages.js';
-import {backTo} from '../core/rail.js';
-import {cameFrom, hashFor, stepHistory} from '../core/route.js';
+import {hashFor} from '../core/route.js';
 import {readError} from '../core/session.js';
 import {state} from '../core/state.js';
 import {watchToggle, workDialog} from './catalog.js';
 import {$, error} from './dom.js';
 import {attr, make, refill, show, text, tpl} from './el.js';
+import {backLink} from './back_link.js';
 import {drawEmpty} from './empty.js';
 import {keyed} from './keyed.js';
 import {animate, enter, reduced} from './motion.js';
@@ -25,8 +25,7 @@ import {onPick} from './rail.js';
 import {setTint} from './tint.js';
 
 const PAGE = tpl`<div class="cat-workpage"><div class="cat-glow" data-ref="glow"></div><section class="cat-hero" data-ref="hero"><div class="cat-strip" data-ref="strip"></div><div
-  class="cat-hero-top" data-ref="top"><a class="btn glass cat-back" data-ref="back"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M12 4.5 6.5 10l5.5 5.5"/></svg><span
-  data-ref="backLabel"></span></a><span class="spacer"></span><span data-ref="pin"></span><span data-ref="watch"></span></div><div class="cat-hero-in"
+  class="cat-hero-top" data-ref="top"><span data-ref="back"></span><span class="spacer"></span><span data-ref="pin"></span><span data-ref="watch"></span></div><div class="cat-hero-in"
   data-ref="info"><small data-ref="kind"></small><h1 class="cat-hero-title"><span data-ref="name"></span><small data-ref="qualifier"></small></h1><p data-ref="meta"></p><a
   class="cat-hero-tag" data-ref="tag" target="_blank"
   rel="noreferrer noopener"></a><p class="cat-hero-note" data-ref="note"></p><div class="cat-hero-acts" data-ref="acts"><a class="btn glass" data-ref="lib"
@@ -70,12 +69,13 @@ function expand(refs, box) {
 function workView(s) {
   const {el, refs} = PAGE(), pinned = pinButton(s, {wide: true}), watch = watchToggle(s, 'btn glass cat-hero-watch');
   pinned.el.classList.add('glass');
+  const back = backLink(s, BACK);
+  refs.back.replaceWith(back.el);
   refs.pin.replaceWith(pinned.el); refs.watch.replaceWith(watch.el);
   $('charIndex').replaceChildren(el);
   const people = keyed(refs.posters, {key: x => x.c.id, create: posters(s), scope: s});
   const recent = keyed(refs.recent, {key: x => x.uuid, create: thumb, scope: s});
   let info = null, images = [];
-  s.on(refs.back, 'click', e => { if (backTo(cameFrom(), BACK).step) { e.preventDefault(); stepHistory(-1); } });
   s.on(refs.edit, 'click', () => { if (info) workDialog(info); });
 
   function draw(key) {
@@ -85,8 +85,7 @@ function workView(s) {
     const chars = work?.chars || [], count = info?.count ?? work?.images ?? 0, recentN = chars.reduce((n, c) => n + recentOf(c), 0);
     const covers = images.length ? images : workCovers(key);
     setTint(el, workColor(covers));
-    const back = backTo(cameFrom(), BACK);
-    text(refs.backLabel, back.label); attr(refs.back, 'href', back.href);
+    back.update();
     text(refs.kind, pseudo ? '' : t('作品'));
     text(refs.name, name); text(refs.qualifier, info?.qualifier || '');
     text(refs.tag, info?.tag ? 'Danbooru · ' + info.tag : ''); show(refs.tag, !!info?.tag);

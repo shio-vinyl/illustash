@@ -11,7 +11,7 @@
 //    body: HTML,              // 详情：损坏的图片、找回画师的分步进度、出错时的诊断行（已转义、翻译），没有时为空串
 //    log: [标题, HTML] | null} // 收起的记录表（同步记录、运行记录）
 // body 和 log 还是拼好的 HTML，经 redraw 写进 innerHTML：内容都由 ui/tasks.js 转义过，换成节点是 #716 的过渡项。
-import {redraw, fold, wireFolds} from './dom.js';
+import {redraw, fold, setDisabled, wireFolds} from './dom.js';
 import {attr, cls, css, make, refill, show, text, tpl} from './el.js';
 
 const ROW = tpl`<div class="task-item"><div class="task-main"><span class="local-dot" data-ref="dot"></span><span class="task-text"><b data-ref="name"></b>
@@ -26,13 +26,14 @@ function button(b) {
   node.dataset[b.attr || 'task'] = b.act;
   return node;
 }
-// 文字、样子、disabled、title 和上一次写的比，变了才写：busy() 在点下后设的 disabled 不会被下一次轮询改回去。
+// 文字、样子、title 和上一次写的比，变了才写。disabled 经 dom.js 的 setDisabled：点了还没回来时保持禁用，回来后按数据说的写，
+// 不会在任务已经在跑时变回可点。
 const painted = new WeakMap();
 function paint(node, b) {
   const was = painted.get(node) || {}, now = {cls: `btn is-small${b.primary ? ' is-primary' : ''}`, label: b.label, disabled: !!b.disabled, title: b.title || ''};
   if (was.cls !== now.cls) node.className = now.cls;
   if (was.label !== now.label) node.textContent = now.label;
-  if (was.disabled !== now.disabled) node.disabled = now.disabled;
+  setDisabled(node, now.disabled);
   if (was.title !== now.title) node.title = now.title;
   painted.set(node, now);
 }

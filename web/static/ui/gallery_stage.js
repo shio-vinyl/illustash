@@ -8,9 +8,9 @@
 // 每张图是一个按钮：点（或 Enter、Space）开详情卡片，双击看大图（列表借给详情和大图翻页：grid.js 的 showList）；按住拖动把
 // 图拖进画廊（ui/drag.js）。末尾「全部 N 张」换成显示全部图的那一种（ALL_SHOW，瀑布）并记住。不能选：选择和批量操作在瀑布、
 // 色彩里做。排版先量后改：读阶段量宽高、算框，写阶段写进去；页面的宽、视口的高变了重排（展厅的墙高跟着视口高）。
-import {number} from '../core/format.js';
+import {imageUrl, number} from '../core/format.js';
 import {t} from '../core/i18n.js';
-import {galleryHref, galleryOf, isFav, isManual, showcaseOf} from '../core/galleries.js';
+import {galleryHref, galleryOf, isFavGallery, isManual, showcaseOf} from '../core/galleries.js';
 import {ALL_SHOW, chooseShow, showFor, showOf} from '../core/gallery_shows.js';
 import {aspect, collage, hall, hashSeed, magazine} from '../core/layout.js';
 import {readError} from '../core/session.js';
@@ -24,6 +24,7 @@ import {kindText} from './gallery_actions.js';
 import {setNsfw, showList} from './grid.js';
 import {keyed} from './keyed.js';
 import {thumbs} from './motion.js';
+import {latest, pageView} from './page_view.js';
 import {renderHeading} from './shell.js';
 import {setTint} from './tint.js';
 
@@ -53,7 +54,7 @@ function piece(box) {
     css(el, 'z-index', b.z ? String(b.z) : null);
     if (role !== (b.role || '')) { if (role) cls(el, 'is-' + role, false); role = b.role || ''; if (role) cls(el, 'is-' + role, true); }
     el.dataset.id = x.uuid;
-    if (shown !== x.uuid) { shown = x.uuid; attr(refs.img, 'src', `/image?id=${encodeURIComponent(x.uuid)}&size=${b.w > 360 ? 'preview' : 'medium'}`); thumbs.mark(refs.img, x.uuid); }
+    if (shown !== x.uuid) { shown = x.uuid; attr(refs.img, 'src', imageUrl(x.uuid, b.w > 360 ? 'preview' : 'medium')); thumbs.mark(refs.img, x.uuid); }
     setTint(el, x.color || null);
     show(refs.tape, !!b.tape);
     if (b.tape) { css(refs.tape, 'left', `${Math.round(b.tape.at * 100)}%`); css(refs.tape, 'transform', `translateX(-50%) rotate(${b.tape.rot}deg)`); }
@@ -65,13 +66,13 @@ function piece(box) {
   return {el, update, dispose() {}};
 }
 
-let view = null;
 function stageView(scope) {
   const {el, refs} = PAGE();
   const LAYOUT = scope.key('stage:layout'), PAINT = scope.key('stage:paint');   // 帧任务的令牌（#751）
   $('groupsPage').replaceChildren(el);
   const pieces = keyed(refs.stage, {key: b => b.item.uuid, create: piece, scope});
-  let data = null, kind = '', g = null, loads = 0;
+  let data = null, kind = '', g = null;
+  const begin = latest(scope);
   // 读阶段：量页面的宽、视口的高，算好框，再排到写阶段写进去。
   function layout() {
     if (!data?.items?.length || !g) return;
@@ -104,15 +105,12 @@ function stageView(scope) {
   return {scope, total: () => data && !data.error ? data.total : null, async load(route) {
     g = galleryOf(route.id); kind = showOf(showFor(route.id)).id;
     if (!g || !STAGES[kind]) return;
-    const nsfw = state.nsfw, take = showOf(kind).take, seq = ++loads;
+    // 同一个地址里又换了展示方式（路由对象不换）：只认最后一次读的。
+    const nsfw = state.nsfw, take = showOf(kind).take, fresh = begin(route);
     attr(refs.stage, 'class', `stage show-${kind}`); el.dataset.show = kind;
     let got;
-    try { got = await showcaseOf(g, take, {nsfw, signal: scope.signal}); } catch (e) {
-      if (e.name !== 'AbortError' && scope.alive && state.route === route && seq === loads) error(readError(e));
-      return;
-    }
-    // 同一个地址里又换了展示方式（路由对象不换）：只认最后一次读的。
-    if (!scope.alive || state.route !== route || seq !== loads) return;
+    try { got = await showcaseOf(g, take, {nsfw, signal: scope.signal}); } catch (e) { if (e.name !== 'AbortError' && fresh()) error(readError(e)); return; }
+    if (!fresh()) return;
     data = got;
     const items = got.items || [];
     showList(items);
@@ -131,16 +129,14 @@ function stageView(scope) {
 function emptyOf(g, got, nsfw) {
   if (got.error) return {icon: 'gallery', fact: t('条件失效：{reason}', {reason: got.error})};
   if (nsfw === 'only') return {icon: 'search', fact: t('「只看 NSFW」开着，没有符合条件的 NSFW 图片。'), next: [{label: t('显示全部'), act: 'nsfw'}]};
-  if (isFav(g.id)) return {icon: 'heart', fact: t('还没有收藏。在详情面板或大图里点心形，或者按 F 收藏。')};
+  if (isFavGallery(g.id)) return {icon: 'heart', fact: t('还没有收藏。在详情面板或大图里点心形，或者按 F 收藏。')};
   if (isManual(g)) return {icon: 'gallery', fact: t('这个画廊还没有图。把图拖到活页条上的画廊封面，或者在选择栏里点「放进画廊…」。')};
   return {icon: 'gallery', fact: t('没有符合条件的图片。')};
 }
+const view = pageView(stageView);
 // render({samePage, scope})：刚进这一页才建；同一页又画一次（换了展示方式、筛选）只重读、重排（docs/WEB_V2.md「页面样板」）。
-export function renderStage({samePage, scope} = {}) {
-  if (!samePage || !view?.scope.alive) view = stageView(scope);
-  return view.load(state.route);
-}
+export const renderStage = (o = {}) => view.enter(o).load(state.route);
 // 写入、撤销、切换 NSFW 之后重读。
-export function refreshStage() { return view?.scope.alive ? view.load(state.route) : null; }
+export const refreshStage = () => view.get()?.load(state.route) ?? null;
 // 页头写的张数：读到之前是 null。
-export const stageTotal = () => view?.scope.alive ? view.total() : null;
+export const stageTotal = () => view.get()?.total() ?? null;

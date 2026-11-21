@@ -13,11 +13,12 @@ import {readError} from '../core/session.js';
 import {state} from '../core/state.js';
 import {decideIdentity, identityEvidence, identitySuggestion, loadIdentity, minus, pairKey} from '../core/tidy.js';
 import {$, error, toast, written} from './dom.js';
-import {attr, cls, make, refill, show, text, tpl} from './el.js';
-import {drawEmpty} from './empty.js';
+import {attr, cls, show, text, tpl} from './el.js';
+import {drawEmpty, showFailure} from './empty.js';
 import {keyed} from './keyed.js';
 import {count, refresh as refreshRail} from './rail.js';
-import {clearFooter, collapse, drawFailure, leaving, setPeekList, thumbStrip, tidyGroup} from './tidy_group.js';
+import {latest, pageView} from './page_view.js';
+import {collapse, leaving, setPeekList, thumbStrip, tidyGroup} from './tidy_group.js';
 import {peekAt} from './viewer.js';
 
 const PAGE = 12;
@@ -67,30 +68,21 @@ function pairCard(page, x) {
 function identityView(scope) {
   const {el, refs} = VIEW();
   $('groupsPage').replaceChildren(el);
-  clearFooter();
-  const page = {scope, items: [], total: 0, busy: new Set(), loaded: false, seq: 0};
+  const page = {scope, items: [], total: 0, busy: new Set(), loaded: false}, begin = latest(scope);
   const list = keyed(refs.list, {key: pairKey, create: x => pairCard(page, x), exit: collapse, scope});
   function draw() {
     list.set(page.items);
     show(refs.moreBox, page.items.length < page.total);
     const empty = page.loaded && !page.items.length;
     show(refs.empty, empty);
-    if (empty) refill(refs.empty, 'empty', () => {
-      drawEmpty(refs.empty, {icon: 'person', fact: t('没有需要判断的角色了。'), next: [{label: t('去资料库'), href: '#/characters'}]});
-      return [...refs.empty.childNodes];
-    });
+    if (empty) drawEmpty(refs.empty, {icon: 'person', fact: t('没有需要判断的角色了。'), next: [{label: t('去资料库'), href: '#/characters'}]});
   }
   // how：'more' 在后面再接一页；'keep' 判断或撤销之后按现在显示的对数从头重读；不给就是从头显示前 12 对。
   async function load(how = '') {
-    const route = state.route, keep = how === 'keep', offset = how === 'more' ? page.items.length : 0, seq = ++page.seq;
+    const keep = how === 'keep', offset = how === 'more' ? page.items.length : 0, fresh = begin();
     const limit = keep ? Math.max(PAGE, page.items.length) : PAGE;
-    const fresh = () => scope.alive && state.route === route && seq === page.seq;
     let got;
-    try { got = await loadIdentity({limit, offset, nsfw: state.nsfw}, scope.signal); } catch (e) {
-      if (!fresh()) return;
-      if (page.loaded) error(readError(e)); else { show(refs.empty, true); refill(refs.empty, 'fail', () => { drawFailure(refs.empty, e); return [...refs.empty.childNodes]; }); }
-      return;
-    }
+    try { got = await loadIdentity({limit, offset, nsfw: state.nsfw}, scope.signal); } catch (e) { if (fresh()) showFailure(refs.empty, e, {loaded: page.loaded}); return; }
     if (!fresh()) return;
     const have = new Set(page.items.map(pairKey));
     page.items = how === 'more' ? [...page.items, ...got.items.filter(x => !have.has(pairKey(x)))] : got.items;
@@ -125,9 +117,9 @@ function identityView(scope) {
   scope.on(refs.more, 'click', () => load('more'));
   return {scope, load, page};
 }
-let view = null;
+const view = pageView(identityView);
 
 implement({
-  identity: {render: ({samePage, scope}) => { if (!samePage || !view?.scope.alive) view = identityView(scope); return view.load(); },
-    refresh: why => { if (why === 'undo') return view?.load('keep'); if (why === 'nsfw') return view?.load(); }},
+  identity: {render: o => view.enter(o).load(),
+    refresh: why => { if (why === 'undo') return view.get()?.load('keep'); if (why === 'nsfw') return view.get()?.load(); }},
 });

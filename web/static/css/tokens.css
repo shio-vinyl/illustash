@@ -20,7 +20,7 @@
   --splash-bg:radial-gradient(120% 90% at 50% 42%,#fff 0%,#f6f5fd 55%,#ecebf9 100%);
   /* 控件状态：开关、分段控件、悬停、徽标、滚动条 */
   --switch-off:#d4d4da;--view-sw-off:rgba(var(--sh),.14);--seg-on:var(--sheet);--wash-hover:rgba(var(--sh),.03);--chip-hover:#e0e0e5;--palette-hover:#e2e2e7;
-  --btn-hover-filter:brightness(.96);--badge-bg:var(--soft);--badge-ink:var(--ink2);--tag-on-ink:var(--accent);--scroll-thumb:#d7d7de;
+  --btn-hover-filter:brightness(.96);--badge-bg:var(--soft);--badge-ink:var(--ink2);--scroll-thumb:#d7d7de;
   --select-arrow:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Cpath d='m6 8 4 4 4-4' fill='none' stroke='%238b8b94' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
   --r18-on:#fff;
   /* 收藏（#447）：心形的颜色；图片上的图标用的白色 */
@@ -55,7 +55,7 @@
   --splash-bg:radial-gradient(120% 90% at 50% 42%,#2b2b33 0%,#222227 55%,#1b1b1f 100%);
   /* 控件状态：开关、分段控件、悬停、徽标、滚动条 */
   --switch-off:#46464e;--view-sw-off:rgba(255,255,255,.16);--seg-on:#42424a;--wash-hover:rgba(255,255,255,.04);--chip-hover:var(--soft);--palette-hover:var(--soft);
-  --btn-hover-filter:brightness(1.12);--badge-bg:var(--accent-soft);--badge-ink:var(--accent-ink);--tag-on-ink:var(--accent-ink);
+  --btn-hover-filter:brightness(1.12);--badge-bg:var(--accent-soft);--badge-ink:var(--accent-ink);
   --scroll-thumb:#4a4a52;
   --select-arrow:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Cpath d='m6 8 4 4 4-4' fill='none' stroke='%238d8d96' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
   --r18-on:#2a0f17;

@@ -20,5 +20,3 @@ export function unlockInert(el, who) {
   locks.delete(el);
   if (el.inert !== entry.base) el.inert = entry.base;
 }
-/** `who` 有没有锁着它。 */
-export const lockedBy = (el, who) => !!(el && locks.get(el)?.who.has(who));

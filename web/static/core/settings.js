@@ -6,7 +6,7 @@ import {t, said} from './i18n.js';
 import {session, api, post, shared, leaveSession} from './session.js';
 import {state} from './state.js';
 import {listeners} from './events.js';
-import {mergeNames, setIndex, setNames} from './jobs.js';
+import {mergeNames, setNames} from './jobs.js';
 const changed = listeners();
 export const onSettings = changed.on;
 
@@ -40,7 +40,6 @@ export async function reloadSettings() {
   await changed.emit('data', {key: 'settings', error: null});
 }
 // 「设置 › 角色资料」两张卡片的数据重新读一次（进这一节时，#714 前在 ui/settings.js 里）。
-export const loadIndex = async () => { const token = session.token, value = await shared('/api/index'); if (token === session.token) setIndex(value); return value; };
 export const loadNames = async () => { const token = session.token, value = await shared('/api/names'); if (token === session.token) setNames(value); return value; };
 // 上次检查新角色时每个关注作品的情况（#561，GET /api/index/coverage）：本图库启用的数据包已经覆盖几个、自己补过几个、
 // 还缺几个。/api/index 的回复冻结，所以另读一次；检查或添加角色之后（检查时间或最近一条历史变了）重新读。返回是否读了新的。

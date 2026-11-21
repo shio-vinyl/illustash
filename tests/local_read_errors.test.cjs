@@ -1,7 +1,6 @@
 const {test, before} = require('node:test');
-const web = require('./web.cjs');   // readError() 在 core/session.js，readFailure() 在 ui/dom.js（#199）
-let readError, readFailure;
-before(async () => { await web.ready(); ({readError} = web.core()); ({readFailure} = await web.load('ui/dom.js')); });
+const web = require('./web.cjs');
+before(web.ready);
 const assert = require('node:assert/strict');
 const tick = () => new Promise(r => setImmediate(r));
 test('a local search failure reports its cause and never queries remote or offers creation', async () => {
@@ -11,10 +10,6 @@ test('a local search failure reports its cause and never queries remote or offer
   twoStage(async () => { throw new Error('database locked'); }, async () => { remoteCalls++; }, () => { extraCalls++; return [{items: [{create: 'new'}]}]; })('name', f => frames.push(f));
   await tick(); assert.equal(remoteCalls, 0); assert.equal(extraCalls, 0);
   assert.equal(frames[0][0].note, '读取失败：database locked'); assert.equal(frames[0][0].items.length, 0);
-});
-test('inline failures show the escaped reason instead of an empty state', () => {
-  const node = {hidden: true}; readFailure(node, new Error('<unreadable>'));
-  assert.equal(node.hidden, false); assert.match(node.innerHTML, /role="alert"/); assert.match(node.innerHTML, /读取失败：&lt;unreadable&gt;/);
 });
 // 资料库（#199，#711 起页面在 ui/catalog_page.js）：读取回来时已经换了页（页面作用域释放了），失败不写进面板、不弹错误条。
 test('a late works failure cannot expose its panel after navigation', async () => {

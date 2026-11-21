@@ -5,26 +5,21 @@ import {exclusive} from '../core/edits.js';
 import {t} from '../core/i18n.js';
 import {post} from '../core/session.js';
 import {toast, written} from './dom.js';
-import {attr, tpl} from './el.js';
+import {attr, cls, text} from './el.js';
 
-// 心形的图形（路径）只在这里写一份（#751）：网格卡片、画廊卡片、活页条、按天视图的图块和详情卡片都用 heartIcon()，
-// 模板里留一个空的位置，克隆以后把它放进去。
-const HEART_PATH = 'M10 16.4S3.4 12.5 3.4 7.9A3.3 3.3 0 0 1 10 6.3a3.3 3.3 0 0 1 6.6 1.6c0 4.6-6.6 8.5-6.6 8.5Z';
-const HEART_ICON = tpl`<svg viewBox="0 0 20 20" aria-hidden="true"><path data-ref="path"/></svg>`;
-/** 一个心形图标节点（克隆模板再写上路径）。 */
-export function heartIcon() { const {el, refs} = HEART_ICON(); attr(refs.path, 'd', HEART_PATH); return el; }
 // 心形的提示：按下去会做什么。
 export const heartTip = on => on ? t('取消收藏（F）') : t('收藏（F）');
 
 // 大图底栏「收藏」按钮上的字（按钮在 ui/viewer.js 建）：已收藏时是「已收藏」。
 const actLabel = on => on ? t('已收藏') : t('收藏', {context: 'verb'});
 
-// 写入之后把页面上这些图的心形都改成 on（卡片、详情栏、大图底栏、按天视图的 .day-heart）。
+// 写入之后把页面上这些图的心形都改成 on（网格卡片、按天视图的 .day-heart，凡是带 data-fav 的）。经 ui/el.js 的写入函数写，
+// 它们记着的上一次的值跟着变，部件之后按自己的数据 update 时照常判断变没变。
 export function paintHearts(uuids, on, root = document) {
   for (const el of root.querySelectorAll('[data-fav]')) {
     if (!uuids.has(el.dataset.fav)) continue;
-    el.classList.toggle('on', on); el.setAttribute('aria-pressed', on); el.title = heartTip(on);
-    const label = el.querySelector('.fav-label'); if (label) label.textContent = actLabel(on);
+    cls(el, 'on', on); attr(el, 'aria-pressed', String(on)); attr(el, 'title', heartTip(on));
+    const label = el.querySelector('.fav-label'); if (label) text(label, actLabel(on));
   }
 }
 

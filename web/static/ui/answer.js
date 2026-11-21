@@ -12,7 +12,7 @@
 // pickFor(scope, {ids, exclude, sentence, still, pick}, choose)：「点掉的是…」打开角色选择器。ids 是点掉的 uuid（选择器顶上列出这几张），
 // exclude 是不该出现的角色；选了以后先问 still()（卡还在、这一页还在、没在写入），为假时不写，为真时调 pick(角色)。同一页再打开一次，
 // 前一次的选择作废。离开这一页（作用域释放）时关掉本页打开的选择器。choose 默认是 ui/palette.js 的 openPicker（测试换成自己的）。
-import {askLanded, answerAsk} from '../core/ask.js';
+import {askLanded, sendAsk} from '../core/ask.js';
 import {exclusive} from '../core/edits.js';
 import {refreshMeta} from '../core/meta.js';
 import {readError} from '../core/session.js';
@@ -25,7 +25,7 @@ import {openPicker} from './palette.js';
 export async function sendAnswer(body, scope, {refused = null} = {}) {
   let ok = false;
   try {
-    const r = await exclusive(() => answerAsk(body));
+    const r = await exclusive(() => sendAsk(body));
     if (r === undefined) return false;
     if (r.undo) written(r.undo);
     ok = true;

@@ -16,10 +16,11 @@
 // - 点图打开详情卡片，双击看大图，按住拖动放进画廊（ui/drag.js），点「+N 张」进网格看这一天；认一认的图 Space 或长按看大图
 //   （wireDays 登记一次）。
 import {FIRST_DAYS, MAX_DAYS, MORE_DAYS, dayAfter, dayAt, dayBoxes, dayCells, dayQuery, gridRoute, growCells, heroFirst, mergeDays, readDayPeople,
-  readDays, summary, todayKey} from '../core/days.js';
-import {dayLabel, number} from '../core/format.js';
+  readDays, summary} from '../core/days.js';
+import {dayKey, dayLabel, number} from '../core/format.js';
 import {t} from '../core/i18n.js';
 import {onJob} from '../core/jobs.js';
+import {avatarOf} from '../core/labels.js';
 import {PAGES, implement, libraryFilters, onPage} from '../core/pages.js';
 import {go, hashFor, historyEntry} from '../core/route.js';
 import {readError} from '../core/session.js';
@@ -36,6 +37,7 @@ import {drawEmpty} from './empty.js';
 import {showList} from './grid.js';
 import {viewOpts} from '../core/view_opts.js';
 import {enter} from './motion.js';
+import {pageView} from './page_view.js';
 import {onPick, selectDay} from './rail.js';
 import {openTasks} from './tasks.js';
 import {virtual} from './virtual.js';
@@ -50,7 +52,6 @@ const RETRY_MS = 5000, RETRIES = 3;
 // 后退、前进回到这一页时按那一条历史记录上次读到的天数读，好让页面框架滚回原来的位置（#526）：按历史条目的编号记
 // （core/route.js 的 historyEntry，和 ui/shell.js 记滚动位置的 panelScroll 同一个编号），{key: 查询条件, count: 天数}。
 const depth = new Map();
-let view = null;
 
 // 这一页的部件：进页面时在页面作用域上建一次。
 function daysView(scope) {
@@ -75,14 +76,14 @@ function daysView(scope) {
   const ask = dayAsk(scope);
   refs.cards.append(sync.el, ask.el);
   // 「今天认出几位」只在最新一天是今天、而且没开筛选（NSFW 设置也算）时写：开着筛选时那是筛选结果的数，不是这次同步的。
-  const today = () => v.days[0]?.day === todayKey() && !Object.keys(libraryFilters(v.route || {})).length && !state.nsfw ? v.days[0] : null;
+  const today = () => v.days[0]?.day === dayKey() && !Object.keys(libraryFilters(v.route || {})).length && !state.nsfw ? v.days[0] : null;
   const paintSync = () => sync.update({sync: state.sync, today: today(), lost: state.syncLost});
 
   // ---------- 各天 ----------
   const ctx = {
     sizes, marks: () => viewOpts.marks, people: () => viewOpts.people,
     hero: day => v.heroes.get(day) || '', hold: (day, uuid) => { if (!v.heroes.has(day)) v.heroes.set(day, uuid); },
-    href: (day, char) => hashFor(gridRoute(v.route, day, char)), cover: id => state.charMap.get(id)?.cover,
+    href: (day, char) => hashFor(gridRoute(v.route, day, char)), cover: avatarOf,
     toggle, resized: (day, h) => { if (v.opened.get(day) !== h) { v.opened.set(day, h); layout(); } },
   };
   // 挂着的天：v.widgets 记着它们（详情卡片开着哪张时逐个标），摘掉时从里面去掉。从头读（筛选、搜索、NSFW 换了）时整个列表
@@ -354,35 +355,35 @@ function daysView(scope) {
   };
 }
 
-// 启动时调一次：认一认的图 Space 或长按看大图（ui/detail.js 的 wirePeek 不能撤销，所以挂在常驻的主区上，只挂一次）；
+// 启动时调一次：认一认的图 Space 或长按看大图（ui/viewer.js 的 wirePeek 不能撤销，所以挂在常驻的主区上，只挂一次）；
 // 活页条里点某一天、某个月：已经在按天视图里时直接滚过去，不换地址（WEB_V2.md「页面框架与活页条」）。
+// 刚进这一页（或作用域已经释放）才建，建好就读认一认的第一批；认一认不随筛选变，只在进页面时读。
+const view = pageView(scope => { const v = daysView(scope); v.ask.next(); return v; });
+
 export function wireDays() {
-  wirePeek($('homePage'), () => view?.ask.batch?.items.map(x => x.uuid) || []);
+  wirePeek($('homePage'), () => view.get()?.ask.batch?.items.map(x => x.uuid) || []);
   onPick('library', item => {
-    if (!onPage(state.route, 'days') || !view?.scope.alive || !item?.first) return false;
-    view.goto(item.first);
+    const v = view.get();
+    if (!onPage(state.route, 'days') || !v || !item?.first) return false;
+    v.goto(item.first);
     return true;
   });
 }
 
 implement({days: {
-  // 刚进这一页（或作用域已经释放）才建；同一页又画一次（筛选、搜索、at 变了）只按新地址更新。认一认不随筛选变，只在进页面时读。
-  render: ({samePage, restore, scope}) => {
-    if (!samePage || !view?.scope.alive) { view = daysView(scope); view.ask.next(); }
-    $('selectionBar').hidden = true; $('resultCount').textContent = ''; $('hint').textContent = t('点图片看详情 · 点角色名只看 TA');
-    return view.load(state.route, {restore});
-  },
-  reveal: uuid => view?.reveal(uuid),
+  // 同一页又画一次（筛选、搜索、at 变了）只按新地址更新。
+  render: o => view.enter(o).load(state.route, {restore: o.restore}),
+  reveal: uuid => view.get()?.reveal(uuid),
   // 详情卡片开着的那张（ui/detail.js 打开、关掉详情卡片时调）。
-  focus: uuid => view?.mark(uuid),
+  focus: uuid => view.get()?.mark(uuid),
   head: () => ({title: t('图库'), sub: state.recentCount ? t('最近一次同步新加入 {n} 张', {n: number(state.recentCount)}) : ''}),
   help: () => [t('按加入日期分组。')],
   refresh: why => {
-    if (!view?.scope.alive) return;
-    if (why === 'view') view.restyle();
-    else if (why === 'ask') view.ask.reset();
-    else if (why === 'sync') view.refresh('newest');
-    else if (why === 'nsfw') { view.load(state.route); view.ask.reset(); }
-    else view.refresh('around');
+    const v = view.get(); if (!v) return;
+    if (why === 'view') v.restyle();
+    else if (why === 'ask') v.ask.reset();
+    else if (why === 'sync') v.refresh('newest');
+    else if (why === 'nsfw') { v.load(state.route); v.ask.reset(); }
+    else v.refresh('around');
   },
 }});

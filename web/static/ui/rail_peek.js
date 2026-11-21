@@ -19,6 +19,7 @@
 // 量和写都是延后的，到时悬停的已经不是这一项就不写（不然收起的预览会被它又显示出来）。
 // 颜色：这一项的主色经 ui/tint.js 的 setTint 写到卡片上，变成彩色投影和很淡的环境光（css/rail.css）。
 // 宽高比：项里没带原图宽高的图（角色、画廊封面），读到以后按 id 记下比例，重排这一行；下一次悬停时就当作已知的。
+import {imageUrl} from '../core/format.js';
 import {PEEK, peekRow} from '../core/rail.js';
 import {attr, cls, css, make, show, text, tpl} from './el.js';
 import {cancelExit, enter, exit} from './motion.js';
@@ -34,7 +35,6 @@ const DEAL = [{opacity: 0, transform: 'translateX(-10px) scale(.92)'}, {opacity:
 export const PEEK_LINGER = 120;
 // 停留判定（毫秒）：指针在一项上停这么久才出第一张卡，只是从活页条上划过去不出（用户 2026-11-20 定）。
 export const PEEK_DWELL = 300;
-const thumb = id => `/image?id=${encodeURIComponent(id)}&size=thumb`;
 
 let s = null, card = null, keys = null;   // keys：两种帧任务的令牌 {show, place}
 let hovered = null;   // 悬停（或焦点所在）的项
@@ -74,7 +74,7 @@ function fillPics(item) {
   row.pics.forEach((p, i) => {
     const im = img(i);
     card.ids[i] = p.id;
-    css(im, 'width', `${p.w}px`); css(im, 'height', `${row.h}px`); attr(im, 'src', thumb(p.id)); show(im, true);
+    css(im, 'width', `${p.w}px`); css(im, 'height', `${row.h}px`); attr(im, 'src', imageUrl(p.id)); show(im, true);
     if (im.complete) learn(i);   // 已经读到过（src 没变不会再来 load）
   });
   imgs.slice(row.pics.length).forEach((im, i) => { show(im, false); card.ids[row.pics.length + i] = ''; });

@@ -51,7 +51,7 @@ dialog[open]{animation:ov-dialog var(--dur-2) var(--ease)}
 .tour-title{margin-bottom:var(--space-6)}
 .tour-foot>button{border-radius:var(--radius-pill)}
 .nudge{border-radius:var(--radius-18);box-shadow:var(--shadow-pop)}
-.nudge-acts>button,.update-acts>button{border-radius:var(--radius-pill)}
+.nudge-acts>button{border-radius:var(--radius-pill)}
 .cl-pill{border-radius:var(--radius-pill);box-shadow:var(--shadow-pop);font-weight:var(--fw-600)}
 .cl-panel{border-radius:var(--radius-12);box-shadow:var(--shadow-pop);animation:ov-pop var(--dur-2) var(--ease)}
 .cl-check{font-size:var(--fs-11);color:var(--on-accent)}

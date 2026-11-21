@@ -7,13 +7,14 @@
 import {number} from '../core/format.js';
 import {t} from '../core/i18n.js';
 import {routeFields, sameParams, savedParams} from '../core/filters.js';
-import {deleteGallery, galleryHref, galleryOf, isFav, isManual, setGallery, updateGallery} from '../core/galleries.js';
+import {deleteGallery, galleryHref, galleryOf, isFavGallery, isManual, setGallery, updateGallery} from '../core/galleries.js';
 import {chooseShow, loadShows, pageFor, showFor, SHOWS} from '../core/gallery_shows.js';
 import {implement, onPage, pageOf} from '../core/pages.js';
 import {go, replaceRoute} from '../core/route.js';
 import {state} from '../core/state.js';
 import {toast} from './dom.js';
-import {attr, make, tpl} from './el.js';
+import {attr, make} from './el.js';
+import {hasIcon, icon} from './icons.js';
 import {askName, kindText, reloadList, write} from './gallery_actions.js';
 import {saveNew} from './gallery_save.js';
 import {renderIndex, refreshIndex} from './gallery_cards.js';
@@ -41,18 +42,6 @@ async function prepare(route) {
 // 标题是名字；副标题写这是哪种画廊和张数：收藏只写张数，手选画廊写「手选」，按条件的写「按条件：条件的文字」（截图给用户看过，#710）。
 // 右边：展示方式的分段切换；按条件的画廊在网格页上改了条件后有「更新画廊」「另存为新画廊」；收藏以外有「⋯」菜单。
 // 「播放」「存成一张图」这次不做（#710），以后加在 actions 末尾。
-const SHOW_ICONS = {
-  collage: tpl`<svg viewBox="0 0 20 20" aria-hidden="true"><rect x="3" y="4" width="8" height="7" rx="1" transform="rotate(-8 7 7.5)"/><rect x="9" y="9"
-    width="8" height="7" rx="1" transform="rotate(7 13 12.5)"/></svg>`,
-  magazine: tpl`<svg viewBox="0 0 20 20" aria-hidden="true"><rect x="3" y="3" width="8" height="14" rx="1"/><path d="M13.5 4.5h3.5M13.5 8h3.5M13.5 11.5h3.5M13.5 15h3.5"/></svg>`,
-  masonry: tpl`<svg viewBox="0 0 20 20" aria-hidden="true"><rect x="3" y="3" width="4" height="8" rx="1"/><rect x="8" y="3" width="4" height="5" rx="1"/><rect
-    x="13" y="3" width="4" height="9" rx="1"/><rect x="3" y="12" width="4" height="5" rx="1"/><rect x="8" y="9" width="4" height="8" rx="1"/><rect x="13" y="13"
-    width="4" height="4" rx="1"/></svg>`,
-  hall: tpl`<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M2 16.5h16"/><rect x="3.5" y="6" width="4" height="6" rx=".6"/><rect x="9" y="5" width="3"
-    height="7" rx=".6"/><rect x="13.5" y="6.5" width="3.5" height="5" rx=".6"/></svg>`,
-  color: tpl`<svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="7" cy="7.5" r="3.5"/><circle cx="13" cy="7.5" r="3.5"/><circle cx="10" cy="12.5" r="3.5"/></svg>`,
-  other: tpl`<svg viewBox="0 0 20 20" aria-hidden="true"><rect x="3" y="3" width="14" height="14" rx="2"/></svg>`,
-};
 // 分段切换：每种一个按钮（图标 + 名字），按登记表的先后；按下的是这个画廊现在的展示方式。建一次，按画廊更新。
 let seg = null, segFor = '';
 function showSwitch(g) {
@@ -62,7 +51,7 @@ function showSwitch(g) {
     for (const show of SHOWS) {
       const b = make('button');
       b.type = 'button'; b.dataset.show = show.id;
-      b.append((SHOW_ICONS[show.id] || SHOW_ICONS.other)().el, make('span', '', show.label()));
+      b.append(icon(hasIcon(show.id) ? show.id : 'square'), make('span', '', show.label()));
       b.onclick = () => switchShow(galleryOf(segFor), show.id);
       seg.append(b);
     }
@@ -99,7 +88,7 @@ function galleryHead(r, {n}) {
   if (!g) return {title: t('画廊')};
   const stage = pageOf(r).stage, total = stage ? stageTotal() : null, count = stage ? (total === null ? '…' : number(total)) : n;
   return {title: g.name, sub: [kindText(g), t('{n} 张', {n: count})].filter(Boolean).join(' · '),
-    actions: [...editButtons(g, r), showSwitch(g), ...(isFav(g.id) ? [] : [moreButton(g)])]};
+    actions: [...editButtons(g, r), showSwitch(g), ...(isFavGallery(g.id) ? [] : [moreButton(g)])]};
 }
 
 // ---------- 「⋯」菜单 ----------

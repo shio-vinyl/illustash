@@ -14,10 +14,10 @@
 // - 格子按位置复用（ui/keyed.js，键是第几格）：翻月时节点不重建，只换内容。图按格子的实际宽度取缩略图档位。
 // - 没有图的月份：格子收起来，空状态交给 empty(box, data) 画（页面用 ui/empty.js）。
 import {charHash, go, hashFor} from '../core/route.js';
-import {I18N, t} from '../core/i18n.js';
+import {t} from '../core/i18n.js';
 import {composing} from '../core/keys.js';
-import {number, thumbSize} from '../core/format.js';
-import {localDay, monthOf, parseMonth, readMonth} from '../core/calendar.js';
+import {dayKey, dayLong, imageUrl, monthName, number, thumbSize, weekdayShort} from '../core/format.js';
+import {monthOf, parseMonth, readMonth} from '../core/calendar.js';
 import {cellTiles, monthGrid} from '../core/layout.js';
 import {implement, libraryFilters} from '../core/pages.js';
 import {viewRoute} from '../core/rail.js';
@@ -28,6 +28,7 @@ import {attr, cls, css, show, text, tpl} from './el.js';
 import {drawEmpty} from './empty.js';
 import {keyed} from './keyed.js';
 import {enter, thumbs} from './motion.js';
+import {latest, pageView} from './page_view.js';
 import {setTint} from './tint.js';
 import {releaseImages} from './virtual.js';
 
@@ -57,13 +58,8 @@ const DOW = tpl`<span></span>`;
 const TILE_GAP = 2.5;
 // 月份标题旁最多几个头像。
 const FACES = 8;
-const imageUrl = (uuid, size) => `/image?id=${encodeURIComponent(uuid)}&size=${size}`;
-const monthTitle = (year, month) => I18N.language === 'zh-CN' ? t('{m} 月', {m: month})
-  : new Intl.DateTimeFormat(I18N.locale, {month: 'long'}).format(new Date(year, month - 1, 1));
-const dayLabel = date => new Intl.DateTimeFormat(I18N.locale, {year: 'numeric', month: 'long', day: 'numeric'}).format(new Date(`${date}T12:00:00`));
 // 一周七天的短名，从 weekStart 开始（1 = 周一）。2024-01-01 是周一。
-const weekdays = weekStart => Array.from({length: 7}, (_, k) =>
-  new Intl.DateTimeFormat(I18N.locale, {weekday: 'short'}).format(new Date(2024, 0, 1 + (k + weekStart + 6) % 7)));
+const weekdays = weekStart => Array.from({length: 7}, (_, k) => weekdayShort(`2024-01-0${1 + (k + weekStart + 6) % 7}`));
 
 // 一个日子的格子。props：{cell（monthGrid 的格子）, day（接口的那一天，或 null）, today, href, width（格宽 px）}。
 function dayCell(s) {
@@ -79,7 +75,7 @@ function dayCell(s) {
     cls(el, 'is-out', !cell.inMonth); cls(el, 'has-images', tiles.length > 0);
     attr(el, 'aria-current', cell.inMonth && cell.date === today ? 'date' : null);
     attr(el, 'href', tiles.length ? href : null);
-    attr(el, 'aria-label', tiles.length ? t('{date}，{n} 张', {date: dayLabel(cell.date), n: number(n)}) : null);
+    attr(el, 'aria-label', tiles.length ? t('{date}，{n} 张', {date: dayLong(cell.date), n: number(n)}) : null);
     setTint(el, tiles.length ? day.color : null);
     imgs.forEach((img, k) => {
       const box = tiles[k], item = box && samples[box.i];
@@ -132,7 +128,7 @@ export function calendarView({scope: parent, dayHref, onMonth, empty, weekStart 
   const flipTo = month => { if (month && month !== props.month) onMonth(month); };
   s.on(refs.prev, 'click', () => flipTo(props.data?.prev));
   s.on(refs.next, 'click', () => flipTo(props.data?.next));
-  s.on(refs.now, 'click', () => flipTo(monthOf(localDay())));
+  s.on(refs.now, 'click', () => flipTo(monthOf(dayKey())));
   s.on(refs.grid, 'keydown', e => {
     if (composing(e)) return;
     const step = {ArrowLeft: -1, ArrowRight: 1, ArrowUp: -7, ArrowDown: 7}[e.key];
@@ -154,8 +150,8 @@ export function calendarView({scope: parent, dayHref, onMonth, empty, weekStart 
   function draw() {
     const {month, data} = props, p = parseMonth(month);
     if (!p) return;
-    const today = localDay(), ready = data?.month === month ? data : null;
-    text(refs.title, monthTitle(p.year, p.month));
+    const today = dayKey(), ready = data?.month === month ? data : null;
+    text(refs.title, monthName(month));
     const facts = [String(p.year)];
     if (ready?.total) facts.push(t('{n} 张', {n: number(ready.total)}), t('{n} 天有新图', {n: number(ready.active)}));
     text(refs.sub, facts.join(' · '));
@@ -183,7 +179,7 @@ export function calendarView({scope: parent, dayHref, onMonth, empty, weekStart 
 // ---------- 日历页（页面样板） ----------
 // 看哪个月由地址的 at（YYYY-MM-DD，docs/WEB_V2.md「看哪一天：at」）定，没有时是本月；翻月是换 at，后退能回到上一个月。
 // 点一天去按天视图的那一天（#/days?at=…），带着现在的筛选，和活页条的时间轴一样。筛选条和搜索照常生效（#703 第 2 问）。
-const monthAt = route => parseMonth(monthOf(route.at)) ? monthOf(route.at) : monthOf(localDay());
+const monthAt = route => parseMonth(monthOf(route.at)) ? monthOf(route.at) : monthOf(dayKey());
 const atHref = (route, view, day) => hashFor({...viewRoute(route, view), at: day});
 // 这个月没有图：有别的月份就给去处，整个图库（按现在的筛选）都没有图就照实说。
 function drawMonthEmpty(box, data) {
@@ -199,26 +195,26 @@ function calendarPage(scope) {
     onMonth: month => go({...viewRoute(state.route, 'calendar'), at: `${month}-01`})});
   $('calendarPage').replaceChildren(view.el);
   // 上一次读到的 {key, data}：只是刷新（同步、写入之后）时先留着它，读完再换，格子不先闪成空的。
+  // 同一路由上的几次重读（同步、写入、撤销）只认最后发出的那次。
   let last = null;
+  const begin = latest(scope);
   return {scope, el: view.el, async load(route) {
     const month = monthAt(route), params = {...libraryFilters(route), ...(state.nsfw ? {nsfw: state.nsfw} : {})}, key = JSON.stringify([month, params]);
+    const fresh = begin(route);
     view.update({month, data: last?.key === key ? last.data : null});
     let data;
-    try { data = await readMonth(month, params, {signal: scope.signal}); } catch (e) { if (scope.alive && state.route === route) error(readError(e)); return; }
-    if (!scope.alive || state.route !== route) return;
+    try { data = await readMonth(month, params, {signal: scope.signal}); } catch (e) { if (fresh()) error(readError(e)); return; }
+    if (!fresh()) return;
     last = {key, data};
     view.update({month, data});
   }};
 }
-let page = null;
+const page = pageView(calendarPage);
 implement({calendar: {
   // 刚进这一页（或作用域已经释放）才建，内容淡入；同一页又画一次（翻月、筛选变了）只按新地址重读、更新格子。
-  render: ({samePage, scope}) => {
-    if (!samePage || !page?.scope.alive) page = calendarPage(scope);
-    return page.load(state.route);
-  },
+  render: o => page.enter(o).load(state.route),
   // 同步、写入、撤销、NSFW 设置变了：重读这个月。
-  refresh: () => page?.scope.alive ? page.load(state.route) : undefined,
+  refresh: () => page.get()?.load(state.route),
   head: () => ({title: t('图库')}),
   help: () => [t('每天一格，格子里是那天加入的图。点一天去按天看那一天。')],
 }});

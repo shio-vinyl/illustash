@@ -151,8 +151,8 @@
 1. **登记**：在 `core/pages.js` 的 `list` 里加一项（地址、主区 `area`、活页条的 `entry`、工具栏、空状态……），在 [WEB_UI_MAP.md](WEB_UI_MAP.md) §2.1 总表和 `tests/pages.test.cjs` 的 `ROWS` 各加一行。数据字段写在注册表里，`ui/` 只用 `implement` 登记函数（`render`、`head`、`refresh`……）。
 2. **取数**在 `core/<页>.js`：导出返回数据的函数，参数里带 `signal`；请求的参数、并发合并、缓存都写在这里，Node 里能直接测。`ui/` 不从 `core/session.js` 导入 `api`、`post`、`shared`，也不调 `fetch()`（规则 22）。
 3. **画**在 `ui/<页>.js`：开头的注释写它负责什么；静态结构写成模块顶层的 ``tpl`…` ``，部件是 `{el, update, dispose}`；文件末尾 `implement({页: {render, head, help, refresh, …}})`。一个文件不超过 600 行（规则 21），一页里自成一块的部件（卡片、浮层、工具栏）拆成自己的文件。
-4. **部件建一次**：`render({samePage, scope})` 收到这一页的作用域（换页时框架调 `ui/scope.js` 的 `page()`，释放上一页的）。`samePage` 为假是刚进这一页：在 `scope` 上建这一页的部件（列表、监听、计时器都登记在它上面）。`samePage` 为真是同一页又画一次（换了子视图、筛选变了），作用域沿用：**不再建一份**，只按新地址更新已有的部件（`list.set()`、`update()`），不然上一份要等离开这一页才释放。主区已经由框架切好，不用调 `showArea`。不挂 `document`、`window` 级的监听（规则 3）。
-5. **异步回来**先判断还在不在：`if (!scope.alive || state.route !== route) return`，成功和失败都这样判断（换了页，作用域已经释放；同一页换了子视图、改了筛选条，地址换了，路由对象也换了；搜索词改了地址是就地替换，框架同样换一个新的路由对象，`core/route.js` 的 `reRoute`）。这样先发的请求后回来，结果不画、错误也不弹。撤销、学习落定、轮询这类重读用的是同一个路由对象，挡不住：**同一路由上的重读只认最后一次**，每个视图记一个读取序号（`const seq = ++page.seq`），回来时 `seq !== page.seq` 就丢掉，轮询也只由最后一次读取续排（`ui/groups.js`、`ui/similar.js`）。别处的回调照旧用 `onPage(state.route, '页')`。
+4. **部件建一次**：`render({samePage, scope})` 收到这一页的作用域（换页时框架调 `ui/scope.js` 的 `page()`，释放上一页的）。`samePage` 为假是刚进这一页：在 `scope` 上建这一页的部件（列表、监听、计时器都登记在它上面）。`samePage` 为真是同一页又画一次（换了子视图、筛选变了），作用域沿用：**不再建一份**，只按新地址更新已有的部件（`list.set()`、`update()`），不然上一份要等离开这一页才释放。这一段用 `ui/page_view.js` 的 `pageView(build)` 写：模块顶层 `const view = pageView(scope => notesView(scope))`，`render: o => view.enter(o).load(state.route)`；`refresh` 等别的入口用 `view.get()`，离开这一页以后是 `null`。建好以后要做的事（按天视图读认一认的第一批）、要建在子作用域上的（角色页的横幅）写进 `build`。主区和底栏已经由框架切好（底栏的选择栏藏起、张数清空、提示写注册表的 `hint`），不用调 `showArea`，也不用清底栏。不挂 `document`、`window` 级的监听（规则 3）。
+5. **异步回来**先判断还该不该画，成功和失败都这样判断。用 `ui/page_view.js` 的 `latest(scope)`：部件里取一个 `begin = latest(scope)`，每次读之前 `const fresh = begin(route, () => nsfw === state.nsfw)`（第二个参数是附加条件，可省），回来时 `if (!fresh()) return`。`fresh()` 在作用域还活着、`state.route` 还是发起时那个路由对象、这是这条读取线最后发出的那次时为真：换了页，作用域已经释放；同一页换了子视图、改了筛选条，路由对象换了（搜索词改了地址是就地替换，框架同样换一个新的路由对象，`core/route.js` 的 `reRoute`）；撤销、学习落定、同步、轮询这类重读用的是同一个路由对象，靠序号挡住，**同一路由上的重读只认最后一次**，轮询也只由最后一次读取续排（`ui/groups.js`、`ui/similar.js`）。这样先发的请求后回来，结果不画、错误也不弹。只是按现在的数据重画的回调（索引、最近动态读到了）不比先后，判断作用域和路由对象就够。第一次读就失败时用 `ui/empty.js` 的 `showFailure(box, e, {loaded})`：已经画过内容只弹错误条，否则在空状态的位置写原因和「重试」。`drawEmpty` 自己按参数判断没变不重画，每次刷新照常调。别处的回调照旧用 `onPage(state.route, '页')`。
 6. **数据变了**：`refresh(why)` 和 `samePage` 一样只更新已有的部件，值没变不动 DOM；`why` 的取值写在 `core/pages.js` 的 `implement` 说明里。筛选变了不走 `refresh`，走 `render({samePage: true})`。
 7. **页头**：`head(r, {n})` 返回纯文字和节点（上一节「页头」），不拼 HTML。
 
@@ -167,12 +167,12 @@ export const loadNotes = (route, signal) => api('/api/notes?' + new URLSearchPar
 import {t} from '../core/i18n.js';
 import {loadNotes} from '../core/notes.js';
 import {implement} from '../core/pages.js';
-import {readError} from '../core/session.js';
 import {state} from '../core/state.js';
-import {$, error} from './dom.js';
+import {$} from './dom.js';
 import {show, text, tpl} from './el.js';
-import {drawEmpty} from './empty.js';
+import {drawEmpty, showFailure} from './empty.js';
 import {keyed} from './keyed.js';
+import {latest, pageView} from './page_view.js';
 
 const PAGE = tpl`<div><ul class="notes" data-ref="list"></ul><div data-ref="empty" hidden></div></div>`;
 const ROW = tpl`<li class="note"><b data-ref="title"></b></li>`;
@@ -187,25 +187,31 @@ function notesView(scope) {
   const {el, refs} = PAGE();
   $('notesPage').replaceChildren(el);
   const list = keyed(refs.list, {key: n => n.id, create: noteRow, scope});
-  return {scope, async load(route) {
+  const begin = latest(scope);
+  let loaded = false;
+  scope.on(refs.empty, 'click', e => { if (e.target.closest('[data-empty="retry"]')) load(state.route); });
+  async function load(route) {
+    const fresh = begin(route);
     let notes;
-    try { notes = await loadNotes(route, scope.signal); } catch (e) { if (scope.alive && state.route === route) error(readError(e)); return; }
-    if (!scope.alive || state.route !== route) return;
+    try { notes = await loadNotes(route, scope.signal); } catch (e) { if (fresh()) showFailure(refs.empty, e, {loaded}); return; }
+    if (!fresh()) return;
+    loaded = true;
     list.set(notes);
     show(refs.empty, !notes.length);
     if (!notes.length) drawEmpty(refs.empty, {icon: 'check', fact: t('还没有笔记。')});
-  }};
+  }
+  return {scope, load};
 }
-let view = null;
+// 刚进这一页（或作用域已经释放）才建；同一页又画一次（samePage：子视图、筛选变了）只按新地址重读、更新列表。
+const view = pageView(notesView);
 implement({notes: {
-  // 刚进这一页（或作用域已经释放）才建；同一页又画一次（samePage：子视图、筛选变了）只按新地址重读、更新列表。
-  render: ({samePage, scope}) => { if (!samePage || !view?.scope.alive) view = notesView(scope); return view.load(state.route); },
-  refresh: () => view?.load(state.route),
+  render: o => view.enter(o).load(state.route),
+  refresh: () => view.get()?.load(state.route),
   head: () => ({title: t('笔记'), sub: ''}),
 }});
 ```
 
-`tests/pages.test.cjs` 有两项照这个例子在日历页上走：同一页画几次以后，活着的作用域数不涨、部件只建一次；搜索时先停在 a 再打成 ab，a 的回复晚到不画。
+`tests/pages.test.cjs` 有三项照这个例子在日历页上走：同一页画几次以后，活着的作用域数不涨、部件只建一次；搜索时先停在 a 再打成 ab，a 的回复晚到不画；切换 NSFW 之前发的读取晚到不画。日历、作品页、全部画廊各有一项「同一路由先后读两次，先发的那次后回来，不画」（`tests/calendar.test.cjs`、`tests/pages.test.cjs`、`tests/gallery_page.test.cjs`）。
 
 ### 兼容底线
 

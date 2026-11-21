@@ -38,12 +38,15 @@ beforeEach(() => {
   };
 });
 
-test('筛选条件读成数组：地址里的 JSON 字符串和已经读成的数组都认，读不了的当没有', () => {
-  assert.deepEqual(fav.conditions('["fav","tag:x"]'), ['fav', 'tag:x']);
-  assert.deepEqual(fav.conditions(['fav']), ['fav']);
-  assert.deepEqual(fav.conditions(''), []);
-  assert.deepEqual(fav.conditions('not json'), []);
-  assert.deepEqual(fav.conditions('{"fav":1}'), []);
+test('条件列表（core/filters.js 的 parseList）：地址里的 JSON 字符串和已经读成的数组都认，读不了的当没有；加一个条件', async () => {
+  const {parseList} = await web.load('core/filters.js');
+  assert.deepEqual(parseList('["fav","tag:x"]'), ['fav', 'tag:x']);
+  assert.deepEqual(parseList(['fav']), ['fav']);
+  assert.deepEqual(parseList(''), []);
+  assert.deepEqual(parseList('not json'), []);
+  assert.deepEqual(parseList('{"fav":1}'), []);
+  assert.deepEqual(fav.withCondition({has: ['tag:x']}, 'has', 'fav'), {has: '["tag:x","fav"]'});
+  assert.deepEqual(fav.withCondition({has: 'not json'}, 'has', 'fav'), {has: '["fav"]'});
   // 加一个条件：已有的保留，重复的不再加。
   assert.deepEqual(fav.withCondition({has: '["tag:x"]', q: 'k'}, 'not', 'fav'), {has: '["tag:x"]', q: 'k', not: '["fav"]'});
   assert.deepEqual(fav.withCondition({not: '["fav"]'}, 'not', 'fav'), {not: '["fav"]'});
@@ -181,6 +184,18 @@ test('写入后就地改掉页面上这些图的心形，别的图不动', () =>
   ui.paintHearts(new Set(['a', 'b']), true, {querySelectorAll: () => els});
   assert.deepEqual(els.map(el => el.classList.contains('on')), [true, true, false]);
   assert.equal(els[0].getAttribute('aria-pressed'), 'true');
-  assert.equal(els[0].title, '取消收藏（F）');
+  assert.equal(els[0].getAttribute('title'), '取消收藏（F）');
   assert.equal(els[1].span.textContent, '已收藏');
+});
+
+// paintHearts 经 ui/el.js 的写入函数写：部件之前写过「没收藏」，paintHearts 改成收藏以后，部件再按自己的数据写回「没收藏」
+// （撤销、重读）时照样写进 DOM，不会因为缓存里还是旧值而跳过。
+test('paintHearts 之后部件照常改回心形（ui/el.js 的缓存跟着变）', async () => {
+  const {cls} = await web.load('ui/el.js');
+  const el = new web.FakeElement('button'); el.dataset.fav = 'a'; el.querySelector = () => null;
+  cls(el, 'on', false);
+  ui.paintHearts(new Set(['a']), true, {querySelectorAll: () => [el]});
+  assert.equal(el.classList.contains('on'), true);
+  cls(el, 'on', false);
+  assert.equal(el.classList.contains('on'), false);
 });

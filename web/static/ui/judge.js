@@ -25,6 +25,7 @@
 // 「点掉」的画法只有一种（css/base.css 的 .judge-tile）：图变淡、盖一个 ✕，aria-pressed 为 true。
 import {imageUrl, number} from '../core/format.js';
 import {t} from '../core/i18n.js';
+import {DEFAULT_RATIO, aspect, clampRatio} from '../core/layout.js';
 import {attr, cls, css, prop, show, text, tpl} from './el.js';
 import {keyed} from './keyed.js';
 import {exit, thumbs} from './motion.js';
@@ -37,7 +38,8 @@ const ACTS = tpl`<div class="judge-acts"></div>`;
 const STATE = tpl`<span class="judge-state" role="status"></span>`;
 const BUTTON = tpl`<button class="btn is-small" type="button"></button>`;
 const LINK = tpl`<a class="btn is-small"></a>`;
-const ratio = x => x.width > 0 && x.height > 0 ? Math.min(2.4, Math.max(.4, x.width / x.height)) : .75;
+// 认一认那种一排图（.is-tiles，高 120px、宽按比例）的宽高比：下限 .4，比网格的 .5 窄（#787 起就是这个值，这里沿用）；尺寸未知时按 3:4。
+const ratio = x => aspect(x) ? clampRatio(aspect(x), .4) : DEFAULT_RATIO;
 const val = (v, ctx) => typeof v === 'function' ? v(ctx) : v;
 
 function tile(x, look) {

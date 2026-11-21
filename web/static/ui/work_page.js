@@ -5,7 +5,8 @@
 //
 // 进来的过渡：从作品卡（或活页条二级层钉住的那一项）展开：横幅先裁成卡片的大小、放在卡片的位置，再展开到原位，文字和下面的内容
 // 随后依次淡入（ui/motion.js；开了「减少动态效果」时直接到终态）。卡片在点击时用 launch() 记下自己的位置。
-import {castWorks, catalogChanged, forgetActivity, loadActivity, loadIndex, PSEUDO_NOTES, recentOf, workColor, workCovers, workImages} from '../core/catalog.js';
+import {castWorks, catalogChanged, forgetActivity, loadActivity, PSEUDO_NOTES, recentOf, workColor, workCovers, workImages} from '../core/catalog.js';
+import {loadIndex} from '../core/jobs.js';
 import {imageUrl, number} from '../core/format.js';
 import {t} from '../core/i18n.js';
 import {implement, onPage} from '../core/pages.js';
@@ -19,6 +20,7 @@ import {backLink} from './back_link.js';
 import {drawEmpty} from './empty.js';
 import {keyed} from './keyed.js';
 import {animate, enter, reduced} from './motion.js';
+import {latest, pageView} from './page_view.js';
 import {pinButton} from './pin_button.js';
 import {posters} from './poster.js';
 import {onPick} from './rail.js';
@@ -76,6 +78,7 @@ function workView(s) {
   const people = keyed(refs.posters, {key: x => x.c.id, create: posters(s), scope: s});
   const recent = keyed(refs.recent, {key: x => x.uuid, create: thumb, scope: s});
   let info = null, images = [];
+  const begin = latest(s);
   s.on(refs.edit, 'click', () => { if (info) workDialog(info); });
 
   function draw(key) {
@@ -110,18 +113,19 @@ function workView(s) {
     show(refs.empty, none); show(refs.hero, !none);
     if (none) drawEmpty(refs.empty, {icon: 'person', fact: t('没有这部作品。'), next: [{label: t('回到作品'), href: '#/characters/works'}]});
   }
-  // 读这部作品的图；直接打开（刷新、从活页条进来）时索引和最近动态可能还没读到，一起读。
+  // 读这部作品的图；直接打开（刷新、从活页条进来）时索引和最近动态可能还没读到，一起读。索引和最近动态回来只是按现在的数据
+  // 重画，不比先后；作品的图在同一路由上的几次重读（同步、写入、撤销）只认最后发出的那次。
   async function load(route) {
     const key = route.id;
     draw(key);
     const box = takeLaunch(key);
     if (box) expand(refs, box);
-    const here = () => s.alive && state.route === route;
+    const here = () => s.alive && state.route === route, fresh = begin(route);
     if (!state.index) loadIndex().then(() => { if (here()) draw(key); }, () => {});
-    loadActivity().then(fresh => { if (fresh && here()) draw(key); }, () => {});
+    loadActivity().then(got => { if (got && here()) draw(key); }, () => {});
     let list;
-    try { list = await workImages(key, s.signal); } catch (e) { if (here() && e?.name !== 'AbortError') error(readError(e)); return; }
-    if (!here()) return;
+    try { list = await workImages(key, s.signal); } catch (e) { if (fresh() && e?.name !== 'AbortError') error(readError(e)); return; }
+    if (!fresh()) return;
     images = list;
     draw(key);
   }
@@ -140,12 +144,16 @@ function thumb(x) {
   return {el: a, update};
 }
 
-let view = null;
+const view = pageView(workView);
 implement({work: {
-  render: ({samePage, scope}) => { if (!samePage || !view?.scope.alive) view = workView(scope); return view.load(state.route); },
+  render: o => view.enter(o).load(state.route),
   // NSFW、同步、撤销、改动之后图和计数都可能变了：重读这部作品的图；别的只重画。
-  refresh: why => { if (!view?.scope.alive) return; if (['nsfw', 'sync', 'undo', 'edit'].includes(why)) { if (why === 'nsfw') forgetActivity(); return view.load(state.route); } view.redraw(); },
-  onMeta: () => view?.redraw(),
+  refresh: why => {
+    const v = view.get(); if (!v) return;
+    if (['nsfw', 'sync', 'undo', 'edit'].includes(why)) { if (why === 'nsfw') forgetActivity(); return v.load(state.route); }
+    v.redraw();
+  },
+  onMeta: () => view.get()?.redraw(),
   // 作品名写在横幅上，页头只留右侧的全局控件。
   head: () => ({title: '', sub: ''}),
 }});

@@ -1,7 +1,7 @@
 // 角色页横幅下面的三组资料（#712）：最近加入的几张（点开详情）、收集曲线（最近 12 个月每月进了几张，ui/month_bars.js）、
 // 常一起出现的角色（同框次数最多的几个；一个都没有时是同作品的角色），圆头像和名字，链到他们的角色页。
 // 数据由 core/character.js 读好，这里只画；横幅本身在 ui/character.js。
-import {imageUrl, monthLabel, number} from '../core/format.js';
+import {coverUrl, imageUrl, monthLabel, number} from '../core/format.js';
 import {t} from '../core/i18n.js';
 import {charHash} from '../core/route.js';
 import {inspect} from './detail.js';
@@ -29,7 +29,7 @@ function recentTile(item) {
 function personLink({c, count}, together) {
   const a = make('a', 'char-peer'), img = make('img', 'avatar');
   attr(a, 'href', charHash(c.id)); attr(a, 'title', together ? t('同框 {n} 张', {n: number(count)}) : t('{n} 张', {n: number(count)}));
-  attr(img, 'alt', ''); attr(img, 'loading', 'lazy'); attr(img, 'src', c.cover ? imageUrl(c.cover) : null);
+  attr(img, 'alt', ''); attr(img, 'loading', 'lazy'); attr(img, 'src', coverUrl(c.cover));
   a.append(img, make('span', '', c.name));
   const li = make('li'); li.append(a);
   return li;

@@ -296,14 +296,16 @@ test('照页面样板写：同一页重画几次，活着的作用域数不涨',
   globalThis.window = {addEventListener() {}};
   globalThis.requestAnimationFrame = () => 0;
   const S = await web.load('ui/scope.js'), {keyed} = await web.load('ui/keyed.js'), {applyRoute} = await web.load('ui/shell.js');
+  const {pageView} = await web.load('ui/page_view.js');
   S.setDev(true);
-  let view = null, builds = 0;
+  let builds = 0;
   const notesView = scope => {
     builds++;
     const list = keyed(page.el('calendarPage'), {key: n => n, create: n => ({el: Object.assign(page.document.createElement('li'), {textContent: n})}), scope});
     return {scope, load: route => list.set(route.q ? [route.q] : [])};
   };
-  pages.implement({calendar: {render: ({samePage, scope}) => { if (!samePage || !view?.scope.alive) view = notesView(scope); return view.load(state.route); }}});
+  const view = pageView(notesView);
+  pages.implement({calendar: {render: o => view.enter(o).load(state.route)}});
   globalThis.location.hash = '#/calendar';
   await applyRoute();
   const first = S.currentPage(), count = S.live().count;
@@ -320,16 +322,19 @@ test('搜索时先发的请求后回来，它的结果不画（页面样板第 5
   globalThis.history = {state: null, replaceState() {}};
   globalThis.window = {addEventListener() {}};
   globalThis.requestAnimationFrame = () => 0;
-  const {applyRoute, renderChrome} = await web.load('ui/shell.js');
+  const {applyRoute, renderChrome} = await web.load('ui/shell.js'), {latest, pageView} = await web.load('ui/page_view.js');
   const pending = new Map(), drawn = [];
   const loadNotes = route => new Promise(resolve => pending.set(route.q, resolve));
-  let view = null;
-  const notesView = scope => ({scope, async load(route) {
-    const notes = await loadNotes(route);
-    if (!scope.alive || state.route !== route) return;
-    drawn.push(notes);
-  }});
-  pages.implement({calendar: {render: ({samePage, scope}) => { if (!samePage || !view?.scope.alive) view = notesView(scope); return view.load(state.route); }}});
+  const notesView = scope => {
+    const begin = latest(scope);
+    return {scope, async load(route) {
+      const fresh = begin(route), notes = await loadNotes(route);
+      if (!fresh()) return;
+      drawn.push(notes);
+    }};
+  };
+  const view = pageView(notesView);
+  pages.implement({calendar: {render: o => view.enter(o).load(state.route)}});
   globalThis.location.hash = '#/calendar';
   const entered = applyRoute();
   await new Promise(r => setTimeout(r, 0));
@@ -354,16 +359,18 @@ test('切换 NSFW 前发出的请求后回来，它的结果不画', async () =>
   globalThis.window = {addEventListener() {}};
   globalThis.requestAnimationFrame = () => 0;
   globalThis.fetch = async () => ({status: 200, ok: true, json: async () => ({})});
-  const {applyRoute} = await web.load('ui/shell.js'), {setNsfw} = await web.load('ui/grid.js');
+  const {applyRoute} = await web.load('ui/shell.js'), {setNsfw} = await web.load('ui/grid.js'), {latest, pageView} = await web.load('ui/page_view.js');
   const pending = new Map(), drawn = [];
-  let view = null;
-  const notesView = scope => ({scope, async load(route) {
-    const notes = await new Promise(resolve => pending.set(state.nsfw, resolve));
-    if (!scope.alive || state.route !== route) return;
-    drawn.push(notes);
-  }});
-  const render = ({samePage, scope}) => { if (!samePage || !view?.scope.alive) view = notesView(scope); return view.load(state.route); };
-  pages.implement({calendar: {render, refresh: () => view.load(state.route)}});
+  const notesView = scope => {
+    const begin = latest(scope);
+    return {scope, async load(route) {
+      const fresh = begin(route), notes = await new Promise(resolve => pending.set(state.nsfw, resolve));
+      if (!fresh()) return;
+      drawn.push(notes);
+    }};
+  };
+  const view = pageView(notesView);
+  pages.implement({calendar: {render: o => view.enter(o).load(state.route), refresh: () => view.get()?.load(state.route)}});
   state.nsfw = '';
   globalThis.location.hash = '#/calendar';
   const entered = applyRoute();
@@ -376,6 +383,32 @@ test('切换 NSFW 前发出的请求后回来，它的结果不画', async () =>
   pending.get('')(['全部的结果']); await entered;
   assert.deepEqual(drawn, [['隐藏 NSFW 的结果']]);
   setNsfw('');
+});
+
+// 页面样板第 5 条：同步、写入、撤销之后的重读用的是同一个路由对象。作品页先后读两次这部作品的图，先发的那次后回来，不画。
+test('作品页：同一路由先后读两次，先发的那次后回来，不画', async () => {
+  const page = web.fakePage();
+  globalThis.history = {state: null, replaceState() {}};
+  globalThis.window = {addEventListener() {}};
+  globalThis.requestAnimationFrame = () => 0;
+  const S = await web.load('ui/scope.js');
+  await web.load('ui/work_page.js');
+  const waiting = [];
+  globalThis.fetch = path => path.startsWith('/api/assets') ? new Promise(done => waiting.push(items => done({status: 200, ok: true, json: async () => ({items})})))
+    : Promise.resolve({status: 200, ok: true, json: async () => ({})});
+  Object.assign(state, {chars: [], workTree: [], nsfw: '', index: {works: [{id: 'w1', name: '合成作品', count: 2}], watch: {works: []}}, route: {page: 'work', id: 'w1'}});
+  const scope = S.page('work');
+  const first = pages.PAGES.work.render({samePage: false, scope});
+  const second = pages.PAGES.work.refresh('sync');
+  assert.equal(waiting.length, 2);
+  waiting[1]([{uuid: 'new', color: null}]); await second;
+  waiting[0]([{uuid: 'old', color: null}]); await first;
+  // 横幅的竖条（.cat-strip）里是按读到的图建的 <img>（ui/el.js 的 make，在假页面里是 FakeElement）。
+  const strip = page.el('charIndex').children.at(-1).querySelectorAll('div').find(d => d.getAttribute('class') === 'cat-strip');
+  const srcs = strip.childNodes.map(img => img.src || '');
+  assert.ok(srcs.some(s => s.includes('id=new')), '画了后发的那次');
+  assert.ok(!srcs.some(s => s.includes('id=old')), '先发的那次没画');
+  S.page('library');
 });
 
 // 按线索拆出的组各有自己的组号（#790）：组页 #/g/<cid> 用注册表的查询参数读这一组，

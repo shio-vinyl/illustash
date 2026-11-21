@@ -8,12 +8,13 @@
 import {t} from '../core/i18n.js';
 import {isPinned, loadPins, pin, pins, unpin} from '../core/rail.js';
 import {attr, show, text, tpl} from './el.js';
+import {icon} from './icons.js';
 
-const PIN = tpl`<button type="button" class="cat-pin" aria-pressed="false"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M12.4 3.1 16.9 7.6M13.9 4.6 10.6 7.6 6.9 8.1
-  11.9 13.1 12.4 9.4 15.4 6.1M9.4 10.6 4 16"/></svg><span data-ref="label"></span></button>`;
+const PIN = tpl`<button type="button" class="cat-pin" aria-pressed="false"><span data-ref="label"></span></button>`;
 
 export function pinButton(s, {wide = false, onChange} = {}) {
   const {el, refs} = PIN();
+  el.prepend(icon('pin'));
   let key = '';
   if (wide) el.classList.add('btn', 'is-wide');
   show(refs.label, wide);

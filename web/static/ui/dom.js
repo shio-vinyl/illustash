@@ -19,8 +19,6 @@ export function showArea(area = pageOf(state.route).area) {
 }
 // 名称联网查询还没授权时，搜索结果的说明后面接的「允许查询…」。点击由 ui/settings.js 的 [data-names-allow] 处理。
 export const namesAllowButton = `<button type="button" class="link-button" data-names-allow>${t('允许查询…')}</button>`;
-// 网格空了时空状态下面的一个去处（core/pages.js 的 emptyNext）。
-export const emptyLink = (href, label) => `<a class="quiet link" href="${href}">${label}</a>`;
 // ---------- 页面说明「?」（#527） ----------
 // 页面标题旁的「?」：这一页是什么、怎么操作，点开（键盘聚焦后 Enter／Space）才显示，标题下面只留数量、状态和
 // 必须一眼看到的警告。说明是非模态浮层，Esc、点外关闭由浮层管理器处理，关了焦点回到按钮。标题重画时元素换掉，
@@ -76,7 +74,6 @@ export function wireToast(undo) {
 // 图库里，由调用处给它在 D 站的作品名。
 export const charOption = (c, work = workLabel(c)) => esc(c.name) + (work ? `<small class="char-work">${esc(work)}</small>` : '');
 export function error(message) { if (session.stale) return; $('errorBanner').textContent = message; $('errorBanner').hidden = !message; }
-export function readFailure(node, e) { if (node) { node.hidden = false; node.innerHTML = `<p class="empty" role="alert">${esc(readError(e))}</p>`; } }
 // 可折叠的块，展开或收起的状态在重新渲染和重新载入后保留。
 export const fold = (key, summary, body) => `<details class="more" data-fold-key="${key}"${prefs.get('settingsOpen', {})[key] ? ' open' : ''}><summary>${summary}</summary><div class="more-body">${body}</div></details>`;
 // 只有 fold() 生成的 <details> 带 data-fold-key，按属性找就够；不写元素名，测试用的假 DOM（tests/dom.cjs）不认带元素名的属性选择器。
@@ -120,28 +117,6 @@ export async function busy(buttons, run) {
 // 向导横条和更新提示用；attr 是放动作名的属性（data-models、data-pack…）。不能点时 title 写原因。
 export const buttonsHTML = (list, attr) => list.map(b => `<button class="${b.primary ? 'primary' : 'quiet'} small" ${attr}="${esc(b.act)}"`
   + `${b.disabled ? ` disabled${b.title ? ` title="${esc(b.title)}"` : ''}` : ''}>${esc(b.label)}</button>`).join('');
-// 只替换 HTML 变了的部分，没变的封面不会重新加载。
-export function reconcileSections(container, sections, empty = t('没有匹配的角色')) {
-  if (!sections.length) { container.innerHTML = `<p class="empty">${empty}</p>`; return; }
-  const old = new Map([...container.children].map(el => [el._sectionKey, el]));
-  let cursor = container.firstElementChild;
-  const keep = new Set();
-  for (const [key, html] of sections) {
-    let el = old.get(key);
-    if (!el || el._sectionHTML !== html) {
-      const previous = el;
-      const template = document.createElement('template'); template.innerHTML = html;
-      el = template.content.firstElementChild; el._sectionKey = key; el._sectionHTML = html;
-      if (previous) { previous.replaceWith(el); if (cursor === previous) cursor = el; }
-    }
-    if (el !== cursor) container.insertBefore(el, cursor);
-    else cursor = cursor.nextElementSibling;
-    keep.add(el);
-  }
-  for (const el of [...container.children]) if (!keep.has(el)) el.remove();
-}
-// 搜索框里的放大镜。
-export const searchIcon = () => '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="10" cy="10" r="6.5"/><path d="m15 15 5 5"/></svg>';
 // 页面停下时的横幅，以及工具栏的撤销按钮。页面启动时调用一次。
 export function wireDom() {
   // App 无法解码的图片（损坏的文件）：用一个朴素的占位，而不是浏览器的破图图标。

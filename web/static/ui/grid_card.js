@@ -16,12 +16,13 @@
 //
 // 节点：根节点是 .card，带 data-id（图的 uuid）、data-index（第几张）；位置写 transform 和宽高（只动合成层）。
 // 缩略图在 ui/motion.js 的登记表里标上 uuid（看图器从这里展开、关掉时回到这里，#709）；摘掉时放掉解码后的位图（#683）。
-import {number, short, thumbSize} from '../core/format.js';
+import {imageUrl, number, short, thumbSize} from '../core/format.js';
 import {t} from '../core/i18n.js';
 import {REASONS, nameWithWork} from '../core/labels.js';
 import {clampRatio, aspect} from '../core/layout.js';
 import {attr, cls, css, make, show, text, tpl} from './el.js';
-import {heartIcon, heartTip} from './favorites.js';
+import {heartTip} from './favorites.js';
+import {icon} from './icons.js';
 import {flip, thumbs} from './motion.js';
 import {setTint} from './tint.js';
 import {releaseImages} from './virtual.js';
@@ -117,7 +118,7 @@ const chipsKey = (item, ctx) => JSON.stringify([ctx.char, ctx.maybe, ctx.reason,
  */
 export function gridCard(scope) {
   const {el, refs} = CARD();
-  refs.fav.append(heartIcon());
+  refs.fav.append(icon('heart'));
   let item = null, key = '', tint, thumb;   // 上一次写的芯片内容、主色、登记的图：没变就不再写
   // 图读坏了：记在根节点上，样式藏起图、露出「图片暂不可读」。换了别的图再去掉。
   scope.on(refs.img, 'error', () => attr(el, 'data-broken', true));
@@ -135,7 +136,7 @@ export function gridCard(scope) {
     // 原始比例：宽高比超出上下限的图在方框里整张显示（留底色），其余裁满。方格总是裁满。
     const raw = aspect(item);
     cls(el, 'is-whole', ctx.fit && raw > 0 && clampRatio(raw) !== raw);
-    const src = `/image?id=${encodeURIComponent(item.uuid)}&size=${thumbSize(box.w)}`;
+    const src = imageUrl(item.uuid, thumbSize(box.w));
     if (changed || refs.img.getAttribute('src') !== src) attr(el, 'data-broken', null);
     attr(refs.img, 'src', src);
     if (item.uuid !== thumb) { thumb = item.uuid; thumbs.mark(refs.img, thumb); }

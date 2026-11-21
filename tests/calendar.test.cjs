@@ -5,11 +5,12 @@ const assert = require('node:assert/strict');
 const web = require('./web.cjs');
 const dom = require('./dom.cjs');
 
-let C, V, S, document;
+let C, F, V, S, document;
 test.before(async () => {
   await web.ready();
   document = dom.install();
   C = await web.load('core/calendar.js');
+  F = await web.load('core/format.js');
   V = await web.load('ui/calendar.js');
   S = await web.load('ui/scope.js');
 });
@@ -25,13 +26,9 @@ const reply = {
   total: 13, prev: '2026-09', next: null,
 };
 
-test('月份：解析、格式、前后挪', () => {
+test('月份：解析，取日期键的月份', () => {
   assert.deepEqual(C.parseMonth('2026-11'), {year: 2026, month: 11});
   for (const bad of ['2026-13', '2026-1', '26-11', '', null]) assert.equal(C.parseMonth(bad), null);
-  assert.equal(C.shiftMonth('2026-11', 2), '2027-01');
-  assert.equal(C.shiftMonth('2026-01', -1), '2025-12');
-  assert.equal(C.shiftMonth('2026-05', -17), '2024-12');
-  assert.equal(C.localDay(new Date(2026, 0, 5, 23, 59)), '2026-01-05');
   assert.equal(C.monthOf('2026-11-19'), '2026-11');
 });
 
@@ -120,13 +117,13 @@ test('标题、头像、翻月：prev 是筛选后最近有图的月份，next �
   prev.dispatchEvent({type: 'click'});
   assert.deepEqual(months, ['2026-09']);
   now.dispatchEvent({type: 'click'});
-  assert.equal(months.length, C.monthOf(C.localDay()) === '2026-11' ? 1 : 2);
+  assert.equal(months.length, C.monthOf(F.dayKey()) === '2026-11' ? 1 : 2);
   pageScope.dispose();
 });
 
 test('翻月时格子按位置复用，不重建；今天有标记；空月交给 empty 画', () => {
   const {view, cells, empties, pageScope} = mount();
-  const today = C.localDay(), month = C.monthOf(today);
+  const today = F.dayKey(), month = C.monthOf(today);
   view.update({month, data: C.shapeMonth(month, {days: [], total: 0, prev: null, next: null})});
   const first = cells()[0];
   const marked = cells().filter(c => c.getAttribute('aria-current') === 'date');
@@ -156,4 +153,22 @@ test('方向键按日期在有图的格子之间挪，跳过空格子；输入�
   assert.ok(!key(cell('2026-11-19'), 'ArrowRight'));   // 后面没有了：不拦
   assert.ok(!key(cell('2026-11-03'), 'ArrowRight', {isComposing: true}));
   pageScope.dispose();
+});
+
+// 页面样板第 5 条：同步、写入之后的重读用的是同一个路由对象。先后两次读，先发的那次后回来，不画（只认最后发出的那次）。
+test('同一路由先后读两次，先发的那次后回来，不画', async () => {
+  const {PAGES} = await web.load('core/pages.js'), {state} = web.core();
+  const box = document.createElement('div'); box.setAttribute('id', 'calendarPage'); document.body.append(box);
+  const waiting = [];
+  globalThis.fetch = () => new Promise(done => waiting.push(body => done({ok: true, status: 200, json: async () => body})));
+  state.route = {page: 'calendar', at: '2026-11-10', has: [], not: []};
+  const scope = S.page('calendar');
+  const first = PAGES.calendar.render({samePage: false, scope});
+  const second = PAGES.calendar.refresh('sync');
+  assert.equal(waiting.length, 2);
+  waiting[1](reply); await second;
+  waiting[0]({...reply, total: 99}); await first;
+  assert.match(box.querySelector('hgroup').children[1].textContent, /13 张/, '画的是后发的那次');
+  S.page('library');
+  box.remove();
 });

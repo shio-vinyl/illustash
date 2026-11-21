@@ -16,11 +16,11 @@
 //                            交给作用域（scope.add(wireLift(…))）。展示页（ui/gallery_stage.js）、按天视图、详情卡片的预览图用它
 //   lift(ids, e)             已经判断好要拖的（网格里按住已选中的图拖动）：从指针事件 e 的位置拿起
 // 看图器里不拿起（它盖住活页条，没处放），照旧只拖到别的应用（ui/viewer.js 的 wireDragOut）。
-import {number} from '../core/format.js';
+import {imageUrl, number} from '../core/format.js';
 import {t} from '../core/i18n.js';
 import {droppable, galleryOf} from '../core/galleries.js';
 import {pageOf} from '../core/pages.js';
-import {galleryItems} from '../core/rail.js';
+import {galleryCovers, galleryItems} from '../core/rail.js';
 import {state} from '../core/state.js';
 import {canDrag} from '../core/files.js';
 import {cls, css, make, text} from './el.js';
@@ -30,7 +30,7 @@ import {newManual, putInto} from './gallery_actions.js';
 import {animate, reduced} from './motion.js';
 import {createLayer} from './overlay.js';
 import {handedOff, onPress, wirePress} from './press.js';
-import {mode, railCovers} from './rail.js';
+import {mode} from './rail.js';
 
 // 网格的按下也要 mousedown 补位（ui/press.js），从这里转出，grid.js 不另导入一个模块。
 export {onPress};
@@ -56,7 +56,7 @@ export function lift(ids, e) {
   document.getSelection?.()?.removeAllRanges();   // 按住拖动时浏览器可能已经开始选文字
   const ghost = make('div', 'lift');
   ghost.setAttribute('aria-hidden', 'true');
-  for (const id of ids.slice(0, 3)) { const img = make('img'); img.alt = ''; img.src = `/image?id=${encodeURIComponent(id)}&size=thumb`; ghost.append(img); }
+  for (const id of ids.slice(0, 3)) { const img = make('img'); img.alt = ''; img.src = imageUrl(id); ghost.append(img); }
   if (ids.length > 1) ghost.append(make('b', 'drop-badge', number(ids.length)));
   document.body.append(ghost);
   live = {ids, ghost, x: e.clientX, y: e.clientY, from: {x: e.clientX, y: e.clientY}, target: null, focus: document.activeElement};
@@ -71,7 +71,7 @@ const hereId = () => { const p = pageOf(state.route); return p.gallery || p.stag
 const accepts = g => !!g && droppable(g) && String(g.id) !== hereId();
 // 活页条上换出来的那组：收藏和各画廊（按条件的、这一页自己的变淡、不接收），最后一项是新建手选画廊。
 function dropItems() {
-  const items = galleryItems(railCovers()).map(x => ({...x, off: !accepts(x.gallery)}));
+  const items = galleryItems(galleryCovers.byId).map(x => ({...x, off: !accepts(x.gallery)}));
   return [...items, {key: 'new', kind: 'gallery', label: t('新建手选画廊'), cover: null, href: '#/galleries', meta: t('松手新建一个手选画廊，放进这些图')}];
 }
 function place() {

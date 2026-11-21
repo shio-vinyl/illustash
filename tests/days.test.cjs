@@ -120,11 +120,11 @@ test('去网格：带着现在的筛选和这一天；点角色再加一个 char
 
 test('认一认的请求体：都对、其余是、都不是、点掉的是另一个角色', () => {
   const b = {entity: 'e', kind: 'hint', items: [item('a'), item('b'), item('c')]};
-  assert.deepEqual(A.askAnswer(b, 'ok', new Set()), {entity: 'e', kind: 'hint', yes: ['a', 'b', 'c'], no: []});
-  assert.deepEqual(A.askAnswer(b, 'ok', new Set(['b'])), {entity: 'e', kind: 'hint', yes: ['a', 'c'], no: ['b']});
-  assert.deepEqual(A.askAnswer(b, 'none', new Set(['b'])), {entity: 'e', kind: 'hint', yes: [], no: ['a', 'b', 'c']});
+  assert.deepEqual(A.askBody(b, 'ok', new Set()), {entity: 'e', kind: 'hint', yes: ['a', 'b', 'c'], no: []});
+  assert.deepEqual(A.askBody(b, 'ok', new Set(['b'])), {entity: 'e', kind: 'hint', yes: ['a', 'c'], no: ['b']});
+  assert.deepEqual(A.askBody(b, 'none', new Set(['b'])), {entity: 'e', kind: 'hint', yes: [], no: ['a', 'b', 'c']});
   // 后端的 switch 要求 yes 为空：只提交点掉的那几张，其余留在卡上
-  assert.deepEqual(A.askAnswer(b, 'other', new Set(['c', 'a']), 'f'), {entity: 'e', kind: 'hint', yes: [], no: ['a', 'c'], switch: 'f'});
+  assert.deepEqual(A.askBody(b, 'other', new Set(['c', 'a']), 'f'), {entity: 'e', kind: 'hint', yes: [], no: ['a', 'c'], switch: 'f'});
 });
 
 test('展开一天的全部角色：分页汇总 memberships，按张数排', async () => {
@@ -192,8 +192,4 @@ test('同步时「今天」长行：只改元数据原地换、不长行；样�
   // 样本被截断、最旧的 e 没回来（后面也没有更旧的出现）：是截断，留着
   const kept = D.growCells(D.dayCells(big, opt, 'a'), big, {...big, items: big.items.slice(0, 4)}, opt);
   assert.ok(kept && kept.cells.some(c => c.item.uuid === 'e'));
-});
-
-test('今天是哪一天：本地时间', () => {
-  assert.equal(D.todayKey(new Date(2026, 0, 5, 23, 30)), '2026-01-05');
 });

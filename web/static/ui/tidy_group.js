@@ -1,6 +1,6 @@
-// 整理页（#713）共用的部件：浅底分组（css/base.css 的 .group）、一排方图、收起动效、看大图的列表，以及各页共用的底栏清理和
-// 读失败时的「重试」。样式在 css/tidy.css。按组整理的一组、身份整理的一对用 tidyGroup()：组头一行写标题、张数和一句话，操作
-// 收在组头右边；按组整理下面是一排可以点掉的方图（共用的判断卡 ui/judge.js，#787），身份整理把方图换成左右两边的样图。
+// 整理页（#713）共用的部件：浅底分组（css/base.css 的 .group）、一排方图、收起动效、看大图的列表。样式在 css/tidy.css。
+// 按组整理的一组、身份整理的一对用 tidyGroup()：组头一行写标题、张数和一句话，操作收在组头右边；按组整理下面是一排可以点掉的
+// 方图（共用的判断卡 ui/judge.js，#787），身份整理把方图换成左右两边的样图。
 // 画师抽查的一张图只借用 .group.tidy-group 的样子。
 //
 //   const g = tidyGroup();                      // {el, refs: {title, meta, q, acts, strip, note}}
@@ -13,10 +13,8 @@
 // 直接摘掉。系统开了「减少动态效果」时组直接消失。
 import {imageUrl} from '../core/format.js';
 import {t} from '../core/i18n.js';
-import {readError} from '../core/session.js';
 import {$} from './dom.js';
 import {attr, make, tpl} from './el.js';
-import {drawEmpty} from './empty.js';
 import {keyed} from './keyed.js';
 import {exit, flip} from './motion.js';
 import {wirePeek} from './viewer.js';
@@ -81,11 +79,3 @@ export async function collapse(el) {
   for (const [n, from] of below) flip(n, from, n.getBoundingClientRect(), {dur: 2});
 }
 
-/** 面板页刚进来时清掉底栏（#resultCount、#hint）：别让上一页的张数和提示留着。和别的模块一样直接写 textContent。 */
-export function clearFooter() {
-  for (const id of ['resultCount', 'hint']) { const el = $(id); if (el) el.textContent = ''; }
-}
-/** 第一次读取就失败、页面上还什么都没有时：空状态的位置写原因和「重试」（data-empty="retry"，由页面接）。 */
-export function drawFailure(box, e) {
-  drawEmpty(box, {icon: 'image', fact: readError(e), next: [{label: t('重试'), act: 'retry'}]});
-}

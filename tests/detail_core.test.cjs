@@ -4,8 +4,8 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const web = require('./web.cjs');
 
-let detail, state;
-test.before(async () => { await web.ready(); detail = await web.load('core/detail.js'); state = web.core().state; });
+let detail, ask, state;
+test.before(async () => { await web.ready(); detail = await web.load('core/detail.js'); ask = await web.load('core/ask.js'); state = web.core().state; });
 
 test('证据：WD、外部索引、你的标注和数据包各自的写法', () => {
   assert.equal(detail.evidence({sources: ['WD_EXT'], max_score: 0.9312}), 'WD 扩展 0.93');
@@ -35,9 +35,9 @@ test('偶尔一问：浏览时隔三张问一次，同一张图再画时结论�
 
 test('回答的内容：是、不是、是对手', () => {
   const cur = {q: {entity: 'c1', kind: 'ambiguous', rival: 'c2'}, ident: 'a'};
-  assert.deepEqual(detail.askBody(cur, 'yes'), {ids: ['a'], entity: 'c1', kind: 'ambiguous', yes: ['a']});
-  assert.deepEqual(detail.askBody(cur, 'no'), {ids: ['a'], entity: 'c1', kind: 'ambiguous', no: ['a']});
-  assert.deepEqual(detail.askBody(cur, 'switch'), {ids: ['a'], entity: 'c1', kind: 'ambiguous', no: ['a'], switch: 'c2'});
+  assert.deepEqual(ask.questionBody(cur, 'yes'), {ids: ['a'], entity: 'c1', kind: 'ambiguous', yes: ['a']});
+  assert.deepEqual(ask.questionBody(cur, 'no'), {ids: ['a'], entity: 'c1', kind: 'ambiguous', no: ['a']});
+  assert.deepEqual(ask.questionBody(cur, 'switch'), {ids: ['a'], entity: 'c1', kind: 'ambiguous', no: ['a'], switch: 'c2'});
 });
 
 test('同一张图、同一读取纪元里，详情卡片和大图底栏同时要只发一个请求；写入之后重新读', async () => {

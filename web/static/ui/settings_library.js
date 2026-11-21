@@ -4,7 +4,7 @@ import {number} from '../core/format.js';
 import {state} from '../core/state.js';
 import {REASONS, FOLD_OPTIONS} from '../core/labels.js';
 import {refreshMeta} from '../core/meta.js';
-import {SYNC_ACTIVE, syncLine, pollImports} from '../core/jobs.js';
+import {syncLine, syncTone, pollImports} from '../core/jobs.js';
 import {loadLibraries, saveFold} from '../core/settings.js';
 import {toast} from './dom.js';
 import {groups, refreshSection, startupRow, taskRow, tiles} from './settings_group.js';
@@ -41,7 +41,7 @@ export function build(main, scope) {
     librariesGroup(),
     {key: 'sync', title: t('同步'), scope: 'library', note: t('读取来源里的图片，新增的导入并识别；来源里删掉的图会从图库移除，人工整理记录保留。'), parts: [
       taskRow('syncStatus', s => s.sync?.status === 'off' ? t('这次启动没有开同步') : syncLine(s.sync),
-        s => SYNC_ACTIVE.includes(s.sync?.status) ? 'busy' : ['error', 'needs_recognition'].includes(s.sync?.status) ? 'warn' : s.sync?.status === 'off' ? 'off' : ''),
+        s => syncTone(s.sync?.status)),
       startupRow('sync', t('启动时同步'), t('检查来源里新增和删除的图')),
       {kind: 'fold', key: 'sourcesApps', hidden: s => !hasPhotos(s) || !apps(s).length,
        summary: s => t('iCloud 照片按存图的 App 统计（{n} 个 App）', {n: number(apps(s).length)}), parts: [

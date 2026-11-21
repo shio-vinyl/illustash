@@ -88,3 +88,24 @@ test('rich 把译文里的占位符换成节点，其余是文字节点', () => 
   assert.deepEqual(plain.childNodes.map(n => n.data), ['3', ' of ', '{missing}']);
   assert.equal(el.make('b').className, '');
 });
+
+// ui/empty.js：参数没变不重画（「去处」按钮上的焦点不丢）；变了、或者 box 里换成了别的内容才重画。第一次读失败时显示 box，写原因和「重试」。
+test('drawEmpty 按参数判断没变不动；showFailure 第一次失败时画「重试」', async () => {
+  const {drawEmpty, showFailure} = await web.load('ui/empty.js');
+  const box = document.createElement('div');
+  drawEmpty(box, {icon: 'check', fact: 'none', next: [{label: 'Go', href: '#/library'}]});
+  const first = box.firstElementChild;
+  drawEmpty(box, {icon: 'check', fact: 'none', next: [{label: 'Go', href: '#/library'}]});
+  assert.equal(box.firstElementChild, first, '参数没变，节点不换');
+  drawEmpty(box, {icon: 'check', fact: 'other', next: [{label: 'Go', href: '#/library'}]});
+  assert.notEqual(box.firstElementChild, first, '参数变了，整块换掉');
+  const second = box.firstElementChild;
+  box.replaceChildren();
+  drawEmpty(box, {icon: 'check', fact: 'other', next: [{label: 'Go', href: '#/library'}]});
+  assert.ok(box.firstElementChild && box.firstElementChild !== second, 'box 被清空过，照样画回来');
+  const fail = document.createElement('div'); fail.hidden = true;
+  showFailure(fail, new Error('database is locked'), {loaded: false});
+  assert.equal(fail.hidden, false);
+  assert.match(fail.textContent, /database is locked/);
+  assert.equal(fail.querySelectorAll('button').length, 1);
+});

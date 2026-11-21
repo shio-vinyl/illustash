@@ -6,11 +6,12 @@ import {esc, number} from '../core/format.js';
 import {composing, onTyped} from '../core/keys.js';
 import {session, readError} from '../core/session.js';
 import {state} from '../core/state.js';
-import {pollIndex, indexAction} from '../core/jobs.js';
+import {loadIndex, pollIndex, indexAction} from '../core/jobs.js';
 import {remoteNames, remoteNote} from '../core/settings.js';
-import {catalogChanged, loadTagged, loadWorkTree, loadLocalLinks, castWorks, PSEUDO_NOTES, WORK_NAMES, workName, loadIndex, searchWorks, saveWatch, watchTarget,
+import {catalogChanged, loadTagged, loadWorkTree, loadLocalLinks, castWorks, PSEUDO_NOTES, WORK_NAMES, workName, searchWorks, saveWatch, watchTarget,
   saveWork} from '../core/catalog.js';
-import {$, toast, toastMore, error, namesAllowButton, searchIcon} from './dom.js';
+import {$, toast, toastMore, error, namesAllowButton} from './dom.js';
+import {icon, searchHTML} from './icons.js';
 import {chooseWork, openDialog, openStatic} from './dialog.js';
 import {attr, make, prop, tpl} from './el.js';
 import {createLayer} from './overlay.js';
@@ -60,7 +61,7 @@ export function allWorksButton() {
 // 导出给样式清单页调用（tools/styleguide/live.js，#352）：改名或改参数时，tools/check_styleguide.py 会报出来。
 export function castPop(works) {
   const q = pop.q.trim().toLowerCase(), list = works.filter(w => !q || w.name.toLowerCase().includes(q));
-  return `<div class="menu glass cast-pop" id="castPop"><div class="search-wrap">${searchIcon()}<input type="search" id="castPopQ" placeholder="${t('在 {n} 部作品里找', {n: number(works.filter(w => !w.pseudo).length)})}" value="${esc(pop.q)}" autocomplete="off"></div>
+  return `<div class="menu glass cast-pop" id="castPop"><div class="search-wrap">${searchHTML()}<input type="search" id="castPopQ" placeholder="${t('在 {n} 部作品里找', {n: number(works.filter(w => !w.pseudo).length)})}" value="${esc(pop.q)}" autocomplete="off"></div>
     <div class="cast-wcols">${list.map(w => `<button class="cast-wrow${w.pseudo ? ' pseudo' : ''}" data-tab="${esc(w.key)}"${w.pseudo ? ` title="${esc(PSEUDO_NOTES[w.key])}"` : ''}>${avatar(w.chars[0], 20)}<span>${esc(w.name)}</span><small>${number(w.images)}</small></button>`).join('') || `<p class="muted-note">${t('没有匹配的作品')}</p>`}</div></div>`;
 }
 
@@ -93,10 +94,10 @@ export async function openTagged() {
 
 // ---------- 资料库共用的两个小部件 ----------
 // 搜索框（三个页签各一个）：关掉拼写检查、自动更正和自动大写（#422）；`/` 聚焦 #toolbar 里的搜索框（ui/grid.js）。
-const SEARCH = tpl`<label class="search"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10" cy="10" r="6.5"/><path d="m15 15 5 5"/></svg><input type="search"
-  data-ref="input" spellcheck="false" autocorrect="off" autocapitalize="off" autocomplete="off"></label>`;
+const SEARCH = tpl`<label class="search"><input type="search" data-ref="input" spellcheck="false" autocorrect="off" autocapitalize="off" autocomplete="off"></label>`;
 export function searchField(label) {
   const {el, refs} = SEARCH();
+  el.prepend(icon('search'));
   refs.input.placeholder = label; refs.input.setAttribute('aria-label', label);
   return {el, input: refs.input};
 }

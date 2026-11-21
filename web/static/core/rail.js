@@ -13,10 +13,10 @@
 //   off 为真时变淡、不接收（拖图进画廊时换出来的那组，ui/drag.js）
 import {castWorks} from './catalog.js';
 import {aspect, strip} from './layout.js';
-import {galleryHref, isFav, isManual, withFav} from './galleries.js';
+import {FAV_GALLERY, coversFor, favGallery, galleryHref, isFavGallery, isManual, previewOf, withFav} from './galleries.js';
 import {listeners} from './events.js';
 import {t} from './i18n.js';
-import {number} from './format.js';
+import {monthKey, number} from './format.js';
 import {libraryPrefs} from './prefs.js';
 import {CHARACTER, libraryFilters, onPage, pageOf, viewOf} from './pages.js';
 import {api} from './session.js';
@@ -66,7 +66,7 @@ export function viewRoute(route, v) {
   return {page: viewPage(v), ...keep};
 }
 // 时间轴的一项点了去哪（WEB_V2.md「页面框架与活页条」）：在日历里看那一天所在的月；在按天、网格里去按天视图的那一天。
-// 都带着现在的筛选。按天视图自己能滚过去时（C1 登记 onPick）不换地址。
+// 都带着现在的筛选。按天视图自己能滚过去时（ui/days.js 登记的 onPick）不换地址。
 export const timelineHref = (route, day) => hashFor({...viewRoute(route, pageOf(route).view === 'calendar' ? 'calendar' : 'days'), at: day});
 // 一级入口点了去哪：整理去第一个有待处理的队列，没有就去未识别。
 export function entryHref(id) {
@@ -105,8 +105,19 @@ export function queues(route = state.route) {
 // 点了去这个画廊（按它记着的展示方式落在网格页或展示页，core/galleries.js 的 galleryHref）。gallery 是画廊本身：拖图进画廊时
 // （ui/drag.js）按它判断收不收。
 export function galleryItems(covers = {}) {
-  return withFav().map(g => ({key: isFav(g.id) ? 'fav' : 'g:' + g.id, kind: 'gallery', label: g.name, heart: isFav(g.id), cover: covers[g.id] || null,
-    href: galleryHref(g.id), meta: isFav(g.id) ? '' : isManual(g) ? t('手选画廊') : t('按条件的画廊'), gallery: g}));
+  return withFav().map(g => ({key: isFavGallery(g.id) ? 'fav' : 'g:' + g.id, kind: 'gallery', label: g.name, heart: isFavGallery(g.id), cover: covers[g.id] || null,
+    href: galleryHref(g.id), meta: isFavGallery(g.id) ? '' : isManual(g) ? t('手选画廊') : t('按条件的画廊'), gallery: g}));
+}
+// 画廊的封面：byId 是 {画廊 id: uuid}，按 NSFW 设置批量读（core/galleries.js 的 coversFor）；收藏不在封面接口里，取它的第一张。
+// 读到以后 changed 通知（ui/rail.js 重画画廊这一组）。先后两次读取倒序回来时只认后一次（切换 NSFW 后晚到的旧封面不该留下）。
+export const galleryCovers = {byId: {}, changed: listeners()};
+let coverReads = 0;
+export async function loadGalleryCovers() {
+  const ids = (state.galleries || []).map(g => g.id), seq = ++coverReads;
+  const [covers, fav] = await Promise.all([coversFor(ids).catch(() => ({})), previewOf(favGallery()).catch(() => null)]);
+  if (seq !== coverReads) return;
+  galleryCovers.byId = {...covers, [FAV_GALLERY]: fav?.items?.[0]?.uuid || null};
+  await galleryCovers.changed.emit();
 }
 
 // ---------- 图库：时间轴 ----------
@@ -135,7 +146,7 @@ export function groupTimeline(days) {
   });
   return items;
 }
-// 按天视图滚到某一天时选中哪一项（C1 调 ui/rail.js 的 selectDay）：那一天在时间轴里就是它，否则是它所在的月，再否则是年。
+// 按天视图滚到某一天时选中哪一项（ui/days.js 调 ui/rail.js 的 selectDay）：那一天在时间轴里就是它，否则是它所在的月，再否则是年。
 export function itemForDay(items, day) {
   if (!day) return '';
   for (const key of ['d:' + day, 'm:' + day.slice(0, 7), 'y:' + day.slice(0, 4)]) if (items.some(x => x.key === key)) return key;
@@ -183,7 +194,6 @@ export function railReveal({top, h, scroll, view, total}, center = false) {
 export const timeline = {items: [], params: '', months: new Map(), dirty: true, changed: listeners()};
 let timelineRun = null;
 const samples = list => (list || []).filter(x => x?.uuid).slice(0, 4).map(x => ({id: x.uuid, w: Number(x.width) || 0, h: Number(x.height) || 0}));
-const thisMonth = (now = new Date()) => `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 export function forgetTimeline() { timeline.dirty = true; }
 function daysOf(months) {
   const days = new Map();
@@ -193,7 +203,7 @@ function daysOf(months) {
   }
   return groupTimeline([...days.values()].sort((a, b) => b.day.localeCompare(a.day)));
 }
-export async function loadTimeline(route = state.route, {newest = false, month: start = thisMonth()} = {}) {
+export async function loadTimeline(route = state.route, {newest = false, month: start = monthKey()} = {}) {
   const base = {...libraryFilters(route), ...(state.nsfw ? {nsfw: state.nsfw} : {})}, key = JSON.stringify(base);
   const same = key === timeline.params;
   if (same && !timeline.dirty && !newest) return;

@@ -2,6 +2,8 @@
 import {t} from './i18n.js';
 import {workName} from './catalog.js';
 import {state} from './state.js';
+// 角色的圆头像：角色目录里的封面 uuid（core/meta.js 读的摘要行，/api/characters 的 cover）；没有是 ''。
+export const avatarOf = id => state.charMap.get(id)?.cover || '';
 export const REASONS = {photo: t('真人/照片'), screenshot: t('截图'), text: t('文字图'), manual: t('手动排除')};
 // 两张相似的图是什么关系；其中哪些折叠成一张是图库设置。
 export const RELATION_NAMES = {identical: t('完全相同'), duplicate: t('重复'), subtle: t('细微差分'), variant: t('差分'), crop: t('局部重复'), edit: t('局部编辑')};

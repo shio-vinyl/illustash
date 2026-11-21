@@ -95,7 +95,6 @@ export function artistsView(s, {onDraw} = {}) {
   // 「再显示一些」滚进视野（提前 600 px）就读下一页。
   // 每画完一次重新观察：读完一页后按钮如果仍在范围里，交叉状态没变就不会再通知。
   const io = typeof IntersectionObserver === 'function' ? s.observe(new IntersectionObserver(es => { if (es.some(e => e.isIntersecting)) more(); }, {rootMargin: '600px'})) : null;
-  let lastEmpty = '';
   function update() {
     value(search.input, dir.q); value(tools.refs.order, dir.order);
     const failedFirst = dir.failed && !dir.items.length;
@@ -104,9 +103,7 @@ export function artistsView(s, {onDraw} = {}) {
     cards.set(dir.items.map(cardData));
     const empty = dir.total !== null && !dir.items.length && !dir.failed;
     show(refs.empty, empty);
-    const e = empty ? emptyState() : null, sig = e ? JSON.stringify(e) : '';
-    if (e && sig !== lastEmpty) drawEmpty(refs.empty, e);
-    lastEmpty = sig;
+    if (empty) drawEmpty(refs.empty, emptyState());
     show(refs.more, dir.items.length > 0 && !done());
     if (io) { io.unobserve(refs.more); if (!refs.more.hidden) io.observe(refs.more); }
     onDraw?.();

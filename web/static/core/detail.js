@@ -72,7 +72,7 @@ export const howFound = m => m.status === 'machine' ? t('机器识别') : m.orig
 
 // ---- 偶尔一问「是 TA 吗？」 ----
 // 浏览时每隔几张图最多问一次，被略过三次后本次访问不再问；整理页（某个角色、未识别…）总是显示。回答发到
-// /api/ask/answer，供学习使用（ui/detail.js 的 answerAsk）。
+// /api/ask/answer，供学习使用（ui/detail.js 的 answerQuestion，请求体是 core/ask.js 的 questionBody）。
 const ask = {cool: 0, ignored: 0, off: false, pending: null};
 /** 这张图要不要显示提问。enabled 是视图选项里的「偶尔问一句」。同一张图再画（翻回来、写入后重读）时结论不变。 */
 export function shouldAsk(d, ident, enabled) {
@@ -93,5 +93,3 @@ export function resetAsk() { Object.assign(ask, {cool: 0, ignored: 0, off: false
 /** 提问那一句的说明：随机抽查、像你确认过的 TA、和谁分不清。 */
 export const askWhy = q => q.kind === 'audit' ? t('随机抽查') : q.kind === 'hint' ? t('和你确认过的 TA 很像') + (q.current_name ? ' · ' + t('现在算作 {name}', {name: q.current_name}) : '')
   : q.kind === 'ambiguous' ? t('和 {name} 分不太清', {name: q.rival_name}) : '';
-/** 回答发给 /api/ask/answer 的内容。how 是 'yes'、'no' 或 'switch'（是对手那个角色）。 */
-export const askBody = ({q, ident}, how) => ({ids: [ident], entity: q.entity, kind: q.kind, ...(how === 'yes' ? {yes: [ident]} : {no: [ident]}), ...(how === 'switch' ? {switch: q.rival} : {})});

@@ -5,7 +5,7 @@
 // 新增一个页面要做什么，见 docs/WEB_UI_MAP.md「新增一个页面」。
 import {isMac} from './format.js';
 import {t} from './i18n.js';
-import {conditions as conditionLists, count as conditionCount, queryParams} from './filters.js';
+import {conditions as conditionLists, count as conditionCount, parseList, queryParams} from './filters.js';
 import {likeParams} from './like.js';
 import {showFor, showOf} from './gallery_shows.js';
 import {state} from './state.js';
@@ -36,7 +36,8 @@ import {state} from './state.js';
 //   sortPref   改了排序记在哪个偏好里（core/route.js 的 sortKey）；不写就是这页自己的「sort.<页面名>」
 //   pool/params 后端 /api/assets 的 pool 参数，以及该页其余查询参数
 //   bar        选择栏的种类；同时决定 S／X／Y／N 几个快捷键在这页是否生效
-//   card       卡片上额外的角标
+//   hint       底栏的操作提示（网格页由 ui/grid.js 写，面板页在进页和同一页又画一次时由 ui/shell.js 的 applyRoute 写）
+//   card      卡片上额外的角标
 //   directory  需要完整的角色目录（不是摘要行）
 //   guideTick  进入本页算上手清单的哪一步
 //   gallery    画廊的网格页（#445）：地址总带着条件，不带查询时按保存的条件打开；gridLayout(r) 是这个画廊的展示方式要的分行
@@ -51,11 +52,10 @@ export const narrowed = r => !!(r.q || r.tag || r.utag || r.check || r.doubt || 
 // 只按收藏筛选、没有别的条件的图库（#447、#679）：收藏的旧地址，core/route.js 把它改写到收藏画廊 #/gallery/fav（#710），
 // 所以运行时的路由不会是它。
 const NOT_FAV_ONLY = ['q', 'tag', 'utag', 'work', 'day', 'artist', 'char', 'from', 'to', 'like'];
-const asList = v => { if (Array.isArray(v)) return v; try { const x = JSON.parse(v || '[]'); return Array.isArray(x) ? x : []; } catch { return []; } };
 export function favoritesOnly(route = state.route) {
   if (route.page !== 'library' || NOT_FAV_ONLY.some(k => Array.isArray(route[k]) ? route[k].length : route[k])) return false;
-  const has = asList(route.has);
-  return has.length === 1 && has[0] === 'fav' && !asList(route.not).length;
+  const has = parseList(route.has);
+  return has.length === 1 && has[0] === 'fav' && !parseList(route.not).length;
 }
 // 图库的筛选（搜索词、组合条件、旧的单值参数）读成后端的查询参数：/api/assets、/api/home、/api/calendar 都接受同一组（#718）。
 // 按天、日历的取数把它带上（#707、#708）；网格另外带「更多像这张的」的例图（libraryBase.params）。不含 NSFW 设置：取数时另带
@@ -76,7 +76,8 @@ const libraryBase = {
 
 const list = [
   // 图库的三种视图（#706）：按天（原来的首页，#677）、网格（原来的图库）、日历。打开 App 落在按天。
-  {name: 'days', root: true, area: 'homePage', panel: true, keys: 'shown', click: 'own', entry: 'library', view: 'days', filters: true, toolbar: 'filters', emptyIcon: 'image'},
+  {name: 'days', root: true, area: 'homePage', panel: true, keys: 'shown', click: 'own', entry: 'library', view: 'days', filters: true, toolbar: 'filters', emptyIcon: 'image',
+    hint: () => t('点图片看详情 · 点角色名只看 TA')},
   {name: 'library', ...libraryBase, click: 'browse', sortPref: 'sortLibrary', emptyIcon: 'image'},
   {name: 'calendar', area: 'calendarPage', panel: true, click: 'own', entry: 'library', view: 'calendar', filters: true, toolbar: 'filters', emptyIcon: 'calendar'},
   // 画廊（#445、#710）：全部画廊（收藏在最前），和一个画廊。一个画廊按它的展示方式（core/gallery_shows.js）落在两页之一：
@@ -182,7 +183,6 @@ export const poolIs = (route, ...pools) => pools.includes(pageOf(route).pool);
 //                        藏起头部；数据变了（元数据重读）由部件自己在作用域上听 onMeta，不跟着页头重画
 //   headingHTML(r, ctx)  旧写法（存量）：[标题, 副标题, 右侧链接 HTML]，拼进 innerHTML。各页步骤改到哪页就迁到 head；「更多像这张的」
 //                        另用 drawHeading 自己画整个页头（也是存量）
-//   wireHeading(h, r)    headingHTML 画好之后给右侧的按钮挂上处理函数（旧写法；整理页 #713 之后没有页面再用，ui/shell.js 里的钩子待删）
 //   help(r), helpHint    标题旁「?」里的说明（一行一句）；helpHint 为真时再接上本页的 hint，一个「·」一行（#527）
 //   onMeta(info)         计数等元数据到达后重画什么；没有的页面重画工具栏
 //   emptyNext(r)         网格空了时空状态下面的去处（#386 的 2-12）：[{label, href}]（链接）或 [{label, act}]（按钮），

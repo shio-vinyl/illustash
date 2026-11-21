@@ -24,7 +24,8 @@ export const FIT_MIN = .5, FIT_MAX = 2.4;
 export const DEFAULT_RATIO = .75;
 // 图本身的宽高比；尺寸未知时是 0。
 export const aspect = item => item?.width > 0 && item?.height > 0 ? item.width / item.height : 0;
-export const clampRatio = r => Math.min(FIT_MAX, Math.max(FIT_MIN, r));
+// 截到上下限里；整理页的方图（ui/judge.js）允许更窄的长图，传自己的下限。
+export const clampRatio = (r, min = FIT_MIN, max = FIT_MAX) => Math.min(max, Math.max(min, r));
 // 不是正的有限数（0 表示尺寸未知，或者算坏了的 NaN）按 3:4 算。
 const usable = r => Number.isFinite(r) && r > 0 ? r : DEFAULT_RATIO;
 // 已知尺寸的图（ratioAt(i) 非 0）的平均宽高比（按上下限截过），用来估还没读到尺寸的图；一张都没有时是 3:4。

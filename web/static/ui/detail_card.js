@@ -11,14 +11,14 @@
 //
 // 大图底栏（ui/viewer.js）用这里的 identities({compact: true, scope}) 和 askBar()。
 import {t} from '../core/i18n.js';
-import {imageUrl as img, number, thumbSize} from '../core/format.js';
+import {coverUrl, imageUrl, number, thumbSize} from '../core/format.js';
 import {evidence, fromExt, howFound, primaryOf, askWhy} from '../core/detail.js';
-import {REASONS, nameWithWork, workLabel} from '../core/labels.js';
+import {REASONS, avatarOf, nameWithWork, workLabel} from '../core/labels.js';
 import {unreadableText} from '../core/jobs.js';
 import {charHash, filterRoute, hashFor} from '../core/route.js';
 import {state} from '../core/state.js';
 import {artistBlock} from './artists.js';
-import {heartIcon} from './favorites.js';
+import {icon} from './icons.js';
 import {canReveal, revealLabel} from '../core/files.js';
 import {attr, cls, make, refill, rich, show, text, tpl} from './el.js';
 import {monthBars} from './month_bars.js';
@@ -26,8 +26,6 @@ import {keyed} from './keyed.js';
 import {app} from './scope.js';
 import {setTint} from './tint.js';
 
-// 角色的圆头像：资料库里的封面（/api/characters 的 cover）。
-const avatarOf = id => state.charMap.get(id)?.cover || '';
 function button(className, label, data = {}, title = '') {
   const b = make('button', className); b.type = 'button';
   if (label) b.append(label);
@@ -102,8 +100,7 @@ function fillVariants(node, m, compact) {
   show(node, (!compact && own.length) || more);
 }
 function setAvatar(node, id) {
-  const cover = avatarOf(id);
-  attr(node, 'src', cover ? img(cover, 'thumb') : null);
+  attr(node, 'src', coverUrl(avatarOf(id)));
 }
 // 按位置复用的一组行：只增不删，用不上的用类名藏起来（不切 hidden 特性，见 ui/viewer.js 的 arrange）。
 function pool(node, create) {
@@ -216,7 +213,7 @@ const CARD = tpl`<article class="dc is-empty" aria-busy="false">
 /** 详情卡片。on 是 {act(name, data, event, d), artist: {verdict, find, findMore}}，见文件头和 ui/detail.js 的 mount。 */
 export function detailCard(on) {
   const {el, refs} = CARD(), s = app.child('detail-card');
-  refs.fav.append(heartIcon());
+  refs.fav.append(icon('heart'));
   const ask = askBar(), who = identities({scope: s}), artists = artistBlock(on.artist, s);
   refs.askSlot.replaceWith(ask.el); refs.whoSlot.replaceWith(who.el); refs.artistSlot.replaceWith(artists.el);
   s.add(ask);   // who、artists 的作用域是 s 的子作用域，跟着释放
@@ -235,7 +232,7 @@ export function detailCard(on) {
   function failImage() { show(refs.img, false); text(refs.missing, unreadableText()); show(refs.missing, true); }
   // 预览图：新图解码好了再换上去，换之前一直显示上一张（翻页不闪白）；第一次直接设。
   function preview(uuid) {
-    const url = img(uuid, 'preview');
+    const url = imageUrl(uuid, 'preview');
     if (wanted === url) return;
     wanted = url;
     const put = () => { if (wanted !== url) return; show(refs.img, true); show(refs.missing, false); attr(refs.img, 'src', url); shown = url; };
@@ -290,7 +287,7 @@ export function detailCard(on) {
       text(refs.dupTitle, dups.length ? t('重复副本 · 共 {n} 份', {n: dups.length + 1}) : '');
       refill(refs.dups, JSON.stringify(dups.map(x => [x.uuid, x.pos, x.size, x.added_at, x.names])), () => dups.map(x => {
         const b = button('dc-dup', '', {act: 'copy', id: x.uuid}, t('查看这份副本')), pic = make('img');
-        pic.src = img(x.uuid, thumbSize(55)); pic.alt = ''; pic.loading = 'lazy';
+        pic.src = imageUrl(x.uuid, thumbSize(55)); pic.alt = ''; pic.loading = 'lazy';
         const words = make('span'), small = make('small', '', x.names.length ? x.names.join(' · ') : t('未识别'));
         words.append(make('b', '', `${x.pos}/${x.size}`), ` ${(x.added_at || '').slice(0, 10)}`, make('br'), small);
         b.append(pic, words); return b;
@@ -334,7 +331,7 @@ export function detailCard(on) {
       }
       samePics.forEach(({b, pic}, i) => {
         const u = recent[i]; show(b, !!u); if (!u) return;
-        attr(b, 'data-id', u); attr(pic, 'src', img(u, thumbSize(85)));
+        attr(b, 'data-id', u); attr(pic, 'src', imageUrl(u, thumbSize(85)));
       });
     },
   };

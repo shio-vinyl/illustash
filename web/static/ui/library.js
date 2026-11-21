@@ -1,6 +1,6 @@
 // 图库（#706）：网格视图的页头和说明，以及这几页空了时的去处。按天视图在 ui/days.js（#707），
-// 网格本身在 ui/grid.js（C2 #708），日历在 ui/calendar.js（#708）。角色页的页头还在 ui/shell.js 的 drawCharHeading，
-// 由角色页那一步（G #712）搬进 ui/character.js。三种视图之间的切换画在页头上（ui/shell.js 按注册表的 view）。
+// 网格本身在 ui/grid.js（#708），日历在 ui/calendar.js（#708），角色页的页头和横幅在 ui/character.js（#712）。三种视图之间的
+// 切换画在页头上（ui/shell.js 按注册表的 view）。
 import {t} from '../core/i18n.js';
 import {implement} from '../core/pages.js';
 import {state} from '../core/state.js';

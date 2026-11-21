@@ -5,7 +5,8 @@
 // - 画师（ui/artist_dir.js）：搜索、排序。
 // 照 docs/WEB_V2.md「页面样板」：进页面时在页面作用域上建一次三个页签的部件，切页签（同一页）只显隐、更新；数据在 core/catalog.js。
 // 对话框改了数据会发 catalogChanged（ui/catalog.js），这里据此更新。
-import {catalogChanged, forgetActivity, loadActivity, loadIndex, loadTagged, loadWorkTree, searchCharacters, workKey} from '../core/catalog.js';
+import {catalogChanged, forgetActivity, loadActivity, loadTagged, loadWorkTree, searchCharacters, workKey} from '../core/catalog.js';
+import {loadIndex} from '../core/jobs.js';
 import {number} from '../core/format.js';
 import {t} from '../core/i18n.js';
 import {onTyped} from '../core/keys.js';
@@ -70,8 +71,6 @@ function indexView(s) {
     const tab = section();
     show(refs.cast, tab === ''); show(refs.works, tab === 'works'); show(refs.artists, tab === 'artists');
     show(refs.error, false);
-    // 底栏的张数和操作提示是网格页的，资料库不用（#711）。
-    for (const id of ['resultCount', 'hint']) if ($(id)) text($(id), '');
   }
   async function enterCast(route) {
     cast.list = null; value(q.input, '');

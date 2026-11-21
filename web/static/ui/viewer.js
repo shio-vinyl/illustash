@@ -12,7 +12,7 @@
 //   传进来：这里不导入 ui/grid.js、ui/detail.js（tools/check_frontend.py 规则 1 不许新增循环导入）。
 // - 写 state.viewer、state.viewerItem（core/state.js 的「大图」一组）。
 import {t} from '../core/i18n.js';
-import {imageUrl as img, number} from '../core/format.js';
+import {imageUrl, number} from '../core/format.js';
 import {aspect} from '../core/layout.js';
 import {unreadableText} from '../core/jobs.js';
 import {detailAfterViewer} from '../core/modes.js';
@@ -80,7 +80,7 @@ function fill(slot, item) {
   show(slot.frame, true); show(slot.missing, false); show(slot.high, false); attr(slot.high, 'src', null);
   css(slot.zoom, 'transform', null);
   ratio(slot, aspect(item), item.width);
-  attr(slot.low, 'src', img(item.uuid, 'preview'));
+  attr(slot.low, 'src', imageUrl(item.uuid, 'preview'));
   slot.ready = (slot.low.decode?.() || Promise.resolve()).then(() => { if (!aspect(item) && slot.low.naturalWidth) ratio(slot, slot.low.naturalWidth / slot.low.naturalHeight); }, () => {});
   return slot.ready;
 }
@@ -117,11 +117,11 @@ function prepare() {
       const slot = others.find(x => x.uuid === w.uuid) || others.find(x => !near.some(v => v.uuid === x.uuid));
       if (slot) { others.splice(others.indexOf(slot), 1); fill(slot, w); }
     }
-    for (const d of [-2, 2]) { const x = state.items[i + d]; if (x && typeof Image === 'function') new Image().src = img(x.uuid, 'preview'); }
+    for (const d of [-2, 2]) { const x = state.items[i + d]; if (x && typeof Image === 'function') new Image().src = imageUrl(x.uuid, 'preview'); }
   }
   // 原图只留当前那张：翻走的槽放掉原图，免得三张原图的解码结果一直占着图形内存（#683 量到 Chromium GPU 进程多出约 150 MiB）。
   for (const x of slots) if (x !== current && x.high.getAttribute('src')) { show(x.high, false); attr(x.high, 'src', null); }
-  if (!current.high.getAttribute('src')) attr(current.high, 'src', img(item.uuid, 'full'));
+  if (!current.high.getAttribute('src')) attr(current.high, 'src', imageUrl(item.uuid, 'full'));
 }
 
 // 关掉以后放掉原图（预览图留着，下次打开同一张时不用再解码），复位缩放；槽忘掉自己放的是哪张，下次 fill 会重写。

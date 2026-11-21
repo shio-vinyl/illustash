@@ -1,28 +1,28 @@
 // 活页条（#706）：一级入口（图库、资料库、画廊、整理）、二级层、底部的同步圆环和设置。全应用一直在的部件，挂在 app 作用域上，
 // 不随换页释放。数据（入口、地址落在哪一项、时间轴、钉住）在 core/rail.js；这里只画和动。
 //
-// 给各页的接口：
-//   provide(entry, fn)     换这个入口二级层的内容：fn() 返回项的列表（core/rail.js 开头写了项的字段），refresh 时重新调。
-//                          B 给四个入口都登记了默认的，各页步骤要接手时再登记一个（例如 E 的画廊封面）
+// 对外的接口：
 //   refresh(entry?)        数据变了，重画一个入口（不给就是全部）
 //   select(key)            在当前入口里选中某项（'' 不选），指示条滑过去
-//   selectDay(day)         C1：按天视图滚到某一天时调；那一天在时间轴里就选中它，否则选中它所在的月或年
-//   onPick(entry, fn)      点了二级项（或用 ⌥↑↓ 走到）：fn(item, event) 返回 true 表示自己处理了、不换地址（C1：已经在按天视图里时
+//   selectDay(day)         按天视图滚到某一天时调：那一天在时间轴里就选中它，否则选中它所在的月或年
+//   onPick(entry, fn)      点了二级项（或用 ⌥↑↓ 走到）：fn(item, event) 返回 true 表示自己处理了、不换地址（已经在按天视图里时
 //                          直接滚到 item.first 那一天），否则按项的链接走
-//   count(key, n)          H：改一个队列的数字（数字滚动）
-//   mode(name, items, hint) E：临时换成另一组项（拖放时换成画廊封面，hint 是上面的一句提示）；mode(null) 换回。项带 off 时变淡、不接收
+//   count(key, n)          改一个队列的数字（数字滚动；整理页答完一组时先按本地算的写）
+//   mode(name, items, hint) 临时换成另一组项（拖放时换成画廊封面，hint 是上面的一句提示）；mode(null) 换回。项带 off 时变淡、不接收
 //   railKey(e)             键盘（ui/grid.js 的键盘处理里调）：⌘1–4（Windows 上 Ctrl）切一级，⌥↑↓ 在二级里移动，
 //                          ⌥⇧↑↓ 挪动钉住的项；处理了返回 true
 //   railRoute(route)       换页时（ui/shell.js applyRoute）：点亮入口和项，收起窄窗口的抽屉，需要时重读时间轴
+// 文件内部：provide(entry, fn) 登记一个入口二级层的内容（fn() 返回项的列表，字段写在 core/rail.js 开头；四个入口都在 wireRail
+// 里登记，refresh 时重新调）。
 //
 // 动效（都经 ui/motion.js，「减少动态效果」时直接到终态）：切一级时标签带回弹滑过去（CSS 过渡，--dur-3、--ease-spring），
 // 旧的二级项依次退场、新的依次进场；悬停二级项时它探出来，相邻的项微微探出，旁边滑出预览卡（ui/rail_peek.js）；
 // 指示条跟着选中项滑；时间轴、钉住的项增减时其余平滑让位；二级层滚动时上下边缘渐隐（下面的「滚动与渐隐」）。
-import {ENTRIES, entryHref, forgetTimeline, galleryItems, itemForDay, loadPins, loadTimeline, movePin, noteLibraryView, pinItems, pins, queues, railAt,
+import {ENTRIES, entryHref, forgetTimeline, galleryCovers, galleryItems, itemForDay, loadGalleryCovers, loadPins, loadTimeline, movePin, noteLibraryView,
+  pinItems, pins, queues, railAt,
   railEdges, railReveal, tidyWaiting, timeline, timelineHref} from '../core/rail.js';
-import {FAV, coversFor, favGallery, previewOf} from '../core/galleries.js';
-import {number} from '../core/format.js';
-import {I18N, t} from '../core/i18n.js';
+import {coverUrl, dayWithWeekday, monthLong, monthShort, number} from '../core/format.js';
+import {t} from '../core/i18n.js';
 import {composing} from '../core/keys.js';
 import {onJob} from '../core/jobs.js';
 import {pageOf} from '../core/pages.js';
@@ -35,25 +35,14 @@ import {animate, countTo, enter, exit, reduced} from './motion.js';
 import {buildPeek, followScroll, hover, hoveredItem} from './rail_peek.js';
 import {createLayer} from './overlay.js';
 import {$} from './dom.js';
-import {heartIcon} from './favorites.js';
+import {hasIcon, icon} from './icons.js';
 
 // 二级项是链接（读屏读成链接）；外层的 #railItems 是一组导航，不另设列表的角色。
 const ITEM = tpl`<a class="rail-item" draggable="false"><span class="rail-cover" data-ref="cover"><span class="rail-stack" data-ref="stack"><img data-ref="img2" alt=""
   draggable="false"></span><img data-ref="img" alt="" draggable="false" loading="lazy" decoding="async"><span class="rail-icon" data-ref="icon"></span></span><span
   class="rail-mark" data-ref="mark"></span><span class="rail-count" data-ref="count"></span><span class="rail-heart" data-ref="heart" hidden></span></a>`;
-// 整理各队列的图标（和原来侧栏的一样），以及没有封面的画廊（收藏还没有图、画廊的条件现在没有图）。
-const ICONS = {
-  unmatched: tpl`<svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="7.2"/><path d="M8 7.8a2.2 2.2 0 1 1 3 2c-.6.3-1 .8-1 1.4v.4M10 14.2v.1"/></svg>`,
-  // 可能认错（#787）：两个叠在一起的圆，是 A 还是 B。
-  doubts: tpl`<svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="7.6" cy="10" r="4.8"/><circle cx="12.4" cy="10" r="4.8"/></svg>`,
-  duplicates: tpl`<svg viewBox="0 0 20 20" aria-hidden="true"><rect x="3.5" y="6" width="9.5" height="11" rx="2"/><path d="M7 3h7.5A2.5 2.5 0 0 1 17 5.5V13"/></svg>`,
-  excluded: tpl`<svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="7.2"/><path d="M5 15 15 5"/></svg>`,
-  audit: tpl`<svg viewBox="0 0 20 20" aria-hidden="true"><rect x="4" y="3.5" width="12" height="14" rx="2"/><path d="M7.5 9.8 9.3 11.6 12.8 8"/></svg>`,
-  identity: tpl`<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 7h11l-3-3M16 13H5l3 3"/></svg>`,
-  fav: () => ({el: heartIcon()}),   // 心形只在 ui/favorites.js 画
-  gallery: tpl`<svg viewBox="0 0 20 20" aria-hidden="true"><rect x="3" y="4.5" width="14" height="11" rx="2"/><path d="m3.5 13.5 4-4 3 3 2-2 4 4"/></svg>`,
-};
-const iconOf = x => x.kind === 'queue' ? x.key : x.kind === 'gallery' && !x.cover ? (x.key === 'fav' ? 'fav' : 'gallery') : '';
+// 整理各队列的图标（和原来侧栏的一样，键就是队列的键），以及没有封面的画廊（收藏还没有图、画廊的条件现在没有图）。图形在 ui/icons.js。
+const iconOf = x => x.kind === 'queue' ? (hasIcon(x.key) ? x.key : '') : x.kind === 'gallery' && !x.cover ? (x.key === 'fav' ? 'heart' : 'gallery') : '';
 
 const s = app.child('rail');
 // 帧任务的令牌（#751）：活页条全应用只有一份，在模块顶层、在它自己的作用域上取，一种用途一个。
@@ -61,8 +50,6 @@ const MEASURE = s.key('rail:measure'), IND = s.key('rail:ind'), EDGES = s.key('r
 const REVEAL = s.key('rail:reveal'), FOCUS = s.key('rail:focus'), SCROLL = s.key('rail:scroll');
 const providers = new Map(), pickers = new Map(), lists = new Map();
 let current = '', selected = '', temp = null, pitch = 0, wired = false, swapping = 0;
-const monthName = new Intl.DateTimeFormat(I18N.locale, {month: 'short'});
-const thumb = id => id ? `/image?id=${encodeURIComponent(id)}&size=thumb` : '';
 const itemsOf = box => box ? [...box.children].filter(x => !x.inert) : [];
 const itemAt = (box, key) => itemsOf(box).find(x => x.dataset.key === key) || null;
 // 二级层可见的内容变了（换入口、换模式、收起抽屉）或悬停的项被摘掉：预览立刻收起，不留在新的那组上。
@@ -71,14 +58,14 @@ const dropHover = el => { if (!el || el === hoveredItem()) hover(null, {now: tru
 // ---------- 一项 ----------
 function mark(item) {
   if (item.kind === 'day') return String(Number(item.day.slice(8)));
-  if (item.kind === 'month') return monthName.format(new Date(Number(item.key.slice(2, 6)), Number(item.key.slice(7)) - 1, 1));
+  if (item.kind === 'month') return monthShort(item.key.slice(2));
   if (item.kind === 'year') return item.key.slice(2);
   if (item.kind === 'work') return [...(item.label || '')][0] || '';
   return '';
 }
 function itemWidget(item) {
   const {el, refs} = ITEM();
-  refs.heart.append(heartIcon());
+  refs.heart.append(icon('heart'));
   el.dataset.key = item.key; el.dataset.kind = item.kind;
   el.railCount = refs.count;
   const update = x => {
@@ -87,13 +74,13 @@ function itemWidget(item) {
     cls(el, 'is-round', !!x.round);
     // 拖图进画廊时（mode）不接收的项（按条件的画廊，#710）：变淡，读屏读作不可用。
     attr(el, 'aria-disabled', x.off ? 'true' : null); cls(el, 'is-off', !!x.off);
-    attr(refs.img, 'src', thumb(x.cover) || null); show(refs.img, !!x.cover);
-    attr(refs.img2, 'src', thumb(x.cover2) || null); show(refs.stack, x.kind === 'month' || x.kind === 'year');
+    attr(refs.img, 'src', coverUrl(x.cover)); show(refs.img, !!x.cover);
+    attr(refs.img2, 'src', coverUrl(x.cover2)); show(refs.stack, x.kind === 'month' || x.kind === 'year');
     text(refs.mark, mark(x)); show(refs.mark, !!mark(x));
     show(refs.heart, !!x.heart && !!x.cover);
-    const icon = iconOf(x);
-    if (refs.icon.dataset.icon !== icon) { refs.icon.dataset.icon = icon; refs.icon.replaceChildren(...(ICONS[icon] ? [ICONS[icon]().el] : [])); }
-    cls(el, 'is-icon', !!icon);
+    const name = iconOf(x);
+    if (refs.icon.dataset.icon !== name) { refs.icon.dataset.icon = name; refs.icon.replaceChildren(...(name ? [icon(name)] : [])); }
+    cls(el, 'is-icon', !!name);
     // 数字只给整理的队列；时间轴的张数写在悬停预览里。数字正在滚动（count）时不打断它，滚完由 count 写终值。
     const n = x.kind === 'queue' ? x.count : 0;
     if (!counting.has(refs.count)) text(refs.count, n ? number(n) : '');
@@ -141,7 +128,7 @@ function fill(entry) {
   list.items = items; list.keyed.set(items);
   if (entry === current && !temp) s.read(measure, MEASURE);
 }
-export function provide(entry, fn) { providers.set(entry, fn); fill(entry); }
+function provide(entry, fn) { providers.set(entry, fn); fill(entry); }
 export function refresh(entry) { for (const e of entry ? [entry] : providers.keys()) fill(e); if (!entry || entry === 'tidy') dot(); }
 export function onPick(entry, fn) { pickers.set(entry, fn); }
 
@@ -221,7 +208,7 @@ function showEntry(entry) {
   if (temp) return;
   swap(lists.get(was)?.box, providers.has(entry) ? listFor(entry).box : null).catch(() => {});
 }
-// 二级层临时换成另一组（E 的拖放）。
+// 二级层临时换成另一组（拖图进画廊时换成画廊封面，ui/drag.js）。
 export function mode(name, items = [], hint = '') {
   if (!name) {
     if (!temp) return;
@@ -345,7 +332,7 @@ export function wireRail() {
   wired = true;
   buildPeek(s);
   provide('tidy', () => queues());
-  provide('galleries', () => galleryItems(galleryCovers));
+  provide('galleries', () => galleryItems(galleryCovers.byId));
   provide('catalog', () => pinItems());
   provide('library', () => timeline.items.map(x => ({...x, label: timelineLabel(x), meta: timelineMeta(x), href: timelineHref(state.route, x.first)})));
   // 时间轴读完重画：原来选中的那项还在就留着（网格里 ⌥↑↓ 移过去的、按天视图滚动时 selectDay 设的），不在了才回到地址上的那一项。
@@ -353,6 +340,7 @@ export function wireRail() {
     refresh('library');
     if (current === 'library' && !timeline.items.some(x => x.key === selected)) select(railAt(state.route, state.char).item);
   });
+  galleryCovers.changed.on(() => refresh('galleries'));
   pins.changed.on(() => { refresh('catalog'); select(railAt(state.route, state.char).item); });
   loadPins().then(() => refresh('catalog'));
   // 写入、撤销之后旧月份的张数和封面可能变了：整条重读。同步到了新图只重读最新的月。
@@ -391,12 +379,9 @@ export function wireRail() {
   }
 }
 // 时间轴每一项悬停时写什么：哪天（或哪个月、哪一年）、几张。
-const dayTitle = new Intl.DateTimeFormat(I18N.locale, {month: 'long', day: 'numeric', weekday: 'short'});
-const monthTitle = new Intl.DateTimeFormat(I18N.locale, {year: 'numeric', month: 'long'});
-const date = key => new Date(key + 'T00:00:00');
 function timelineLabel(x) {
-  if (x.kind === 'day') return dayTitle.format(date(x.day));
-  return x.kind === 'year' ? t('{year} 年', {year: x.key.slice(2)}) : monthTitle.format(date(x.key.slice(2) + '-01'));
+  if (x.kind === 'day') return dayWithWeekday(x.day);
+  return x.kind === 'year' ? t('{year} 年', {year: x.key.slice(2)}) : monthLong(x.key.slice(2));
 }
 function timelineMeta(x) {
   const n = t('{n} 张', {n: number(x.count)});
@@ -407,16 +392,3 @@ export function railNsfw() {
   if (current === 'library') loadTimeline(state.route).catch(() => {});
   loadGalleryCovers();
 }
-// 画廊的封面按 NSFW 设置批量读（core/galleries.js）；收藏不在封面接口里，取它的第一张。读到以后重画画廊这一组。
-let galleryCovers = {};
-// 先后两次读取倒序回来时只认后一次（切换 NSFW 后晚到的旧封面不该留下）。
-let coverReads = 0;
-export async function loadGalleryCovers() {
-  const ids = (state.galleries || []).map(g => g.id), seq = ++coverReads;
-  const [covers, fav] = await Promise.all([coversFor(ids).catch(() => ({})), previewOf(favGallery()).catch(() => null)]);
-  if (seq !== coverReads) return;
-  galleryCovers = {...covers, [FAV]: fav?.items?.[0]?.uuid || null};
-  refresh('galleries');
-}
-// 现在的封面：{画廊 id: uuid}（拖图进画廊时换上的那组项用它）。
-export const railCovers = () => galleryCovers;

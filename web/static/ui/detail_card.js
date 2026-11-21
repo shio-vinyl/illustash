@@ -11,7 +11,7 @@
 //
 // 大图底栏（ui/viewer.js）用这里的 identities({compact: true, scope}) 和 askBar()。
 import {t} from '../core/i18n.js';
-import {imageUrl as img, monthText, number, thumbSize} from '../core/format.js';
+import {imageUrl as img, number, thumbSize} from '../core/format.js';
 import {evidence, fromExt, howFound, primaryOf, askWhy} from '../core/detail.js';
 import {REASONS, nameWithWork, workLabel} from '../core/labels.js';
 import {unreadableText} from '../core/jobs.js';
@@ -19,7 +19,8 @@ import {charHash, filterRoute, hashFor} from '../core/route.js';
 import {state} from '../core/state.js';
 import {artistBlock} from './artists.js';
 import {canReveal, revealLabel} from '../core/files.js';
-import {attr, cls, css, make, refill, rich, show, text, tpl} from './el.js';
+import {attr, cls, make, refill, rich, show, text, tpl} from './el.js';
+import {monthBars} from './month_bars.js';
 import {keyed} from './keyed.js';
 import {app} from './scope.js';
 import {setTint} from './tint.js';
@@ -314,17 +315,12 @@ export function detailCard(on) {
     /** 角色卡：每月张数的柱子和同一角色的几张。st 为空时藏起来。 */
     stats(st, opts, ident, charId) {
       show(refs.stats, !!st && (opts.chart || opts.same)); if (!st) return;
-      const months = st.months || [], max = Math.max(1, ...months.map(m => m.count)), now = months.at(-1)?.count || 0;
+      const months = st.months || [], now = months.at(-1)?.count || 0;
       show(refs.total.parentNode, opts.chart); show(refs.bars, opts.chart);
       refill(refs.total, JSON.stringify([st.count, st.first]), () => [rich(t('共 {n} 张', {n: '{n}'}), {n: make('b', '', number(st.count))}),
         ...(st.first ? [' · ' + t('始于 {date}', {date: st.first.replace('-', '.')})] : [])]);
       text(refs.now, now ? t('本月 +{n}', {n: number(now)}) : ''); show(refs.now, !!now);
-      refill(refs.bars, JSON.stringify(months), () => months.map((m, i) => {
-        const bar = make('i', i === months.length - 1 ? 'is-now' : '');
-        css(bar, 'height', `${Math.max(8, m.count / max * 100)}%`);
-        bar.title = monthText(m.month.slice(0, 4), m.month.slice(5, 7)) + ' · ' + t('{n} 张', {n: number(m.count)});
-        return bar;
-      }));
+      monthBars(refs.bars, months, {mark: (m, i) => i === months.length - 1 ? 'is-now' : ''});
       const recent = (st.recent || []).filter(u => u !== ident).slice(0, 4);
       show(refs.same, opts.same && recent.length > 0); attr(refs.sameAll, 'href', charHash(charId));
       // 固定四格，建一次以后只换 src：翻图时不删、不重建已经显示着的缩略图。

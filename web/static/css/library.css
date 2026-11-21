@@ -21,8 +21,9 @@
 .grid .card.is-cursor .card-stage{box-shadow:0 0 0 2px var(--sheet),0 0 0 4px var(--accent-soft)}
 .grid .card[aria-current=true] .card-stage{box-shadow:0 0 0 2px var(--sheet),0 0 0 4px var(--accent)}
 .grid .card[aria-pressed=true] .card-stage{transform:scale(.95);box-shadow:0 0 0 2px var(--sheet),0 0 0 4px var(--accent)}
-/* 网格顶部跟着滚动的头部（角色页的横幅，#712）：ui/grid.js 的 gridHead()；它的高度算进行坐标（ui/grid_rows.js） */
-.grid-head{position:absolute;top:0;right:0;left:0}
+/* 网格顶部跟着滚动的头部（角色页的横幅，#712）：ui/grid.js 的 gridHead()；它的高度算进行坐标（ui/grid_rows.js）。盖在卡片上面：
+   头部里的菜单往下展开时不被卡片挡住 */
+.grid-head{position:absolute;top:0;right:0;left:0;z-index:var(--z-page-2)}
 /* 视图选项「图上显示副本数与造型」关掉时 */
 .hide-marks .card-chip,.hide-marks .grid .dup-badge.folded,.hide-marks .grid .machine-dot{display:none}
 /* 写入后要离开本页的卡片先淡出（ui/grid.js 的 write） */

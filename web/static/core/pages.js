@@ -45,7 +45,7 @@ import {state} from './state.js';
 const NEWEST = ['newest', 'oldest'];
 // 地址上的条件（has 里的），画廊页的空状态用。
 const conditions = r => conditionLists(r).has;
-const narrowed = r => !!(r.q || r.tag || r.utag || r.check || r.doubt || conditionCount(r) || r.from || r.to);
+export const narrowed = r => !!(r.q || r.tag || r.utag || r.check || r.doubt || conditionCount(r) || r.from || r.to);
 
 // 图库和角色页共用的一组字段：角色页是图库加 char 参数，不是独立页面。
 // 只按收藏筛选、没有别的条件的图库（#447、#679）：收藏的旧地址，core/route.js 把它改写到收藏画廊 #/gallery/fav（#710），
@@ -177,8 +177,11 @@ export const poolIs = (route, ...pools) => pools.includes(pageOf(route).pool);
 //                        （处理函数直接挂在节点上）。sub 只放数量和状态，alert 是必须一眼看到的警告（加粗，接在 sub 后面）
 //   switches(r)          页头里的分段切换（框架画，链接写法的 .seg）：{label, list: [{label, href, on, n?}]}；资料库的三个页签用它（#711）
 //   tools(r)             工具栏是 'index' 的页面：这一页自己建好的工具栏节点（建一次，换页签时换一个），框架只放进 #toolbar（#711）
-//   headingHTML(r, ctx)  旧写法（存量）：[标题, 副标题, 右侧链接 HTML]，拼进 innerHTML。各页步骤改到哪页就迁到 head；角色页、画廊页、
-//                        「更多像这张的」另用 drawHeading 自己画整个页头（也是存量）
+//   gridHead({samePage, scope})  网格页顶上跟着滚动的头部（ui/grid.js 的 gridHead，C2 留的位置；角色页的横幅，#712）：框架在进页和同一页
+//                        又画一次时调（applyRoute，在 renderChrome 之后），参数和 render 一样。部件建在 scope 上，作用域释放时自己清空、
+//                        藏起头部；数据变了（元数据重读）由部件自己在作用域上听 onMeta，不跟着页头重画
+//   headingHTML(r, ctx)  旧写法（存量）：[标题, 副标题, 右侧链接 HTML]，拼进 innerHTML。各页步骤改到哪页就迁到 head；「更多像这张的」
+//                        另用 drawHeading 自己画整个页头（也是存量）
 //   wireHeading(h, r)    headingHTML 画好之后给右侧的按钮挂上处理函数（旧写法；整理页 #713 之后没有页面再用，ui/shell.js 里的钩子待删）
 //   help(r), helpHint    标题旁「?」里的说明（一行一句）；helpHint 为真时再接上本页的 hint，一个「·」一行（#527）
 //   onMeta(info)         计数等元数据到达后重画什么；没有的页面重画工具栏

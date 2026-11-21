@@ -288,7 +288,17 @@
   "上次检查 {date}": "Last checked {date}",
   "显示全部": "Show all",
   "只看机器识别、还没检查过的图": "Only machine-identified pictures not checked yet",
-  "未检查 {n}": "{n} unchecked",
+  "未检查": "Unchecked",
+  "最近 30 天": "Last 30 days",
+  "收集曲线": "Saved over time",
+  "常一起出现": "Often together",
+  "同框 {n} 张": {
+    "one": "Together in {n} picture",
+    "other": "Together in {n} pictures"
+  },
+  "同作品": "Same series",
+  "看详情": "Show details",
+  "最近 12 个月每月加入的张数": "Pictures added each month over the last 12 months",
   "老师、博士、训练员这类没有固定形象的玩家化身和吉祥物默认只当标签。": "Player avatars without a fixed look (Sensei, Doctor, Trainer and the like) and mascots are tags only by default. ",
   "不算角色：不出现在角色列表里，也不算多人图；图上仍挂着这个标签": "Not counted as a character: left out of the character list and of group-picture counts; pictures still carry this tag",
   "只当标签": "Tag only",

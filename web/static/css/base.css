@@ -76,6 +76,9 @@ button.chip:hover,a.chip:hover{background:var(--chip-hover);color:var(--ink)}
 /* 窄的时候标题截成一行加省略号，不被挤成一个字一行 */
 .page-heading>.heading-main{min-width:0}
 .page-heading .title-page{overflow:hidden;white-space:nowrap;text-overflow:ellipsis;overflow-wrap:normal}
+/* 页头的标题暂时藏着（ui/shell.js 的 tuckHeading：角色页的横幅上已经写着名字），露出来时淡入 */
+.page-heading>.heading-main{transition:opacity var(--dur-2) var(--ease)}
+.page-heading>.heading-main.is-tucked{opacity:0}
 /* 拖到别的应用以后、下一次按下之前：页面不可选（ui/press.js 的 handedOff） */
 body.handed-off{-webkit-user-select:none;user-select:none}
 .page-head>.page-actions{flex:none;margin-left:0}
@@ -157,6 +160,8 @@ a.poster:hover>img,button.poster:hover>img{transform:scale(1.04)}
   .glass{background:var(--glass-solid);-webkit-backdrop-filter:none;backdrop-filter:none}
   .glass-bar{background:var(--glass-solid);-webkit-backdrop-filter:none;backdrop-filter:none}
 }
+/* 浮在横幅图上的玻璃按钮（.btn.glass：作品页、角色页的返回、标为已检查、⋯）：照样是胶囊，链接不带下划线 */
+.btn.glass{border-radius:var(--radius-pill);text-decoration:none}
 .glass-bar>button{display:grid;place-items:center;width:28px;height:var(--h-28);margin:0;padding:0;border:0;border-radius:var(--radius-pill);background:transparent;color:inherit;
   font:inherit;box-shadow:none;cursor:pointer;transition:background-color var(--dur-1) var(--ease),color var(--dur-1) var(--ease)}
 .glass-bar>button:hover{background:var(--wash-hover)}

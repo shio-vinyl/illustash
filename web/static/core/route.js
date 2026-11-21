@@ -71,30 +71,43 @@ export function reRoute(patch) {
 // 页面打开之前的那一条是启动页或上一个图库（带一次性登录码的地址），退过去就离开了图库。所以每一条地址在
 // history.state 里记着它是这个页面打开后的第几条（0 是第一条），退到 0 就不再退；前进到头浏览器自己就不动。
 // 每一条另记着它是从哪一条来的（from：上一条的地址），存在 history.state 里，刷新以后还在；返回按钮按它写「回到哪里」（#711）。
-let entry = 0, noted = false, last = '';
+// 同一页上新增的一条（角色页换造型、只看未检查、可能也是 TA、可能认错；判断和 ui/shell.js 的 samePage 一样：page、id、char
+// 都相同）沿用上一条的来路，并记下要退几步才回到那里（back），返回按钮一次退到进这一页之前的地方（#712）。
+let entry = 0, noted = false, last = '', lastFrom = '', lastBack = 1;
+const samePlace = (a, b) => a.page === b.page && (a.id || '') === (b.id || '') && (a.char || '') === (b.char || '');
 // 每次地址变了都调用一次（ui/shell.js applyRoute）：新建的那条还没有序号，记成上一条的下一个；后退、前进到的那条
 // 已经有。url 是要就地改写成的地址（旧地址换成新的），不给就是现在的地址。返回 true 表示回到的是一条已有的记录
 // （后退、前进或刷新），false 是新的一条。
 export function noteHistory(url) {
-  const seq = history.state?.illustash;
-  if (Number.isInteger(seq) && !url) { entry = seq; noted = true; last = location.hash; return true; }
-  const known = Number.isInteger(seq), from = known ? history.state?.from || '' : noted ? last : '';
+  const seq = history.state?.illustash, here = url ?? location.hash;
+  if (Number.isInteger(seq) && !url) {
+    entry = seq; noted = true; last = location.hash; lastFrom = history.state?.from || ''; lastBack = history.state?.back || 1;
+    return true;
+  }
+  const known = Number.isInteger(seq);
+  let from = '', back = 1;
+  if (known) { from = history.state?.from || ''; back = history.state?.back || 1; }
+  else if (noted && last && samePlace(parseHash(here), parseHash(last))) { from = lastFrom; back = lastBack + 1; }
+  else if (noted) from = last;
   if (!known) entry = noted ? entry + 1 : 0; else entry = seq;
   noted = true;
-  history.replaceState({...history.state, illustash: entry, from}, '', url ?? location.hash);
-  last = url ?? location.hash;
+  history.replaceState({...history.state, illustash: entry, from, back}, '', here);
+  last = here; lastFrom = from; lastBack = back;
   return known;
 }
-// 这一条是从哪个地址来的（没有：页面打开后的第一条）。后退一步就回到它。
+// 这一条是从哪个地址来的（没有：页面打开后的第一条）。后退 backSteps() 步就回到它。
 export const cameFrom = () => entry > 0 ? history.state?.from || '' : '';
+export const backSteps = () => Math.min(history.state?.back || 1, entry);
 // 现在在第几条（0 是页面打开后的第一条）；还能不能后退。标题旁的「‹」按它显示（#526）。
 export const historyEntry = () => entry;
 export const canGoBack = () => entry > 0;
 // 后退时先把序号减掉：连按两下时第二下可能早于第一下的 hashchange，不能按还没更新的序号再退一次。前进不预先加：
 // 已经在最后一条时浏览器不动，预先加了就会让下一次后退越过第一条。
+// dir 是负数时一次退 -dir 步（横幅的返回，backSteps），最多退到第一条。
 export function stepHistory(dir) {
-  if (dir > 0) history.go(1);
-  else if (entry > 0) { entry--; history.go(-1); }
+  if (dir > 0) { history.go(1); return; }
+  const n = Math.min(-dir, entry);
+  if (n > 0) { entry -= n; history.go(-n); }
 }
 // 整理视图（按角色筛选，或复核池）：点击即选择。
 export const cleanup = () => viewOf(state.route).click === 'cleanup';

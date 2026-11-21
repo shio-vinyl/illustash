@@ -13,7 +13,7 @@ import {markOc} from './palette.js';
 // 同一个页签下的子页签（未识别：按组整理、全部、已跳过；重复：全部、角色不一致、相似的图；已排除：全部、各原因、待确认）。
 // 张数和组数写在子页签上，标题下面不再写一遍（#426）。
 function subTabs(r) {
-  // 字符串：网格页的工具栏把它和别的控件拼在一起（ui/shell.js renderChrome）。文字都是译文和数字，标题经 esc。
+  // 字符串：网格页的工具栏把它和别的控件拼在一起（ui/shell.js renderChrome，改成节点见 #794）。文字都是译文和数字，标题经 esc。
   const tab = (href, label, n, on, title = '') => `<a class="chip" href="${href}"${on ? ' aria-current="page"' : ''}${title ? ` title="${esc(title)}"` : ''}>` +
     `${esc(label)}${n ? ` <span class="chip-count">${n}</span>` : ''}</a>`;
   const p = state.pools, row = tabs => `<div class="chips-row">${tabs.join('')}</div>`;

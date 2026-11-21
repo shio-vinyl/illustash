@@ -46,7 +46,8 @@ const extra = m => {
   return m.optional_missing ? 'download' : m.acceleration?.backend === 'coreml' && fallbacks(m).wd ? 'repair' : '';
 };
 // 当前状态下的按钮（[{act, label, primary, disabled, title}]，#714）：设置页的卡片用 ui/rows.js 的 buttons 接，任务面板和
-// 向导横条用 modelsActions 拼成 HTML（data-models="动作"）；点了都走 runModels(act)。`compact` 省掉不常用的那些（任务面板）。
+// 向导横条用 modelsActions 拼成 HTML（data-models="动作"；横条改成部件以后删掉，#794）；点了都走 runModels(act)。
+// `compact` 省掉不常用的那些（任务面板）。
 export function modelsButtons(m = state.models, compact = false) {
   if (!m) return [];
   if (running(m)) return [{act: 'cancel', label: t('取消')}];

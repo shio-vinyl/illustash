@@ -1333,6 +1333,10 @@ def safari17(p, s, classic=False):
             yield f'{p}: {what}（{when}）', f'{STATIC}/{p}:{line}: {s.raw_line(line)[:110]}'
 
 
+# 按原文缓存的函数：strip_comments、css_declarations、_css_file_issues、_css_issues、_module_issues。结论成立的前提是
+# 它们只读自己的参数和模块常量；要看别的文件或本次扫描的文件集合的规则（导入图、state 声明、页面列表）写在 run_rules 里，
+# 不放进这几个函数。测试要改模块常量（MAX_LINE、SAFARI17_ENHANCEMENTS、JS_VARIABLES 之类），先调对应函数的 cache_clear()，
+# 否则同一进程里会拿到改之前的结论。容量按文件数的几倍取（每次检查按同样的顺序扫全部文件，项数超过容量时命中率掉到零）。
 @functools.lru_cache(maxsize=128)
 def _css_file_issues(path, raw):
     where = f'{STATIC}/{path}'

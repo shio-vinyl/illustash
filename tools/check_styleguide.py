@@ -57,6 +57,7 @@ def _census_module():
 CENSUS = _census_module()
 
 
+# selector_classes、_expected_census 按原文缓存：只读参数和模块常量（CENSUS）；测试要改模块常量先调 cache_clear()。
 @functools.lru_cache(maxsize=128)
 def selector_classes(css_text):
     """CSS 里所有选择器出现过的类名（含 @media 里的规则；声明体里的值不算）。"""

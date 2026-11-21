@@ -19,7 +19,7 @@
 
 </div>
 
-![资料库：按作品和角色整理的目录](docs/assets/readme/zh/library.jpg)
+![资料库：角色书架，按收藏的张数排](docs/assets/readme/zh/library.jpg)
 
 <sub>截图来自专门挑选的演示图库。截图里的插画版权归原作者，如需移除请<a href="https://github.com/shio-vinyl/illustash/issues">开 Issue</a>。</sub>
 
@@ -44,15 +44,15 @@ Illustash 读取 macOS「照片」和本地文件夹中保存自 X、Pixiv 的�
 - 未识别的角色和原创角色按外观、发色、瞳色、兽耳等特征自动分组，确认身份后可以整组指定。
 - 界面默认不显示待整理数量，无需整理完毕即可使用。
 
-![角色页与详情栏：确认或更正角色](docs/assets/readme/zh/character.jpg)
+![角色页与详情卡片：确认或更正角色](docs/assets/readme/zh/character.jpg)
 
-![未识别 › 按组整理：未识别的角色按外观分组](docs/assets/readme/zh/groups.jpg)
+![整理 › 未识别 › 按组整理：未识别的角色按外观分组](docs/assets/readme/zh/groups.jpg)
+
+![整理 › 可能认错：分不清的两个角色，问是哪一个](docs/assets/readme/zh/doubts.jpg)
 
 **画面内容**：识别约 8,100 个画面标签，其中约 7,700 个附有中文名称；识别 R18 分级；照片、截图、聊天记录、纯文字图片等非插画内容会被自动排除。也支持添加自定义标签。
 
 **重复与差分**：在本机逐像素比对，识别重复保存、裁剪、加字或去字、打码的版本以及差分，并归为一组。重复图片默认折叠；修改组内任意一张的角色，同组图片同步更新。「判断关系」会标出两张图片的差异区域。
-
-![判断关系：标出两张图片的差异区域](docs/assets/readme/zh/compare.jpg)
 
 **后续计划**：标记疑似 AI 生成的插画（[#184](https://github.com/shio-vinyl/illustash/issues/184)）。
 
@@ -81,7 +81,13 @@ Illustash 将图库与 Pixiv、X 关联：目前支持查找画师与原帖，�
 
 **浏览**：资料库提供作品、角色和画师目录。支持收藏；可以从一张或多张图片出发，按画面或角色查找相似图片（「更多像这张的」）。
 
+![图库 › 按天：每天加入的图和当天的角色](docs/assets/readme/zh/days.jpg)
+
+![作品页：横幅、角色海报和最近加入的图](docs/assets/readme/zh/work.jpg)
+
 **筛选**：筛选条支持组合角色、作品、画师、画面标签、自定义标签、出处、年份、日期区间和收藏状态，每个条件均可设为包含或排除；画面标签支持中文、日文和英文搜索。常用筛选可以保存为画廊，显示在侧栏中。R18 内容可以隐藏，也可以单独查看。
+
+![画廊 › 杂志：画廊的五种展示方式之一](docs/assets/readme/zh/gallery.jpg)
 
 **使用**：支持打开原图、在访达或资源管理器中显示、拖放到其他应用，以及按角色或画师分文件夹导出副本。导出不覆盖已有文件，也不修改原图。
 

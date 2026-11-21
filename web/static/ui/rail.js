@@ -44,6 +44,8 @@ const ITEM = tpl`<a class="rail-item" draggable="false"><span class="rail-cover"
 // 整理各队列的图标（和原来侧栏的一样），以及没有封面的画廊（收藏还没有图、画廊的条件现在没有图）。
 const ICONS = {
   unmatched: tpl`<svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="7.2"/><path d="M8 7.8a2.2 2.2 0 1 1 3 2c-.6.3-1 .8-1 1.4v.4M10 14.2v.1"/></svg>`,
+  // 可能认错（#787）：两个叠在一起的圆，是 A 还是 B。
+  doubts: tpl`<svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="7.6" cy="10" r="4.8"/><circle cx="12.4" cy="10" r="4.8"/></svg>`,
   duplicates: tpl`<svg viewBox="0 0 20 20" aria-hidden="true"><rect x="3.5" y="6" width="9.5" height="11" rx="2"/><path d="M7 3h7.5A2.5 2.5 0 0 1 17 5.5V13"/></svg>`,
   excluded: tpl`<svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="7.2"/><path d="M5 15 15 5"/></svg>`,
   audit: tpl`<svg viewBox="0 0 20 20" aria-hidden="true"><rect x="4" y="3.5" width="12" height="14" rx="2"/><path d="M7.5 9.8 9.3 11.6 12.8 8"/></svg>`,

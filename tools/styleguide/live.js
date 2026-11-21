@@ -22,6 +22,8 @@ import {renderViewPop} from '../../web/static/ui/grid_view.js';
 import {renderTasks, taskPanel} from '../../web/static/ui/tasks.js';
 import {toast, toastMore} from '../../web/static/ui/dom.js';
 import {askBar, detailCard, identities} from '../../web/static/ui/detail_card.js';
+import {judgeCard} from '../../web/static/ui/judge.js';
+import {scope} from '../../web/static/ui/scope.js';
 import {state} from '../../web/static/core/state.js';
 
 // 从应用页面取来的外壳。
@@ -230,6 +232,20 @@ sample('ask', async () => {
   dark.update({name: 'Karen', entity: 'c1', kind: 'ambiguous', rival: 'c2', rival_name: 'Rio'});
   stage.className = 'viewer-bar sg-dark'; stage.append(dark.el);
   return [pair(light.el, 'askBar().update(q)：详情卡片顶上'), pair(stage, '大图底栏（.viewer-bar 里）：和对手分不清时多一个「是 对手」')];
+});
+// 判断卡（#787）：方图一排（按组整理、可能认错）和按宽高比的一排（认一认），都点掉了第二张。
+sample('judge', async () => {
+  const s = scope('sg-judge'), items = ['u1', 'u2', 'u3', 'u4', 'u5', 'u6'].map((uuid, i) => ({uuid, width: i % 2 ? 300 : 200, height: 300}));
+  const card = look => {
+    const j = judgeCard({scope: s, look, tip: {off: '点一下：不是 TA', on: '点一下：改回「是」'}, actions: [
+      {key: 'yes', label: ({k, kept}) => k ? `其余 ${kept.length} 张是` : '都对', primary: true},
+      {key: 'other', label: '点掉的是…', when: ({k}) => k > 0},
+      {key: 'later', label: '以后再说', quiet: true}]});
+    j.update(items, {off: new Set(['u2'])});
+    const box = document.createElement('div'); box.className = 'group'; box.style.display = 'grid'; box.style.gap = '12px'; box.append(j.el, j.acts);
+    return placeholders(box);
+  };
+  return [pair(card('strip'), "judgeCard({look: 'strip'})：方图占满一行；update(items, {off})"), pair(card('tiles'), "look: 'tiles'：按宽高比排成一样高")];
 });
 // 大图底栏的角色条：每个角色一行，没有大头像和按钮组。
 sample('viewer-bar', async () => {

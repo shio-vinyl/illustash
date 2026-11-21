@@ -34,6 +34,7 @@ const ROWS = {
   '未识别 · 已跳过': {hash: '#/skipped', page: 'skipped', doc: '`#/skipped`'},
   '未识别 · 按组整理': {hash: '#/groups', page: 'groups', doc: '`#/groups`'},
   '未识别 · 第 N 组': {hash: '#/g/12', page: 'group', doc: '`#/g/'},
+  '可能认错': {hash: '#/doubts', page: 'doubts', doc: '`#/doubts`'},
   '重复 · 全部 / 角色不一致': {hash: '#/duplicates?dup=mixed', page: 'duplicates', doc: '`#/duplicates'},
   '重复 · 相似的图': {hash: '#/similar?kind=near', page: 'similar', doc: '`#/similar'},
   '重复 · 相似组 N': {hash: '#/s/7', page: 'sgroup', doc: '`#/s/'},
@@ -47,7 +48,7 @@ const ROWS = {
 const CLICK = [[/^浏览/, 'browse'], [/^整理/, 'cleanup']];
 // 活页条一列：「入口」或「入口 › 二级项」，读成 core/rail.js 的 railAt 给的 {entry, item}（item 只比整理的队列）。
 const ENTRY = [[/^图库/, 'library'], [/^画廊/, 'galleries'], [/^资料库/, 'catalog'], [/^整理/, 'tidy'], [/^设置/, 'settings'], [/^无/, '']];
-const ITEM = [[/› 未识别/, 'unmatched'], [/› 重复/, 'duplicates'], [/› 已排除/, 'excluded'], [/› 随机抽查/, 'audit'], [/› 身份整理/, 'identity'], [/^/, '']];
+const ITEM = [[/› 未识别/, 'unmatched'], [/› 可能认错/, 'doubts'], [/› 重复/, 'duplicates'], [/› 已排除/, 'excluded'], [/› 随机抽查/, 'audit'], [/› 身份整理/, 'identity'], [/^/, '']];
 const TOOLBAR = [[/^空$/, 'none'], [/^(搜索和筛选条|同按天)/, 'filters'], [/^仅子页签$/, 'tabs'], [/^角色｜作品/, 'index'], [/^搜索、/, 'library'], [/^同图库/, 'library'], [/^(子页签|三个子页签|排序)/, 'grid']];
 const first = (table, text, what) => { const hit = table.find(([re]) => re.test(text)); assert.ok(hit, `文档里的${what}「${text}」认不出来，改了文档要同步改 tests/pages.test.cjs`); return hit[1]; };
 
@@ -101,15 +102,16 @@ test('注册表里的每个页面都在总表里有一行，反过来也是', ()
 });
 
 // ---------- 与改造前手写判断逐页相同 ----------
-// 改造前的手写清单，加上 #353 的三处改动：相似组页（sgroup）归整理页，画师抽查（artist-audit）归面板页，新加入（recent）删掉。
+// 改造前的手写清单，加上 #353 的三处改动：相似组页（sgroup）归整理页，画师抽查（artist-audit）归面板页，新加入（recent）删掉；
+// 以及 #787 新加的可能认错（doubts，面板页，亮整理 › 可能认错）。
 const OLD = {
   cleanup: ['unmatched', 'skipped', 'excluded', 'pending', 'group', 'audit', 'sgroup'],
   browsing: ['library', 'duplicates', 'gallery'],
-  panel: ['days', 'calendar', 'characters', 'work', 'settings', 'groups', 'similar', 'identity', 'artist-audit', 'galleries', 'showcase'],
+  panel: ['days', 'calendar', 'characters', 'work', 'settings', 'groups', 'doubts', 'similar', 'identity', 'artist-audit', 'galleries', 'showcase'],
   lead: ['unmatched', 'skipped', 'group'],
   // 原来侧栏的高亮：整理一类各页亮的那一项，现在是活页条整理里的那个队列（#706）
   nav: page => ({skipped: 'unmatched', groups: 'unmatched', group: 'unmatched', pending: 'excluded', similar: 'duplicates', sgroup: 'duplicates'})[page] || page,
-  tidy: ['unmatched', 'skipped', 'groups', 'group', 'duplicates', 'similar', 'sgroup', 'excluded', 'pending', 'audit', 'identity'],
+  tidy: ['unmatched', 'skipped', 'groups', 'group', 'doubts', 'duplicates', 'similar', 'sgroup', 'excluded', 'pending', 'audit', 'identity'],
   valid: ['days', 'calendar', 'unmatched', 'skipped', 'duplicates', 'excluded', 'pending', 'audit', 'groups', 'similar', 'identity', 'artist-audit'],
 };
 test('cleanup()、browsing()、panelPage、LEAD_PAGES、活页条整理的选中项和改造前的手写清单一致', () => {

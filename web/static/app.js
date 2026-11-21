@@ -33,6 +33,7 @@ import './ui/like.js';
 import './ui/character.js';
 import {wireDays} from './ui/days.js';
 import './ui/groups.js';
+import './ui/doubts.js';
 import './ui/similar.js';
 import './ui/identity.js';
 import './ui/artist_audit.js';

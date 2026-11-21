@@ -3,8 +3,9 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const web = require('./web.cjs');
 
-let D;
-test.before(async () => { await web.ready(); D = await web.load('core/days.js'); });
+let D, A;
+// 认一认的请求体在 core/ask.js（和可能认错共用，#787）。
+test.before(async () => { await web.ready(); D = await web.load('core/days.js'); A = await web.load('core/ask.js'); });
 
 const item = (uuid, extra = {}) => ({uuid, width: 300, height: 400, memberships: [], ...extra});
 const day = (d, uuids, extra = {}) => ({day: d, count: uuids.length, people: 0, characters: [], hero: uuids[0] || null, items: uuids.map(u => item(u)), ...extra});
@@ -119,11 +120,11 @@ test('去网格：带着现在的筛选和这一天；点角色再加一个 char
 
 test('认一认的请求体：都对、其余是、都不是、点掉的是另一个角色', () => {
   const b = {entity: 'e', kind: 'hint', items: [item('a'), item('b'), item('c')]};
-  assert.deepEqual(D.askAnswer(b, 'ok', new Set()), {entity: 'e', kind: 'hint', yes: ['a', 'b', 'c'], no: []});
-  assert.deepEqual(D.askAnswer(b, 'ok', new Set(['b'])), {entity: 'e', kind: 'hint', yes: ['a', 'c'], no: ['b']});
-  assert.deepEqual(D.askAnswer(b, 'none', new Set(['b'])), {entity: 'e', kind: 'hint', yes: [], no: ['a', 'b', 'c']});
+  assert.deepEqual(A.askAnswer(b, 'ok', new Set()), {entity: 'e', kind: 'hint', yes: ['a', 'b', 'c'], no: []});
+  assert.deepEqual(A.askAnswer(b, 'ok', new Set(['b'])), {entity: 'e', kind: 'hint', yes: ['a', 'c'], no: ['b']});
+  assert.deepEqual(A.askAnswer(b, 'none', new Set(['b'])), {entity: 'e', kind: 'hint', yes: [], no: ['a', 'b', 'c']});
   // 后端的 switch 要求 yes 为空：只提交点掉的那几张，其余留在卡上
-  assert.deepEqual(D.askAnswer(b, 'other', new Set(['c', 'a']), 'f'), {entity: 'e', kind: 'hint', yes: [], no: ['a', 'c'], switch: 'f'});
+  assert.deepEqual(A.askAnswer(b, 'other', new Set(['c', 'a']), 'f'), {entity: 'e', kind: 'hint', yes: [], no: ['a', 'c'], switch: 'f'});
 });
 
 test('展开一天的全部角色：分页汇总 memberships，按张数排', async () => {

@@ -2,24 +2,27 @@
 // 数据在 core/tidy.js，分组的样子在 ui/tidy_group.js。
 //
 // CCIP 即使叫不出名字（45%），也能可靠地把同一个人的图放在一起（99%）。大多数代表图意见一致的组整组问「是 TA 吗？」；
-// 其余的组给出「设为…」/「原创角色」/「跳过」。点一张图，把它排除在这组的回答之外；长按或 Space 看大图。
+// 其余的组给出「设为…」/「原创角色」/「跳过」。点一张图，把它排除在这组的回答之外；长按或 Space 看大图。点掉的图是别的已有角色时
+// 用「点掉的是…」直接设成那个角色（#787），这组留着、少了那几张。组卡是共用的判断卡（ui/judge.js）。
 // 回答过的组原地收起（ui/tidy_group.js 的 collapse），活页条上「未识别」的数字跟着滚下去；不重新加载，页面不跳。
 // 组按 cid 复用（ui/keyed.js）：重读、撤销以后没变的组留在原处，图不重新加载。同一路由上的几次重读只认最后发出的那次。
 import {number, stamp} from '../core/format.js';
 import {t} from '../core/i18n.js';
-import {implement} from '../core/pages.js';
+import {implement, onPage} from '../core/pages.js';
 import {charHash} from '../core/route.js';
 import {readError} from '../core/session.js';
 import {state} from '../core/state.js';
 import {groupOrder, loadClusters, minus, nearText, nextGroupId, regroup} from '../core/tidy.js';
 import {$, error, toast} from './dom.js';
-import {attr, cls, make, refill, rich, show, text, tpl} from './el.js';
+import {attr, make, refill, rich, show, text, tpl} from './el.js';
 import {drawEmpty} from './empty.js';
 import {keyed} from './keyed.js';
 import {mutate} from './grid.js';
 import {markOc, openPicker, targets} from './palette.js';
 import {count} from './rail.js';
-import {clearFooter, collapse, drawFailure, leaving, setPeekList, thumbStrip, tidyGroup} from './tidy_group.js';
+import {pickFor} from './answer.js';
+import {judgeCard} from './judge.js';
+import {clearFooter, collapse, drawFailure, leaving, revealThumb, setPeekList, tidyGroup} from './tidy_group.js';
 
 const PAGE = 40;
 const VIEW = tpl`<div class="tidy-page">
@@ -30,28 +33,30 @@ const VIEW = tpl`<div class="tidy-page">
   <div class="tidy-more" data-ref="moreBox" hidden><button type="button" class="btn" data-ref="more"></button></div>
   <div data-ref="empty" hidden></div>
 </div>`;
-const ACTS = tpl`<span class="tidy-acts-in">
-  <button type="button" class="btn is-primary is-small" data-gact="yes" data-ref="yes"></button>
-  <button type="button" class="btn is-small" data-gact="no" data-ref="no" data-t>都不是</button>
-  <button type="button" class="btn is-small" data-gact="assign" data-ref="assign"></button>
-  <button type="button" class="btn is-quiet is-small" data-gact="oc" data-ref="oc" title="把这组图都设为「原创角色（未细分）」" data-t data-t-attr="title">原创角色</button>
-  <button type="button" class="btn is-quiet is-small" data-gact="skip" data-ref="skip" data-t>跳过</button>
-  <a class="btn is-quiet is-small" data-ref="open" data-t>逐张看</a>
-</span>`;
-
 // 这组现在算在组里的图（重读后组里已经没有的图不算，off 里留着也不影响）。
 const kept = (g, off) => g.members.filter(u => !off?.has(u));
 
-// 一组：组头「第 N 组 · M 张 · 特征」和问题，右边是整组的操作；下面一排方图。
+// 一组：组头「第 N 组 · M 张 · 特征」和问题，右边是整组的操作；下面一排方图（判断卡）。
+// 全部点掉以后没有图可写：整组的按钮都不能点（「都不是」也是对这些图说的），只剩「点掉的是…」。
 function groupCard(page, g) {
-  const s = page.scope.child('group'), card = tidyGroup(), acts = ACTS(), r = card.refs, a = acts.refs;
-  r.acts.append(acts.el);
-  const strip = thumbStrip(r.strip, {scope: s});
+  const s = page.scope.child('group'), card = tidyGroup(), r = card.refs;
   let current = g;
+  const none = ({kept}) => !kept.length, act = what => () => page.act(current, what);
+  const judge = judgeCard({scope: s, look: 'strip', tip: {off: t('点一下：不算在这组里'), on: t('点一下：算回这组')},
+    onOff: off => page.off.set(current.cid, off),
+    actions: [
+      {key: 'yes', label: ({k, kept}) => (k ? t('其余 {n} 张是', {n: number(kept.length)}) : t('都是')) + ' ✓', primary: true, when: () => !!current.lead, disabled: none, run: act('yes')},
+      {key: 'no', label: t('都不是'), when: () => !!current.lead, disabled: none, run: act('no')},
+      {key: 'other', label: t('点掉的是…'), when: ({k}) => k > 0, title: t('把点掉的图设为另一个角色'), run: act('other')},
+      {key: 'assign', label: () => current.lead ? t('是别人…') : t('设为…'), primary: () => !current.lead, quiet: true, disabled: none, run: act('assign')},
+      {key: 'oc', label: t('原创角色'), quiet: true, title: t('把这组图都设为「原创角色（未细分）」'), disabled: none, run: act('oc')},
+      {key: 'skip', label: t('跳过'), quiet: true, disabled: none, run: act('skip')},
+      {key: 'open', label: t('逐张看'), quiet: true, href: () => '#/g/' + current.cid},
+    ]});
+  r.strip.replaceWith(judge.el); r.acts.append(judge.acts);   // 方图换成判断卡的图（.tidy-strip 只给身份整理）
   setPeekList(card.el, () => current.members);
   const update = x => {
     current = x;
-    const off = page.off.get(x.cid) || new Set(), n = kept(x, off).length;
     attr(card.el, 'data-cid', String(x.cid));
     text(r.title, t('第 {id} 组', {id: x.cid}));
     text(r.meta, [t('{n} 张', {n: number(x.size)}), ...(x.traits || []).slice(0, 2)].join(' · '));
@@ -61,14 +66,7 @@ function groupCard(page, g) {
       const link = make('a', '', x.lead.name); link.href = charHash(x.lead.id);
       return [rich(t('是 {name} 吗？'), {name: link}), make('small', '', t('{n} 张的线索都指向 TA', {n: number(x.lead.count)}))];
     });
-    show(a.yes, !!x.lead); show(a.no, !!x.lead);
-    text(a.yes, (off.size ? t('其余 {n} 张是', {n: number(n)}) : t('都是')) + ' ✓');
-    text(a.assign, x.lead ? t('是别人…') : t('设为…'));
-    cls(a.assign, 'is-primary', !x.lead); cls(a.assign, 'is-quiet', !!x.lead);
-    // 全部点掉以后没有图可写：整组的按钮都不能点（「都不是」也是对这些图说的）。
-    for (const b of [a.yes, a.no, a.assign, a.oc, a.skip]) attr(b, 'disabled', !n);
-    attr(a.open, 'href', '#/g/' + x.cid);
-    strip.update(x.members, {off, rest: '#/g/' + x.cid});
+    judge.update(x.members.map(uuid => ({uuid})), {off: page.off.get(x.cid) || new Set(), rest: '#/g/' + x.cid});
     show(r.note, !!x.near); text(r.note, x.near ? nearText(x) : '');
   };
   update(g);
@@ -79,7 +77,8 @@ function groupsView(scope) {
   const {el, refs} = VIEW();
   $('groupsPage').replaceChildren(el);
   clearFooter();
-  const page = {scope, list: [], learner: null, shown: PAGE, off: new Map(), loaded: false, seq: 0};
+  // pick：打开角色选择器（测试换成自己的）。
+  const page = {scope, list: [], learner: null, shown: PAGE, off: new Map(), loaded: false, seq: 0, pick: openPicker};
   const list = keyed(refs.list, {key: g => g.cid, create: g => groupCard(page, g), exit: collapse, scope});
   function draw() {
     const all = page.list, images = all.reduce((n, g) => n + g.size, 0), named = all.filter(g => g.lead).length;
@@ -122,41 +121,46 @@ function groupsView(scope) {
     count('unmatched', minus(state.pools.unmatched, ids.length));
     draw();
   }
+  // 组里的几张设成了别的角色：从这组拿掉（组还在），活页条的数字先减；拿光了就和答完一样收起。
+  function shed(cid, ids) {
+    const g = page.list.find(x => x.cid === cid); if (!g) return;
+    const members = g.members.filter(u => !ids.includes(u));
+    if (!members.length) { done(cid, ids); return; }
+    page.list = page.list.map(x => x === g ? {...g, members, size: Math.max(members.length, g.size - ids.length)} : x);
+    const off = page.off.get(cid); if (off) for (const u of ids) off.delete(u);
+    count('unmatched', minus(state.pools.unmatched, ids.length));
+    draw();
+  }
   async function act(g, what) {
     const ids = kept(g, page.off.get(g.cid)), n = ids.length;
-    if (!n) return;
+    if (!n && what !== 'other') return;
     const finish = ok => { if (ok && scope.alive) done(g.cid, ids); };
     if (what === 'yes') finish(await mutate('/api/change', {ids, action: 'confirmed', entity: g.lead.id}, false));
     else if (what === 'no') { if (await mutate('/api/change', {ids, action: 'rejected', entity: g.lead.id}, false)) load(true); }
     else if (what === 'skip') finish(await mutate('/api/change', {ids, action: 'unknown'}, false));
     else if (what === 'oc') finish(await markOc({ids}, false));
+    // 「点掉的是…」（#787）：点掉的几张设为选中的角色，一个撤销；这组留着，少了那几张。选的时候这一页或这一组已经不在了就不写。
+    else if (what === 'other') {
+      const off = [...(page.off.get(g.cid) || [])].filter(u => g.members.includes(u));
+      if (off.length) pickFor(scope, {ids: off, exclude: g.lead ? [g.lead.id] : [], sentence: x => t('把 {n} 张设为 {name}', {n: number(off.length), name: x.name}),
+        still: () => onPage(state.route, 'groups') && page.list.some(x => x.cid === g.cid),
+        pick: async x => { if (await mutate('/api/change', {ids: off, action: 'confirmed', entity: x.id}, false) && scope.alive) shed(g.cid, off); }}, page.pick);
+    }
     // 面板顶上写「第 N 组 · M 张」，和缩略图一起（#424 的 2-3）；能多选，和选择栏的「设为…」一样（2-24）。
     else if (what === 'assign') openPicker({title: t('这 {n} 张是…', {n: number(n)}), subjectText: t('第 {id} 组', {id: g.cid}) + ' · ' + t('{n} 张', {n: number(n)}),
       sentence: x => t('把这 {n} 张设为 {name}', {n: number(n), name: x.name}), suggest: {ids}, exclude: g.lead ? [g.lead.id] : [], multi: true,
       pick: async picked => finish(await mutate('/api/change', {ids, action: 'confirmed', ...targets(picked)}, false))});
   }
-  scope.on(refs.list, 'click', e => {
-    const sec = e.target.closest('[data-cid]'), g = sec && page.list.find(x => String(x.cid) === sec.dataset.cid); if (!g) return;
-    const img = e.target.closest('[data-gimg]');
-    if (img) {
-      const off = page.off.get(g.cid) || new Set(), u = img.dataset.gimg;
-      if (off.has(u)) off.delete(u); else off.add(u);
-      page.off.set(g.cid, off); draw(); return;
-    }
-    const what = e.target.closest('[data-gact]')?.dataset.gact;
-    if (what) act(g, what);
-  });
+  page.act = act;
   scope.on(refs.empty, 'click', e => { if (e.target.closest('[data-empty="retry"]')) load(); });
   scope.on(refs.more, 'click', () => { page.shown += PAGE; draw(); });
   scope.on(refs.regroup, 'click', async () => {
     try { await regroup(); toast(t('正在重新分组…')); scope.timeout(() => load(), 3000); } catch (e) { toast(e.message); }
   });
-  return {scope, load, done, page};
+  return {scope, load, done, shed, page};
 }
 
 let view = null;
-// 大图关掉时把最后看的那张缩略图滚进视野。
-function revealThumb(uuid) { [...$('groupsPage').querySelectorAll('[data-peek]')].find(x => x.dataset.peek === uuid)?.scrollIntoView({block: 'nearest'}); }
 
 // 「下一组」：重读分组，取原来排在这组后面、还在的第一组；后面都没了就取最前面那组；一组都没了回到按组整理。
 // 读的时候离开了这一组就不带人走。

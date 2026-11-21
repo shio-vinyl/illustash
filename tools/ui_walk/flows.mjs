@@ -115,7 +115,9 @@ export const FLOWS = [
       const backText = `(document.querySelector('.char-hero-bar > a.btn')?.innerText || '').trim()`;
       await goto(page, '#/calendar');
       await w.step('从日历进角色页', () => goto(page, hash), {shot: true});
-      const name = await page.waitFor(`(${banner}?.querySelector('.char-hero-name')?.innerText || '').trim()`, 4000);
+      const nameText = `(${banner}?.querySelector('.char-hero-name')?.innerText || '').trim()`;
+      await page.waitFor(nameText, 4000);
+      const name = await page.eval(nameText);
       w.check('横幅：写着角色名', name === c.name, name);
       w.check('页头：横幅的名字看得见时小标题藏着', await page.eval(`!!document.querySelector('#heading .heading-main.is-tucked')`), '');
       const fromCalendar = await page.eval(backText);
@@ -132,7 +134,8 @@ export const FLOWS = [
       w.check('离开以后网格头部藏起来', await page.eval(`document.getElementById('gridHead')?.hidden !== false`), '');
       await goto(page, '#/characters');
       await goto(page, hash);
-      const fromCatalog = await page.waitFor(backText, 4000);
+      await page.waitFor(backText, 4000);
+      const fromCatalog = await page.eval(backText);
       w.check('返回：从资料库进来写「资料库」', fromCatalog === '资料库' || fromCatalog === 'Catalog', fromCatalog);
     },
   },

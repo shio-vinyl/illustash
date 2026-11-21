@@ -148,7 +148,6 @@ pub(crate) struct Session {
     pub(crate) names: crate::app_names::Updater,
     pub(crate) provenance: crate::app_provenance::Runner,
     pub(crate) index: crate::app_index::Updater,
-    pub(crate) auto_sync: bool,
     pub(crate) research: crate::app_research::Research,
     pub(crate) examples: Arc<crate::example_cache::Cache>,
     colors: crate::app_colors::Worker,
@@ -180,28 +179,41 @@ impl Session {
         getrandom::fill(&mut bytes).map_err(|e| Error::Invalid(e.to_string()))?;
         Ok(bytes.iter().map(|b| format!("{b:02x}")).collect())
     }
-    #[allow(clippy::too_many_arguments)] // 会话选项对应彼此独立的启动任务开关。
     fn new(
-        library: Library,
-        owner: Arc<Owner>,
+        (library, owner): (Library, Arc<Owner>),
         generation: u64,
-        names_enabled: bool,
-        names_network: bool,
-        provenance_enabled: bool,
-        provenance_network: bool,
+        token: String,
         root: &Path,
-        index_network: bool,
-        index_automatic: bool,
+        reference: &Path,
+        startup: &SessionStartup,
     ) -> Result<Self> {
-        let token = Self::token()?;
-        let names = crate::app_names::Updater::new(&library, names_enabled, names_network, generation, &token)?;
-        let provenance =
-            crate::app_provenance::Runner::new(&library, generation, &token, provenance_enabled, provenance_network)?;
-        let index = crate::app_index::Updater::new(&library, root, generation, &token, index_network, index_automatic)?;
+        let names = crate::app_names::Updater::new(
+            &library,
+            startup.names_enabled,
+            startup.names_network_authorized,
+            generation,
+            &token,
+        )?;
+        let provenance = crate::app_provenance::Runner::new(
+            &library,
+            generation,
+            &token,
+            startup.provenance_enabled,
+            startup.provenance_network_authorized,
+        )?;
+        let index = crate::app_index::Updater::new(
+            &library,
+            root,
+            generation,
+            &token,
+            startup.index_network_authorized,
+            startup.index_auto_check,
+        )?;
         let similar = crate::app_settings::startup(&library)?.get("similar").is_some_and(truthy);
-        let research = crate::app_research::Research::new(generation, &token, similar);
+        let mut research = crate::app_research::Research::new(generation, &token, similar);
+        research.anchors = reference.parent().expect("内部参考文件路径必须有父目录").to_owned();
         let onboarding = crate::app_onboarding::Onboarding::new(generation, &token).with_resources(root);
-        Ok(Self {
+        let mut session = Self {
             library,
             owner: Some(owner),
             generation,
@@ -212,7 +224,6 @@ impl Session {
             names,
             provenance,
             index,
-            auto_sync: true,
             research,
             examples: Default::default(),
             colors: Default::default(),
@@ -227,7 +238,11 @@ impl Session {
             rescued: None,
             halted: false,
             pack_default_started: false,
-        })
+        };
+        session.syncer.resource_root = root.to_owned();
+        session.syncer.per_run = startup.sync_limit;
+        session.syncer.configure_startup(&session.library, !startup.sync_disabled)?;
+        Ok(session)
     }
     /// 同步要等的后台任务正在进行（#607）：角色索引在写入，或 WD 扩展检查在跑。这时的同步请求先排着
     /// （[`crate::app_sync::Syncer::queue`]），由恢复检查在它们结束后开始。
@@ -293,17 +308,11 @@ pub struct Application {
     pub(crate) tags: PathBuf,
     pub(crate) root: PathBuf,
     pub(crate) reference: PathBuf,
-    pub(crate) sync_disabled: bool,
+    pub(crate) startup: SessionStartup,
     pub(crate) images: crate::app_files::Images,
     pub(crate) exports: crate::app_archives::Exports,
     /// 识别结果导入和归档导入，一次一个，在会话锁之外进行（#26、#88）。
     pub(crate) imports: crate::app_imports::Imports,
-    pub(crate) names_enabled: bool,
-    pub(crate) names_network: bool,
-    pub(crate) provenance_enabled: bool,
-    pub(crate) provenance_network: bool,
-    pub(crate) index_network: bool,
-    pub(crate) index_automatic: bool,
 }
 pub(crate) fn truthy(value: &Json) -> bool {
     match value {
@@ -322,29 +331,40 @@ pub(crate) fn truthy(value: &Json) -> bool {
 #[derive(Clone, Debug)]
 pub struct Options {
     pub root: PathBuf,
-    pub names_enabled: bool,
-    pub names_network: bool,
-    pub provenance_enabled: bool,
-    pub provenance_network: bool,
-    pub index_network: bool,
-    pub index_automatic: bool,
-    pub auto_sync: bool,
-    pub sync_disabled: bool,
-    pub per_run: usize,
+    pub startup: SessionStartup,
 }
 impl Options {
     pub fn new(root: PathBuf) -> Self {
+        Self { root, startup: SessionStartup::default() }
+    }
+}
+
+/// 打开和切换图库共用的宿主启动配置。联网权限字段来自启动参数，仅在当前宿主生效；
+/// 任务请求里的单次联网授权由各任务处理。启用功能与自动执行分别配置。
+#[derive(Clone, Debug)]
+pub struct SessionStartup {
+    pub names_enabled: bool,
+    pub names_network_authorized: bool,
+    pub provenance_enabled: bool,
+    pub provenance_network_authorized: bool,
+    pub index_network_authorized: bool,
+    pub index_auto_check: bool,
+    pub auto_sync: bool,
+    pub sync_disabled: bool,
+    pub sync_limit: usize,
+}
+impl Default for SessionStartup {
+    fn default() -> Self {
         Self {
-            root,
             names_enabled: true,
-            names_network: false,
+            names_network_authorized: false,
             provenance_enabled: true,
-            provenance_network: false,
-            index_network: false,
-            index_automatic: true,
+            provenance_network_authorized: false,
+            index_network_authorized: false,
+            index_auto_check: true,
             auto_sync: true,
             sync_disabled: false,
-            per_run: 0,
+            sync_limit: 0,
         }
     }
 }
@@ -362,58 +382,9 @@ impl Application {
         options: Options,
         unlisted_note: impl FnOnce(Error) -> String,
     ) -> Result<Self> {
-        let (library, owner) = opened;
-        let Options {
-            root,
-            names_enabled,
-            names_network,
-            provenance_enabled,
-            provenance_network,
-            index_network,
-            index_automatic,
-            auto_sync,
-            sync_disabled,
-            per_run,
-        } = options;
+        let Options { root, startup } = options;
         let reference = crate::app_resources::reference_path(&root)?;
-        let names = crate::app_names::Updater::new(&library, names_enabled, names_network, 1, &token)?;
-        let provenance =
-            crate::app_provenance::Runner::new(&library, 1, &token, provenance_enabled, provenance_network)?;
-        let index = crate::app_index::Updater::new(&library, &root, 1, &token, index_network, index_automatic)?;
-        let similar_enabled = crate::app_settings::startup(&library)?.get("similar").is_some_and(truthy);
-        let mut research = crate::app_research::Research::new(1, &token, similar_enabled);
-        research.anchors = reference.parent().expect("internal file path must have a parent").to_owned();
-        let onboarding = crate::app_onboarding::Onboarding::new(1, &token).with_resources(&root);
-        let mut session = Session {
-            library,
-            owner: Some(owner),
-            generation: 1,
-            token,
-            syncer: crate::app_sync::Syncer::default(),
-            wd_extension: Default::default(),
-            wd_history: Default::default(),
-            names,
-            provenance,
-            index,
-            auto_sync,
-            research,
-            examples: Default::default(),
-            colors: Default::default(),
-            onboarding,
-            human_backups: Default::default(),
-            human_exports: Default::default(),
-            asset_exports: Default::default(),
-            unlisted: None,
-            upgraded: None,
-            checker: Default::default(),
-            rescue: Default::default(),
-            rescued: None,
-            halted: false,
-            pack_default_started: false,
-        };
-        session.syncer.resource_root = root.clone();
-        session.syncer.per_run = per_run;
-        session.syncer.configure_startup(&session.library, !sync_disabled)?;
+        let mut session = Session::new(opened, 1, token, &root, &reference, &startup)?;
         if let Err(error) = crate::app_libraries::remember(&session.library) {
             let note = unlisted_note(error);
             eprintln!("没能记进最近图库，图库照常打开：{note}");
@@ -427,16 +398,10 @@ impl Application {
             tags: root.join("tags/tags_v3.csv"),
             root,
             reference,
-            sync_disabled,
+            startup,
             images: crate::app_files::Images::default(),
             exports: crate::app_archives::Exports::default(),
             imports: crate::app_imports::Imports::default(),
-            names_enabled,
-            names_network,
-            provenance_enabled,
-            provenance_network,
-            index_network,
-            index_automatic,
         })
     }
 }
@@ -452,7 +417,7 @@ impl Application {
             let mut session = self.session.write().expect("app_http session lock poisoned");
             self.check_open()?;
             let library = session.library.clone();
-            if self.names_enabled {
+            if self.startup.names_enabled {
                 let _ = session.names.start(&library, None, false);
             }
         }
@@ -469,7 +434,7 @@ impl Application {
         {
             let mut session = self.session.write().expect("app_http session lock poisoned");
             self.check_open()?;
-            if session.auto_sync {
+            if self.startup.auto_sync {
                 let lib = session.library.clone();
                 let token = session.token.clone();
                 let generation = session.generation;
@@ -656,20 +621,15 @@ impl Application {
             return Err(Error::Invalid("不是图库包".into()));
         }
         // 重新打开同一个物理图库包时保留其持有权；其他图库包要先取得持有权。
-        let (library, owner) = open_owned(path, session.owner.as_ref().map(|owner| (&session.library, owner)), None)?;
+        let opened = open_owned(path, session.owner.as_ref().map(|owner| (&session.library, owner)), None)?;
         let mut replacement = Session::new(
-            library,
-            owner,
+            opened,
             session.generation + 1,
-            self.names_enabled,
-            self.names_network,
-            self.provenance_enabled,
-            self.provenance_network,
+            Session::token()?,
             &self.root,
-            self.index_network,
-            self.index_automatic,
+            &self.reference,
+            &self.startup,
         )?;
-        replacement.syncer.configure_startup(&replacement.library, !self.sync_disabled)?;
         if let Err(error) = crate::app_libraries::remember(&replacement.library) {
             let note = crate::app_libraries::unlisted_reason(&error);
             eprintln!("没能记进最近图库，图库照常打开：{note}");
@@ -679,11 +639,6 @@ impl Application {
             ("path", replacement.library.display_path().to_string_lossy().as_ref().into()),
             ("name", replacement.library.name().into()),
         ]);
-        replacement.auto_sync = session.auto_sync;
-        replacement.research.anchors = session.research.anchors.clone();
-        replacement.syncer.resource_root = session.syncer.resource_root.clone();
-        replacement.syncer.per_run = session.syncer.per_run;
-
         session.close();
         let wd_state = session.wd_extension.snapshot();
         if !wd_state.is_null() {
@@ -700,11 +655,11 @@ impl Application {
         if let Err(e) = crate::app_research::dispatch(&library, "imported") {
             eprintln!("研究启动调度失败：{e}");
         }
-        if self.names_enabled {
+        if self.startup.names_enabled {
             let _ = session.names.start(&library, None, false);
         }
         self.generation.store(session.generation, Ordering::SeqCst);
-        if session.auto_sync {
+        if self.startup.auto_sync {
             let lib = session.library.clone();
             let token = session.token.clone();
             let gen = session.generation;
@@ -846,11 +801,11 @@ mod tests {
         };
         let (first, second) = (create("first"), create("second"));
         let mut options = Options::new(root);
-        options.names_enabled = false;
-        options.provenance_enabled = false;
-        options.index_automatic = false;
-        options.auto_sync = false;
-        options.sync_disabled = true;
+        options.startup.names_enabled = false;
+        options.startup.provenance_enabled = false;
+        options.startup.index_auto_check = false;
+        options.startup.auto_sync = false;
+        options.startup.sync_disabled = true;
         let service = std::sync::Arc::new(Application::open(&first, options.clone()).unwrap());
         let received = service.generation();
         let mut session = service.session.write().unwrap();

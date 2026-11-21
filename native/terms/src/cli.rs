@@ -194,7 +194,7 @@ pub fn run(args: &[String]) -> u8 {
             Ok(json!({"projection_rows": rows}))
         }),
         ["undo", "--db", db, "--action", action] => match action.parse() {
-            Ok(action) => undo(Path::new(db), action),
+            Ok(action) => undo(Path::new(db), store::ActionId::from_raw(action)),
             Err(_) => Err(Error::Invalid(format!("步骤 id 不是整数：{action}"))),
         },
         _ => Err(Error::Invalid(
@@ -240,13 +240,16 @@ fn migrate(db: &Path) -> crate::Result<serde_json::Value> {
     Ok(json!({"from": from, "to": crate::SCHEMA_VERSION}))
 }
 
-fn undo(db: &Path, action: i64) -> crate::Result<serde_json::Value> {
+fn undo(db: &Path, action: store::ActionId) -> crate::Result<serde_json::Value> {
     let mut conn = existing(db)?;
     Ok(match store::undo(&mut conn, Some(action))? {
-        Undo::Undone { action, label } => json!({"status": "undone", "action": action, "label": label}),
+        Undo::Undone { action, label } => json!({"status": "undone", "action": action.raw(), "label": label}),
         // 调用方判断这一步属于词条核心，这里却不认：两边规则不一致，不能当成撤销成功。
         Undo::Foreign { action } => {
-            return Err(Error::Conflict(format!("历史第 {action} 步不是词条核心写的，不能由它撤销")))
+            return Err(Error::Conflict(format!(
+                "历史第 {action} 步不是词条核心写的，不能由它撤销",
+                action = action.raw()
+            )))
         }
         Undo::Nothing => return Err(Error::Conflict(store::HISTORY_CHANGED.into())),
     })
@@ -323,7 +326,7 @@ fn write_verdicts(
         return Err(Error::Invalid("图片不存在".into()));
     }
     let action = store::judge(conn, &targets, verdict, "user", "", label)?;
-    Ok(json!({"action": action, "assets": targets.len()}))
+    Ok(json!({"action": action.raw(), "assets": targets.len()}))
 }
 
 pub(crate) use crate::app_service::character_request;

@@ -177,3 +177,49 @@ test('content 是 static 时第一次量完给它写上 position: relative', () 
     kept.dispose();
   } finally { globalThis.getComputedStyle = saved; }
 });
+
+// 新挂的节点插在哪（#751：二分查找）。cards() 建的节点里 <img> 的地址带着键；at() 把键排成一列，每张 h 高。
+const keysOf = content => content.childNodes.map(el => el.querySelector('img').getAttribute('src').match(/^\/t\/(.+)\.jpg$/)[1]);
+const at = (keys, h = 10) => keys.map((key, i) => ({key, x: 0, y: i * h, w: 100, h}));
+
+test('新挂的节点插在已挂节点之间它该在的位置', () => {
+  const {viewport, content} = page(), c = cards();
+  const list = V.virtual(viewport, content, {create: c.create});
+  list.set(at(['a', 'c', 'e']), 30); flush();
+  assert.deepEqual(keysOf(content), ['a', 'c', 'e']);
+  list.set(at(['a', 'b', 'c', 'd', 'e', 'f']), 60); flush();
+  assert.deepEqual(keysOf(content), ['a', 'b', 'c', 'd', 'e', 'f']);
+  list.set(at(['0', 'a', 'b', 'b2', 'c', 'd', 'e', 'f', 'g']), 90); flush();
+  assert.deepEqual(keysOf(content), ['0', 'a', 'b', 'b2', 'c', 'd', 'e', 'f', 'g']);
+  list.dispose();
+});
+
+test('重新布局换了先后：已挂的不挪，新节点插在序号比它大的已挂节点里最小的那个前面', () => {
+  const {viewport, content} = page(), c = cards();
+  const list = V.virtual(viewport, content, {create: c.create});
+  list.set(at(['a', 'b', 'c']), 30); flush();
+  const kept = content.childNodes.slice();
+  list.set(at(['c', 'x', 'a', 'y', 'b', 'z']), 60); flush();
+  // c、a、b 的新序号是 0、2、4，节点原样留着；x（1）插在 a 前面，y（3）插在 b 前面，z（5）后面没有已挂的，放到最后。
+  assert.deepEqual(keysOf(content), ['x', 'a', 'y', 'b', 'c', 'z']);
+  assert.deepEqual(kept.map(el => content.childNodes.includes(el)), [true, true, true]);
+  list.dispose();
+});
+
+test('一屏几千个节点：次序照样按框的先后，挂一批新节点时已挂的只扫一遍', () => {
+  const {viewport, content} = page(), c = cards();
+  viewport.clientHeight = 4000;
+  const list = V.virtual(viewport, content, {create: c.create});
+  const all = Array.from({length: 3000}, (_, i) => 'n' + String(i).padStart(4, '0'));
+  list.set(at(all.filter((_, i) => i % 2 === 0), 1), 1500); flush();   // 先挂双数
+  // 再补上单数（每个都插在两个双数之间），数这一轮查了几次 Map：原来每挂一个新节点都把已挂的扫一遍、逐个查序号，
+  // 这里约 340 万次；现在和节点数同一个量级。
+  const get = Map.prototype.get;
+  let gets = 0;
+  Map.prototype.get = function (k) { gets++; return get.call(this, k); };
+  try { list.set(at(all, 1), 3000); flush(); } finally { Map.prototype.get = get; }
+  assert.equal(content.childNodes.length, 3000);
+  assert.deepEqual(keysOf(content), all);
+  assert.ok(gets < 100000, `Map.get called ${gets} times`);
+  list.dispose();
+});

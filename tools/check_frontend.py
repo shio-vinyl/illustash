@@ -105,8 +105,9 @@ HTML_SINK_ALLOWED = frozenset({'ui/el.js'})
 FRAME_ALLOWED = frozenset({'ui/frame.js', 'ui/motion.js'})
 ANIMATE_ALLOWED = frozenset({'ui/motion.js'})
 # 规则 12：Safari 17.0 没有的 JS 能力（docs/WEB_V2.md「兼容底线」）。值是 (正则, 从哪个版本起有)；None 表示 Safari 正式版没有，哪里都不用。
-# 版本按 MDN browser-compat-data 8.1.9（2026-11-12）的 safari 一栏核对（https://github.com/mdn/browser-compat-data，
-# 条目见每行注释）；加新项时照样查 BCD 或 WebKit 的发布说明，把条目写上。
+# 版本按 MDN browser-compat-data 8.1.10（2026-11-19）的 safari 一栏核对（https://github.com/mdn/browser-compat-data，
+# 条目见每行注释；那一版里 Safari 27.3 还是测试版）；加新项时照样查 BCD 或 WebKit 的发布说明，把条目写上。
+# 先有部分实现、后来才完整的，写最早有这个能力的版本（判断只看 17.0 有没有），完整的版本写在注释里。
 SAFARI17_JS = {
     'import 属性（with {type}）': (r'''\bimport\b[^;]*?['"`]\s*with\s*\{|\bimport\s*\([^;]*?\{\s*with\s*:''', 'Safari 17.2'),  # javascript.statements.import.import_attributes
     'Promise.withResolvers': (r'\bPromise\s*\.\s*withResolvers\b', 'Safari 17.4'),  # javascript.builtins.Promise.withResolvers
@@ -119,7 +120,9 @@ SAFARI17_JS = {
     'Promise.try': (r'\bPromise\s*\.\s*try\b', 'Safari 18.2'),  # javascript.builtins.Promise.try
     '迭代器方法': (r'\.\s*(?:values|keys|entries)\s*\(\s*\)\s*\.\s*(?:map|filter|take|drop|flatMap|reduce|toArray|forEach|some|every|find)\s*\('
               r'|\bIterator\s*\.\s*from\b', 'Safari 18.4'),  # javascript.builtins.Iterator.map / toArray / from
-    'setHTMLUnsafe': (r'\.\s*setHTMLUnsafe\s*\(|\bparseHTMLUnsafe\b', 'Safari 26'),  # api.Element.setHTMLUnsafe
+    # api.Element.setHTMLUnsafe、api.Document.parseHTMLUnsafe_static：17.4 起有，17.4–18.6 是部分实现（声明式 shadow root 里的
+    # 自定义元素不升级，webkit.org/b/296420），26 起完整
+    'setHTMLUnsafe': (r'\.\s*setHTMLUnsafe\s*\(|\bparseHTMLUnsafe\b', 'Safari 17.4'),
     'Navigation API': (r'\bwindow\s*\.\s*navigation\b|(?<![\w$.])navigation\s*\.\s*(?:navigate|currentEntry|entries|traverseTo|'
                        r'updateCurrentEntry|transition|back|forward|reload)\b|\bNavigateEvent\b', 'Safari 26.2'),  # api.Window.navigation
     'Temporal': (r'\bTemporal\s*\.', 'Safari 27.3'),  # javascript.builtins.Temporal
@@ -379,7 +382,8 @@ def new_rules():
              '每帧的读写和动效各有唯一入口（#704）：requestAnimationFrame 只在 ui/frame.js 和 ui/motion.js 里调，'
              'el.animate、document.startViewTransition 只在 ui/motion.js 里调。这样「先量后改」、减少动态效果、'
              'Safari 17 上的退路都只在一处写。现有的按文件计数冻结为基线，不得新增。',
-             '要在下一帧量或改，用 ui/frame.js 的 read(fn, key) / write(fn, key)（滚动、缩放的处理函数只排队）；'
+             '要在下一帧量或改，用 ui/frame.js 的 read(fn, k) / write(fn, k)（k 是 key() 发的令牌，部件里用作用域的 s.key、s.read、s.write；'
+             '滚动、缩放的处理函数只排队）；'
              '要动画，从 ui/motion.js 导入 animate / enter / exit / flip 和共享元素过渡（具名导入，或 import * as motion 后写 motion.animate(…)）。'
              '改掉存量的一处后运行 `python tools/check_frontend.py --shrink`。'),
         Rule('safari17-js', '12', '用了 Safari 17.0（macOS 14 的 WKWebView）没有的 JS 能力',

@@ -35,12 +35,12 @@ import {animate, countTo, enter, exit, reduced} from './motion.js';
 import {buildPeek, followScroll, hover, hoveredItem} from './rail_peek.js';
 import {createLayer} from './overlay.js';
 import {$} from './dom.js';
+import {heartIcon} from './favorites.js';
 
 // 二级项是链接（读屏读成链接）；外层的 #railItems 是一组导航，不另设列表的角色。
 const ITEM = tpl`<a class="rail-item" draggable="false"><span class="rail-cover" data-ref="cover"><span class="rail-stack" data-ref="stack"><img data-ref="img2" alt=""
   draggable="false"></span><img data-ref="img" alt="" draggable="false" loading="lazy" decoding="async"><span class="rail-icon" data-ref="icon"></span></span><span
-  class="rail-mark" data-ref="mark"></span><span class="rail-count" data-ref="count"></span><span class="rail-heart" data-ref="heart" hidden><svg viewBox="0 0 20 20"
-  aria-hidden="true"><path d="M10 16.4S3.4 12.5 3.4 7.9A3.3 3.3 0 0 1 10 6.3a3.3 3.3 0 0 1 6.6 1.6c0 4.6-6.6 8.5-6.6 8.5Z"/></svg></span></a>`;
+  class="rail-mark" data-ref="mark"></span><span class="rail-count" data-ref="count"></span><span class="rail-heart" data-ref="heart" hidden></span></a>`;
 // 整理各队列的图标（和原来侧栏的一样），以及没有封面的画廊（收藏还没有图、画廊的条件现在没有图）。
 const ICONS = {
   unmatched: tpl`<svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="7.2"/><path d="M8 7.8a2.2 2.2 0 1 1 3 2c-.6.3-1 .8-1 1.4v.4M10 14.2v.1"/></svg>`,
@@ -50,12 +50,15 @@ const ICONS = {
   excluded: tpl`<svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="7.2"/><path d="M5 15 15 5"/></svg>`,
   audit: tpl`<svg viewBox="0 0 20 20" aria-hidden="true"><rect x="4" y="3.5" width="12" height="14" rx="2"/><path d="M7.5 9.8 9.3 11.6 12.8 8"/></svg>`,
   identity: tpl`<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 7h11l-3-3M16 13H5l3 3"/></svg>`,
-  fav: tpl`<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 16.4S3.4 12.5 3.4 7.9A3.3 3.3 0 0 1 10 6.3a3.3 3.3 0 0 1 6.6 1.6c0 4.6-6.6 8.5-6.6 8.5Z"/></svg>`,
+  fav: () => ({el: heartIcon()}),   // 心形只在 ui/favorites.js 画
   gallery: tpl`<svg viewBox="0 0 20 20" aria-hidden="true"><rect x="3" y="4.5" width="14" height="11" rx="2"/><path d="m3.5 13.5 4-4 3 3 2-2 4 4"/></svg>`,
 };
 const iconOf = x => x.kind === 'queue' ? x.key : x.kind === 'gallery' && !x.cover ? (x.key === 'fav' ? 'fav' : 'gallery') : '';
 
 const s = app.child('rail');
+// 帧任务的令牌（#751）：活页条全应用只有一份，在模块顶层、在它自己的作用域上取，一种用途一个。
+const MEASURE = s.key('rail:measure'), IND = s.key('rail:ind'), EDGES = s.key('rail:edges');
+const REVEAL = s.key('rail:reveal'), FOCUS = s.key('rail:focus'), SCROLL = s.key('rail:scroll');
 const providers = new Map(), pickers = new Map(), lists = new Map();
 let current = '', selected = '', temp = null, pitch = 0, wired = false, swapping = 0;
 const monthName = new Intl.DateTimeFormat(I18N.locale, {month: 'short'});
@@ -75,6 +78,7 @@ function mark(item) {
 }
 function itemWidget(item) {
   const {el, refs} = ITEM();
+  refs.heart.append(heartIcon());
   el.dataset.key = item.key; el.dataset.kind = item.kind;
   el.railCount = refs.count;
   const update = x => {
@@ -135,7 +139,7 @@ function fill(entry) {
   const fn = providers.get(entry); if (!fn) return;
   const list = listFor(entry), items = fn() || [];
   list.items = items; list.keyed.set(items);
-  if (entry === current && !temp) s.read(measure, 'rail:measure');
+  if (entry === current && !temp) s.read(measure, MEASURE);
 }
 export function provide(entry, fn) { providers.set(entry, fn); fill(entry); }
 export function refresh(entry) { for (const e of entry ? [entry] : providers.keys()) fill(e); if (!entry || entry === 'tidy') dot(); }
@@ -146,7 +150,7 @@ function measure() {
   const box = visibleBox(), el = itemAt(box, selected), all = itemsOf(box);
   if (all.length > 1) pitch = all[1].offsetTop - all[0].offsetTop;
   const y = el ? el.offsetTop + el.offsetHeight / 2 - 13 : null;
-  s.write(() => { css($('railInd'), 'transform', y === null ? null : `translateY(${y}px)`); cls($('railInd'), 'is-on', y !== null); }, 'rail:ind');
+  s.write(() => { css($('railInd'), 'transform', y === null ? null : `translateY(${y}px)`); cls($('railInd'), 'is-on', y !== null); }, IND);
   edges();
 }
 const visibleBox = () => temp?.list.box || lists.get(current)?.box;
@@ -155,9 +159,9 @@ export function select(key) {
   for (const list of [...lists.values(), ...(temp ? [temp.list] : [])]) {
     for (const el of itemsOf(list.box)) attr(el, 'aria-current', el.dataset.key === selected ? 'page' : null);
   }
-  s.read(measure, 'rail:measure');
+  s.read(measure, MEASURE);
   const el = itemAt(visibleBox(), selected);
-  if (el) s.read(() => reveal(el, true), 'rail:reveal');
+  if (el) s.read(() => reveal(el, true), REVEAL);
 }
 export function selectDay(day) { if (current === 'library') select(itemForDay(timeline.items, day)); }
 // 队列的数字滚到新值（带千位分隔）；滚完经 ui/el.js 的 text() 写一次终值，好让写入缓存和屏幕上的一致，之后元数据带回的值照常能写进去。
@@ -204,7 +208,7 @@ async function swap(fromBox, toBox) {
   toBox.hidden = false;
   if (!quick) itemsOf(toBox).forEach((el, i) => enter(el, {from: [{opacity: 0, transform: 'translateX(-22px) scale(.86)'}, {opacity: 1, transform: 'none'}],
     dur: 3, delay: i * 38, ease: 'spring'}));
-  s.read(measure, 'rail:measure');
+  s.read(measure, MEASURE);
 }
 function showEntry(entry) {
   if (entry === current) return;
@@ -250,19 +254,19 @@ export function railRoute(route) {
 
 // ---------- 滚动与渐隐 ----------
 // 二级层（#railScroll）比窗口长时自己滚动，上下边缘渐隐（遮罩在 css/rail.css 的 .rail-scroll）：已经往下滚过才有上边、下面还有内容
-// 才有下边，由这里写 is-fade-top / is-fade-bottom（core/rail.js 的 railEdges）。滚动、尺寸变了都只排一个读（'rail:edges'），在读里量、
+// 才有下边，由这里写 is-fade-top / is-fade-bottom（core/rail.js 的 railEdges）。滚动、尺寸变了都只排一个读（EDGES），在读里量、
 // 在写里改，同一帧只跑一次。外层的 #railLayer 不滚：窄窗口里它是抽屉，底色和投影画在它上面，不跟着遮罩淡掉。
 const scroller = () => $('railScroll');
 function edges() {
   const box = scroller(), e = railEdges({scroll: box.scrollTop, view: box.clientHeight, total: box.scrollHeight});
-  s.write(() => { cls(box, 'is-fade-top', e.top); cls(box, 'is-fade-bottom', e.bottom); }, 'rail:edges');
+  s.write(() => { cls(box, 'is-fade-top', e.top); cls(box, 'is-fade-bottom', e.bottom); }, EDGES);
 }
 // 让一项完整露出来，不被渐隐盖住（core/rail.js 的 railReveal）：选中时放到中间，键盘焦点到了边缘附近时只滚到刚好露出。
-// 读阶段里调；滚动写进 'rail:scroll'，同一帧里选中和焦点都要滚时以后排的为准。
+// 读阶段里调；滚动写进 SCROLL，同一帧里选中和焦点都要滚时以后排的为准。
 function reveal(el, center) {
   const box = scroller();
   const to = railReveal({top: el.offsetTop, h: el.offsetHeight, scroll: box.scrollTop, view: box.clientHeight, total: box.scrollHeight}, center);
-  if (to !== null) s.write(() => { box.scrollTop = to; }, 'rail:scroll');
+  if (to !== null) s.write(() => { box.scrollTop = to; }, SCROLL);
 }
 
 // ---------- 钉住的项拖动排序（#684） ----------
@@ -298,7 +302,7 @@ const drawer = createLayer({kind: 'popover', id: 'rail-drawer', el: () => $('rai
 function setDrawer(open, reason) {
   const was = $('rail').classList.contains('is-drawer');
   cls($('rail'), 'is-drawer', open); attr($('sidebarToggle'), 'aria-expanded', String(open));
-  if (open) { drawer.open(); s.read(measure, 'rail:measure'); } else { if (was) dropHover(); drawer.close(reason); }
+  if (open) { drawer.open(); s.read(measure, MEASURE); } else { if (was) dropHover(); drawer.close(reason); }
 }
 
 // ---------- 键盘 ----------
@@ -367,7 +371,7 @@ export function wireRail() {
   s.on(items, 'focusin', e => {
     const el = e.target.closest('.rail-item');
     hover(el);
-    if (el && !el.inert) s.read(() => reveal(el, false), 'rail:focus');
+    if (el && !el.inert) s.read(() => reveal(el, false), FOCUS);
   });
   s.on(items, 'focusout', () => hover(null));
   s.on(items, 'pointerdown', e => { const el = e.target.closest('.rail-item'); if (el) startDrag(e, el); });
@@ -375,14 +379,14 @@ export function wireRail() {
   s.on(items, 'pointerup', endDrag);
   s.on(items, 'pointercancel', endDrag);
   // 滚动：键盘焦点在悬停的那一项上（Tab 走到头时二级层跟着滚）就把预览挪到它的新位置，否则（指针悬停时滚轮）收起；边缘的渐隐跟着变。
-  s.on(scroller(), 'scroll', () => { followScroll(); s.read(edges, 'rail:edges'); }, {passive: true});
+  s.on(scroller(), 'scroll', () => { followScroll(); s.read(edges, EDGES); }, {passive: true});
   s.on($('sidebarToggle'), 'click', () => setDrawer(!$('rail').classList.contains('is-drawer')));
   // 窗口拉宽到不再是抽屉时，开着的抽屉收起来（不然它一直留在浮层栈里，网格的方向键不响应）。
   const narrow = typeof matchMedia === 'function' ? matchMedia('(max-width: 760px)') : null;
   if (narrow) s.on(narrow, 'change', () => { if (!narrow.matches) setDrawer(false, 'silent'); });
   // 二级层的高（窗口、抽屉）和里面内容的高（项增减、换组、退场的项摘掉）变了：重放指示条，重算渐隐。
   if (typeof ResizeObserver === 'function') {
-    const ro = s.observe(new ResizeObserver(() => s.read(measure, 'rail:measure')));
+    const ro = s.observe(new ResizeObserver(() => s.read(measure, MEASURE)));
     ro.observe(scroller()); ro.observe($('railItems'));
   }
 }

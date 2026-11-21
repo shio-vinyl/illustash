@@ -7,8 +7,8 @@ import {post} from '../core/session.js';
 import {toast, written} from './dom.js';
 import {attr, tpl} from './el.js';
 
-// 心形的图形（路径）；部件写法的界面（网格卡片）用 heartIcon()。活页条、按天、详情卡片的模板里各有一份同样的路径，
-// 等各自那一步改到时换成 heartIcon()（#751）。
+// 心形的图形（路径）只在这里写一份（#751）：网格卡片、画廊卡片、活页条、按天视图的图块和详情卡片都用 heartIcon()，
+// 模板里留一个空的位置，克隆以后把它放进去。
 const HEART_PATH = 'M10 16.4S3.4 12.5 3.4 7.9A3.3 3.3 0 0 1 10 6.3a3.3 3.3 0 0 1 6.6 1.6c0 4.6-6.6 8.5-6.6 8.5Z';
 const HEART_ICON = tpl`<svg viewBox="0 0 20 20" aria-hidden="true"><path data-ref="path"/></svg>`;
 /** 一个心形图标节点（克隆模板再写上路径）。 */

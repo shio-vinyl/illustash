@@ -23,7 +23,7 @@ import {PAGE} from '../core/assets.js';
 import {newIds, openPicker, targets} from './palette.js';
 import {findArtistWorks, findArtists} from './artists.js';
 import {wireLift} from './drag.js';
-import {write} from './frame.js';
+import {key, write} from './frame.js';
 import {cancelExit, enter, exit} from './motion.js';
 import {detailCard} from './detail_card.js';
 import {bindViewer, closeViewer, openViewer, showViewer, viewerFav, wireViewer} from './viewer.js';
@@ -48,7 +48,8 @@ function mount() {
   card.scope.add(wireLift(card.preview, () => [card.uuid].filter(Boolean)));
   return card;
 }
-const relayout = () => write(() => renderGrid(), 'detail:grid');
+const GRID = key('detail:grid');   // 帧任务的令牌（#751）：详情栏全应用只有一份，在模块顶层取
+const relayout = () => write(() => renderGrid(), GRID);
 
 // ---------- 打开、关掉 ----------
 export function closeInspector() {

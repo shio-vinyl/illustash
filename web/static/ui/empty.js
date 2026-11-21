@@ -3,6 +3,7 @@
 //
 //   drawEmpty(box, {icon: 'check', fact: t('没有未识别的图。'), next: [{label: t('回到按组整理'), href: '#/groups'}]});
 //   next 的每一项是链接（href）或按钮（act：写进 data-empty，点击由所在的页面接，网格页的由 ui/shell.js 接）。
+//   note 是事实下面可选的一句说明（资料库画师页签的「还没有画师」，#711）。
 import {make, text, tpl} from './el.js';
 
 const ICONS = {
@@ -14,14 +15,16 @@ const ICONS = {
   heart: tpl`<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19.6S4 14.9 4 9.4A4 4 0 0 1 12 7.5a4 4 0 0 1 8 1.9c0 5.5-8 10.2-8 10.2Z"/></svg>`,
   search: tpl`<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/></svg>`,
 };
-const EMPTY = tpl`<div class="empty-state"><span class="empty-icon" data-ref="icon"></span><p class="empty-fact" data-ref="fact"></p><div class="empty-next"
+const EMPTY = tpl`<div class="empty-state"><span class="empty-icon" data-ref="icon"></span><p class="empty-fact" data-ref="fact"></p><p class="empty-note"
+  data-ref="note"></p><div class="empty-next"
   data-ref="next"></div></div>`;
 
 // 把 box 的内容换成一个空状态。同一个 box 再画时整块换掉（空状态不常变，也没有输入框）。
-export function drawEmpty(box, {icon = 'image', fact = '', next = []} = {}) {
+export function drawEmpty(box, {icon = 'image', fact = '', note = '', next = []} = {}) {
   const {el, refs} = EMPTY();
   refs.icon.append((ICONS[icon] || ICONS.image)().el);
   text(refs.fact, fact);
+  text(refs.note, note); refs.note.hidden = !note;
   for (const x of next || []) {
     const b = x.href ? make('a', 'btn', x.label) : make('button', 'btn', x.label);
     if (x.href) b.href = x.href; else b.dataset.empty = x.act;

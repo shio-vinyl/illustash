@@ -8,7 +8,7 @@ import {onPage, pageOf} from '../core/pages.js';
 import {loadLibraries} from '../core/settings.js';
 import {readError} from '../core/session.js';
 import {state} from '../core/state.js';
-import {drawShelf} from './catalog.js';
+import {catalogChanged} from '../core/catalog.js';
 import {error, toast} from './dom.js';
 import {afterSync, listChanged, reload, selCount} from './grid.js';
 import {inspect} from './detail.js';
@@ -53,7 +53,7 @@ export async function afterJob(job, change) {
   } else if (job === 'index') {
     const s = state.index.state;
     if (change.ended && s.status === 'done') { listChanged(); await refreshMeta().catch(e => error(readError(e))); }
-    if (s.status !== change.was && state.route.section === 'works') drawShelf();
+    if (s.status !== change.was) catalogChanged.emit('index');
   } else if (job === 'names') {
     if (change.ended) refreshMeta();
   }

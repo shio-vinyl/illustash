@@ -336,7 +336,10 @@ child.terminate();child.wait()
         expected = {first: x, second: y, unknown: None, separate: None}
         previous_ids = None
         for _ in range(2):
-            self.assertEqual(self.request('/api/regroup', {})['status'], 200)
+            # 相似扫描子类会把常规重分组请求改成 /api/similar。这个用例总是走真实的重分组入口。
+            reply = lifecycle.NativeLifecycleTest.request(self, '/api/regroup', {})
+            self.assertEqual(reply['status'], 200, reply)
+            self.assertEqual(reply['body'], b'{"started": true}')
             self.finished()
             groups = [g for g in get('/api/clusters')['clusters'] if set(ids).intersection(g['members'])]
             self.assertEqual(len(groups), len(expected))

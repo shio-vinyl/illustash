@@ -37,12 +37,13 @@
     viewer: {
       hash: '#/library', ready: () => !!document.querySelector('#grid .card[data-id] img'), scroller: viewport, watch: () => $('viewer'),
       // 双击网格里的第一张打开大图，点「下一张」翻页。看图器三张轮换（#709）：image 给一个固定的对象，src、complete、
-      // naturalWidth 读当前那一张的预览图，换图时 src 会变。
+      // naturalWidth 读当前那一张的预览图，换图时 src 会变。改前的前端（main dfbabc62）只有一张 #viewerImg，没有轮换的槽时
+      // 读它，同一份探针量两边（#716）。
       open: () => document.querySelector('#grid .card[data-id]').dispatchEvent(new MouseEvent('dblclick', {bubbles: true, cancelable: true})),
       opened: () => !$('viewer').hidden,
       next: () => $('viewerNext').click(),
       image: () => {
-        const shown = () => document.querySelector('#viewer .vw-slot.is-current .vw-low') || {};
+        const shown = () => document.querySelector('#viewer .vw-slot.is-current .vw-low') || $('viewerImg') || {};
         return {get src() { return shown().src; }, get complete() { return shown().complete; }, get naturalWidth() { return shown().naturalWidth; }};
       },
     },

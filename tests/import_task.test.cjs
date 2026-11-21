@@ -2,30 +2,35 @@
 // 以及结束的方式；迟到或乱序的响应（#34）不会让它倒回去，结束只通知一次。
 const {test, before, afterEach} = require('node:test');
 const web = require('./web.cjs');   // 导入的轮询和文案在 core/jobs.js（#199）
-let settings, effects;
-before(async () => { await web.ready(); settings = await web.load('ui/settings.js'); effects = await web.load('ui/effects.js'); });
+const dom = require('./dom.cjs');
+const {view} = require('./settings_view.cjs');
+let settings, effects, open;
+before(async () => { await web.ready(); settings = await web.load('ui/settings_libraries.js'); effects = await web.load('ui/effects.js'); open = await view('library'); });
 let cleanup = () => {};
 afterEach(() => { cleanup(); cleanup = () => {}; });
 const assert = require('node:assert/strict');
-const esc = s => String(s).replace(/[&<>"]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'})[c]);
 
-// 图库卡片在 ui/settings.js；导入的文案和状态在 core/jobs.js。
+// 图库那一组在 ui/settings_libraries.js；导入的文案和状态在 core/jobs.js。返回这一组的文字、导入那一行的按钮，以及「导入…」
+// 能不能点。
 function card(importTask) {
-  const node = {innerHTML: '', contains: () => false}, {state, importLine} = web.core();
+  const {state, importLine} = web.core();
   Object.assign(state, {route: {page: 'settings'}, importTask, libraries: {
     info: {name: '合成图库', path: '/tmp/synthetic.pilib', sources: [], test: null},
     current: '/tmp/synthetic.pilib', home: '/tmp', libraries: [], export: {status: 'idle'}}});
-  globalThis.document = {getElementById: id => (id === 'setLibraries' ? node : null), activeElement: null};
-  settings.renderLibrariesCard();
-  return {html: node.innerHTML, line: importLine};
+  dom.install();
+  const v = open(), row = v.row('import');
+  const out = {text: v.text, shown: !row.hidden, buttons: row.hidden ? [] : v.buttons('import').map(b => b.textContent),
+    zipOff: v.button('manage', '导入…').disabled, line: importLine};
+  v.dispose(); dom.uninstall();
+  return out;
 }
 const running = (extra = {}) => ({status: 'running', kind: 'archive', id: 't1', file: '合成.zip', ...extra});
 
 test('a running import shows its stage with real counts and a cancel button, and blocks another import', () => {
-  const {html, line} = card(running({stage: 'unpacking', done: 3e6, total: 256e6}));
-  assert.match(html, /导入归档「合成\.zip」：正在解压 3\.0\/256 MB…/);
-  assert.match(html, /data-import-cancel/);
-  assert.match(html, /data-lib-choose="zip" disabled/);
+  const {text, buttons, zipOff, line} = card(running({stage: 'unpacking', done: 3e6, total: 256e6}));
+  assert.match(text, /导入归档「合成\.zip」：正在解压 3\.0\/256 MB…/);
+  assert.deepEqual(buttons, ['取消导入']);
+  assert.equal(zipOff, true);
   assert.equal(line(running()), '导入归档「合成.zip」：正在准备…', 'no stage yet: no invented progress');
   assert.equal(line(running({stage: 'checking'})), '导入归档「合成.zip」：正在检查新图库能否打开…');
   const recognition = {status: 'running', kind: 'recognition', id: 't2', file: 'result'};
@@ -43,18 +48,18 @@ test('a stopping or finished import has no cancel button and says how it ended',
     [{status: 'done', kind: 'recognition', id: 't2', result: {status: 'done', duplicate: true}}, '这份识别结果之前已经导入过。'],
     [{status: 'done', kind: 'recognition', id: 't2', result: {status: 'pending', error: '合成'}}, '识别结果已导入，后续处理尚未完成（合成）。'],
   ]) {
-    const {html} = card(task);
-    assert.ok(html.includes(esc(text)), `${task.status}: ${html}`);
-    assert.doesNotMatch(html, /data-import-cancel/);
+    const c = card(task);
+    assert.ok(c.text.includes(text), `${task.status}: ${c.text}`);
+    assert.ok(!c.buttons.includes('取消导入'));
     // 正在停止的导入仍占着位置，它结束前不能开始新的导入。
-    (task.status === 'stopping' ? assert.match : assert.doesNotMatch)(html, /data-lib-choose="zip" disabled/);
+    assert.equal(c.zipOff, task.status === 'stopping');
   }
-  assert.doesNotMatch(card({status: 'idle'}).html, /import-line/);
-  assert.doesNotMatch(card({...running(), status: 'done', result: {name: '合成', path: '/tmp/合成.pilib'}}).html, /data-open-library/);
-  assert.doesNotMatch(card(undefined).html, /import-line/);
+  assert.equal(card({status: 'idle'}).shown, false);
+  assert.deepEqual(card({...running(), status: 'done', result: {name: '合成', path: '/tmp/合成.pilib'}}).buttons, []);
+  assert.equal(card(undefined).shown, false);
 });
 
-// core/jobs.js 负责轮询；图库卡片（ui/settings.js）开始导入；ui/effects.js 的 afterJob()（接法与 app.js 相同）
+// core/jobs.js 负责轮询；图库那一组（ui/settings_libraries.js）开始导入；ui/effects.js 的 afterJob()（接法与 app.js 相同）
 // 通知结束并列出新图库。页面是假的；计数的是导入自己的定时器。
 function poller(token = 'session') {
   const answers = [], timers = [], toasts = [], posted = [], offs = [];
@@ -134,10 +139,10 @@ test('the cancel button asks the server and then polls for the end', async () =>
 
 test('a published import that could not be listed is offered to open instead of importing again (#111)', () => {
   const task = {...running(), status: 'done', result: {name: '合成', path: '/Users/me/Pictures/Illustash/合成 2.pilib', listed: false, error: '写入失败（合成）'}};
-  const {html, line} = card(task);
+  const {buttons, zipOff, line} = card(task);
   assert.equal(line(task), '已导入「合成」，保存在 ~/Pictures/Illustash/合成 2.pilib，但没能加入最近图库列表：写入失败（合成）。打开它会再试一次加入列表；再导入会另建一个带编号的图库。模型接口与名称联网授权需重新设置。');
-  assert.match(html, /data-open-library="\/Users\/me\/Pictures\/Illustash\/合成 2\.pilib" data-name="合成">打开这个图库/);
-  assert.doesNotMatch(html, /data-lib-choose="zip" disabled/);
+  assert.deepEqual(buttons, ['打开这个图库']);
+  assert.equal(zipOff, false);
 });
 
 test('a Windows library path shortens the user folder too (#518)', () => {

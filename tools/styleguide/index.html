@@ -285,8 +285,6 @@
       <div class="sg-pair"><button class="quiet small" disabled>立即检查</button><i>.quiet.small:disabled</i></div>
     </div>
     <div class="sg-stage"><p class="sg-cap">同一个类在不同容器里被改写成另一种外观：</p>
-      <div class="sg-pair"><div class="settings-card" style="padding:6px 12px"><button class="quiet">立即备份</button></div><i>.settings-card button.quiet：带边框的胶囊，padding 4/12</i></div>
-      <div class="sg-pair"><div class="lib-col" style="min-width:160px"><button class="quiet" style="margin-top:0">添加文件夹…</button></div><i>.lib-col&gt;.quiet：加边框</i></div>
     </div>
     <p class="sg-note"><b>规则散在各处。</b>选择栏里的 <code>.quiet</code> 是白字（<code>.selection-bar .quiet</code>），见<a class="link" href="#s-toast">选择栏</a>；<code>.primary</code> 没有这样的容器覆盖。<code>button.armed</code>（无论哪个类）会把字变成 #b0643d，表示“再点一次确认”。</p>
   </div>
@@ -372,7 +370,6 @@
       <div class="sg-pair"><div class="search-wrap" style="min-width:220px"><input type="search" placeholder="搜索框里的 input"></div><i>.search-wrap input · 36 高胶囊，soft 底，聚焦出强调色环</i></div>
       <div class="sg-pair"><div class="menu menu-drop" style="width:240px"><input type="search" placeholder="我的标签，或 white_hair"></div><i>.menu-drop input · 32 高胶囊，soft 底（弹层里）</i></div>
       <div class="sg-pair"><div class="modal" style="width:240px"><div class="field"><input value="Karen" aria-label="显示名"></div></div><i>.modal .field input · 34 高，7px 圆角，1px 线框，聚焦 3px 外环</i></div>
-      <div class="sg-pair"><input class="lib-input" placeholder="图库名称"><i>.lib-input · 30 高胶囊，纸面底 + hair 环</i></div>
       <div class="sg-pair"><div class="shelf-bar"><span class="watch-add"><input placeholder="关注 Danbooru 上的作品…" style="width:200px"></span></div><i>.shelf-bar .watch-add input · 32 高胶囊，soft 底</i></div>
       <div class="sg-pair"><span class="num-field"><input type="number" value="500"> 张</span><i>.num-field input · 84×30，8px 圆角，线框，右对齐</i></div>
       <div class="sg-pair"><div class="form-grid" style="grid-template-columns:minmax(0,220px);margin:0"><input value="用户名" aria-label="用户名"></div><i>.form-grid input · 6px 圆角，padding 5/8，聚焦出灰紫轮廓</i></div>
@@ -394,8 +391,8 @@
   <div class="sg-item"><header><h3>开关</h3><span class="sg-tag hand">手写</span><span class="sg-tag dup">两套并行</span><span class="sg-cls"><code>.switch</code><code>.view-sw</code></span></header>
     <p class="sg-src">来源：<code>.switch</code> — <code>ui/settings.js</code> startupSwitch / 更新自动检查（<code>input[type=checkbox].switch</code> 在 <code>.switch-line</code> 里），另见 <code>ui/catalog.js</code> 作品关注（<code>.shelf-watch .switch</code>）；<code>.view-sw</code> — <code>ui/grid.js</code> viewSwitch（<code>&lt;button role="switch"&gt;</code> 里的 <code>&lt;i&gt;</code>）。</p>
     <div class="sg-stage top">
-      <div class="sg-pair"><label class="switch-line" style="width:300px"><span><b>自动检查更新</b><small>启动时和之后每天查一次</small></span><input type="checkbox" class="switch" checked></label><i>.switch-line + input.switch（32×18，原生 checkbox 去外观）</i></div>
-      <div class="sg-pair"><label class="switch-line" style="width:300px"><span><b>名称联网查询</b><small>只发送文字</small></span><input type="checkbox" class="switch"></label><i>.switch 关</i></div>
+      <div class="sg-pair"><label class="row" style="width:300px"><span class="row-text"><span class="row-title"><b>自动检查更新</b></span><small class="row-hint">启动时和之后每天查一次</small></span><input type="checkbox" class="switch" checked></label><i>.row + input.switch（32×18，原生 checkbox 去外观；ui/rows.js 的 switch 行）</i></div>
+      <div class="sg-pair"><label class="row" style="width:300px"><span class="row-text"><span class="row-title"><b>名称联网查询</b></span><small class="row-hint">只发送文字</small></span><input type="checkbox" class="switch"></label><i>.switch 关</i></div>
       <div class="sg-pair"><div class="view-group" style="width:300px"><button class="view-opt" role="switch" aria-checked="true"><span>侧栏显示数量</span><i class="view-sw on"></i></button><button class="view-opt" role="switch" aria-checked="false"><span>底部状态栏<small>已加载张数与操作提示</small></span><i class="view-sw"></i></button></div><i>.view-opt + .view-sw（34×20，开=accent-btn，滑块白色）</i></div>
       <div class="sg-pair"><span class="shelf-watch"><input type="checkbox" class="switch" checked> 关注</span><input type="checkbox" class="switch" disabled style="opacity:.45"><i>.shelf-watch .switch（资料库作品行）；:disabled</i></div>
     </div>
@@ -412,8 +409,8 @@
     <p class="sg-note"><b>差别：</b><code>.segmented</code> 是 2px 内边距、选中项纸面色加小阴影；<code>.icon-seg</code> 是 3px 内边距、按钮更高，选中同样纸面色加阴影，只是尺寸、内边距和图标专用。两者视觉近似，可以合并成一个。<code>.segmented</code> 在 app.css 里同样定义了两次（第一版 7px 圆角带边线，后一版胶囊）。</p>
   </div>
 
-  <div class="sg-item"><header><h3>勾选行 / 联想框</h3><span class="sg-tag hand">手写</span><span class="sg-cls"><code>.check-row</code><code>.fold-option</code><code>.combo</code><code>.combo-menu</code></span></header>
-    <p class="sg-src">来源：<code>.check-row</code> — <code>ui/catalog.js</code> workDialog（关注新角色）；<code>.fold-option</code> — <code>ui/settings.js</code>；<code>.combo</code> / <code>.combo-menu</code> — <code>ui/palette.js</code> combo()（编辑资料 / 作品对话框里的联想），菜单行是 <code>.menu-item.watch-option</code>。</p>
+  <div class="sg-item"><header><h3>勾选行 / 联想框</h3><span class="sg-tag hand">手写</span><span class="sg-cls"><code>.check-row</code><code>.combo</code><code>.combo-menu</code></span></header>
+    <p class="sg-src">来源：<code>.check-row</code> — <code>ui/catalog.js</code> workDialog（关注新角色）；<code>.combo</code> / <code>.combo-menu</code> — <code>ui/palette.js</code> combo()（编辑资料 / 作品对话框里的联想），菜单行是 <code>.menu-item.watch-option</code>。</p>
     <div class="sg-stage top">
       <div class="modal" style="width:320px"><label class="check-row"><input type="checkbox" checked><span><b>关注这部作品的新角色</b><small>定期检查 Danbooru 上还没收录的角色</small></span></label></div>
       <div class="sg-frozen" style="width:320px"><div class="modal"><div class="field"><span>Danbooru 角色</span><div class="combo"><input value="karen" aria-label="搜索角色" style="width:100%"><div class="combo-menu"><div class="palette-label">Danbooru</div><button type="button" class="menu-item watch-option on"><span class="watch-name">Karen (Blue Archive)</span><small>karen_(blue_archive)</small><em>D 站 1234</em></button><button type="button" class="menu-item watch-option"><span class="watch-name">Karen Aijou</span><small>aijou_karen</small><em>D 站 8800</em></button></div></div></div></div></div>
@@ -487,21 +484,19 @@
   </div>
 
   <div class="sg-item"><header><h3>区块内提示</h3><span class="sg-tag hand">手写</span></header>
-    <p class="sg-src">来源：<code>.dialog-lead</code> — <code>ui/catalog.js</code> workDialog · <code>.lib-created</code> — <code>ui/settings.js</code> · <code>.task-ask</code> — <code>ui/tasks.js</code> taskAsks · <code>.shelf-todo</code> / <code>.shelf-found</code> — <code>ui/catalog.js</code> drawShelf · <code>.prov-confirm</code> — <code>ui/tasks.js</code> taskAsks（授权）。</p>
+    <p class="sg-src">来源：<code>.dialog-lead</code> — <code>ui/catalog.js</code> workDialog · <code>.task-ask</code> — <code>ui/tasks.js</code> taskAsks · <code>.shelf-todo</code> / <code>.shelf-found</code> — <code>ui/catalog.js</code> drawShelf · <code>.prov-confirm</code> — <code>ui/tasks.js</code> taskAsks（授权）。</p>
     <div class="sg-stage col" style="align-items:stretch">
       <div class="modal" style="max-width:520px"><p class="dialog-lead">关注要用 Danbooru 上的作品 tag。在下面找到这部作品，选中后保存。</p></div>
-      <div class="lib-created" style="max-width:520px"><p><b>图库已经建好</b>，保存在 ~/Pictures/Illustash，但没能加入最近图库列表。</p></div>
       <div class="task-asks" style="max-width:520px"><div class="task-ask"><span>上次检查发现 <b>3</b> 个还没收录的角色</span><button class="primary small">查看并添加…</button></div><div class="task-ask prov-confirm"><b>找回画师这次要访问外网，确认后才会发出：</b><ul><li>发给 Danbooru：图片的像素哈希和感知哈希</li><li>本次最多 1,024 MB；遇到拒绝、限流或验证码就停</li></ul><div class="prov-confirm-btns"><button class="primary">授权并开始</button><button class="quiet">取消</button></div></div></div>
       <div class="shelf-found" style="max-width:520px"><span class="local-dot busy" style="position:static"></span><span>上次检查发现 <b>3</b> 个还没收录的角色</span><div class="spacer"></div><button class="quiet small">查看…</button></div>
       <details class="shelf-todo" open style="max-width:520px"><summary data-more="展开" data-less="收起"><b>待处理</b><span>2 个旧 tag 需要你认领</span></summary><div class="shelf-todo-row"><span class="mono">fate_stay_night</span><span class="muted-note">Fate/stay night</span><div class="spacer"></div><button class="quiet small">认领</button></div></details>
     </div>
   </div>
 
-  <div class="sg-item"><header><h3>说明文字与空状态</h3><span class="sg-tag hand">手写</span><span class="sg-cls"><code>.muted-note</code><code>.settings-note</code><code>.empty</code><code>.loading-line</code><code>.palette-empty</code></span></header>
+  <div class="sg-item"><header><h3>说明文字与空状态</h3><span class="sg-tag hand">手写</span><span class="sg-cls"><code>.muted-note</code><code>.empty</code><code>.loading-line</code><code>.palette-empty</code></span></header>
     <p class="sg-src">来源：<code>.empty</code> — <code>ui/grid.js</code>（图库空）、<code>ui/dom.js</code> readFailure、<code>ui/dom.js</code> reconcileSections · <code>.loading-line</code> — <code>ui/detail.js</code> · <code>.muted-note</code> — 几乎所有 ui 文件 · <code>.palette-empty</code> — <code>ui/palette.js</code> renderPalette。</p>
     <div class="sg-stage col" style="align-items:stretch">
       <p class="muted-note">现在没有只当标签的角色。</p>
-      <p class="settings-note">说明一个设置卡的用途，12px、行高 1.55。</p>
       <p class="empty" style="min-height:90px;padding:10px">没有匹配的角色</p>
       <div class="loading-line">读取图片详情…</div>
       <p class="palette-empty">输入角色 tag 或别名</p>
@@ -621,16 +616,18 @@
     </div>
   </div>
 
-  <div class="sg-item"><header><h3>设置卡</h3><span class="sg-tag hand">手写</span><span class="sg-cls"><code>.settings-card</code><code>.setting-line</code><code>.switch-line</code><code>.set-link</code><code>.set-actions</code></span></header>
-    <p class="sg-src">来源：<code>ui/settings.js</code> renderSettings()（每个 <code>&lt;section class="settings-card"&gt;</code>）、cardHead()（标题 + 范围标签 + 说明）、startupSwitch()、taskLink()；左栏 <code>.settings-nav</code> 是 <code>a</code> 链接。app.css 末尾“设置 (#293)”一节把前面几版全部改写过一遍。</p>
-    <div class="sg-stage canvas"><div class="settings-card" style="width:100%;max-width:640px"><h2>外观 <span class="set-scope">这个图库</span></h2><p class="settings-note">主题和图片网格的显示方式。</p>
-      <div class="setting-line"><span>外观</span><div class="segmented"><button class="on">跟随系统</button><button>浅色</button><button>深色</button></div></div>
-      <label class="switch-line"><span><b>自动检查更新</b><small>启动时和之后每天查一次 GitHub 上有没有新版本</small></span><input type="checkbox" class="switch" checked></label>
-      <a class="setting-line set-link" href="#s-other"><span>关注的作品<small class="line-hint">在资料库的“作品”里逐部开关</small></span><span>3 部 ›</span></a>
-      <div class="setting-line set-status"><span><span class="local-dot" style="position:static;background:#34c38f;width:7px;height:7px"></span>已同步，12 分钟前</span><button class="quiet small">在任务面板查看</button></div>
-      <div class="rule-row" style="margin:6px 0 10px"><a class="rule" href="#s-other"><b>12</b><span>非插画</span></a><a class="rule" href="#s-other"><b>3</b><span>要复核</span></a></div>
-      <div class="set-actions"><span class="set-actions-label">备份</span><button class="quiet">立即备份</button><button class="quiet">打开备份文件夹</button></div>
-      <p class="set-foot">同步、图片识别、相似图片检测、学习与分组都只在本机进行。</p></div></div>
+  <div class="sg-item"><header><h3>设置的分组与行</h3><span class="sg-tag hand">手写</span><span class="sg-cls"><code>.set-group</code><code>.set-group-title</code><code>.set-scope</code><code>.row</code><code>.row-hint</code><code>.row-dot</code><code>.row-bar</code><code>.row-ctrl</code><code>.row-input</code><code>.set-tiles</code></span></header>
+    <p class="sg-src">来源：<code>ui/settings_group.js</code> groups()、tiles()（每组一块 <code>.group.set-group</code>：标题、范围标签、说明、行、折叠区 <code>.set-fold</code>、底部小字）、<code>ui/rows.js</code> rows()（几种行：开关、操作（可带圆点、进度条、几个按钮）、信息、选择（<code>seg: true</code> 画成 <code>.seg</code>）、输入、列表）。各节的配置表在 <code>ui/settings_&lt;节&gt;.js</code>（#714）。</p>
+    <div class="sg-stage canvas"><section class="group set-group" style="width:100%;max-width:640px"><h2 class="set-group-title"><span>显示</span><span class="chip set-scope">仅本浏览器</span></h2>
+      <p class="set-group-note">主题和图片网格的显示方式。</p>
+      <div class="set-body">
+        <div class="row"><span class="row-text"><span class="row-title"><b>外观</b></span></span><span class="seg" role="group"><button aria-pressed="true">跟随系统</button><button aria-pressed="false">浅色</button><button aria-pressed="false">深色</button></span></div>
+        <label class="row"><span class="row-text"><span class="row-title"><b>自动检查更新</b></span><small class="row-hint">启动时和之后每天查一次 GitHub 上有没有新版本</small></span><input type="checkbox" class="switch" checked></label>
+        <div class="row"><span class="row-text"><span class="row-title"><span class="row-dot" data-dot="busy"></span><b>正在下载 1.0 MB / 2.2 MB</b></span><span class="row-bar"><span style="width:45%"></span></span></span><span class="row-ctrl"><button class="btn is-small">取消</button></span></div>
+        <label class="row"><span class="row-text"><span class="row-title"><b>只提示图片较多的角色</b></span><small class="row-hint">Danbooru 上图片少于这个数的角色不提示</small></span><span class="row-ctrl"><input class="row-input" type="number" value="100"><span class="row-unit">张</span></span></label>
+      </div>
+      <div class="set-tiles"><a class="set-tile" href="#s-other"><b>12</b><span>截图</span></a><a class="set-tile" href="#s-other"><b>3</b><span>文字图</span></a></div>
+      <p class="set-group-foot">同步、图片识别、相似图片检测、学习与分组都只在本机进行。</p></section></div>
   </div>
 
   <div class="sg-item"><header><h3>引导：tour 气泡 · nudge · checklist</h3><span class="sg-tag hand">手写</span><span class="sg-cls"><code>.tour-bubble</code><code>.nudge</code><code>.checklist</code><code>.cl-panel</code></span></header>

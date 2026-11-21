@@ -198,7 +198,7 @@ PR 应明确区分“当前 head 上完整执行退出 0”和“当前候选仅
 
 2026-10-18 起，合入 main 由一个集成会话统一做（用户决定见 [AGENTS.md](../AGENTS.md#约定)「合并队列」一条）。起因：各开发会话分别在自己的 PR head 上跑全量，先合进一个，main 就变了，后面改到同一批文件的 PR 都要 rebase 再跑；并行的全量还互相抢机器。
 
-**开发会话**：做完定向检查和平台相关验收（Windows 定向构建与测试、虚拟机走查、浏览器走查），在 PR 描述里写明结果和检查级别（界面 / 普通代码 / 数据层 / 只改文档），转为 Ready 并写「待集成」。不跑本机全量，不合并。推送照 [AGENTS.md](../AGENTS.md#约定)「推送频率」一条：一组相关提交攒成一次推送，被拒或遇到限流时等一会儿再试。
+**开发会话**：做完定向检查和需要的平台验收（动了 Windows 专用代码的在验收机上编译和测试，其余以 CI 的 Windows x64 快检为准；界面改动在浏览器里看，WebKit 专有的问题才进虚拟机），在 PR 描述里写明结果和检查级别（界面 / 普通代码 / 数据层 / 只改文档 / 只改测试和工具），转为 Ready 并写「待集成」。不跑本机全量，不合并。推送照 [AGENTS.md](../AGENTS.md#约定)「推送频率」一条：一组相关提交攒成一次推送，被拒或遇到限流时等一会儿再试。
 
 改了 Rust 代码的 PR，转 Ready 之前先对改过的 Cargo 项目跑格式和 clippy（2026-10-19 用户定，#240；起因是第 11 批全量因为一个 PR 没过 `cargo fmt --check` 白跑一次）。参数与 `tools/check_all.sh` 相同：`crates/core`、`crates/platform`、`crates/relation-fft`、`crates/iqdb`、`desktop`、`native/terms` 跑 `cargo fmt --manifest-path <项目>/Cargo.toml --check`；`crates/core`、`crates/platform`、`crates/relation-fft`、`crates/iqdb`、`desktop` 跑 `cargo clippy --locked --manifest-path <项目>/Cargo.toml --all-targets -- -D warnings`，`native/terms` 在 `--all-targets` 后面再加 `--all-features`。clippy 经 `collab_run.py bg` 运行。之后合了最新 main 或又改了代码，要重跑。PR 描述写明在哪个 head 上跑的、结果如何。前后叠着的 PR（例如同一件事拆成几块）在描述里写明顺序。
 
@@ -211,16 +211,16 @@ PR 应明确区分“当前 head 上完整执行退出 0”和“当前候选仅
    ```
 
    例外是迁移清单的指纹冲突（2026-10-18 用户批准）。`tests/migration_inventory.json` 每个 `sources` 指纹单独一行、指纹之间空一行（规范格式由 `python -m tools.migration_inventory fmt` 写出，`check` 和单元测试拦住不规范的格式），两个 PR 改不同文件的指纹时 git 会自动合并，只有两边改了同一个文件的指纹时才冲突。如果冲突只在这个文件，并且正在合入的 PR 相对共同基点只改了 `sources`，集成会话自己解决：取候选里的版本，再跑 `python -m tools.migration_inventory sync-sources`，它只把 `sources` 改成当前源码的指纹并按规范格式写回，不动边界和归属；然后确认 `python -m tools.migration_inventory report` 的 `warnings` 和 `errors` 都为空，提交合并。正在合入的 PR 如果还改了这个文件里的边界、归属或别的键，照旧退回原会话。第 4 步整批推送时，这个合并提交随候选一起进 main，PR 原来的 head 是它的祖先，GitHub 照常把 PR 标为已合并，不用再推 PR 的分支。只有退回逐个合入时，前一个 PR 合入后这个 PR 在 GitHub 上仍会冲突，重算的结果才要放到它的 head 上：候选里合入它的那个合并提交是它原 head 的后代，把这个提交快进推到它的分支，不用强推，测过的提交就是 PR head。推的是别的会话的分支，每次推之前先请用户同意，推完通知原会话合入前别再推送，并在 PR 里留评论说明。
-2. 候选里只要有一个 PR 需要全量（普通代码或数据层），就在候选 head 上经 `collab_run.py` 跑一次 `tools/check_all.sh`；含数据层改动的，升级测试照常包含。整批都是界面级或只改文档时，按各自门槛检查（界面级跑 `node --test` 和 `tests.test_frontend_architecture`、`tests.test_styleguide_sync` 两条 Python 测试，只改文档的查相对链接），不跑全量。
+2. 候选里只要有一个 PR 需要全量（普通代码或数据层），就在候选 head 上经 `collab_run.py` 跑一次 `tools/check_all.sh`；含数据层改动的，升级测试照常包含。整批都是界面级、只改文档或只改测试和工具时，按各自门槛检查（界面级跑 `node --test`，两条 Python 测试以 CI 为准；只改文档的查相对链接；只改测试和工具的跑受影响的测试、以 CI 为准），不跑全量。
 3. 全量失败时，先排除负载等环境原因（#219），再按 PR 二分定位，把失败的 PR 退回原会话，其余重新组批。
 4. 通过后集成会话推候选、开临时 PR，把候选 head 和全量结果报给 Lead；推送和核对（下面第 2～4 小步）由 Lead 做，用户 2026-11-17 长期授权，不再逐批请用户批准。整批一次推到 main（#612）：N 个 PR 只有一次推送、main 上一次 CI，合入的就是测过的那些提交。2026-11-18 第十四批实测走通（#629）。
-   1. 把候选分支推到 origin，开一个临时 PR：候选分支 → main，非草稿，标题写「集成候选：第 N 批（不要单独审）」，正文列出同批 PR 和本机全量结果，写明各 PR 已分别审过。main 的分支保护要求推上去的提交带着通过的「全部检查」，管理员也不例外；各 PR 上跑过的检查挂在 PR 自己的合并提交上，不算候选的。临时 PR 上由 `pull_request` 事件跑出的「全部检查」挂在候选 head 上，分支保护认它。不要用 `gh workflow run ci.yml --ref <候选分支>` 手动触发：`workflow_dispatch` 跑出的「全部检查」即使通过，直接推送时也不被认（第十三批实测被拒，报 `GH006 … Required status check "全部检查" is expected`）。GitHub 文档也只计入由 `push`、`pull_request` 等事件触发的 workflow job 检查（[Troubleshooting required status checks](https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/collaborating-on-repositories-with-code-quality-features/troubleshooting-required-status-checks) 的「Checks from some workflow jobs are not evaluated」）。等「全部检查」通过再推：托管 macOS runner 排不上被取消的，用 `gh run rerun <run> --failed` 重跑一次；真失败照下文「和合并队列的关系」处理。Windows x64 快检不计入分支保护，结果照常查看。
+   1. 把候选分支推到 origin，开一个临时 PR：候选分支 → main，非草稿，标题写「集成候选：第 N 批（不要单独审）」，正文列出同批 PR 和本机全量结果（机器、系统、架构、工具链、通过与跳过），写明要交叉审查的 PR 已审过。main 的分支保护要求推上去的提交带着通过的「全部检查」，管理员也不例外；各 PR 上跑过的检查挂在 PR 自己的合并提交上，不算候选的。临时 PR 上由 `pull_request` 事件跑出的「全部检查」挂在候选 head 上，分支保护认它。不要用 `gh workflow run ci.yml --ref <候选分支>` 手动触发：`workflow_dispatch` 跑出的「全部检查」即使通过，直接推送时也不被认（第十三批实测被拒，报 `GH006 … Required status check "全部检查" is expected`）。GitHub 文档也只计入由 `push`、`pull_request` 等事件触发的 workflow job 检查（[Troubleshooting required status checks](https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/collaborating-on-repositories-with-code-quality-features/troubleshooting-required-status-checks) 的「Checks from some workflow jobs are not evaluated」）。等「全部检查」通过再推：托管 macOS runner 排不上被取消的，用 `gh run rerun <run> --failed` 重跑一次；真失败照下文「和合并队列的关系」处理。Windows x64 快检不计入分支保护，结果照常查看。
    2. 推之前逐个核对：每个 PR 现在的 head（`gh pr view <PR> --json headRefOid`）就是候选里合入它的那个合并提交的第二个父提交。对不上说明测过之后又有人推了，这个 PR 退出这一批，重新组批。这一步代替 `--match-head-commit`。
    3. `git push origin <候选 head>:refs/heads/main`，不加 `--force`：main 没被动过才能快进。合入 main 只走这个队列，所以正常不会被拒。
    4. 核对 `origin/main` 就是候选 head，`origin/main^{tree}` 与候选 head 的 tree 相同，每个 PR 和临时 PR 都显示为已合并（`gh pr view <PR> --json state` 为 `MERGED`），关联的 Issue 都已关闭。不符就停下报告。
 
    推送被拒时先看原因：不是快进，说明 main 被动过，停下报告；候选的「全部检查」还没跑完就等它，没过照失败处理。只有别的原因（比如分支保护改了）才退回逐个合入：先关掉临时 PR（不合它），再按候选里的顺序用 `gh pr merge --merge --match-head-commit <PR head>`，每两个之间隔一分钟以上（AGENTS.md「推送频率」），全部合完后核对 `origin/main^{tree}` 与候选 head 的 tree 相同，不同就停下报告。
-5. 在每个合入的 PR 里留一条评论：候选 head、同批 PR、合入方式（整批快进推送，或退回逐个合入及原因）、全量结果（机器、系统、架构、工具链、通过与跳过）。删除已合并的远端分支，以及本地和远端的候选分支。
+5. 全量结果已经写在临时 PR 里，各 PR 不再逐个留评论；只有退回逐个合入时，在临时 PR 里补一句原因。删除已合并的远端分支，以及本地和远端的候选分支。
 6. 清理本机 worktree（2026-10-19 用户定）：每个 worktree 带一份 Rust 构建产物，约 7～13 GB，不清理会把磁盘占满。这一批合入后，对 `git worktree list` 里分支已合入 `origin/main`、没有开着的 PR 以它为头或目标、`git status --porcelain` 为空（没有未提交和未跟踪的文件）的 worktree，执行 `git worktree remove` 并删除对应的本地分支；任何一条不满足就跳过，并在报告里列出。不清理固定验收区 `.venv/local-acceptance/worktree` 和集成会话自己的工作区；虚拟机母版和副本不在此列。报告里写明删了几个、腾出多少空间（`df -h /` 前后对比）。
 
 平台专用改动（如 `cfg(windows)`）的定向验收由开发会话在自己的 head 上完成；组批时如果冲突解决碰到了平台专用代码，退回原会话补测，不由集成会话代做。
@@ -300,7 +300,7 @@ CI 使用标准 Python 3.12，与 macOS job 一致；常驻验收机使用嵌入
 
 完整回归和研究定向复跑在编译前输出 CPU、NumPy/Pillow、DLL SHA-256、NumPy 进程实际 OpenBLAS 配置/内核/线程数及 CPU 分派覆盖。身份探针在 Python 进程加载 NumPy wheel 的 DLL；这里的线程数仅为 NumPy 参考进程实测，不表示已测候选子进程的线程数，日志将候选线程数标为未测。每次实际进入的数值比较输出 `NUMERIC_REFERENCE` 记录，`windows_fixed_suite` 在 job 摘要中分别统计 NumPy 和冻结比较的通过/失败数；这份记录与 unittest 的总体成败一起阅读。其他平台的默认验收入口不设置该变量。
 
-`python -m tests.windows_fixed_suite --log windows-unittest.log` 是候选二进制和 OpenBLAS 接线后的全套入口；带 `--select` 和 `--scope` 时只跑选中的测试，日志和摘要标明范围。它列出全部 unittest 跳过，白名单逐条匹配平台限制，缺被测二进制、DLL 或升级输入均判失败。默认 discover 会排除显式点名的真实模型用例，打包资源测试使用合成文件，原生 ORT 通过运行时动态加载，故完整回归只需要固定 OpenBLAS。自建 ONNX Runtime 的实际加载及真实模型、DirectML、CRT 依赖检查、安装／覆盖升级／卸载、GUI 和首次流程、真机性能以及 Windows ARM 仍在对应的验收机或虚拟机上做。试运行期间 Windows 快检和完整回归保留真实成败，分支保护的汇总暂不以它们决定代码 PR 是否通过。
+`python -m tests.windows_fixed_suite --log windows-unittest.log` 是候选二进制和 OpenBLAS 接线后的全套入口；带 `--select` 和 `--scope` 时只跑选中的测试，日志和摘要标明范围。它列出全部 unittest 跳过，白名单逐条匹配平台限制，缺被测二进制、DLL 或升级输入均判失败。默认 discover 会排除显式点名的真实模型用例，打包资源测试使用合成文件，原生 ORT 通过运行时动态加载，故完整回归只需要固定 OpenBLAS。自建 ONNX Runtime 的实际加载及真实模型、DirectML、CRT 依赖检查、安装／覆盖升级／卸载、GUI 和首次流程、真机性能仍在 x64 验收机上做。试运行期间 Windows 快检和完整回归保留真实成败，分支保护的汇总暂不以它们决定代码 PR 是否通过。
 
 ## 界面走查（浏览器，#453）
 
@@ -361,11 +361,7 @@ python3 -m tools.ui_perf report .perf.noindex/runs/<时间>                 # �
 
 2026-10-15 起，在 Mac 上启动 App 的实机测试都在 [Tart](https://tart.run) 虚拟机里做（用户决定见 [AGENTS.md](../AGENTS.md#约定)「Mac 实机测试」一条）。虚拟机有自己的用户目录、应用数据和钥匙串，碰不到本机正式版的数据；本机只被占用磁盘，以及运行时的 CPU 和内存。
 
-**集中走查**（2026-11-16 用户定，见 [AGENTS.md](../AGENTS.md#约定)「Mac 实机测试」一条）：多个会话并行时，本机虚拟机（macOS Tart、Windows ARM UTM）的走查只由一个「虚拟机验收」会话做。这个会话由 Lead 指定，可以是 CC 的，也可以是 Codex 的。其他会话不自己开虚拟机，把走查请求交给它。
-- **请求写明**：请求方是谁、PR 号和要测的 head、平台、要验证的点和步骤、预期结果、要不要合成图库或模型。
-- **送达**：和虚拟机验收会话在同一个工具里的会话，直接发消息给它（CC 用 SendMessage）。另一个工具的会话，在 PR 里发一条以 `<!-- vm-walk-request -->` 开头的评论，内容同上，再报给自己的 Lead；由用户转给负责虚拟机验收的那一边的 Lead，交给虚拟机验收会话。
-- **虚拟机验收会话**：只测不改代码；能合并的请求合并，开一次虚拟机依次测几个 PR，不测时关机；结果写进同一个 PR 的评论，并回复请求方；发现问题同时报给 Lead。
-- 隔离宿主里的浏览器走查和远程的 Windows x64 验收机（`--slot windows`）不在此列，各会话照旧自己做。
+**排队**（2026-11-22 用户定，见 [AGENTS.md](../AGENTS.md#约定)「Mac 实机测试」一条）：不设专门的虚拟机验收会话，谁要测谁开，经 `collab_run.py run --slot vm` 排队，同一时间只开一台，测完关机、删掉副本。界面改动默认在隔离宿主的浏览器里看，只有 WebKit 才看得出的问题才进虚拟机。Windows 只在 x64 验收机（`--slot windows`）上验收，不再做 Windows ARM 虚拟机走查。
 
 **母版与副本**：本机保留一台母版 `illustash-master`，来自 `ghcr.io/cirruslabs/macos-tahoe-base`（macOS 26），约 30 GB。镜像默认关闭 SIP，母版已在恢复模式里用 `csrutil enable` 打开 SIP；Gatekeeper 保持开启，母版里从没装过 Illustash。每次测试用 `tart clone illustash-master <名字>` 复制一份（APFS 写时复制，几乎不占额外空间），测完 `tart stop` 后 `tart delete` 删掉副本。母版只在用户明确同意时才修改或删除。镜像下载约 27 GB，大文件不经本机代理下载。
 

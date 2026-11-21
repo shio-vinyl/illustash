@@ -96,7 +96,7 @@ export const FLOWS = [
         ['未识别 · 按组整理', '#/groups', 'panel'], ['未识别 · 第 1 组', `#/g/${f.groups[0]?.id}`, 'grid'],
         ['全部未识别', '#/unmatched', 'grid'], ['已跳过', '#/skipped', 'grid'], ['重复', '#/duplicates', 'grid'],
         ['相似的图', '#/similar', 'panel'], ['相似的图 · 第 1 组', `#/s/${f.similar[0]?.id}`, 'grid'], ['已排除', '#/excluded', 'grid'],
-        ['身份整理', '#/identity', 'panel'], ['画师抽查', '#/artist-audit', 'panel'],
+        ['身份整理', '#/identity', 'empty'], ['画师抽查', '#/artist-audit', 'panel'],
         ['设置 · 通用', '#/settings', 'panel'], ['设置 · 图库', '#/settings/library', 'panel'],
         ['设置 · 画师', '#/settings/artists', 'panel'], ['设置 · 关于', '#/settings/about', 'panel'],
       ];
@@ -104,6 +104,12 @@ export const FLOWS = [
         const snap = await w.step(`打开${label}`, () => goto(page, hash), {shot: true});
         w.check(`${label}：标题不空`, !!snap.heading, snap.heading);
         if (kind === 'grid') w.check(`${label}：网格有图`, snap.total > 0, `total=${snap.total}`);
+        // 合成图库里没有长得像的角色对：身份整理是空状态，看它在、写了事实（中文那句不到 20 个字，不用下面的字数判断）。
+        if (kind === 'empty') {
+          const fact = await page.waitFor(`(document.querySelector('#groupsPage .empty-state:not([hidden]) .empty-fact')?.textContent || '').trim()`, 3000);
+          w.check(`${label}：空状态写了事实`, fact, '');
+          continue;
+        }
         if (kind !== 'grid') {
           const filled = await page.eval(`(() => { const v = document.getElementById('viewport'); return [...v.children].some(el => !el.hidden && el.id !== 'grid' && el.id !== 'marquee' && el.id !== 'empty' && (el.innerText || '').trim().length > 20); })()`);
           w.check(`${label}：页面有内容`, filled, '');

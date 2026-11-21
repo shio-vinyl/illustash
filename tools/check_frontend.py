@@ -72,7 +72,7 @@ JS 里拼的内联样式、index.html 的 style 属性和 var() 的回退值；�
 """
 from collections import Counter
 from dataclasses import dataclass, field
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import argparse
 import bisect
 import functools
@@ -83,7 +83,8 @@ import subprocess
 import sys
 
 ROOT = Path(__file__).resolve().parents[1]
-STATIC = Path('web/static')
+# 报错里的路径一律用 /（Windows 上 Path 会写成 web\static）
+STATIC = PurePosixPath('web/static')
 BASELINE = Path('tools/frontend_baseline.json')
 # 规则 3 的放行项：浮层管理器是 document 级 keydown / click 监听的唯一入口（Esc 只关栈顶一个、点外关闭都靠它在一处判断）。
 # 用户 2026-11-12 在 #343 批准，只此一个文件；别的文件新增全局监听仍然报错，也不要往基线里加。

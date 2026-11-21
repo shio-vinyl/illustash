@@ -36,7 +36,6 @@ import time
 import zlib
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from zoneinfo import ZoneInfo
 
 from tools import dev_preview
 from tools.ui_walk.fixture import Client
@@ -45,6 +44,9 @@ from tools.ui_walk.host import Host
 ROOT = dev_preview.ROOT
 CACHE = ROOT / '.perf.noindex'
 TZ = 'Asia/Shanghai'
+# 分天用固定的东八区：Asia/Shanghai 1991 年以后没有夏令时，结果和查时区库一样；Windows 的 Python 没有时区库
+# （要另装 tzdata），用 ZoneInfo 会报找不到时区。
+ZONE = datetime.timezone(datetime.timedelta(hours=8), TZ)
 LIBRARY = '合成大图库.pilib'
 INCOMING = 'zz-incoming'
 # 最新的一天。同步导入的新图落在运行当天，排在它前面。
@@ -148,7 +150,7 @@ def day_counts(spec: Spec) -> list[tuple[datetime.date, int]]:
 def plan(spec: Spec) -> tuple[list[Planned], list[Planned]]:
     """图库里的图（按天的子文件夹）和同步导入备用的新图。"""
     rnd = random.Random('ui-perf-images')
-    zone = ZoneInfo(TZ)
+    zone = ZONE
     out: list[Planned] = []
     for day, n in day_counts(spec):
         start = datetime.datetime.combine(day, datetime.time(8), zone).timestamp()

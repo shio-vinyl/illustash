@@ -34,8 +34,7 @@ class FixtureTest(unittest.TestCase):
         self.assertEqual(len({p.ident for p in library + incoming}), 540)
         self.assertTrue(all(p.stamp == 0 for p in incoming))
         import datetime
-        from zoneinfo import ZoneInfo
-        zone = ZoneInfo(fixture.TZ)
+        zone = fixture.ZONE
         for p in library[::37]:
             day = datetime.datetime.fromtimestamp(p.stamp, zone).strftime('%Y%m%d')
             self.assertEqual(p.rel.split('/')[0], day)

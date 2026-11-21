@@ -138,6 +138,8 @@ button.day-sync:focus-visible{outline:2px solid var(--accent);outline-offset:2px
   stroke-linecap:round;stroke-linejoin:round}
 .day-ring.is-warn{background:var(--warn)}
 .day-ask{flex-wrap:wrap}
+/* 文字一栏至少留八个字宽：放不下时按钮换到下一行，不把问句挤成一个字宽（中文按钮不折行，#716 macOS 14 走查） */
+.day-ask>.day-card-text{flex-basis:8em}
 .day-ask.is-open{grid-column:1/-1}
 .day-ask-peek{display:flex;flex:none;gap:var(--space-6)}
 .day-ask-peek>img{width:46px;height:46px;border-radius:var(--radius-8);background:var(--tint-soft);object-fit:cover}

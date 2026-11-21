@@ -230,7 +230,8 @@ export function mode(name, items = [], hint = '') {
 export function railRoute(route) {
   noteLibraryView(route);
   if (!wired) return;   // 活页条还没接上（只有测试会这样）
-  const at = railAt(route, state.char);
+  // 只按地址算（route.char）：换页时 state.char 还是上一个角色页的，要等 ui/shell.js 读完角色才换（#716）。
+  const at = railAt(route);
   for (const a of $('railEntries').querySelectorAll('[data-entry]')) attr(a, 'href', entryHref(a.dataset.entry));
   attr($('settingsLink'), 'aria-current', at.entry === 'settings' ? 'page' : null);
   showEntry(at.entry);
@@ -338,10 +339,10 @@ export function wireRail() {
   // 时间轴读完重画：原来选中的那项还在就留着（网格里 ⌥↑↓ 移过去的、按天视图滚动时 selectDay 设的），不在了才回到地址上的那一项。
   timeline.changed.on(() => {
     refresh('library');
-    if (current === 'library' && !timeline.items.some(x => x.key === selected)) select(railAt(state.route, state.char).item);
+    if (current === 'library' && !timeline.items.some(x => x.key === selected)) select(railAt(state.route).item);
   });
   galleryCovers.changed.on(() => refresh('galleries'));
-  pins.changed.on(() => { refresh('catalog'); select(railAt(state.route, state.char).item); });
+  pins.changed.on(() => { refresh('catalog'); select(railAt(state.route).item); });
   loadPins().then(() => refresh('catalog'));
   // 写入、撤销之后旧月份的张数和封面可能变了：整条重读。同步到了新图只重读最新的月。
   // 连着写几次（点收藏、改标签）只在停下 0.7 秒后读一次，不在图库里时等下次进来再读。

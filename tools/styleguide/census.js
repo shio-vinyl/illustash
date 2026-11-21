@@ -7,17 +7,17 @@ window.CENSUS = {
   "css/catalog.css": "076a0fcebc95af0a6daff5b99fb5e0d5c407fa7bacc908dcd8383bc4e52a6ba2",
   "css/character.css": "c700d9eb883a6ef2848b44e5c9d96446dc649e7b9d63e2ae83ebfbfef7151697",
   "css/detail.css": "a9eaf043f2074eea276c1b235e7da4db3630a280ad99ea15956c62d2ecba2904",
-  "css/galleries.css": "616576c53e0bc5ce243f1bba00287f2d6d6716e4e4ea6a20ec027b45235883b8",
-  "css/library.css": "b665a2da29f9cfb927429a4a5dc93ae824796ddd4047fb22ca4833f4281fd517",
+  "css/galleries.css": "2ce38f58bf8ff9228202c489de9cd3eb9c7448666f7f524404ed7728ad7ed5b2",
+  "css/library.css": "df0286fc7600ea33d43f1639d8539fd6d71f04bd636e3ccbc8a734e6d822d62b",
   "css/overlays.css": "73dda4f60b805591d5e8be074f37a4665cc0441b8b6906e3d0508bf906d1fc80",
   "css/rail.css": "589b1e1f2f6a8ec830520f887de33efdf66c3bf28efd2dc7223f2d9c1be13986",
   "css/settings.css": "cc4715b8dcdd1bb9d1168d5a5067e61ab3d560c7ab42b019afe3c865143f3c71",
   "css/tidy.css": "63c15db2f00a009f88d0b19a20ab688b72849fc49e487ae3bf9260e55dada604",
   "css/tokens.css": "6f31fbe3b32f892a26e753e410d7e5ea94d7e4165ed49d04458eecca3314e787"
  },
- "sha256": "e3596ec4768ae00c26729658c46a9bf132e069d3039e35ca08b54eb54065edd1",
- "lines": 2040,
- "rules": 1452,
+ "sha256": "94191fc90bb1dec0d90c4a53ea7ced087f306e118f7982ecbde1c8e3e69554f7",
+ "lines": 2042,
+ "rules": 1453,
  "themeVars": {
   "light": {
    "--canvas": "#f4f4f6",

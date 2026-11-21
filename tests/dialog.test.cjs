@@ -103,3 +103,14 @@ test('closeModal：退场中再关一次不重复关；openStatic 打开静态�
   document.dispatch('keydown', {key: 'Escape', target: {}, preventDefault() {}, stopImmediatePropagation() {}});
   assert.equal(d.open, false); assert.equal(closes, 2); assert.deepEqual(overlay.layerIds(), []);
 });
+test('输入框里按回车用「确定」提交，不用排在前面的「取消」（#716）', () => {
+  page();
+  const d = dialog.openDialog({title: '新建', body: '<input name="name">', actions: '<button value="cancel">取消</button><button value="ok">新建</button>'});
+  const submitted = [], ok = d.querySelector('form button[value="ok"]:not([disabled])');
+  ok.form = {requestSubmit(button) { submitted.push(button); }};
+  const enter = (target, extra = {}) => { const e = {key: 'Enter', target, defaultPrevented: false, preventDefault() { this.defaultPrevented = true; }, ...extra}; d.on.keydown(e); return e; };
+  const e = enter({tagName: 'INPUT'});
+  assert.deepEqual(submitted, [ok]); assert.equal(e.defaultPrevented, true);
+  enter({tagName: 'TEXTAREA'}); enter({tagName: 'INPUT'}, {isComposing: true}); enter({tagName: 'INPUT'}, {defaultPrevented: true});
+  assert.equal(submitted.length, 1, '多行文字、输入法组字、别处已经处理过的回车照旧');
+});

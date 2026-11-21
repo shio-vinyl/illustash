@@ -39,7 +39,7 @@ const GHOST = 64, OFFSET = 14;
 const PLACE = key('lift:place'), HIT = key('lift:hit'), OVER = key('lift:over');
 let live = null;   // 正在拖：{ids, ghost, x, y, from, target}
 // Esc 取消拖动：拿起时打开这一层，结束时关掉。
-const escape = createLayer({kind: 'overlay', id: 'lift', el: () => live?.ghost, onDismiss: () => { if (live) flyBack(); }});
+const escape = createLayer({kind: 'overlay', id: 'lift', el: () => live?.ghost, onDismiss: () => { if (live) flyBack(true); }});
 
 export function wireLift(el, ids, when = () => true) {
   return wirePress(el, {when, start: (down, move) => {
@@ -155,18 +155,19 @@ async function flyInto(ghost, el, n) {
   plus.remove();
 }
 // 没放进去：飞回拿起的地方，活页条换回来。
-async function flyBack() {
+async function flyBack(held = false) {
   const {ghost, from} = live;
-  detach();
+  detach(held);
   mode(null);
   await animate(ghost, [{transform: ghost.style.transform, opacity: 1}, {transform: `translate(${from.x + OFFSET}px,${from.y + OFFSET}px) scale(.6)`, opacity: 0}], {dur: 1});
   ghost.remove();
 }
 // 不再跟着指针（拖动结束），缩略图还在，由调用方收尾。
-function detach() {
+// held：按着键取消（Esc）。指针可能正停在输入框上，输入框等松手以后才重新接指针，焦点也等松手以后再看（#716 macOS 14 走查）。
+function detach(held = false) {
   if (!live) return;
   if (live.target) cls(live.target.el, 'is-drop', false);
-  keepFocus(live.focus);
+  if (held) holdInputs(live.focus); else keepFocus(live.focus);
   live = null;
   document.body.classList.remove('lifting');
   escape.close('silent');
@@ -177,6 +178,17 @@ function detach() {
 const TYPING = 'input,textarea,select,[contenteditable]';
 function keepFocus(was) {
   setTimeout(() => { const now = document.activeElement; if (now && now !== was && now.matches?.(TYPING)) now.blur(); }, 0);
+}
+function holdInputs(was) {
+  document.body.classList.add('settling');
+  let timer = 0;
+  const done = () => {
+    clearTimeout(timer); document.body.classList.remove('settling');
+    for (const type of ['pointerup', 'mouseup']) removeEventListener(type, done, true);
+    keepFocus(was);
+  };
+  for (const type of ['pointerup', 'mouseup']) addEventListener(type, done, true);
+  timer = setTimeout(done, 10000);   // 松手的事件没来（窗口外松手）也不一直挡着
 }
 // 立刻结束：缩略图摘掉，活页条换回来。
 function finish() {

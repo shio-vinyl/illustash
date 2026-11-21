@@ -65,3 +65,22 @@ test('拿起以后松手：焦点要是落进了拿起时不在的输入框，�
   await new Promise(r => setTimeout(r, 5));
   assert.equal(blurred, 1);
 });
+
+test('拿起后按 Esc（键还按着）：输入框到松手以后才重新接指针，松手后焦点落进的输入框照样失焦（#716）', async () => {
+  const doc = globalThis.document, body = doc.body, overlay = await web.load('ui/overlay.js');
+  let blurred = 0;
+  const input = Object.assign(new web.FakeElement('input'), {matches: s => s.includes('input'), blur() { blurred++; }});
+  doc.activeElement = doc.body;
+  drag.lift(['a'], {clientX: 100, clientY: 100});
+  assert.deepEqual(overlay.layerIds().slice(-1), ['lift']);
+  overlay.dismissTop('escape');
+  assert.ok(!drag.lifting());
+  assert.ok(body.classList.contains('settling'), '键还按着：输入框仍不接指针');
+  await new Promise(r => setTimeout(r, 5));
+  assert.equal(blurred, 0);
+  doc.activeElement = input;   // 松手时浏览器把焦点给了指针下的输入框
+  fire(win, 'pointerup', {clientX: 100, clientY: 100, buttons: 0});
+  assert.ok(!body.classList.contains('settling'));
+  await new Promise(r => setTimeout(r, 5));
+  assert.equal(blurred, 1);
+});

@@ -10,6 +10,7 @@
 // cancel 把「确认」改成取消。
 import {t} from '../core/i18n.js';
 import {esc} from '../core/format.js';
+import {composing} from '../core/keys.js';
 import {session} from '../core/session.js';
 import {state} from '../core/state.js';
 import {cancelExit, exit, exitingNow} from './motion.js';
@@ -36,6 +37,13 @@ function wireSubmit(d) {
   d.addEventListener('submit', e => {
     if (e.defaultPrevented) return;
     e.preventDefault(); closeModal(d, e.submitter?.value ?? '');
+  });
+  // 输入框里按回车（浏览器的隐式提交）算「确定」：隐式提交用的是排在最前面的提交按钮，各对话框的「取消」都排在前面（#716）。
+  // 必填校验照常走 requestSubmit；没有「确定」按钮的表单照浏览器的默认。
+  d.addEventListener('keydown', e => {
+    if (composing(e) || e.key !== 'Enter' || e.target?.tagName !== 'INPUT' || e.defaultPrevented) return;
+    const ok = d.querySelector('form button[value="ok"]:not([disabled])'); if (!ok) return;
+    e.preventDefault(); ok.form.requestSubmit(ok);
   });
 }
 // Esc、点背景：先跑调用方的 onDismiss（逻辑上关掉：让在途的操作作废），再播退场；返回 false 让这一层留在栈里，

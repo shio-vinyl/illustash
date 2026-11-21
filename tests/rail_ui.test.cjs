@@ -296,3 +296,14 @@ test('停留判定：路过不出、停够了出、出了以后移到相邻项�
   $('railItems').dispatchEvent({type: 'focusout'}); await wait(300);
   delete globalThis.innerHeight;
 });
+
+test('从角色页回到图库：换页时 state.char 还是上一个角色，活页条按地址亮「图库」（#716）', async () => {
+  rail.railRoute({page: 'library', char: '1', q: '', has: [], not: []});
+  for (let i = 0; i < 5; i++) await tick();
+  assert.deepEqual(visible(), ['catalog']);
+  state.char = {id: '1', name: 'Karen'};   // ui/shell.js 换页时先调 railRoute，之后才 setChar(null)
+  rail.railRoute({page: 'library', q: '', has: [], not: []});
+  for (let i = 0; i < 5; i++) await tick();
+  assert.deepEqual(visible(), ['library']);
+  state.char = null;
+});

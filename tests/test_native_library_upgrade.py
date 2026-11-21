@@ -643,25 +643,47 @@ class NativeLibraryUpgradeTest(unittest.TestCase):
         PAUSE = 16
         lib, _ = self.package(6, 'slow')
         existing = {p.relative_to(lib.path).as_posix() for p in lib.path.rglob('*.sqlite')}
-        env = {**self.env, 'ILLUSTASH_DESKTOP_STDIN': '1', 'ILLUSTASH_TEST_UPGRADE_PAUSE_MS': str(PAUSE * 1000)}
+        env = {**self.env, 'ILLUSTASH_DESKTOP_STDIN': '1', 'ILLUSTASH_TEST_UPGRADE_PAUSE_MS': str(PAUSE * 1000),
+               'ILLUSTASH_TEST_TRACE_STARTUP_OUTPUT': '1'}
+        trace = tempfile.TemporaryFile()
+        self.addCleanup(trace.close)
         process = subprocess.Popen(self.args(lib), env=env, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                                   stderr=subprocess.DEVNULL, **SPAWN)
-        self.addCleanup(self.stop, process)
+                                   stderr=trace, **SPAWN)
+        self.addCleanup(process.stdin.close)
         self.addCleanup(process.stdout.close)
-        process.stdin.write(b'\x01'); process.stdin.flush()
-        started, lines = time.monotonic(), []
+        # 读线程若卡在管道上，先退出宿主让管道到达 EOF，再关闭读端。
+        self.addCleanup(self.stop, process)
+        lines = []
+        process.stdin.write(b'\x01')
+        process.stdin.flush()
 
         def read():
             for raw in process.stdout:
-                lines.append((time.monotonic(), raw.decode().rstrip('\r\n')))
-                if raw.decode().startswith('图库已启动：'):
+                line = raw.decode().rstrip('\r\n')
+                if line.startswith(('启动进度：', '图库已启动：')):
+                    lines.append(line)
+                if line.startswith('图库已启动：'):
                     return
+
         reader = threading.Thread(target=read, daemon=True)
-        reader.start(); reader.join(PAUSE + 60)
-        self.assertTrue(lines and lines[-1][1].startswith('图库已启动：'), lines)
-        times = [started] + [at for at, _ in lines]
-        self.assertLess(max(b - a for a, b in zip(times, times[1:])), PAUSE * 0.75, lines)
-        progress = [line.split('：', 1)[1].split(' ', 1) for _, line in lines if line.startswith('启动进度：')]
+        reader.start()
+        reader.join(PAUSE + WAIT)
+        self.assertFalse(reader.is_alive(), lines)
+        self.assertTrue(lines and lines[-1].startswith('图库已启动：'), lines)
+        process.stdin.close()
+        self.assertEqual(process.wait(WAIT), 0)
+        trace.seek(0)
+        events = []
+        for line in trace:
+            if line.startswith(b'ILLUSTASH_TEST_STARTUP_OUTPUT_NS '):
+                _, emitted_ns, label = line.decode().rstrip('\r\n').split(' ', 2)
+                events.append((int(emitted_ns), label))
+        expected = ['<host start>'] + [line.removeprefix('启动进度：') for line in lines[:-1]] + ['<ready>']
+        self.assertEqual([label for _, label in events], expected)
+        gaps = ((b_at - a_at, a_line, b_line) for (a_at, a_line), (b_at, b_line) in zip(events, events[1:]))
+        worst = max(gaps, key=lambda item: item[0])
+        self.assertLess(worst[0] / 1e9, PAUSE * 0.75, (worst, events))
+        progress = [line.split('：', 1)[1].split(' ', 1) for line in lines if line.startswith('启动进度：')]
         permille = [int(p) for p, _ in progress]
         self.assertEqual(permille, sorted(permille))
         stages = [stage for _, stage in progress]
@@ -671,8 +693,6 @@ class NativeLibraryUpgradeTest(unittest.TestCase):
         self.assertEqual(firsts, sorted(firsts), stages)
         self.assertGreaterEqual(stages.count('正在备份图库'), 2, stages)
         self.assertEqual(len(self.backups(lib, existing)), 1)
-        process.stdin.close()
-        self.assertEqual(process.wait(WAIT), 0)
 
     def test_switching_to_an_old_library_asks_first_and_a_failed_upgrade_changes_nothing(self):
         # #193：页面上的切换图库，而不只是启动时的 --upgrade。

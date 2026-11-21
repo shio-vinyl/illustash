@@ -173,11 +173,11 @@ pub(super) fn ccip_status(host: &Host, session: &Session, started: Option<Json>)
 impl Host {
     /// 图库的设置，连同本宿主强制关闭的项目。
     pub(super) fn library_settings(&self, library: &Library) -> Result<Json> {
-        settings(library, self.names_enabled, self.sync_disabled, self.provenance_enabled, self.index_automatic)
+        crate::app_settings::info(library, &self.library_forced_off(library))
     }
     /// 本宿主为该图库强制关闭的任务。
     pub(super) fn library_forced_off(&self, library: &Library) -> Vec<String> {
-        forced_off(library, self.names_enabled, self.sync_disabled, self.provenance_enabled, self.index_automatic)
+        forced_off(library, &self.startup)
     }
 }
 

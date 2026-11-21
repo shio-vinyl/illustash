@@ -649,7 +649,7 @@ mod tests {
         for route in crate::http_read::CORE_ROUTES {
             let target = match *route {
                 "/api/character/profile" => format!("{route}?entity={id}"),
-                "/api/character/stats" => format!("{route}?id={id}"),
+                "/api/character/stats" | crate::http_characters::TOGETHER => format!("{route}?id={id}"),
                 "/api/galleries/covers" => format!("{route}?ids=%5B%5D"),
                 "/api/calendar" => format!("{route}?month=2026-01"),
                 _ => (*route).to_owned(),

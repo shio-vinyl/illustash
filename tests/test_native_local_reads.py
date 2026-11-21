@@ -22,7 +22,6 @@ from tools.wait_limit import WAIT
 class NativeLocalReadsTest(unittest.TestCase):
     setUpClass = classmethod(curation.NativeHumanCurationTest.setUpClass.__func__)
     clone = labels.NativeHumanLabelsTest.clone
-    start = labels.NativeHumanLabelsTest.start
     stop = labels.NativeHumanLabelsTest.stop
     seed_both = labels.NativeHumanLabelsTest.seed_both
     pair = curation.NativeHumanCurationTest.pair
@@ -31,10 +30,13 @@ class NativeLocalReadsTest(unittest.TestCase):
 
     def setUp(self):
         labels.NativeHumanLabelsTest.setUp(self)
-        self.env['ILLUSTASH_NO_KEYCHAIN'] = '1'
         self.env.pop('ILLUSTASH_DESKTOP_BRIDGE', None)
         self.env.pop('ILLUSTASH_DESKTOP_TOKEN', None)
         self.seed_both()
+
+    def start(self, lib):
+        self.env['ILLUSTASH_NO_KEYCHAIN'] = '1'
+        return labels.NativeHumanLabelsTest.start(self, lib)
 
     def get_pair(self,url,expected=200):
         before=[self.rec.state('before'),labels.states(self.right)]
@@ -148,6 +150,11 @@ class NativeLocalReadsTest(unittest.TestCase):
     def test_names_configuration_coverage_and_accounts(self):
         self.seed_both()
         result=self.get_pair('/api/names');self.assertEqual(result['model_api']['hint'],'1234')
+        with closing(sqlite3.connect(self.right.db)) as c:
+            key_rows = dict(c.execute("SELECT key,value FROM name_settings WHERE key IN "
+                                      "('deepseek_key','model_key','model_credential')"))
+        self.assertEqual(set(key_rows), {'model_credential'})
+        self.assertRegex(key_rows['model_credential'], r'^[0-9a-f]{32}$')
         support=self.root/'support';(support/'accounts').mkdir(exist_ok=True)
         (support/'accounts'/'saucenao').write_text('synthetic-placeholder')
         if os.name == 'nt':

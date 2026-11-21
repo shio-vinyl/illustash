@@ -77,14 +77,15 @@ test('触发过的 timeout、跑完的帧任务自己摘掉，长寿的作用域
   await new Promise(r => setTimeout(r, 20));
   assert.equal(s.cleanups.size, 0);
   let ran = 0;
-  for (let i = 0; i < 20; i++) s.write(() => ran++, 'rail:paint');   // 同一个 key：只记一项、只跑一次
+  const paint = s.key('rail:paint');
+  for (let i = 0; i < 20; i++) s.write(() => ran++, paint);   // 同一个令牌：只记一项、只跑一次
   for (let i = 0; i < 5; i++) s.read(() => ran++);
   assert.equal(s.cleanups.size, 6);
   while (frames.length) frames.shift()();
   assert.equal(ran, 6);
   assert.equal(s.cleanups.size, 0);
   // 释放时取消还没跑的帧任务
-  s.write(() => ran++, 'late');
+  s.write(() => ran++, s.key('late'));
   const off = s.on(button, 'click', () => {});
   off();
   assert.equal(button.listenerCount('click'), 0);
@@ -105,4 +106,47 @@ test('开发模式：同一个漏掉的作用域只提示一次，同名页面�
     assert.equal(warnings.filter(w => w.includes('leaked-once')).length, 1);
     leaked.dispose();
   } finally { console.warn = saved; }
+});
+
+test('帧任务的令牌（#751）：两份部件同一帧排同一种用途，两个都跑；同一份同一个令牌排两次，只跑最后一次', async () => {
+  const frame = await web.load('ui/frame.js'), frames = [];
+  frame.setScheduler(fn => frames.push(fn));
+  const parent = S.scope('days'), log = [];
+  // 两份「一天」各在自己的作用域上取同名的令牌
+  const days = ['a', 'b'].map(name => { const s = parent.child('day'); return {name, s, measure: s.key('day:measure')}; });
+  for (const d of days) d.s.read(() => log.push(d.name + ' 1'), d.measure);
+  days[0].s.read(() => log.push('a 2'), days[0].measure);   // 同一份、同一个令牌再排一次：替换上一次
+  assert.equal(frames.length, 1);
+  frames.shift()();
+  assert.deepEqual(log, ['a 2', 'b 1']);
+  for (const d of days) assert.equal(d.s.cleanups.size, 0);
+  parent.dispose();
+});
+
+test('s.read / s.write 只认这个作用域自己发的令牌：字符串、frame.key()、别的作用域的令牌都抛 TypeError', async () => {
+  const frame = await web.load('ui/frame.js'), frames = [];
+  frame.setScheduler(fn => frames.push(fn));
+  const a = S.scope('card a'), b = S.scope('card b'), theirs = b.key('card:measure');
+  assert.throws(() => a.read(() => {}, 'card:measure'), /card a.*字符串 'card:measure'/);
+  assert.throws(() => a.write(() => {}, frame.key('card:measure')), TypeError);
+  assert.throws(() => a.read(() => {}, theirs), /作用域 card b 发的令牌 key\(card:measure\)/);
+  assert.equal(frames.length, 0, 'nothing was scheduled');
+  // 释放以后用错键照样报错（不因为作用域已经释放就放过）；用对的键什么也不排
+  a.dispose();
+  assert.throws(() => a.write(() => {}, 'late'), TypeError);
+  assert.equal(typeof a.write(() => {}, a.key('late')), 'function');
+  assert.equal(frames.length, 0);
+  b.dispose();
+});
+
+test('同一个令牌既排读又排写：两边各记一项，释放时都取消', async () => {
+  const frame = await web.load('ui/frame.js'), frames = [];
+  frame.setScheduler(fn => frames.push(fn));
+  const s = S.scope('rail'), edges = s.key('rail:edges'), log = [];
+  s.read(() => log.push('read'), edges);
+  s.write(() => log.push('write'), edges);
+  assert.equal(s.cleanups.size, 2);
+  s.dispose();
+  while (frames.length) frames.shift()();
+  assert.deepEqual(log, []);
 });

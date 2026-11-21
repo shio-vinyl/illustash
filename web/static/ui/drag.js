@@ -25,7 +25,7 @@ import {state} from '../core/state.js';
 import {canDrag} from '../core/files.js';
 import {cls, css, make, text} from './el.js';
 import {startDrag} from './files.js';
-import {read, write} from './frame.js';
+import {key, read, write} from './frame.js';
 import {newManual, putInto} from './gallery_actions.js';
 import {animate, reduced} from './motion.js';
 import {createLayer} from './overlay.js';
@@ -35,6 +35,8 @@ import {mode, railCovers} from './rail.js';
 // 网格的按下也要 mousedown 补位（ui/press.js），从这里转出，grid.js 不另导入一个模块。
 export {onPress};
 const GHOST = 64, OFFSET = 14;
+// 帧任务的令牌（#751）：同一时间只拖一次，在模块顶层取。
+const PLACE = key('lift:place'), HIT = key('lift:hit'), OVER = key('lift:over');
 let live = null;   // 正在拖：{ids, ghost, x, y, from, target}
 // Esc 取消拖动：拿起时打开这一层，结束时关掉。
 const escape = createLayer({kind: 'overlay', id: 'lift', el: () => live?.ghost, onDismiss: () => { if (live) flyBack(); }});
@@ -75,7 +77,7 @@ function dropItems() {
 function place() {
   const {ghost, x, y} = live;
   // 缩略图在指针右下方一点，不挡住指针下面要放进去的那一项。
-  write(() => css(ghost, 'transform', `translate(${Math.round(x + OFFSET)}px,${Math.round(y + OFFSET)}px)`), 'lift:place');
+  write(() => css(ghost, 'transform', `translate(${Math.round(x + OFFSET)}px,${Math.round(y + OFFSET)}px)`), PLACE);
 }
 // 指针下面接得住图的地方：{key, el}。key 是 'new' 或画廊 id；接不住（按条件的画廊）时是 null。
 function targetAt(x, y) {
@@ -102,8 +104,8 @@ function onMove(e) {
     const next = targetAt(live.x, live.y);
     if (next?.el === live.target?.el) return;
     const before = live.target; live.target = next;
-    write(() => { if (before) cls(before.el, 'is-drop', false); if (next) cls(next.el, 'is-drop', true); }, 'lift:over');
-  }, 'lift:hit');
+    write(() => { if (before) cls(before.el, 'is-drop', false); if (next) cls(next.el, 'is-drop', true); }, OVER);
+  }, HIT);
 }
 // 拖出窗口：交给拖到别的应用（只有桌面 App 有；网页形态里什么也不做，回到窗口里还能接着拖）。
 function handOff() {

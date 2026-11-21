@@ -14,8 +14,8 @@
 //   偏移（照现在网格的做法，docs/WEB_V2.md「浏览界面」）。那个键不在新框里时滚动位置不动。
 // - 摘掉节点前先去掉里面（包括根节点自己）<img> 的 src、srcset 和 <picture> 里 <source> 的 srcset：浏览器随之放掉
 //   解码后的位图，不等垃圾回收。
-// - 滚动、尺寸变化只排 ui/frame.js 的 read（量 scrollTop、视口高、content 在视口里的偏移）和 write（挂、摘、定位），
-//   一帧最多一次。
+// - 滚动、尺寸变化只在自己的作用域上排 ui/frame.js 的读（量 scrollTop、视口高、content 在视口里的偏移）和写（挂、摘、定位），
+//   一帧最多一次。帧任务的令牌每份列表各取各的（#751）：同一帧里有好几份列表时各排各的。
 // - 框的顺序随意（瀑布不按 y 排序）：按 512px 一段建索引，取范围时只看相交的几段。
 //
 // 调用方要知道的四件事：
@@ -28,11 +28,9 @@
 //    键盘导航（方向键在网格里走）由调用方按布局算，像 ui/grid.js 那样，不靠 DOM 次序。
 // 4. 焦点：节点滚出保留范围时，如果焦点在它里面，先不摘，等焦点离开后下一次滚动或 set() 再摘；它的键从数据里没了
 //    （图被删、换了列表）或整个列表释放时照摘，焦点随之回到 body，由调用方决定要不要把焦点挪到别处。
-import {read, write} from './frame.js';
 import {scope} from './scope.js';
 
 const BAND = 512;
-let ids = 0;
 
 // 节点（含根节点自己）里的图：去掉地址，放掉解码后的位图。
 export function releaseImages(el) {
@@ -43,7 +41,8 @@ export function releaseImages(el) {
 }
 
 export function virtual(viewport, content, {create, margin = 1, scope: parent = null}) {
-  const s = parent ? parent.child('virtual') : scope('virtual'), id = `virtual:${ids++}`, mounted = new Map();   // 键 -> {comp, box}
+  const s = parent ? parent.child('virtual') : scope('virtual'), mounted = new Map();   // 键 -> {comp, box}
+  const READ = s.key('virtual:read'), WRITE = s.key('virtual:write'), MEASURE = s.key('virtual:measure'), SET = s.key('virtual:set');
   let boxes = [], byKey = new Map(), bands = [], height = 0, positioned = null;
   let view = {top: 0, height: 0, offset: 0};
 
@@ -53,7 +52,7 @@ export function virtual(viewport, content, {create, margin = 1, scope: parent = 
     view = {top: viewport.scrollTop, height: viewport.clientHeight, offset: cr.top - vr.top + viewport.scrollTop};
     if (positioned === null) positioned = typeof getComputedStyle !== 'function' || getComputedStyle(content).position !== 'static';
   }
-  function refresh() { read(measure, id + ':read'); write(apply, id + ':write'); }
+  function refresh() { s.read(measure, READ); s.write(apply, WRITE); }
 
   function index() {
     bands = [];
@@ -121,7 +120,7 @@ export function virtual(viewport, content, {create, margin = 1, scope: parent = 
   }
 
   function set(next, total) {
-    read(() => {
+    s.read(() => {
       if (!s.alive) return;
       measure();
       // 锚：视口顶部那条线穿过的第一个框（没有就取顶部以下最近的一个），以及视口顶部在它里面的偏移。
@@ -130,7 +129,7 @@ export function virtual(viewport, content, {create, margin = 1, scope: parent = 
       for (const k of within(top, top + 1)) if (!anchor || boxes[k].y < anchor.y) anchor = boxes[k];
       if (!anchor) for (const k of within(top, top + view.height)) if (!anchor || boxes[k].y < anchor.y) anchor = boxes[k];
       const shift = anchor ? top - anchor.y : 0, anchorKey = anchor?.key;
-      write(() => {
+      s.write(() => {
         if (!s.alive) return;
         boxes = next; height = total; byKey = new Map(boxes.map((box, k) => [box.key, k])); index();
         content.style.height = `${height}px`;
@@ -140,8 +139,8 @@ export function virtual(viewport, content, {create, margin = 1, scope: parent = 
           if (Math.abs(scrollTop - view.top) > .5) { viewport.scrollTop = scrollTop; view.top = scrollTop; }
         }
         apply();
-      }, id + ':set');
-    }, id + ':measure');
+      }, SET);
+    }, MEASURE);
   }
 
   s.add(() => { for (const [key, entry] of [...mounted]) unmount(key, entry); });

@@ -40,9 +40,6 @@ function pictures(c) {
   if (!picked.has(key)) picked.set(key, c.count > 1 ? posterPictures(c) : Promise.resolve([c.cover]));
   return picked.get(key);
 }
-// 帧任务的键是全局的（ui/frame.js），每张海报带自己的序号，免得同一帧里互相顶掉（#751）。
-let made = 0;
-
 // 海报接近屏幕时通知：一个页签一个观察器，登记在 s 上。
 function nearing(s) {
   const seen = new WeakMap();
@@ -58,7 +55,8 @@ export function posters(parent) {
 }
 
 function posterWidget(first, s, watch) {
-  const {el, refs} = POSTER(), a = refs.link, frameKey = `poster:${++made}:look`;
+  // 帧任务的令牌在这张海报自己的作用域上取（#751）：同一帧里好几张海报一起缓动时各跑各的。
+  const {el, refs} = POSTER(), a = refs.link, LOOK = s.key('poster:look');
   const pinned = pinButton(s, {onChange: on => cls(el, 'is-pinned', on)});
   el.append(pinned.el);
   let c = null, big = false, list = [], look = null, drag = null, key = '';
@@ -127,7 +125,7 @@ function posterWidget(first, s, watch) {
     css(refs.cap, 'opacity', L.cap.toFixed(3));
     if (Math.abs(L.target - L.at) > .001 || Math.abs(L.capTarget - L.cap) > .002) kick();
   }
-  const kick = () => s.write(step, frameKey);
+  const kick = () => s.write(step, LOOK);
   // 换一张：下一张先在上层读好，再淡入换下来，不闪白。
   function showPic(i) {
     if (!look || i === look.i) return;

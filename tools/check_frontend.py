@@ -379,7 +379,8 @@ def new_rules():
              '每帧的读写和动效各有唯一入口（#704）：requestAnimationFrame 只在 ui/frame.js 和 ui/motion.js 里调，'
              'el.animate、document.startViewTransition 只在 ui/motion.js 里调。这样「先量后改」、减少动态效果、'
              'Safari 17 上的退路都只在一处写。现有的按文件计数冻结为基线，不得新增。',
-             '要在下一帧量或改，用 ui/frame.js 的 read(fn, key) / write(fn, key)（滚动、缩放的处理函数只排队）；'
+             '要在下一帧量或改，用 ui/frame.js 的 read(fn, k) / write(fn, k)（k 是 key() 发的令牌，部件里用作用域的 s.key、s.read、s.write；'
+             '滚动、缩放的处理函数只排队）；'
              '要动画，从 ui/motion.js 导入 animate / enter / exit / flip 和共享元素过渡（具名导入，或 import * as motion 后写 motion.animate(…)）。'
              '改掉存量的一处后运行 `python tools/check_frontend.py --shrink`。'),
         Rule('safari17-js', '12', '用了 Safari 17.0（macOS 14 的 WKWebView）没有的 JS 能力',

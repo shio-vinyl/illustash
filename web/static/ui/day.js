@@ -98,11 +98,10 @@ function chipWidget(c, ctx, day) {
 }
 
 // ---------- 一天 ----------
-// 帧任务的键按部件分开（ui/frame.js 的键是全局去重的）：同一帧挂上好几天时，每一天都要量、都要定芯片放几个。
-let widgets = 0;
 export function dayWidget(box, ctx, parent = null) {
-  const s = parent ? parent.child('day') : scope('day'), {el, refs} = DAY(), id = ++widgets;
-  const MEASURE = `day:${id}:measure`, FIT = `day:${id}:fit`, MORE = `day:${id}:more`;
+  const s = parent ? parent.child('day') : scope('day'), {el, refs} = DAY();
+  // 帧任务的令牌在这一天自己的作用域上取（#751）：同一帧挂上好几天时，每一天都要量、都要定芯片放几个。
+  const MEASURE = s.key('day:measure'), FIT = s.key('day:fit'), MORE = s.key('day:more');
   let current = box, widths = new Map(), moreWidth = 0;
   const day = box.key;
   el.dataset.day = day;

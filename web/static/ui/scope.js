@@ -4,7 +4,8 @@
 //   const s = scope('detail-card');                 // 或 parent.child('名')：父作用域释放时子作用域跟着释放
 //   const off = s.on(button, 'click', () => …);      // addEventListener；释放时 removeEventListener，也可以提前 off()
 //   s.timeout(fn, 300); s.interval(fn, 1000);        // 释放时 clear；timeout 触发后自己从作用域里摘掉
-//   s.read(fn, key); s.write(fn, key);               // ui/frame.js 的 read / write；跑完或释放时取消，跑完后自己摘掉
+//   const MEASURE = s.key('card:measure');           // 帧任务的令牌：只配这个作用域的 read / write（#751）
+//   s.read(fn, MEASURE); s.write(fn, MEASURE);       // ui/frame.js 的 read / write；跑完或释放时取消，跑完后自己摘掉
 //   s.observe(new ResizeObserver(…)).observe(el);    // 任何带 disconnect() 的观察器
 //   s.add(child);                                    // 子部件（带 dispose()）或一个清理函数；s.remove(child) 摘掉不清
 //   s.signal                                         // AbortSignal，释放时 abort（交给 fetch 之类）
@@ -13,7 +14,13 @@
 //
 // 作用域活得越久，登记进去的东西越要是「一直用到释放」的：timeout、read、write 跑完会自己摘掉，可以反复用；add() 进去的
 // 清理函数要等 dispose 才走，不要每次滚动、每次输入都 add 一个（例如 add(frame.write(…)) 只适合一次性的任务，反复排的
-// 帧任务用 s.write(fn, 固定的 key)）。活页条这类挂在 app 上的部件尤其如此。
+// 帧任务用 s.write(fn, 建的时候取好的令牌)）。活页条这类挂在 app 上的部件尤其如此。
+//
+// 帧任务的键是令牌，不是字符串（#751）：s.key('名字') 每次发一个新的，名字只用于调试和报错文字。同一个令牌同一帧里只跑
+// 最后排的那次（读、写各算各的）；不同的令牌互不相干，所以同一帧里挂上好几份的部件（按天视图的每一天、每张海报）各跑各的。
+// 部件在建的时候、在自己的作用域上取令牌，同一部件里不同用途各取一个。s.read / s.write 只认这个作用域自己发的令牌：
+// 传字符串、ui/frame.js 的 key() 或别的作用域发的令牌都抛 TypeError（不分开发模式），所以模块顶层取一个令牌给每份部件
+// 共用是写不出来的（模块顶层没有实例的作用域）。
 //
 // 每个页面一个作用域：page('名') 释放上一页的作用域、建一个新的返回（由页面框架在换页时调用，#706）。
 // 全应用一直在的部件（活页条、浮层管理器）挂在 app 上，不随换页释放。部件的作用域应当是这两者之一的后代。
@@ -22,7 +29,11 @@
 // setDev(true)）下记着所有还活着的作用域：换页后，上一页期间建的、不属于 app 也不属于新一页的根作用域还没释放，
 // 就在控制台提示一次（多半是忘了挂到页面作用域上，或者忘了 dispose）。live() 给出还活着的作用域数和各名字的数量，测试读它。
 import {prefs} from '../core/prefs.js';
-import {read, write} from './frame.js';
+import {key, read, write} from './frame.js';
+
+// 作用域发的令牌 -> {owner, read, write}：owner 是发它的作用域；read、write 是它在这个作用域里各占的一格登记
+// （同一个令牌既排读又排写时两边各记一项，互不覆盖）。
+const issued = new WeakMap();
 
 let dev = prefs.get('dev', false) === true;
 const living = new Set();
@@ -55,15 +66,23 @@ class Scope {
   }
   interval(fn, ms) { const id = setInterval(fn, ms); this.add(() => clearInterval(id)); return id; }
   observe(observer) { this.add(() => observer.disconnect()); return observer; }
-  read(fn, key) { return this.frame(read, fn, key); }
-  write(fn, key) { return this.frame(write, fn, key); }
-  // 帧任务：同一个 key 只记一项（frame.js 按 key 去重，后排的替换先排的）；跑完自己摘掉。
-  frame(queue, fn, key) {
+  // 帧任务的令牌（#751）：部件建的时候取，同一部件里不同用途各取一个。方法体里的 key、read、write 是 ui/frame.js 的。
+  key(label) {
+    const k = key(label);
+    issued.set(k, {owner: this, read: {}, write: {}});
+    return k;
+  }
+  read(fn, k) { return this.frame(read, 'read', fn, k); }
+  write(fn, k) { return this.frame(write, 'write', fn, k); }
+  // 帧任务：同一个令牌读、写各只记一项（frame.js 按令牌去重，后排的替换先排的）；跑完自己摘掉。
+  frame(queue, phase, fn, k) {
+    const mine = k == null ? null : issued.get(k);
+    if (k != null && mine?.owner !== this) throw foreign(this, k);
     if (!this.alive) return () => {};
-    const slot = key ?? Symbol('task');
+    const slot = mine ? mine[phase] : Symbol('task');
     let cancel = null;
     const clean = () => cancel();
-    cancel = queue(() => { if (this.cleanups.get(slot) === clean) this.cleanups.delete(slot); fn(); }, key);
+    cancel = queue(() => { if (this.cleanups.get(slot) === clean) this.cleanups.delete(slot); fn(); }, k);
     this.cleanups.set(slot, clean);
     return clean;
   }
@@ -91,6 +110,15 @@ class Scope {
       try { clean(); } catch (error) { console.error(error); }
     }
   }
+}
+
+// 不是这个作用域发的键：说清楚收到的是什么，改法写在文件开头。
+function foreign(target, k) {
+  const from = issued.get(k)?.owner;
+  const got = typeof k === 'string' ? `字符串 '${k}'` : from ? `作用域 ${from.name} 发的令牌 ${k}`
+    : typeof k?.label === 'string' ? `ui/frame.js 的 key() 发的令牌 ${k}` : `${typeof k} 类型的 ${String(k)}`;
+  return new TypeError(`ui/scope.js: 作用域 ${target.name} 的 read / write 只认它自己 s.key('名字') 发的令牌（不认字符串、ui/frame.js 的 key() `
+    + `和别的作用域发的），收到的是${got}。部件在建的时候在自己的作用域上取令牌，每份各取各的（#751）`);
 }
 
 export const scope = name => new Scope(name);

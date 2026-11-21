@@ -12,10 +12,10 @@
 //                           这一项滚出了二级层或是指针悬停时（滚轮）收起
 //   hoveredItem()           现在悬停的项（没有是 null）
 //
-// 两种帧任务，键不同（ui/frame.js 同一帧里同一个键只跑最后一个，混在一起会互相顶掉）：
-//   'rail:peek-show'   换了内容：量、写位置，卡片还没进过场就放进场（卡片从活页条那边滑出、图一张接一张发出来），
-//                      已经开着就沿 translate 滑到新位置、图淡入。要不要滑，写的时候按「卡片是不是已经进过场」定。
-//   'rail:peek-place'  只挪位置（滚动）：量、写 translate，不动内容，不放动画。
+// 两种帧任务，各用一个令牌（buildPeek 里在活页条的作用域上取，#751；同一帧里同一个令牌只跑最后一个，混用会互相顶掉）：
+//   keys.show    换了内容：量、写位置，卡片还没进过场就放进场（卡片从活页条那边滑出、图一张接一张发出来），
+//                已经开着就沿 translate 滑到新位置、图淡入。要不要滑，写的时候按「卡片是不是已经进过场」定。
+//   keys.place   只挪位置（滚动）：量、写 translate，不动内容，不放动画。
 // 量和写都是延后的，到时悬停的已经不是这一项就不写（不然收起的预览会被它又显示出来）。
 // 颜色：这一项的主色经 ui/tint.js 的 setTint 写到卡片上，变成彩色投影和很淡的环境光（css/rail.css）。
 // 宽高比：项里没带原图宽高的图（角色、画廊封面），读到以后按 id 记下比例，重排这一行；下一次悬停时就当作已知的。
@@ -36,7 +36,7 @@ export const PEEK_LINGER = 120;
 export const PEEK_DWELL = 300;
 const thumb = id => `/image?id=${encodeURIComponent(id)}&size=thumb`;
 
-let s = null, card = null;
+let s = null, card = null, keys = null;   // keys：两种帧任务的令牌 {show, place}
 let hovered = null;   // 悬停（或焦点所在）的项
 let on = false;       // 卡片该显示（收起时置假）
 let entered = false;  // 卡片已经放过进场、正显示着：再换项时滑过去，不重新弹出
@@ -46,6 +46,7 @@ const ratios = new Map();   // 图片 id → 读到的宽高比
 
 export function buildPeek(scope) {
   s = scope;
+  keys = {show: s.key('rail:peek-show'), place: s.key('rail:peek-place')};
   const {el, refs} = CARD();
   $('railPeek').replaceChildren(el);
   card = {refs, imgs: [], ids: []};
@@ -143,8 +144,8 @@ function showPeek(el) {
       entered = true;
       enter(peek, {from: IN, dur: 2});
       pics.forEach((im, i) => enter(im, {from: DEAL, dur: 2, delay: 40 + i * 35}));
-    }, 'rail:peek-show');
-  }, 'rail:peek-show-read');
+    }, keys.show);
+  }, keys.show);
 }
 export function followScroll() {
   const el = hovered;
@@ -153,8 +154,8 @@ export function followScroll() {
     if (hovered !== el || !on) return;
     const at = measure(el);
     if (!at) { hover(null, {now: true}); return; }
-    s.write(() => { if (hovered === el && on) place($('railPeek'), at); }, 'rail:peek-place');
-  }, 'rail:peek-place-read');
+    s.write(() => { if (hovered === el && on) place($('railPeek'), at); }, keys.place);
+  }, keys.place);
 }
 
 // 收起。不立刻收时等 PEEK_LINGER：期间回到某一项就不收；又离开就从那时起重新算（只排一个计时器，到点时没到期就再等剩下的，

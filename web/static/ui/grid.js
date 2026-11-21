@@ -26,7 +26,7 @@ import {jumpToCharacter, openPicker} from './palette.js';
 import {inPopover, popoverOpen} from './overlay.js';
 import {FAV, favLeaves, isFav, markLocal, wantsAdd, withCondition} from '../core/favorites.js';
 import {paintHearts, writeFavorite} from './favorites.js';
-import {write as frameWrite} from './frame.js';
+import {key as frameKey, write as frameWrite} from './frame.js';
 import {dupHue, gridCard, gridContext, skeletonCard} from './grid_card.js';
 import {cardRect, fixedLayout, flowing, indexAt, layout, layoutKey, rowAt, rowCount, rowHeight, rowOf, rowReach, rowStart, rowTop, headResized, verticalStep} from './grid_rows.js';
 import {enter} from './motion.js';
@@ -247,12 +247,12 @@ export function syncCards() {
   $('grid').classList.toggle('selecting', state.selecting || selCount() > 0);
   for (const m of mounted.values()) if (m.item) m.comp.mark({selected: isSelected(m.item.uuid), focused: m.item.uuid === state.focused, cursor: m.i === state.cursor});
 }
-// 滚动、尺寸变化：排到下一帧画一次（ui/frame.js，同一帧只画一次）。
-export function scheduleGrid() { frameWrite(() => renderGrid(), 'grid:render'); }
+const RENDER = frameKey('grid:render'), AUTOSCROLL = frameKey('grid:autoscroll');   // 帧任务的令牌：网格只有一份，在模块顶层取（#751）
+export function scheduleGrid() { frameWrite(() => renderGrid(), RENDER); }   // 滚动、尺寸变化：排到下一帧画一次（ui/frame.js，同一帧只画一次）
 // ---------- 缩放 ----------
 // 让指针下的图（或第一个可见的行）保持在原处，然后让卡片从旧的框滑到新的框（FLIP，ui/motion.js），这样每次换列数读起来都是
 // 一个动作。起止的框都是算出来的，不量 DOM。
-const requestZoom = task => frameWrite(task, 'grid:zoom');
+const ZOOM = frameKey('grid:zoom'), requestZoom = task => frameWrite(task, ZOOM);
 function setSize(size, clientX, clientY, fromSlider = false) {
   size = Math.max(SIZE_MIN, Math.min(SIZE_MAX, size));
   const v = $('viewport'), vr = v.getBoundingClientRect(), gr = $('grid').getBoundingClientRect();
@@ -362,7 +362,7 @@ function autoScroll() {
   const vr = $('viewport').getBoundingClientRect(), edge = 48;
   const speed = drag.lastY < vr.top + edge ? -(vr.top + edge - drag.lastY) : drag.lastY > vr.bottom - edge ? drag.lastY - (vr.bottom - edge) : 0;
   if (speed) { $('viewport').scrollTop += speed * .6; applyDrag(); }
-  frameWrite(autoScroll, 'grid:autoscroll');
+  frameWrite(autoScroll, AUTOSCROLL);
 }
 // ---------- 选择栏与操作 ----------
 // 选择栏（按钮、分派）在 ui/grid_bar.js：它导入这里的写入函数，载入时用 setBar() 登记进来，这里不反过来导入它（不产生循环导入）。

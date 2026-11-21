@@ -13,7 +13,7 @@ import {$, toast, redraw, setDrawn, drawnHTML, busy} from './dom.js';
 import {drawUpdateButton, openRelease, selfUpdate, updateAct, updateActions, updateBar, updateStarted, updateStatus} from './updates.js';
 import {taskList} from './tasks.js';
 import {createLayer} from './overlay.js';
-import {read, write} from './frame.js';
+import {key, read, write} from './frame.js';
 import {modelsNotice} from './models.js';
 import {modelsWaiting, modelsArrived, onModels} from '../core/models.js';
 
@@ -24,6 +24,8 @@ const TOUR = ['welcome', 'tasks', 'home', 'characters', 'unmatched', 'end'];
 const CHECKLIST = [['look', t('看看认出的角色'), '#/characters'], ['correct', t('纠正一张认错的图'), '', t('点开后按 C')], ['undo', t('撤销一次操作'), '', shortcut('Z')],
   ['group', t('确认一组没认出的图'), '#/groups'], ['follow', t('关注一部作品'), '#/characters/works']];
 let guideChecked = false, guideLoadedAt = 0, guideWorksAt = 0, tourAt = -1, checklistOpen = false;
+// 帧任务的令牌（#751）：引导全应用只有一份，在模块顶层取。
+const TOUR_IN = key('guide:tour-in'), TOUR_PLACE = key('guide:tour-place'), NUDGE_IN = key('guide:nudge-in');
 const guideOn = () => !!state.guide && state.guide.guide.status !== 'off';
 const guideActive = () => ['new', 'active'].includes(state.guide?.guide?.status);
 export async function loadGuide(works = false) {
@@ -119,7 +121,7 @@ const tourLayer = createLayer({kind: 'overlay', id: 'tour', el: () => $('tour'),
   inert: () => [document.querySelector('.app'), $('selectionBar'), $('taskPanel'), $('viewer'), $('nudge'), $('checklist')]});
 function showTour(at) {
   tourAt = at; drawNudge(); drawChecklist();
-  const root = $('tour'); root.hidden = false; tourLayer.open(); write(() => root.classList.add('on'), 'guide:tour-in');   // 下一帧加 .on，淡入的过渡才会播
+  const root = $('tour'); root.hidden = false; tourLayer.open(); write(() => root.classList.add('on'), TOUR_IN);   // 下一帧加 .on，淡入的过渡才会播
   placeTour(true);
 }
 function closeTour() {
@@ -202,7 +204,7 @@ export function drawNudge() {
   el.dataset.key = n?.key || '';
   // 收起时不清空内容，留给淡出动画；记下空串，260 毫秒后还是空的才隐藏。
   if (!html) { setDrawn(el, ''); el.classList.remove('on'); setTimeout(() => { if (!drawnHTML(el)) el.hidden = true; }, 260); return; }
-  redraw(el, html); el.hidden = false; write(() => el.classList.add('on'), 'guide:nudge-in');
+  redraw(el, html); el.hidden = false; write(() => el.classList.add('on'), NUDGE_IN);
 }
 // ----- 清单：事情做完就自己打勾 -----
 export function guideTick(item) {
@@ -305,7 +307,7 @@ export function wireGuide() {
     e.preventDefault(); buttons[next].focus();
   });
   $('tour').addEventListener('mousedown', e => { if (!e.target.closest('button')) e.preventDefault(); });
-  addEventListener('resize', () => { if (tourAt >= 0) read(() => placeTour(false), 'guide:tour-place'); });
+  addEventListener('resize', () => { if (tourAt >= 0) read(() => placeTour(false), TOUR_PLACE); });
 
   $('nudge').addEventListener('click', async e => {
     const act = e.target.closest('[data-nudge]')?.dataset.nudge, key = $('nudge').dataset.key; if (!act || !key) return;

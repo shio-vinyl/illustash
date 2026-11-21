@@ -2,7 +2,7 @@
 // 按 data-act 分派。写入、重读、标签面板这些动作在 ui/grid.js；这里导入它，ui/grid.js 不反过来导入这里：载入时用 setBar()
 // 把画栏、分派和抽查的回答登记过去（ui/grid.js 的 renderSelection、键盘经它调用）。app.js 载入这个文件。
 //
-// 加一个按钮（如画廊 E #710 的「放进画廊…」）：barButtons 里加 <button data-act="名字">，runBarAction 里加同名的分支。
+// 加一个按钮：barButtons 里加 <button data-act="名字">，runBarAction 里加同名的分支（画廊的两个在 ui/gallery_bar.js，#710）。
 import {edits} from '../core/edits.js';
 import {exportActive} from '../core/files.js';
 import {number, short} from '../core/format.js';
@@ -18,6 +18,7 @@ import {$, toast} from './dom.js';
 import {openExport} from './files.js';
 import {favoriteSelection, isSelected, markDetailKeys, mutate, openTagPicker, quitSelecting, reload, selCount, selectionIds, selectionPayload, setArmed, setBar} from './grid.js';
 import {make} from './el.js';
+import {galleryAction, galleryButtons} from './gallery_bar.js';
 import {markOc, newIds, openPicker, openRelate, targets} from './palette.js';
 
 // 一个按钮：act 是分派用的名字（runBarAction 按它分支），label 是文字，primary 是主按钮，key 是键标，tip 是悬停提示，off 有值时
@@ -49,7 +50,7 @@ function render() {
   bar.replaceChildren(...nodes);
 }
 // 选择栏的按钮：先是这一页（注册表的 bar）自己的几个，后面是各页都有的。点了以后由 runBarAction 按 act 分发。
-// 画廊（E #710）在默认选择栏的末尾加「放进画廊…」「从画廊拿出」：在这里 push 一个 button(…)，动作加在 runBarAction 开头。
+// 默认选择栏的末尾是画廊的「放进画廊…」「从画廊拿出」（ui/gallery_bar.js，#710）。
 function barButtons(kind, n) {
   const r = state.route, out = [], N = {n: number(n)};
   const oc = button('oc', t('原创角色'), {tip: t('把画师自己的原创角色统一标为「原创角色（未细分）」')});
@@ -90,6 +91,7 @@ function barButtons(kind, n) {
     button('export', t('导出…'), exportActive() ? {off: t('正在导出，完成后再开始下一次')} : {tip: t('把原图复制到一个文件夹')}));
   if (!state.sel.all && canLike(n)) out.push(button('like', n === 1 ? t('更多像这张的') : t('更多像这些的')));
   if (!state.sel.all && n >= 2 && n <= 12) out.push(button('relate', t('判断关系'), {tip: t('两两比较，判断是同一张图、裁剪、差分、局部编辑，还是不同的图')}));
+  if (kind === 'default') out.push(...galleryButtons(r).map(g => button(g.act, g.label, {tip: g.tip})));
   return out;
 }
 
@@ -131,6 +133,7 @@ async function answerAudit(yes) {
 function runBarAction(act) {
   const n = selCount(), r = state.route; if (!n || edits.busy) return;
   const payload = () => ({...selectionPayload(), confirm: n > 500});
+  if (galleryAction(act, n, payload)) return;
   if (act === 'audit_yes' || act === 'audit_no') { answerAudit(act === 'audit_yes'); return; }
   if (act === 'export') { openExport(selectionPayload(), n); return; }
   if (act === 'like') { if (!state.sel.all) go(likeRoute([...state.sel.ids])); return; }

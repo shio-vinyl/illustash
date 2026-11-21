@@ -164,4 +164,8 @@
   #sidebarToggle{display:inline-flex}
   .library-pop{left:60px}
 }
+  /* 拖图进画廊（ui/drag.js，#710）时换出来的那组：不接收的项（按条件的画廊、这一页自己的画廊）、指针下面接得住的那一项 */
+  .rail-item.is-off{opacity:.32;pointer-events:none}
+  .rail-item.is-drop{transform:translateX(8px) scale(1.12)}
+  .rail-item.is-drop .rail-cover{box-shadow:0 0 0 2px var(--canvas),0 0 0 4px var(--accent)}
 }

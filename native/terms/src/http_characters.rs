@@ -12,12 +12,16 @@ use crate::{
 use rusqlite::Connection;
 use std::collections::{BTreeSet, HashMap, HashSet};
 
+pub(crate) const TOGETHER: &str = "/api/character/together";
+const TOGETHER_LIMIT: &str = "6";
+
 pub const ROUTES: &[&str] = &[
     "/api/characters",
     "/api/tagged",
     "/api/character/profile",
     "/api/character/activity",
     "/api/character/stats",
+    TOGETHER,
     "/api/identity/count",
     "/api/identity/queue",
 ];
@@ -413,6 +417,24 @@ fn stats(c: &Connection, id: &str, nsfw: &str, exclude: &str) -> Result<Json> {
         ("recent", array(recent)),
     ]))
 }
+fn together(c: &Connection, id: &str, nsfw: &str, limit: i64) -> Result<Json> {
+    // memberships 的主键是（角色，图片），每个同框角色在同一张图上只计一次。
+    let sql = format!(
+        "SELECT peer.entity AS id,count(*) AS count
+         FROM memberships m
+         JOIN assets a ON a.uuid=m.uuid
+         JOIN memberships peer ON peer.uuid=m.uuid AND peer.entity<>m.entity
+         JOIN {ENTITIES} subject ON subject.id=m.entity AND subject.label_only=0
+         JOIN {ENTITIES} other ON other.id=peer.entity AND other.label_only=0
+         WHERE m.entity=? AND {visible}{rating}
+         GROUP BY peer.entity
+         ORDER BY count DESC,peer.entity
+         LIMIT ?",
+        visible = visible("m"),
+        rating = rating("m", nsfw)?,
+    );
+    Ok(Json::Array(crate::http_read::typed_rows(c, &sql, &[id.to_owned().into(), limit.into()])?))
+}
 fn people(c: &Connection) -> Result<HashMap<String, String>> {
     Ok(rows(c, "SELECT id,character_id FROM identity_nodes", &[])?
         .into_iter()
@@ -658,6 +680,7 @@ pub fn read(c: &Connection, _context: &LibraryContext, path: &str, q: &HashMap<S
         "/api/character/profile" => profile(c, get("entity"))?,
         "/api/character/activity" => activity(c, get("nsfw"))?,
         "/api/character/stats" => stats(c, get("id"), get("nsfw"), get("exclude"))?,
+        TOGETHER => together(c, get("id"), get("nsfw"), int("limit", TOGETHER_LIMIT)?)?,
         "/api/identity/count" => queue(c, 20, 0, get("nsfw"), true)?,
         "/api/identity/queue" => queue(c, int("limit", "20")?, int("offset", "0")?, get("nsfw"), false)?,
         _ => return invalid("unknown character read"),
@@ -668,6 +691,7 @@ pub fn read(c: &Connection, _context: &LibraryContext, path: &str, q: &HashMap<S
 pub fn validate(path: &str, q: &HashMap<String, String>) -> Result<()> {
     let args: &[(&str, &str)] = match path {
         "/api/characters" => &[("min", "0")],
+        TOGETHER => &[("limit", TOGETHER_LIMIT)],
         "/api/identity/queue" => &[("limit", "20"), ("offset", "0")],
         _ => &[],
     };
@@ -687,7 +711,8 @@ pub fn validate(path: &str, q: &HashMap<String, String>) -> Result<()> {
         "/api/identity/count" => {
             rating("m", get("nsfw"))?;
         }
-        "/api/character/stats" => {
+        TOGETHER if numbers[0] <= 0 => return invalid("分页参数不正确"),
+        "/api/character/stats" | TOGETHER => {
             if get("id").is_empty() {
                 return invalid("缺少角色");
             }

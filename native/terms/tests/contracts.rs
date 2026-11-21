@@ -30,6 +30,8 @@ mod wait;
 
 #[path = "contracts/calendar.rs"]
 mod calendar;
+#[path = "contracts/character_together.rs"]
+mod character_together;
 #[path = "contracts/library_50k.rs"]
 mod library_50k;
 #[path = "contracts/library_scale.rs"]
@@ -286,7 +288,7 @@ fn launch_inner(
     drop(listener);
     let origin = format!("http://127.0.0.1:{port}");
     let mut command = isolated_command(root, binary);
-    if category != "scale" {
+    if category != "scale" && category != "scale_sync" {
         command
             .env("ILLUSTASH_TEST_VERIFY_INCREMENTAL", root.join("verified"))
             .env("ILLUSTASH_TEST_KEY_COUNTER", root.join("key-counter"));
@@ -299,7 +301,9 @@ fn launch_inner(
         .args(["--port", &port.to_string()])
         .stdout(Stdio::piped())
         .stderr(Stdio::inherit());
-    if category != "task_recovery" {
+    if category == "scale_sync" {
+        command.env("ILLUSTASH_SYNC_TIMING", "1");
+    } else if category != "task_recovery" {
         command.arg("--no-sync");
     }
     if upgrade {

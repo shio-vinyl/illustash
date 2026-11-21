@@ -13,7 +13,8 @@
 // - 同步：只重读最新的两天并进来（core/days.js 的 mergeDays），没变的天不动；变了的那一天里图块按 uuid 复用，新图淡入（#683）。
 //   改动、撤销之后：重读视野附近的几天；重读的范围里没了的天（筛选下最后一张被移走）去掉，游标、看图的列表和总张数跟着变。
 // - 滚动时告诉活页条现在看到哪一天（selectDay）；在这一页里点活页条的某一天或某个月，直接滚过去（onPick），不换地址。
-// - 点图打开详情卡片，双击看大图，点「+N 张」进网格看这一天；认一认的图 Space 或长按看大图（wireDays 登记一次）。
+// - 点图打开详情卡片，双击看大图，按住拖动放进画廊（ui/drag.js），点「+N 张」进网格看这一天；认一认的图 Space 或长按看大图
+//   （wireDays 登记一次）。
 import {FIRST_DAYS, MAX_DAYS, MORE_DAYS, dayAfter, dayAt, dayBoxes, dayCells, dayQuery, gridRoute, growCells, heroFirst, mergeDays, readDayPeople,
   readDays, summary, todayKey} from '../core/days.js';
 import {dayLabel, number} from '../core/format.js';
@@ -26,6 +27,7 @@ import {state} from '../core/state.js';
 import {indexOf, inspect} from './detail.js';
 import {openViewer, wirePeek} from './viewer.js';
 import {$, toast} from './dom.js';
+import {wireLift} from './drag.js';
 import {daySizes, dayWidget} from './day.js';
 import {dayAsk} from './day_ask.js';
 import {syncCard} from './day_cards.js';
@@ -322,6 +324,8 @@ function daysView(scope) {
     if (tile.dataset.more) go(gridRoute(v.route, tile.closest('.day').dataset.day)); else inspect(tile.dataset.id);
   });
   scope.on(el, 'dblclick', e => { const tile = e.target.closest('.day-tile'); if (tile && !tile.dataset.more) openViewer(indexOf(tile.dataset.id)); });
+  // 按住一张图拖动：拿起它，放进活页条上的画廊（ui/drag.js，#710）；「+N 张」那格不拖。
+  scope.add(wireLift(el, down => { const tile = down.target.closest?.('.day-tile'); return tile && !tile.dataset.more ? [tile.dataset.id] : []; }));
   // 同步的进度和新图：卡片跟着变；进来了新图就把最新的两天并进来（同步结束时 ui/effects.js 还会调一次 refresh('sync')）。
   scope.add(onJob((job, change) => {
     if (job !== 'sync') return;

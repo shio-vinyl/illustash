@@ -47,11 +47,11 @@ impl Drop for Fixture {
 }
 fn options(root: &Path) -> Options {
     let mut options = Options::new(root.to_owned());
-    options.names_enabled = false;
-    options.provenance_enabled = false;
-    options.index_automatic = false;
-    options.auto_sync = false;
-    options.sync_disabled = true;
+    options.startup.names_enabled = false;
+    options.startup.provenance_enabled = false;
+    options.startup.index_auto_check = false;
+    options.startup.auto_sync = false;
+    options.startup.sync_disabled = true;
     options
 }
 

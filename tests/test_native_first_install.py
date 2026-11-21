@@ -13,7 +13,7 @@ from PIL import Image
 from tests.test_packaging import build
 from tests import test_native_lifecycle as lifecycle
 from tests import test_native_folder as folder_tests
-from tests.test_read_http import free_port, wait_until, SPAWN
+from tests.test_read_http import free_port, wait_human_backup, wait_until, SPAWN
 from tools.verify_read_http import enter, fetch
 from tools.wait_limit import WAIT
 
@@ -179,6 +179,7 @@ class NativeFirstInstallTest(unittest.TestCase):
         guide = json.loads(self.request('/api/onboarding')['body'])['guide']
         state = lambda: ((first / 'library.json').read_bytes(), lifecycle.dump(first / 'library.sqlite'),
                          lifecycle.dump(first / 'source.sqlite'))
+        wait_human_backup(self, self.origin)
         kept = state()
         pictures = self.root / '第二批'; pictures.mkdir()
         Image.new('RGB', (13, 11), 'green').save(pictures / 'green.png')

@@ -2,7 +2,7 @@
 // location.hash 和 history。
 import {readLike} from './like.js';
 import {prefs} from './prefs.js';
-import {matchPath, pageOf, pathFor, viewOf} from './pages.js';
+import {favoritesOnly, matchPath, pageOf, pathFor, viewOf} from './pages.js';
 import {state} from './state.js';
 import {parseList} from './filters.js';
 
@@ -27,6 +27,8 @@ export function parseHash(hash = location.hash) {
   // 「更多像这张的」（#449）只属于图库本身，不和角色页叠在一起。
   Object.assign(route, readLike(q, pageOf(route).toolbar === 'library' && !route.char));
   if (!route.like && route.sort === 'similar') route.sort = '';   // 「最相似」离开例图就没有意义
+  // 只按收藏筛选的图库是收藏的旧地址（#447）：收藏现在是内置的画廊（#710），改写到它，地址就地换成新的（legacy）。
+  if (favoritesOnly(route)) Object.assign(route, {page: 'gallery', id: 'fav', has: ['fav'], sort: route.sort, legacy: true});
   return route;
 }
 export function hashFor(r) {

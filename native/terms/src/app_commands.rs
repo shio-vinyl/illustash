@@ -333,14 +333,14 @@ fn undo(c: &mut Connection, body: &Json) -> Result<Json> {
             character = true;
         } else if owned {
             let strict = input.and_then(integer_id).ok_or_else(|| Error::Invalid("步骤 ID 不正确".into()))?;
-            let (_, owned) = store::undo_in(&tx, Some(strict)).map_err(core_error)?;
+            let (_, owned) = store::undo_in(&tx, Some(store::ActionId::from_raw(strict))).map_err(core_error)?;
             character = owned;
         } else if terms {
             let expected = match input {
                 Some(Json::Scalar(Value::String(v))) => http_read::python_int(v).map_err(Error::Invalid)?,
                 _ => id,
             };
-            store::undo_in(&tx, Some(expected)).map_err(core_error)?;
+            store::undo_in(&tx, Some(store::ActionId::from_raw(expected))).map_err(core_error)?;
         } else {
             restore_application(&tx, &bound, &parsed)?;
         }

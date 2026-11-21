@@ -9,10 +9,12 @@
 //   peek   悬停预览里排的图 [{id, w?, h?}]（w、h 是原图的宽高，用来按真实宽高比排；没有时按图读到以后的样子排）。
 //          不给时预览只放封面（有的话）；peekRound 为真时画成圆头像（作品的角色）
 //   color  这一项的主色（十六进制），悬停预览拿它做很淡的环境光和彩色投影；没有时用中性色
+//   画廊这一组（#710）另有：gallery 是画廊本身（拖图进画廊时按它判断收不收）；heart 为真时画心形（收藏）；
+//   off 为真时变淡、不接收（拖图进画廊时换出来的那组，ui/drag.js）
 import {castWorks} from './catalog.js';
 import {aspect, strip} from './layout.js';
+import {galleryHref, isFav, isManual, withFav} from './galleries.js';
 import {listeners} from './events.js';
-import {favoritesOnly} from './favorites.js';
 import {t} from './i18n.js';
 import {number} from './format.js';
 import {libraryPrefs} from './prefs.js';
@@ -33,9 +35,9 @@ export const ENTRIES = [
 
 // 地址落在哪个入口、二级层里选中哪一项。char 默认取路由的 char（角色还没读到时也认得出角色页）。
 export function railAt(route, char = route.char) {
-  if (favoritesOnly(route)) return {entry: 'galleries', item: 'fav'};
   const view = viewOf(route, char);
-  if (view.gallery) return {entry: 'galleries', item: 'g:' + route.id};
+  // 一个画廊（网格那几种展示方式和展示页都算）；收藏是 id 为 fav 的内置画廊（#710）。
+  if (view.entry === 'galleries' && route.id) return {entry: 'galleries', item: route.id === 'fav' ? 'fav' : 'g:' + route.id};
   if (view === CHARACTER) return {entry: 'catalog', item: 'c:' + route.char};
   // 作品页（#711）在资料库下，钉住了就选中它；只按一部作品筛选的图库（作品页上的「在图库里看全部」）也算在那部作品下。
   if (onPage(route, 'work')) return {entry: 'catalog', item: 'w:' + route.id};
@@ -97,10 +99,11 @@ export function queues(route = state.route) {
 }
 
 // ---------- 画廊：收藏在最前，后面是保存的画廊 ----------
+// 点了去这个画廊（按它记着的展示方式落在网格页或展示页，core/galleries.js 的 galleryHref）。gallery 是画廊本身：拖图进画廊时
+// （ui/drag.js）按它判断收不收。
 export function galleryItems(covers = {}) {
-  const fav = {key: 'fav', kind: 'gallery', label: t('收藏'), heart: true, href: hashFor({page: 'library', has: ['fav']}), meta: t('在详情面板或大图里点心形，或者按 F 收藏。')};
-  return [fav, ...(state.galleries || []).map(g => ({key: 'g:' + g.id, kind: 'gallery', label: g.name, cover: covers[g.id] || null,
-    href: hashFor({page: 'gallery', id: String(g.id), has: []}), meta: ''}))];
+  return withFav().map(g => ({key: isFav(g.id) ? 'fav' : 'g:' + g.id, kind: 'gallery', label: g.name, heart: isFav(g.id), cover: covers[g.id] || null,
+    href: galleryHref(g.id), meta: isFav(g.id) ? '' : isManual(g) ? t('手选画廊') : t('按条件的画廊'), gallery: g}));
 }
 
 // ---------- 图库：时间轴 ----------

@@ -3,7 +3,7 @@
 //
 // - 卡片建一次，挂在 #inspector 里；翻页、写入后重读只 update，不重建。打开时从右边滑进来，关掉时滑出去再藏起 #inspector。
 // - 卡片和大图底栏的点击都交给 act(名字, data-*, 事件, 详情)：同一个按钮在两处做同一件事。
-// - 大图的函数照旧从这里导出（ui/grid.js、home.js、review.js、shell.js 从这里导入）；它们的实现在 ui/viewer.js。
+// - 大图的函数照旧从这里导出（ui/grid.js、shell.js 等从这里导入）；它们的实现在 ui/viewer.js。
 import {t} from '../core/i18n.js';
 import {number} from '../core/format.js';
 import {leaves} from '../core/filters.js';
@@ -22,7 +22,7 @@ import {rowHeight, rowOf, rowTop} from './grid_rows.js';
 import {PAGE} from '../core/assets.js';
 import {newIds, openPicker, targets} from './palette.js';
 import {findArtistWorks, findArtists} from './artists.js';
-import {wireDragOut} from './files.js';
+import {wireLift} from './drag.js';
 import {write} from './frame.js';
 import {cancelExit, enter, exit} from './motion.js';
 import {detailCard} from './detail_card.js';
@@ -44,8 +44,8 @@ function mount() {
     findMore: (ident, artist, name) => findArtistWorks(artist, name, () => inspect(ident, true)),
   }});
   $('inspector').replaceChildren(card.el);
-  // 按住预览图拖动：把这张图拖到别的应用（#450）。
-  card.scope.add(wireDragOut(card.preview, () => [card.uuid].filter(Boolean)));
+  // 按住预览图拖动：拿起这张图，放进活页条上的画廊，拖出窗口边缘就是拖到别的应用（ui/drag.js，#710、#450）。
+  card.scope.add(wireLift(card.preview, () => [card.uuid].filter(Boolean)));
   return card;
 }
 const relayout = () => write(() => renderGrid(), 'detail:grid');

@@ -228,36 +228,7 @@ test('navigation into directory during summary read triggers a full trailing rea
   for (const p of pending.splice(0)) p.resolve(value(p.path));
   await task;
 });
-// 相似组页面在 ui/review.js。
-test('group append, answer and selection preserve unaffected section nodes', async () => {
-  const review = await web.load('ui/review.js'), {state} = web.core();
-  const sections = new Element(), controls = {}, more = {}, nodes = {regroup: {}, moreGroups: {addEventListener() {}}};
-  const root = {querySelector: selector => ({'.gsecs': sections, '.groups-controls': controls, '.groups-more': more})[selector],
-    set innerHTML(_) { throw Error('must not replace all groups'); }};
-  globalThis.document = Object.assign(documentMock(), {getElementById: id => id === 'groupsPage' ? root : nodes[id] || null});
-  state.pools = {unmatched: 100};
-  const group = cid => ({cid, size: 2, members: ['u', 'v'].map(x => x + cid)});
-  Object.assign(review.groups, {list: [1, 2, 3].map(group), shown: 2, off: new Map(), learner: {}});
-  review.drawGroups(); const [a, b] = sections.children;
-  review.groups.shown = 3; review.drawGroups(); const third = sections.children[2];
-  assert.equal(sections.children[0], a); assert.equal(sections.children[1], b);
-  review.groups.list.shift(); review.drawGroups();
-  assert.deepEqual(sections.children, [b, third]);
-  review.groups.off.set(2, new Set(['u2'])); review.drawGroups();
-  assert.notEqual(sections.children[0], b); assert.equal(sections.children[1], third);
-});
-test('older group reads cannot overwrite a newer R18-filtered response', async () => {
-  const review = await web.load('ui/review.js'), {state} = web.core(), pending = [];
-  web.fakePage(); globalThis.requestAnimationFrame ??= () => 0;   // 关闭详情面板会在下一帧重画网格
-  Object.assign(state, {route: {page: 'groups'}, nsfw: '', pools: {unmatched: 0}});
-  globalThis.fetch = path => new Promise(resolve => pending.push({path, resolve: body => resolve({status: 200, ok: true, json: async () => body})}));
-  const old = review.renderGroups(); await new Promise(r => setImmediate(r));
-  state.nsfw = 'hide'; const fresh = review.renderGroups(); await new Promise(r => setImmediate(r));
-  pending[1].resolve({clusters: [{cid: 2, size: 2, members: ['a', 'b']}], learner: {}}); await fresh;
-  pending[0].resolve({clusters: [{cid: 1, size: 2, members: ['c', 'd']}], learner: {}}); await old;
-  assert.equal(review.groups.list[0].cid, 2);
-});
-
+// 按组整理的组复用和晚到的回复：tests/tidy.test.cjs。
 test('a library page finishing after navigation cannot overwrite home items', async () => {
   let resolve; const restore = quietTimers();
   try {

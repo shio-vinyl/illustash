@@ -43,23 +43,23 @@ pub(crate) fn scan_ordered(
         let uuid = r[0].as_str().ok_or_else(|| Error::Invalid("Photos 标识不合法".into()))?.to_uppercase();
         live.insert(uuid.clone());
         let app = r[8].as_str().unwrap_or("");
-        let name = crate::origin::photos_app(app).map(|o| o.label()).unwrap_or_else(|| match app {
-            "com.apple.springboard" => "截屏",
-            "com.apple.camera" => "相机",
-            "com.apple.mobileslideshow" => "照片",
-            "com.apple.mobilesafari" => "Safari",
-            "tv.danmaku.bilianime" => "哔哩哔哩",
-            "ai.x.GrokApp" => "Grok",
-            "com.tencent.xin" => "微信",
-            "com.baidu.netdisk" => "百度网盘",
-            "app.nicegram" => "Nicegram",
-            "" => "未知来源",
-            _ => app,
-        });
-        if !totals.contains_key(app) {
+        let entry = totals.entry(app.to_owned()).or_insert_with(|| {
             order.push(app.to_owned());
-        }
-        let entry = totals.entry(app.to_owned()).or_insert(json!({"name":name,"photos":0,"collected":0}));
+            let name = crate::origin::photos_app(app).map(|o| o.label()).unwrap_or_else(|| match app {
+                "com.apple.springboard" => "截屏",
+                "com.apple.camera" => "相机",
+                "com.apple.mobileslideshow" => "照片",
+                "com.apple.mobilesafari" => "Safari",
+                "tv.danmaku.bilianime" => "哔哩哔哩",
+                "ai.x.GrokApp" => "Grok",
+                "com.tencent.xin" => "微信",
+                "com.baidu.netdisk" => "百度网盘",
+                "app.nicegram" => "Nicegram",
+                "" => "未知来源",
+                _ => app,
+            });
+            json!({"name":name,"photos":0,"collected":0})
+        });
         entry["photos"] = json!(entry["photos"].as_u64().expect("validated internal numeric field") + 1);
         let Some(preset) = apps.get(app).and_then(Value::as_str) else {
             progress(i + 1, rows.len());
@@ -68,13 +68,20 @@ pub(crate) fn scan_ordered(
         entry["collected"] = json!(entry["collected"].as_u64().expect("validated internal numeric field") + 1);
         let (kind, p) =
             crate::platform_photos::path(&root, &uuid, r[6].as_str().unwrap_or(""), r[7].as_str().unwrap_or(""))?;
-        // 外部标识符撞上时，绝不替换属于其他来源的图片。
-        let owner: Option<String> =
-            tx.query_row("SELECT coalesce(source_id,'') FROM assets WHERE uuid=?", [&uuid], |r| r.get(0)).optional()?;
-        if owner.as_deref().is_some_and(|v| !v.is_empty() && v != sid) {
-            return Err(Error::Conflict("Photos 资产属于其他来源".into()));
-        }
-        if owner.is_none() {
+        // 盘点开始时已归本来源的图片有明确归属。其余仍查事务内的现状，防止覆盖不同来源的图片。
+        let exists = if known.contains_key(&uuid) {
+            true
+        } else {
+            let owner: Option<String> = tx
+                .prepare_cached("SELECT coalesce(source_id,'') FROM assets WHERE uuid=?")?
+                .query_row([&uuid], |r| r.get(0))
+                .optional()?;
+            if owner.as_deref().is_some_and(|v| !v.is_empty() && v != sid) {
+                return Err(Error::Conflict("Photos 资产属于其他来源".into()));
+            }
+            owner.is_some()
+        };
+        if !exists {
             let when = r[4]
                 .as_f64()
                 .and_then(|v| chrono::DateTime::from_timestamp((v + 978307200.0) as i64, 0))
@@ -86,15 +93,15 @@ pub(crate) fn scan_ordered(
             if known.get(&uuid) == Some(&1) {
                 back += 1;
             }
-            tx.execute(
-                "UPDATE assets SET trashed=0,src_kind=?,src_path=?,source_id=?,preset=? WHERE uuid=?",
-                params![kind, p.to_string_lossy(), sid, preset, uuid],
-            )?;
+            tx.prepare_cached(
+                "UPDATE assets SET trashed=0,src_kind=?1,src_path=?2,source_id=?3,preset=?4 WHERE uuid=?5
+                 AND (trashed IS NOT 0 OR src_kind IS NOT ?1 OR src_path IS NOT ?2
+                      OR source_id IS NOT ?3 OR preset IS NOT ?4)",
+            )?
+            .execute(params![kind, p.to_string_lossy(), sid, preset, uuid])?;
         }
-        tx.execute(
-            "INSERT OR IGNORE INTO asset_links(asset,system,key,source_id) VALUES (?,'photos',?,?)",
-            params![uuid, uuid, sid],
-        )?;
+        tx.prepare_cached("INSERT OR IGNORE INTO asset_links(asset,system,key,source_id) VALUES (?1,'photos',?1,?2)")?
+            .execute(params![uuid, sid])?;
         progress(i + 1, rows.len());
     }
     let mut gone = 0;

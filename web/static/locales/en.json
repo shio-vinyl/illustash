@@ -238,7 +238,6 @@
     "other": "{n} examples in all"
   },
   "例图还没有特征，识别完成后再试。": "The examples have no features yet. Try again after recognition finishes.",
-  "在详情面板或大图里点心形，或者按 F 收藏。": "Click the heart in the details panel or large view, or press F, to add a favorite.",
   "还没有收藏。在详情面板或大图里点心形，或者按 F 收藏。": "No favorites yet. Click the heart in the details panel or large view, or press F, to add one.",
   "在符合筛选条件的图里，取和例图最像的 500 张。": "The 500 pictures most like the examples, among those that match the filters.",
   "按画面比较画面标签，按角色比较角色特征。": "By picture compares picture tags; by character compares character features.",
@@ -3242,7 +3241,6 @@
   "条件失效：{reason}": "Conditions no longer valid: {reason}",
   "标签、角色、作品、画师、出处或年份": "Tag, character, series, artist, origin or year",
   "没有匹配的条件": "No matching conditions",
-  "点一下改名": "Click to rename",
   "点一下改回包含": "Click to include instead",
   "点一下改成不含": "Click to exclude instead",
   "用现在的条件替换这个画廊保存的条件": "Replace the saved conditions with the current ones",
@@ -3251,13 +3249,64 @@
   "画廊不存在": "The gallery does not exist",
   "画廊名称": "Gallery name",
   "起止日期…": "Date range…",
-  "还没有画廊。在图库里加上条件，点「保存为画廊」。": "No galleries yet. Add conditions in the library and click “Save as gallery”.",
   "画廊名称应为 1–60 个字符": "A gallery name is 1–60 characters",
   "画廊操作不正确": "The gallery action is not valid",
   "画廊顺序不正确": "The gallery order is not valid",
   "已保存画廊": "Saved the gallery",
   "已更新画廊": "Updated the gallery",
   "已删除画廊": "Deleted the gallery",
+  "已放进画廊": "Added to the gallery",
+  "已移出画廊": "Removed from the gallery",
+  "展示方式": "Display",
+  "拼贴": "Collage",
+  "杂志": "Magazine",
+  "瀑布": "Masonry",
+  "展厅": "Exhibition",
+  "色彩": "Color",
+  "按颜色": "By color",
+  "改名…": "Rename…",
+  "改名": "Rename",
+  "确定": "OK",
+  "新建手选画廊": "New hand-picked gallery",
+  "新建手选画廊…": "New hand-picked gallery…",
+  "新画廊": "New gallery",
+  "手选": "Hand-picked",
+  "手选画廊": "Hand-picked gallery",
+  "手选画廊…": "Hand-picked…",
+  "按条件": "By conditions",
+  "按条件…": "By conditions…",
+  "按条件：{what}": "By conditions: {what}",
+  "按条件的画廊": "Gallery by conditions",
+  "已放进「{name}」：{n} 张": {
+    "one": "Added {n} picture to “{name}”",
+    "other": "Added {n} pictures to “{name}”"
+  },
+  "放进收藏或一个手选画廊": "Add to Favorites or a hand-picked gallery",
+  "放进画廊…": "Add to gallery…",
+  "放进画廊": "Add to gallery",
+  "从「{name}」拿出，图本身不删": "Take out of “{name}”; the pictures stay in the library",
+  "从画廊拿出": "Take out of gallery",
+  "起个名字，放进这 {n} 张": {
+    "one": "Name it and add this picture",
+    "other": "Name it and add these {n} pictures"
+  },
+  "筛选画廊": "Filter galleries",
+  "新建手选画廊，放进 {n} 张": {
+    "one": "Create a hand-picked gallery with {n} picture",
+    "other": "Create a hand-picked gallery with {n} pictures"
+  },
+  "把 {n} 张放进「{name}」": {
+    "one": "Add {n} picture to “{name}”",
+    "other": "Add {n} pictures to “{name}”"
+  },
+  "新建画廊": "New gallery",
+  "在图库里加上条件，点「保存为画廊」": "Add conditions in the library, then click “Save as gallery”",
+  "全部 {n} 张": {
+    "one": "All {n} picture",
+    "other": "All {n} pictures"
+  },
+  "这个画廊还没有图。把图拖到活页条上的画廊封面，或者在选择栏里点「放进画廊…」。": "This gallery has no pictures yet. Drag pictures onto its cover in the sidebar, or use “Add to gallery…” in the selection bar.",
+  "松手新建一个手选画廊，放进这些图": "Release to create a hand-picked gallery with these pictures",
   "gallery\u0004{n} 个": {
     "one": "{n} gallery",
     "other": "{n} galleries"

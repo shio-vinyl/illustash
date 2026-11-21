@@ -45,6 +45,7 @@ import {wireRail} from './ui/rail.js';
 import {wireLibraryPop} from './ui/library_pop.js';
 import './ui/library.js';
 import './ui/calendar.js';
+import './ui/galleries.js';
 import './ui/tidy.js';
 platformHints(document.body);
 wireDom();

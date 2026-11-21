@@ -24,6 +24,7 @@ const ROWS = {
   '更多像这张的': {hash: '#/library?like=%5B%22a%22%5D', page: 'library', doc: '`#/library?like='},
   '画廊': {hash: '#/galleries', page: 'galleries', doc: '`#/galleries`'},
   '画廊 · 一个画廊': {hash: '#/gallery/3?has=[]', page: 'gallery', doc: '`#/gallery/'},
+  '画廊 · 展示页': {hash: '#/showcase/3', page: 'showcase', doc: '`#/showcase/'},
   '资料库 · 角色': {hash: '#/characters', page: 'characters', doc: '`#/characters`'},
   '资料库 · 作品': {hash: '#/characters/works', page: 'characters', doc: '`#/characters/works`'},
   '资料库 · 画师': {hash: '#/characters/artists', page: 'characters', doc: '`#/characters/artists`'},
@@ -79,9 +80,9 @@ test('docs/WEB_UI_MAP.md 2.1 总表的每一行都能从注册表读出，且与
     assert.equal(at.entry, first(ENTRY, nav, '活页条'), `${label}：活页条的入口`);
     if (at.entry === 'tidy') assert.equal(at.item, first(ITEM, nav, '活页条'), `${label}：活页条的二级项`);
     assert.equal(view.toolbar, first(TOOLBAR, toolbar, '工具栏'), `${label}：工具栏`);
-    // 选择栏、详情栏：网格页才有（首页可以点图开详情栏）
+    // 选择栏、详情栏：网格页才有（按天视图、画廊的展示页可以点图开详情栏：单图快捷键的范围是 'shown'）
     assert.equal(selection.startsWith('有'), view.area === 'grid', `${label}：选择栏`);
-    assert.equal(inspector.startsWith('有'), view.area === 'grid' || view.area === 'homePage', `${label}：详情栏`);
+    assert.equal(inspector.startsWith('有'), view.area === 'grid' || pages.keyScope(view) === 'shown', `${label}：详情栏`);
   }
 });
 
@@ -103,7 +104,7 @@ test('注册表里的每个页面都在总表里有一行，反过来也是', ()
 const OLD = {
   cleanup: ['unmatched', 'skipped', 'excluded', 'pending', 'group', 'audit', 'sgroup'],
   browsing: ['library', 'duplicates', 'gallery'],
-  panel: ['days', 'calendar', 'characters', 'settings', 'groups', 'similar', 'identity', 'artist-audit', 'galleries'],
+  panel: ['days', 'calendar', 'characters', 'settings', 'groups', 'similar', 'identity', 'artist-audit', 'galleries', 'showcase'],
   lead: ['unmatched', 'skipped', 'group'],
   // 原来侧栏的高亮：整理一类各页亮的那一项，现在是活页条整理里的那个队列（#706）
   nav: page => ({skipped: 'unmatched', groups: 'unmatched', group: 'unmatched', pending: 'excluded', similar: 'duplicates', sgroup: 'duplicates'})[page] || page,
@@ -138,7 +139,7 @@ test('主区是网格以外的页面都是面板页；单图快捷键的范围�
   for (const name of Object.keys(pages.PAGES)) {
     const p = pages.PAGES[name];
     assert.equal(!!p.panel, p.area !== 'grid', `${name}：panel 与主区`);
-    assert.equal(pages.keyScope(p), p.area === 'grid' ? 'grid' : name === 'days' ? 'shown' : '', `${name}：快捷键范围`);
+    assert.equal(pages.keyScope(p), p.area === 'grid' ? 'grid' : ['days', 'showcase'].includes(name) ? 'shown' : '', `${name}：快捷键范围`);
   }
   assert.equal(pages.keyScope(pages.CHARACTER), 'grid');
 });
@@ -199,7 +200,9 @@ test('implement() 只接受登记过的页面名；每个页面都有标题以�
     assert.ok(['library', 'catalog', 'galleries', 'tidy', 'settings', ''].includes(p.entry), `${name}.entry`);
     assert.ok(['browse', 'cleanup', 'select', 'own'].includes(p.click), `${name}.click`);
     assert.ok(['none', 'tabs', 'index', 'library', 'filters', 'grid'].includes(p.toolbar), `${name}.toolbar`);
-    if (p.toolbar === 'grid' || p.toolbar === 'library') assert.ok(p.sorts.every(s => ['suspicious', 'newest', 'oldest', 'hinted'].includes(s)), `${name}.sorts`);
+    // 画廊的排序随展示方式（色彩只有「按颜色」，#710），是函数。
+    const sorts = typeof p.sorts === 'function' ? p.sorts({page: name, id: '3'}) : p.sorts;
+    if (p.toolbar === 'grid' || p.toolbar === 'library') assert.ok(sorts.every(s => ['suspicious', 'newest', 'oldest', 'hinted', 'color'].includes(s)), `${name}.sorts`);
     if (p.tabs) assert.ok(p.tab, `${name}.tab`);
     if (p.pool) assert.equal(p.area, 'grid', `${name}：有 pool 的页面用网格`);
   }

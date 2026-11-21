@@ -42,7 +42,7 @@ test('地址落在哪个入口、哪一项：整理五个队列、画廊和收�
   assert.equal(at({page: 'calendar'}), 'library/');
   assert.equal(at({page: 'library', char: 'c1'}), 'catalog/c:c1');
   assert.equal(at({page: 'gallery', id: '3'}), 'galleries/g:3');
-  assert.equal(at({page: 'library', has: ['fav']}), 'galleries/fav');
+  assert.equal(at({page: 'gallery', id: 'fav', has: ['fav']}), 'galleries/fav');
   assert.equal(at({page: 'pending'}), 'tidy/excluded');
   assert.equal(at({page: 'sgroup', id: '2'}), 'tidy/duplicates');
   assert.equal(at({page: 'settings', section: 'data'}), 'settings/');

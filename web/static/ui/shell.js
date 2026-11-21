@@ -18,10 +18,11 @@ import {$, error, helpTip, searchIcon, showArea, wireHelpTip, workSmall} from '.
 import {attr, make, show, text, tpl} from './el.js';
 import {closeInspector} from './detail.js';
 import {closeViewer} from './viewer.js';
+import {fixedLayout} from './grid_rows.js';
 import {markSelectButton, placeFor, rememberPlace, reload, resetForRoute, selectAll, setNsfw, sweep, toggleFit, toggleSelecting} from './grid.js';
 import {guideTick} from './guide.js';
 import {filterBar, wireFilterBar} from './filters.js';
-import {saveButton, wireGalleries, wireSaveButton} from './galleries.js';
+import {saveButton, wireGalleries, wireSaveButton} from './gallery_save.js';
 import {createLayer} from './overlay.js';
 import {editProfile, mergeCharacter, toggleMascot, toggleOc} from './palette.js';
 import {enter} from './motion.js';
@@ -187,8 +188,9 @@ export function renderChrome() {
   // 按天、日历（'filters'）：只有搜索框和筛选条（三种视图共用筛选，#703 第 2 问），没有排序、选择和显示方式。
   const filtersOnly = view.toolbar === 'filters';
   const tagPage = !!(r.char && state.char?.mascot);
-  const SORT_LABELS = {suspicious: t('可疑优先'), newest: t('最新加入'), oldest: t('最早加入'), hinted: t('有线索优先'), similar: t('最相似')};
-  const sorts = (view.sorts || []).filter(v => !(tagPage && v === 'suspicious')).map(v => [v, SORT_LABELS[v]]);
+  const SORT_LABELS = {suspicious: t('可疑优先'), newest: t('最新加入'), oldest: t('最早加入'), hinted: t('有线索优先'), similar: t('最相似'), color: t('按颜色')};
+  // 排序的选项可以随地址变（画廊的色彩只按颜色排，#710）。
+  const sorts = ((typeof view.sorts === 'function' ? view.sorts(r) : view.sorts) || []).filter(v => !(tagPage && v === 'suspicious')).map(v => [v, SORT_LABELS[v]]);
   const skins = r.char && !r.maybe ? (state.char?.variants || []).filter(v => v.count) : [];
   const variants = skins.length ? `<div class="chips-row">${[{id: '', name: t('全部'), count: state.char.count}, ...skins].map(v => `<button class="chip-filter${(r.variant || '') === v.id ? ' on' : ''}" data-variant="${esc(v.id)}">${esc(v.name)} <span>${number(v.count)}</span></button>`).join('')}</div>` : '';
   const maybeChip = r.char && !tagPage && (state.maybeCount || r.maybe || state.doubtCount || r.doubt) ? `<div class="chips-row">${state.maybeCount || r.maybe ? `<button class="chip-filter${r.maybe ? ' on' : ''}" id="maybeChip" title="${t('机器觉得像 TA，但算给了别人或没算的图')}">${t('可能也是 TA')} <span>${number(state.maybeCount)}</span></button>` : ''}${state.doubtCount || r.doubt ? `<button class="chip-filter${r.doubt ? ' on' : ''}" id="doubtChip" title="${t('单人图里，另一个角色的证据几乎一样强的图')}">${t('可能认错')} <span>${number(state.doubtCount)}</span></button>` : ''}</div>` : '';
@@ -201,7 +203,7 @@ export function renderChrome() {
   bar.innerHTML = filtersOnly ? filtersHTML : filtersHTML +
     `<div class="spacer"></div><select id="sort" aria-label="${t('排序')}">${sorts.map(([v, label]) => `<option value="${v}"${r.sort === v ? ' selected' : ''}>${label}</option>`).join('')}</select>` +
     `<button class="quiet" id="selectButton" title="${cleanup() ? t('选中全部符合条件的图片') : t('进入选择模式')}">${cleanup() ? `${t('全选')} <kbd>${shortcut('A')}</kbd>` : t('选择')}</button>` +
-    `<div class="icon-seg" id="fitToggle" role="group" aria-label="${t('显示方式')}"><button data-fit="0" class="${state.fit ? '' : 'on'}" title="${t('方格：裁成正方形（R）')}" aria-label="${t('方格')}">${FIT_ICONS.square}</button><button data-fit="1" class="${state.fit ? 'on' : ''}" title="${t('原始比例：完整显示整张图（R）')}" aria-label="${t('原始比例')}">${FIT_ICONS.fit}</button></div>`;
+    `<div class="icon-seg" id="fitToggle" role="group" aria-label="${t('显示方式')}"${fixedLayout(r) ? ' hidden' : ''}><button data-fit="0" class="${state.fit ? '' : 'on'}" title="${t('方格：裁成正方形（R）')}" aria-label="${t('方格')}">${FIT_ICONS.square}</button><button data-fit="1" class="${state.fit ? 'on' : ''}" title="${t('原始比例：完整显示整张图（R）')}" aria-label="${t('原始比例')}">${FIT_ICONS.fit}</button></div>`;
   if (filtersOnly) { wireSearch(r); wireFilterBar(r); wireSaveButton(r); return; }
   // 改了排序就记成这一类页面的默认值，离开再回来还是它（#386 的 2-26）；记在哪个键由 core/route.js 的 sortKey 定。
   $('sort').onchange = e => { prefs.set(sortKey(r), e.target.value); replaceRoute({sort: e.target.value}); reload(true); };

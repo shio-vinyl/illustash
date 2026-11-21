@@ -10,7 +10,7 @@
 //   onPick(entry, fn)      点了二级项（或用 ⌥↑↓ 走到）：fn(item, event) 返回 true 表示自己处理了、不换地址（C1：已经在按天视图里时
 //                          直接滚到 item.first 那一天），否则按项的链接走
 //   count(key, n)          H：改一个队列的数字（数字滚动）
-//   mode(name, items, hint) E：临时换成另一组项（拖放时换成画廊封面，hint 是上面的一句提示）；mode(null) 换回
+//   mode(name, items, hint) E：临时换成另一组项（拖放时换成画廊封面，hint 是上面的一句提示）；mode(null) 换回。项带 off 时变淡、不接收
 //   railKey(e)             键盘（ui/grid.js 的键盘处理里调）：⌘1–4（Windows 上 Ctrl）切一级，⌥↑↓ 在二级里移动，
 //                          ⌥⇧↑↓ 挪动钉住的项；处理了返回 true
 //   railRoute(route)       换页时（ui/shell.js applyRoute）：点亮入口和项，收起窄窗口的抽屉，需要时重读时间轴
@@ -20,7 +20,7 @@
 // 指示条跟着选中项滑；时间轴、钉住的项增减时其余平滑让位；二级层滚动时上下边缘渐隐（下面的「滚动与渐隐」）。
 import {ENTRIES, entryHref, forgetTimeline, galleryItems, itemForDay, loadPins, loadTimeline, movePin, noteLibraryView, pinItems, pins, queues, railAt,
   railEdges, railReveal, tidyWaiting, timeline, timelineHref} from '../core/rail.js';
-import {coversFor} from '../core/galleries.js';
+import {FAV, coversFor, favGallery, previewOf} from '../core/galleries.js';
 import {number} from '../core/format.js';
 import {I18N, t} from '../core/i18n.js';
 import {composing} from '../core/keys.js';
@@ -79,6 +79,8 @@ function itemWidget(item) {
     attr(el, 'href', x.href || '#'); attr(el, 'aria-label', x.meta ? `${x.label}，${x.meta}` : x.label);
     attr(el, 'aria-current', x.key === selected ? 'page' : null);
     cls(el, 'is-round', !!x.round);
+    // 拖图进画廊时（mode）不接收的项（按条件的画廊，#710）：变淡，读屏读作不可用。
+    attr(el, 'aria-disabled', x.off ? 'true' : null); cls(el, 'is-off', !!x.off);
     attr(refs.img, 'src', thumb(x.cover) || null); show(refs.img, !!x.cover);
     attr(refs.img2, 'src', thumb(x.cover2) || null); show(refs.stack, x.kind === 'month' || x.kind === 'year');
     text(refs.mark, mark(x)); show(refs.mark, !!mark(x));
@@ -182,15 +184,18 @@ function settle(toBox) {
     for (const el of box.children) el.getAnimations?.().forEach(a => a.cancel());
   }
 }
+let wanted = null;   // 最近一次切换要显示的那组
 async function swap(fromBox, toBox) {
   dropHover();
   const gen = ++swapping;
+  wanted = toBox;
   const quick = reduced() || !fromBox || fromBox.hidden || fromBox === toBox;
   cls($('railInd'), 'is-on', false);
   if (!quick) {
     await Promise.all(itemsOf(fromBox).map((el, i) => animate(el, [{opacity: 1, transform: 'none'}, {opacity: 0, transform: 'translateX(-16px) scale(.92)'}],
       {dur: 1, delay: i * 16, fill: 'forwards'})));
-    if (gen !== swapping) { fromBox.hidden = true; for (const el of fromBox.children) el.getAnimations?.().forEach(a => a.cancel()); return; }
+    // 又换过了：退场的动画撤掉；这组不是最新要显示的那组才藏起来（拖图进画廊时一下换出去又换回来，它就是要显示的那组，#710）。
+    if (gen !== swapping) { if (fromBox !== wanted) fromBox.hidden = true; for (const el of fromBox.children) el.getAnimations?.().forEach(a => a.cancel()); return; }
   }
   settle(toBox);
   if (!toBox) return;
@@ -396,10 +401,16 @@ export function railNsfw() {
   if (current === 'library') loadTimeline(state.route).catch(() => {});
   loadGalleryCovers();
 }
-// 画廊的封面按 NSFW 设置批量读（core/galleries.js）；读到以后重画画廊这一组。
+// 画廊的封面按 NSFW 设置批量读（core/galleries.js）；收藏不在封面接口里，取它的第一张。读到以后重画画廊这一组。
 let galleryCovers = {};
+// 先后两次读取倒序回来时只认后一次（切换 NSFW 后晚到的旧封面不该留下）。
+let coverReads = 0;
 export async function loadGalleryCovers() {
-  const ids = (state.galleries || []).map(g => g.id);
-  try { galleryCovers = await coversFor(ids); } catch { galleryCovers = {}; }
+  const ids = (state.galleries || []).map(g => g.id), seq = ++coverReads;
+  const [covers, fav] = await Promise.all([coversFor(ids).catch(() => ({})), previewOf(favGallery()).catch(() => null)]);
+  if (seq !== coverReads) return;
+  galleryCovers = {...covers, [FAV]: fav?.items?.[0]?.uuid || null};
   refresh('galleries');
 }
+// 现在的封面：{画廊 id: uuid}（拖图进画廊时换上的那组项用它）。
+export const railCovers = () => galleryCovers;

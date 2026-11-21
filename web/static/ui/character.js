@@ -8,7 +8,8 @@ import {imageUrl, localDate, number} from '../core/format.js';
 import {t} from '../core/i18n.js';
 import {nameTip, workLabel} from '../core/labels.js';
 import {implement} from '../core/pages.js';
-import {hashFor} from '../core/route.js';
+import {backTo} from '../core/rail.js';
+import {cameFrom, hashFor, stepHistory} from '../core/route.js';
 import {readError} from '../core/session.js';
 import {state} from '../core/state.js';
 import {charFacts} from './character_facts.js';
@@ -19,6 +20,9 @@ import {createLayer} from './overlay.js';
 import {editProfile, mergeCharacter, toggleMascot, toggleOc} from './palette.js';
 import {currentPage} from './scope.js';
 import {setTint} from './tint.js';
+
+// 没有来路（打开图库后的第一页就是这个角色）时，返回去资料库。
+const BACK = () => ({label: t('资料库'), href: '#/characters'});
 
 const HERO = tpl`<section class="char-hero" aria-labelledby="charHeroName">
   <div class="char-hero-art" aria-hidden="true"><img alt="" decoding="async" data-ref="art"></div>
@@ -66,7 +70,8 @@ function charHero(scope, onOut) {
   const {el, refs} = HERO(), facts = charFacts();
   refs.facts.replaceWith(facts.el);
   let c = null, loaded = '';
-  text(refs.backLabel, t('资料库')); attr(refs.back, 'href', '#/characters');
+  // 左上的返回按来路走（core/rail.js 的 backTo，和作品页一样）：后退一步能回去就后退，没有来路时回资料库。
+  scope.on(refs.back, 'click', e => { if (backTo(cameFrom(), BACK()).step) { e.preventDefault(); stepHistory(-1); } });
   attr(refs.more, 'title', t('更多操作')); attr(refs.more, 'aria-label', t('更多操作'));
   text(refs.profile, t('编辑资料…')); attr(refs.profile, 'title', t('名称、别名、所属作品、Danbooru 关联'));
   text(refs.merge, t('合并到另一个角色…')); attr(refs.merge, 'title', t('把这个角色的图和人工结论并到另一个角色'));
@@ -103,6 +108,8 @@ function charHero(scope, onOut) {
 
   function update(r, char) {
     c = char;
+    const back = backTo(cameFrom(), BACK());
+    text(refs.backLabel, back.label); attr(refs.back, 'href', back.href);
     const tagOnly = !!c.mascot;   // 只当标签：没有要复核的，所以没有检查、清扫、OC 这些控件
     text(refs.name, c.name); attr(refs.name, 'title', nameTip(c));
     attr(refs.avatar, 'src', c.cover ? imageUrl(c.cover) : null);

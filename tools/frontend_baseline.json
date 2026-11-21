@@ -16,7 +16,6 @@
    "ui/shell.js -> ui/detail.js": 1,
    "ui/shell.js -> ui/grid.js": 1,
    "ui/shell.js -> ui/guide.js": 1,
-   "ui/shell.js -> ui/palette.js": 1,
    "ui/tasks.js -> ui/catalog.js": 1
   },
   "undeclared-state": {},
@@ -38,7 +37,7 @@
    "ui/guide.js": 4,
    "ui/models.js": 1,
    "ui/palette.js": 21,
-   "ui/shell.js": 8,
+   "ui/shell.js": 5,
    "ui/tasks.js": 17
   },
   "css-literal": {
@@ -89,7 +88,7 @@
    "ui/integrity.js": 1,
    "ui/like.js": 1,
    "ui/palette.js": 13,
-   "ui/shell.js": 4
+   "ui/shell.js": 3
   },
   "animation-entry": {
    "ui/guide.js: requestAnimationFrame": 3
@@ -127,7 +126,7 @@
    "app.css: font-weight: 500": 8,
    "app.css: font-weight: 600": 16,
    "app.css: font-weight: 650": 3,
-   "app.css: font-weight: 700": 3,
+   "app.css: font-weight: 700": 2,
    "app.css: font-weight: 800": 1,
    "app.css: transition-duration: .12s": 5,
    "app.css: transition-duration: .15s": 5,

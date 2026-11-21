@@ -28,7 +28,7 @@ import {FAV, favLeaves, isFav, markLocal, wantsAdd, withCondition} from '../core
 import {paintHearts, writeFavorite} from './favorites.js';
 import {write as frameWrite} from './frame.js';
 import {dupHue, gridCard, gridContext, skeletonCard} from './grid_card.js';
-import {cardRect, fixedLayout, flowing, indexAt, layout, layoutKey, rowAt, rowCount, rowHeight, rowOf, rowReach, rowStart, rowTop, setHead, verticalStep} from './grid_rows.js';
+import {cardRect, fixedLayout, flowing, indexAt, layout, layoutKey, rowAt, rowCount, rowHeight, rowOf, rowReach, rowStart, rowTop, headResized, verticalStep} from './grid_rows.js';
 import {enter} from './motion.js';
 import {app} from './scope.js';
 
@@ -590,8 +590,8 @@ export function wireGrid() {
   const head = document.createElement('div');
   head.id = 'gridHead'; head.className = 'grid-head'; head.hidden = true;
   $('grid').insertBefore(head, $('grid').firstElementChild);
-  // 头部的高度从回调参数里读（borderBoxSize），不再量一次 offsetHeight。
-  new ResizeObserver(([entry]) => { setHead(head.hidden ? 0 : entry?.borderBoxSize?.[0]?.blockSize ?? head.offsetHeight); scheduleGrid(); }).observe(head);
+  // 头部的高度从回调参数里读（borderBoxSize），不再量一次 offsetHeight；滚动位置怎么跟着挪见 ui/grid_rows.js 的 headResized。
+  new ResizeObserver(([entry]) => { headResized(head.hidden ? 0 : entry?.borderBoxSize?.[0]?.blockSize ?? head.offsetHeight); scheduleGrid(); }).observe(head);
   $('viewport').addEventListener('scroll', scheduleGrid, {passive: true});
   new ResizeObserver(scheduleGrid).observe($('viewport'));
 
@@ -623,8 +623,8 @@ export function wireGrid() {
     const item = state.items[Number(b.closest('.card').dataset.index)];
     if (item?.hint) mutate('/api/change', {ids: [item.uuid], action: 'confirmed', entity: item.hint.id}, pageOf(state.route).lead);
   });
-  onPress($('grid'), e => {   // 拖到别的应用以后的第一次按下只有 mousedown（ui/press.js）
-    if (e.button !== 0 || e.pointerType === 'touch' || e.target.closest('[data-hint],[data-tagact],button[data-fav]')) return;
+  onPress($('grid'), e => {   // 拖到别的应用以后的第一次按下只有 mousedown（ui/press.js）；网格头部（横幅）上按下不算，文字照常能选
+    if (e.button !== 0 || e.pointerType === 'touch' || e.target.closest('[data-hint],[data-tagact],button[data-fav],#gridHead')) return;
     const card = e.target.closest('.card[data-id]');
     drag = {x: e.clientX, y: e.clientY, start: card ? Number(card.dataset.index) : null, check: !!e.target.closest('.check'), moved: false, id: e.pointerId ?? 1, base: null, lastY: e.clientY, lastX: e.clientX};
   });
@@ -719,8 +719,8 @@ export function wireGrid() {
       // 大图里只有 ← → 翻页；详情栏里 ↑ ↓ 也翻到上一行、下一行的图。
       if (m.viewer || m.detail) { if (Math.abs(delta) === 1 || !m.viewer) step(delta); return; }
       setCursor(Math.max(0, Math.min(state.total - 1, (state.cursor < 0 ? 0 : state.cursor + delta))));
-      // 用方向键在网格里走时焦点回到网格：鼠标点过的按钮（WebView2 里点击会让按钮拿焦点）不再接着收 Enter、Space。
-      if (!$('viewport').contains(document.activeElement)) $('viewport').focus({preventScroll: true});
+      // 用方向键在网格里走时焦点回到网格：鼠标点过的按钮（WebView2 里点击会让按钮拿焦点，网格头部里的也算）不再接着收 Enter、Space。
+      if (!$('viewport').contains(document.activeElement) || $('gridHead').contains(document.activeElement)) $('viewport').focus({preventScroll: true});
       if (e.shiftKey && state.items[state.cursor]) { setSelected(state.items[state.cursor].uuid, true); renderSelection(); }
       if (!state.items[state.cursor]) loadPage(Math.floor(state.cursor / PAGE) * PAGE);
       ensureVisible(state.cursor); return;

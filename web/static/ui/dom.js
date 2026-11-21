@@ -68,8 +68,6 @@ export function wireToast(undo) {
   $('toast').addEventListener('mouseleave', () => { toastTimer = setTimeout(() => { $('toast').hidden = true; }, 2500); });
   $('toastUndo').onclick = () => undo();
 }
-// 角色名字后面用灰色小字写的作品（core/labels.js workLabel）。
-export const workSmall = c => { const w = workLabel(c); return w ? `<small class="char-work">${esc(w)}</small>` : ''; };
 // 角色选项里的名字（#294、#678）：名字后面跟作品小字。「跳到角色」等命令面板（ui/palette.js）和筛选条「＋ 条件」
 // （ui/filters.js）都用它，以后新加的角色选择器也用它，不各自拼。work 默认按 workLabel 算；Danbooru 上的候选还不在
 // 图库里，由调用处给它在 D 站的作品名。

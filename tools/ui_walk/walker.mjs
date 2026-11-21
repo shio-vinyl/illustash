@@ -29,7 +29,7 @@ const SNAPSHOT = `(async () => {
     if (card) s += ' card ' + nameOf(card.dataset.id);
     return s;
   };
-  const OVERLAYS = ['viewer', 'inspector', 'taskPanel', 'viewPopover', 'tagPopover', 'morePopover', 'castPop', 'tour', 'nudge',
+  const OVERLAYS = ['viewer', 'inspector', 'taskPanel', 'viewPopover', 'tagPopover', 'charMenu', 'galleryMenu', 'castPop', 'tour', 'nudge',
     'checklist', 'selectionBar', 'toast', 'splash', 'errorBanner'];
   const shown = OVERLAYS.filter(id => visible(document.getElementById(id)));
   const dialogs = [...document.querySelectorAll('dialog[open]')].map(d => d.id || d.getAttribute('aria-label') || text(d.querySelector('h2,h3,header'), 30) || 'dialog');

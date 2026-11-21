@@ -35,7 +35,6 @@ CENSUS_FIX = '运行 `python3 tools/styleguide/census.py`，把改写后的 tool
 # 样例照抄了应用模板里的这些类：它们只给 JS 当选择器或钩子，样式里本来没有。
 # 每项写明出处；应用代码里不再用它时检查会报，届时从这里和样例里一起删掉。
 HOOK_CLASSES = {
-    'more-control': 'ui/shell.js 更多菜单的点外关闭判断',
     'tagged-dialog': 'ui/catalog.js 打过标签的图对话框',
     'tour-text': 'ui/guide.js 引导气泡正文',
     'work-dialog': 'ui/dialog.js、ui/catalog.js 作品对话框',

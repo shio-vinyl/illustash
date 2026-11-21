@@ -1,6 +1,7 @@
 //! HTTP 读取共用的 SQL 片段（#205）：每个条件只在这里写一次。接受别名 `a` 的片段读取图片列
 //! `a.uuid`（或 `a.entity`）；文本与各读取方原先用的完全相同。
 use crate::{Error, Result};
+use std::collections::HashSet;
 
 /// 算作 NSFW（R18）的分级：供 `IN (…)` 使用的 SQL 列表。
 pub(crate) const NSFW_RATINGS: &str = "'questionable', 'explicit'";
@@ -46,6 +47,25 @@ pub(crate) fn unrejected(a: &str) -> String {
 /// `HINTS` 中没有被人否定的线索。
 pub(crate) fn leads() -> String {
     format!("(SELECT v.* FROM {HINTS} v WHERE {})", unrejected("v"))
+}
+/// 从 UUID 的 JSON 数组取每张图的首选线索。组头按返回顺序计票，同票时取先出现的角色。
+pub(crate) fn first_leads(c: &rusqlite::Connection, page: &str) -> Result<Vec<(String, String)>> {
+    let mut query = c.prepare(&format!(
+        "SELECT v.uuid,v.entity
+         FROM {} v
+         WHERE v.uuid IN (SELECT value FROM json_each(?))
+         ORDER BY v.weak,v.score DESC",
+        leads()
+    ))?;
+    let mut seen = HashSet::new();
+    let mut first = Vec::new();
+    for row in query.query_map([page], |r| Ok((r.get::<_, String>(0)?, r.get(1)?)))? {
+        let (uuid, entity) = row?;
+        if seen.insert(uuid.clone()) {
+            first.push((uuid, entity));
+        }
+    }
+    Ok(first)
 }
 /// （`a.uuid`，`a.entity`）这一对还没有问过用户。
 pub(crate) fn unasked(a: &str) -> String {
@@ -115,6 +135,25 @@ mod tests {
             "(SELECT v.* FROM (SELECT uuid,entity,score,0 AS weak FROM family_evidence UNION ALL SELECT uuid,entity,\
              score,1 FROM weak_claims) v WHERE NOT EXISTS(SELECT 1 FROM assertions s WHERE s.uuid=v.uuid AND \
              s.entity=v.entity AND s.status='rejected'))"
+        );
+    }
+
+    #[test]
+    fn first_leads_prefer_strong_evidence_then_score_and_skip_rejections() {
+        let c = rusqlite::Connection::open_in_memory().unwrap();
+        c.execute_batch(
+            "CREATE TABLE family_evidence(uuid TEXT,entity TEXT,score REAL);
+             CREATE TABLE weak_claims(uuid TEXT,entity TEXT,score REAL);
+             CREATE TABLE assertions(uuid TEXT,entity TEXT,status TEXT);
+             INSERT INTO family_evidence VALUES
+                ('a','X',0.8),('a','Y',0.7),('b','X',0.95),('c','Y',0.98),('other','X',1.0);
+             INSERT INTO weak_claims VALUES ('a','Y',0.99),('b','Y',0.9),('b','Z',0.8);
+             INSERT INTO assertions VALUES ('b','X','rejected'),('c','Y','rejected');",
+        )
+        .unwrap();
+        assert_eq!(
+            first_leads(&c, r#"["a","b","c"]"#).unwrap(),
+            vec![("a".into(), "X".into()), ("b".into(), "Y".into())]
         );
     }
 }

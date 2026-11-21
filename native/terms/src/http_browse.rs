@@ -5,7 +5,8 @@ use crate::{
     http_json::Json,
     http_read::{display, flag, python_int, rows, strings, trim, typed_rows},
     sql_fragments::{
-        hybrid, leads, learnable, proto_hints, rating, unasked, unclaimed, unfolded, visible, HINTS, NSFW_RATINGS,
+        first_leads, hybrid, leads, learnable, proto_hints, rating, unasked, unclaimed, unfolded, visible, HINTS,
+        NSFW_RATINGS,
     },
     Error, Result,
 };
@@ -1743,28 +1744,16 @@ pub(crate) fn clusters(c: &Connection, nsfw: &str) -> Result<Json> {
         }
     }
     let page = Json::Array(ordered.into_iter().map(Into::into).collect()).dump();
-    let mut first = HashSet::new();
     let mut votes: HashMap<i64, Vec<(String, i64)>> = HashMap::new();
     let mut vote_positions = HashMap::new();
-    let leading = format!(
-        "SELECT v.uuid,v.entity
-         FROM {} v
-         WHERE v.uuid IN (SELECT value FROM json_each(?))
-         ORDER BY v.weak,v.score DESC",
-        leads()
-    );
-    for r in rows(c, &leading, &[&page])? {
-        let u = get(&r, "uuid").text().to_owned();
-        if first.insert(u.clone()) {
-            let entity = get(&r, "entity").text().to_owned();
-            let cid = members[&u];
-            let group = votes.entry(cid).or_default();
-            let pos = *vote_positions.entry((cid, entity.clone())).or_insert_with(|| {
-                group.push((entity, 0));
-                group.len() - 1
-            });
-            group[pos].1 += 1;
-        }
+    for (uuid, entity) in first_leads(c, &page)? {
+        let cid = members[&uuid];
+        let group = votes.entry(cid).or_default();
+        let pos = *vote_positions.entry((cid, entity.clone())).or_insert_with(|| {
+            group.push((entity, 0));
+            group.len() - 1
+        });
+        group[pos].1 += 1;
     }
     for r in &mut groups {
         let members = get(r, "members").text().split(',').map(|s| s.into()).collect::<Vec<Json>>();

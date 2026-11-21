@@ -303,6 +303,57 @@ child.terminate();child.wait()
         self.assertEqual(response['body'], expected.encode())
         self.assertFalse(self.sentinel.exists())
 
+    def test_regroup_splits_by_lead_and_publishes_each_group_page(self):
+        def get(url):
+            reply = self.request(url)
+            self.assertEqual(reply['status'], 200, reply)
+            return json.loads(reply['body'])
+
+        reply = self.request('/api/entities', {'name': '合成角色 Y'})
+        self.assertEqual(reply['status'], 200, reply)
+        other = json.loads(reply['body'])['id']
+        ids = [f'lead-split-{i}' for i in range(9)]
+        first, second, unknown, separate = (frozenset(ids[i:i+2]) for i in (0, 2, 4, 6))
+        singleton = ids[-1]
+        # 前六张看起来相同。后三张是另一组，只有最后一张有线索。
+        with sqlite3.connect(self.lib.source) as c:
+            for i, ident in enumerate(ids):
+                vector = np.zeros(768, np.float32)
+                vector[2 if i < 6 else 3] = 1
+                c.execute("INSERT INTO embeddings VALUES (?,'ccip',?)", (ident, vector.tobytes()))
+        with sqlite3.connect(self.lib.db) as c:
+            c.executemany(
+                "INSERT INTO assets(uuid,filename,width,height,added_at,src_kind) VALUES (?,?,120,150,'2026-10-04','orig')",
+                [(ident, ident + '.png') for ident in ids])
+            # CCIP 单路线索低于认领门槛。这些图仍在未识别池，分组和组头会从 family_evidence 读到线索。
+            c.executemany(
+                "INSERT INTO family_evidence VALUES (?,?,'CCIP',0.91,1,1,NULL,0.91,1)",
+                [(ident, self.entity) for ident in (*first, singleton)] + [(ident, other) for ident in second])
+
+        expected = {first: self.entity, second: other, unknown: None, separate: None}
+        previous_ids = None
+        for _ in range(2):
+            self.assertEqual(self.request('/api/regroup', {})['status'], 200)
+            self.finished()
+            groups = [g for g in get('/api/clusters')['clusters'] if set(ids).intersection(g['members'])]
+            self.assertEqual(len(groups), len(expected))
+            self.assertEqual({frozenset(g['members']): g['lead']['id'] if g['lead'] else None for g in groups},
+                             expected)
+            group_ids = {frozenset(g['members']): g['cid'] for g in groups}
+            self.assertEqual(len(set(group_ids.values())), len(expected))
+            if previous_ids is not None:
+                self.assertEqual(group_ids, previous_ids)
+            previous_ids = group_ids
+            for g in groups:
+                if g['lead']:
+                    self.assertEqual(g['lead']['count'], g['size'])
+                page = get(f"/api/assets?pool=cluster&cluster={g['cid']}&order=newest")
+                self.assertEqual(page['total'], 2)
+                self.assertCountEqual([item['uuid'] for item in page['items']], g['members'])
+        unmatched = get('/api/ids?pool=unmatched&order=hinted')
+        self.assertIn(singleton, unmatched)
+        self.assertLess(unmatched.index(singleton), min(unmatched.index(ident) for ident in unknown))
+
     def test_inflight_human_change_rejects_old_snapshot_then_retries(self):
         # #194：过期的结果绝不发布；任务自行在新快照上重试。
         self.timing_fixture()

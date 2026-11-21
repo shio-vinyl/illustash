@@ -4,7 +4,7 @@ use super::{
     numeric,
     snapshot::{self, Snapshot},
 };
-use crate::{Error, Result};
+use crate::{sql_fragments::first_leads, Error, Result};
 use rusqlite::Connection;
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, BTreeSet, HashMap};
@@ -120,6 +120,20 @@ fn split(members: Vec<usize>, tags: &Tags, ids: &[String]) -> Vec<Vec<usize>> {
     }
     parts
 }
+fn split_by_lead(members: Vec<usize>, ids: &[String], leads: &HashMap<String, String>) -> Vec<Vec<usize>> {
+    let mut positions = HashMap::new();
+    let mut parts: Vec<Vec<usize>> = Vec::new();
+    // 按各部分首张图在原组里的顺序编号。
+    for i in members {
+        let lead = leads.get(&ids[i]);
+        let pos = *positions.entry(lead).or_insert_with(|| {
+            parts.push(Vec::new());
+            parts.len() - 1
+        });
+        parts[pos].push(i);
+    }
+    parts
+}
 pub fn oc(snapshot: &Snapshot, f: &Matrix, entity: &str) -> Result<Value> {
     let c = snapshot.read()?;
     let pool = snapshot::strings(
@@ -147,8 +161,11 @@ pub fn cluster(snapshot: &Snapshot, f: &Matrix) -> Result<(usize, Value)> {
         .map_err(Error::Invalid)?
         .into_iter()
         .flat_map(|g| split(g, &tags, &ids))
-        .filter(|g| g.len() >= 2)
         .collect();
+    let page = json!(groups.iter().flatten().map(|&i| &ids[i]).collect::<Vec<_>>()).to_string();
+    let leads: HashMap<_, _> = first_leads(&c, &page)?.into_iter().collect();
+    let groups: Vec<_> =
+        groups.into_iter().flat_map(|g| split_by_lead(g, &ids, &leads)).filter(|g| g.len() >= 2).collect();
     let n = groups.len();
     let traits = traits();
     let centres =

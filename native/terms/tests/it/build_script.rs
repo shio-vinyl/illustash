@@ -31,8 +31,8 @@ fn scratch(name: &str) -> Scratch {
     let dir = std::env::temp_dir().join(format!("illustash-build-script-{}-{name}", std::process::id()));
     let _ = fs::remove_dir_all(&dir);
     fs::create_dir_all(&dir).unwrap();
-    // 规范化临时目录，避免 macOS 上 /var 与 /private/var 的符号链接差异影响路径比较。
-    Scratch(fs::canonicalize(&dir).unwrap())
+    // 给 Git 的目录保留系统临时路径。只在比较监视路径时规范化，避免给 Git for Windows 传入设备路径。
+    Scratch(dir)
 }
 
 fn git(cwd: &Path, args: &[&str]) -> String {

@@ -5,7 +5,8 @@ use crate::{
     http_json::Json,
     http_read::{display, flag, python_int, rows, strings, trim, typed_rows},
     sql_fragments::{
-        hybrid, leads, learnable, proto_hints, rating, unasked, unclaimed, unfolded, visible, HINTS, NSFW_RATINGS,
+        first_leads, hybrid, leads, learnable, proto_hints, rating, unasked, unclaimed, unfolded, visible, HINTS,
+        NSFW_RATINGS,
     },
     Error, Result,
 };
@@ -894,21 +895,16 @@ impl PageExtras {
         Ok(Self { tags, deferred, duplicates, excluded })
     }
 }
-/// 本页（`ids`，JSON 列表）每张未认领图片上最好的线索，即按线索顺序的第一条。
+/// 本页（`ids`，JSON 列表）每张未认领图片的首选线索。和组头计票、分组用同一个 `first_leads`，
+/// 所以组页网格上每张图的线索和组头问的角色排序一致。
 fn page_leads(c: &Connection, ids: &str) -> Result<HashMap<String, Json>> {
-    let sql = format!(
-        "SELECT v.uuid,v.entity
-         FROM {} v
-         WHERE v.uuid IN (SELECT value FROM json_each(?))
-           AND NOT EXISTS(SELECT 1 FROM memberships m WHERE m.uuid=v.uuid)
-         ORDER BY v.weak,v.score DESC",
-        leads()
-    );
-    let mut leads_by = HashMap::new();
-    for r in rows(c, &sql, &[ids])? {
-        leads_by.entry(get(&r, "uuid").text().to_owned()).or_insert(get(&r, "entity"));
-    }
-    Ok(leads_by)
+    let unclaimed = strings(
+        c,
+        "SELECT j.value FROM json_each(?) j WHERE NOT EXISTS(SELECT 1 FROM memberships m WHERE m.uuid=j.value)",
+        &[ids],
+    )?;
+    let page = Json::Array(unclaimed.into_iter().map(Into::into).collect()).dump();
+    Ok(first_leads(c, &page)?.into_iter().map(|(uuid, entity)| (uuid, entity.into())).collect())
 }
 /// 本页每张抽查图片被抽查的身份，以及它已有的回答。
 fn page_audit(c: &Connection, ids: &str) -> Result<(HashMap<String, Json>, HashMap<String, Json>)> {
@@ -1743,28 +1739,16 @@ pub(crate) fn clusters(c: &Connection, nsfw: &str) -> Result<Json> {
         }
     }
     let page = Json::Array(ordered.into_iter().map(Into::into).collect()).dump();
-    let mut first = HashSet::new();
     let mut votes: HashMap<i64, Vec<(String, i64)>> = HashMap::new();
     let mut vote_positions = HashMap::new();
-    let leading = format!(
-        "SELECT v.uuid,v.entity
-         FROM {} v
-         WHERE v.uuid IN (SELECT value FROM json_each(?))
-         ORDER BY v.weak,v.score DESC",
-        leads()
-    );
-    for r in rows(c, &leading, &[&page])? {
-        let u = get(&r, "uuid").text().to_owned();
-        if first.insert(u.clone()) {
-            let entity = get(&r, "entity").text().to_owned();
-            let cid = members[&u];
-            let group = votes.entry(cid).or_default();
-            let pos = *vote_positions.entry((cid, entity.clone())).or_insert_with(|| {
-                group.push((entity, 0));
-                group.len() - 1
-            });
-            group[pos].1 += 1;
-        }
+    for (uuid, entity) in first_leads(c, &page)? {
+        let cid = members[&uuid];
+        let group = votes.entry(cid).or_default();
+        let pos = *vote_positions.entry((cid, entity.clone())).or_insert_with(|| {
+            group.push((entity, 0));
+            group.len() - 1
+        });
+        group[pos].1 += 1;
     }
     for r in &mut groups {
         let members = get(r, "members").text().split(',').map(|s| s.into()).collect::<Vec<Json>>();

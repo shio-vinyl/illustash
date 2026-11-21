@@ -107,6 +107,36 @@ export const FLOWS = [
     },
   },
   {
+    name: 'character',
+    title: '角色页的横幅（#712）：名字、返回按来路（从日历、资料库进来）、未检查开关、页头小标题',
+    async run(w, page) {
+      const f = w.config.fixture, c = f.chars[0], hash = `#/library?char=${encodeURIComponent(f.charIds[c.name])}`;
+      const banner = `document.querySelector('#gridHead .char-hero')`;
+      const backText = `(document.querySelector('.char-hero-bar > a.btn')?.innerText || '').trim()`;
+      await goto(page, '#/calendar');
+      await w.step('从日历进角色页', () => goto(page, hash), {shot: true});
+      const name = await page.waitFor(`(${banner}?.querySelector('.char-hero-name')?.innerText || '').trim()`, 4000);
+      w.check('横幅：写着角色名', name === c.name, name);
+      w.check('页头：横幅的名字看得见时小标题藏着', await page.eval(`!!document.querySelector('#heading .heading-main.is-tucked')`), '');
+      const fromCalendar = await page.eval(backText);
+      w.check('返回：从日历进来写「图库」', fromCalendar === '图库' || fromCalendar === 'Library', fromCalendar);
+      // 未检查开关：合成图库的角色可能没有未检查的图，有开关时才按。按过以后多一条历史，返回仍回到日历。
+      if (await page.eval(`!!document.querySelector('.char-hero-check') && !document.querySelector('.char-hero-check').closest('[hidden]')`)) {
+        await w.step('按未检查', () => page.click('.char-hero-check'));
+        const pressed = await page.waitFor(`document.querySelector('.char-hero-check')?.getAttribute('aria-pressed') === 'true' && location.hash.includes('check=1')`, 4000);
+        w.check('未检查：按下后只看未检查', !!pressed, await page.eval('location.hash'));
+      }
+      await w.step('点返回', () => page.click('.char-hero-bar > a.btn'));
+      const back = await page.waitFor(`location.hash === '#/calendar'`, 4000);
+      w.check('返回：回到日历', !!back, await page.eval('location.hash'));
+      w.check('离开以后网格头部藏起来', await page.eval(`document.getElementById('gridHead')?.hidden !== false`), '');
+      await goto(page, '#/characters');
+      await goto(page, hash);
+      const fromCatalog = await page.waitFor(backText, 4000);
+      w.check('返回：从资料库进来写「资料库」', fromCatalog === '资料库' || fromCatalog === 'Catalog', fromCatalog);
+    },
+  },
+  {
     name: 'pages',
     title: '主要页面逐个打开，截图并检查控制台和空页',
     async run(w, page) {

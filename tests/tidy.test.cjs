@@ -218,7 +218,7 @@ test('按组整理：同一路由上先发的读取晚到，不把点掉的图�
   assert.equal(thumb.getAttribute('aria-pressed'), 'true');
   pending[0]({clusters: [cluster(5)], learner: {}}); await first; await settle();
   assert.equal(thumb.getAttribute('aria-pressed'), 'true', '晚到的第一次读取没有把点掉的图复位');
-  assert.match(sec.querySelector('[data-act="assign"]').textContent, /设为/);
+  assert.match(sec.querySelector('[data-ref="assign"]').textContent, /设为/);
 });
 
 test('相似的图：检查进行中撤销、学习落定几次，也只有一条 3 秒轮询', async () => {

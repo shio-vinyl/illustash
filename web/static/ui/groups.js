@@ -8,7 +8,7 @@
 // 组按 cid 复用（ui/keyed.js）：重读、撤销以后没变的组留在原处，图不重新加载。同一路由上的几次重读只认最后发出的那次。
 import {number, stamp} from '../core/format.js';
 import {t} from '../core/i18n.js';
-import {implement} from '../core/pages.js';
+import {implement, onPage} from '../core/pages.js';
 import {charHash} from '../core/route.js';
 import {readError} from '../core/session.js';
 import {state} from '../core/state.js';
@@ -20,8 +20,9 @@ import {keyed} from './keyed.js';
 import {mutate} from './grid.js';
 import {markOc, openPicker, targets} from './palette.js';
 import {count} from './rail.js';
+import {pickFor} from './answer.js';
 import {judgeCard} from './judge.js';
-import {clearFooter, collapse, drawFailure, leaving, setPeekList, tidyGroup} from './tidy_group.js';
+import {clearFooter, collapse, drawFailure, leaving, revealThumb, setPeekList, tidyGroup} from './tidy_group.js';
 
 const PAGE = 40;
 const VIEW = tpl`<div class="tidy-page">
@@ -46,7 +47,7 @@ function groupCard(page, g) {
     actions: [
       {key: 'yes', label: ({k, kept}) => (k ? t('其余 {n} 张是', {n: number(kept.length)}) : t('都是')) + ' ✓', primary: true, when: () => !!current.lead, disabled: none, run: act('yes')},
       {key: 'no', label: t('都不是'), when: () => !!current.lead, disabled: none, run: act('no')},
-      {key: 'other', label: t('点掉的是…'), when: ({k}) => k > 0, title: t('把点掉的图设为已有的角色'), run: act('other')},
+      {key: 'other', label: t('点掉的是…'), when: ({k}) => k > 0, title: t('把点掉的图设为另一个角色'), run: act('other')},
       {key: 'assign', label: () => current.lead ? t('是别人…') : t('设为…'), primary: () => !current.lead, quiet: true, disabled: none, run: act('assign')},
       {key: 'oc', label: t('原创角色'), quiet: true, title: t('把这组图都设为「原创角色（未细分）」'), disabled: none, run: act('oc')},
       {key: 'skip', label: t('跳过'), quiet: true, disabled: none, run: act('skip')},
@@ -138,12 +139,12 @@ function groupsView(scope) {
     else if (what === 'no') { if (await mutate('/api/change', {ids, action: 'rejected', entity: g.lead.id}, false)) load(true); }
     else if (what === 'skip') finish(await mutate('/api/change', {ids, action: 'unknown'}, false));
     else if (what === 'oc') finish(await markOc({ids}, false));
-    // 「点掉的是…」（#787）：点掉的几张设为选中的已有角色，一个撤销；这组留着，少了那几张。
+    // 「点掉的是…」（#787）：点掉的几张设为选中的角色，一个撤销；这组留着，少了那几张。选的时候这一页或这一组已经不在了就不写。
     else if (what === 'other') {
       const off = [...(page.off.get(g.cid) || [])].filter(u => g.members.includes(u));
-      if (off.length) page.pick({title: t('点掉的是…'), subject: off, suggest: {ids: off}, exclude: g.lead ? [g.lead.id] : [],
-        sentence: x => t('把 {n} 张设为 {name}', {n: number(off.length), name: x.name}),
-        pick: async x => { if (await mutate('/api/change', {ids: off, action: 'confirmed', entity: x.id}, false) && scope.alive) shed(g.cid, off); }});
+      if (off.length) pickFor(scope, {ids: off, exclude: g.lead ? [g.lead.id] : [], sentence: x => t('把 {n} 张设为 {name}', {n: number(off.length), name: x.name}),
+        still: () => onPage(state.route, 'groups') && page.list.some(x => x.cid === g.cid),
+        pick: async x => { if (await mutate('/api/change', {ids: off, action: 'confirmed', entity: x.id}, false) && scope.alive) shed(g.cid, off); }}, page.pick);
     }
     // 面板顶上写「第 N 组 · M 张」，和缩略图一起（#424 的 2-3）；能多选，和选择栏的「设为…」一样（2-24）。
     else if (what === 'assign') openPicker({title: t('这 {n} 张是…', {n: number(n)}), subjectText: t('第 {id} 组', {id: g.cid}) + ' · ' + t('{n} 张', {n: number(n)}),
@@ -160,8 +161,6 @@ function groupsView(scope) {
 }
 
 let view = null;
-// 大图关掉时把最后看的那张缩略图滚进视野。
-function revealThumb(uuid) { [...$('groupsPage').querySelectorAll('[data-peek]')].find(x => x.dataset.peek === uuid)?.scrollIntoView({block: 'nearest'}); }
 
 // 「下一组」：重读分组，取原来排在这组后面、还在的第一组；后面都没了就取最前面那组；一组都没了回到按组整理。
 // 读的时候离开了这一组就不带人走。

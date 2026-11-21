@@ -6,7 +6,7 @@
 // /api/review-pools 末尾的 kind=ambiguous 一项里（core/rail.js 的 DOUBT_POOL，活页条用）。
 // 回答沿用 /api/ask/answer（kind=ambiguous，entity 是 A），和认一认一样一步一个撤销，见 doubtAnswer。提交时 A、B 已经不是这几张的
 // 候选对（卡片过期）时后端回 400，页面重读队列（ui/doubts.js）。
-import {askAnswer} from './days.js';
+import {askAnswer} from './ask.js';
 import {api, post} from './session.js';
 
 /** 一张卡最多放几张图：图多的一对分成几张卡，回答只作用于卡上露出来的图。 */
@@ -20,7 +20,7 @@ export async function loadDoubts(nsfw, signal) {
 /**
  * 切成卡：每对（A，B）的图按次序每 max 张一张卡，同一对的卡排在一起。卡的键是这一对加上卡上第一张图：答掉一张卡、重读以后，
  * 其余的卡键不变（ui/keyed.js 按键复用，不重新加载图）。
- * 返回 [{key, a, b, items: [{uuid}], part, parts, total}]：part 是这一对的第几张卡（从 1 起），parts 是共几张，total 是这一对的张数。
+ * 返回 [{key, a, b, items: [{uuid}], parts, total}]：parts 是这一对共几张卡，total 是这一对的张数（tally 算）。
  */
 export function doubtCards(groups, max = CARD_MAX) {
   const out = [];
@@ -28,10 +28,22 @@ export function doubtCards(groups, max = CARD_MAX) {
     const ids = g.items || [], parts = Math.ceil(ids.length / max);
     for (let i = 0; i < parts; i++) {
       const items = ids.slice(i * max, (i + 1) * max).map(uuid => ({uuid}));
-      out.push({key: `${g.a.id}|${g.b.id}|${items[0].uuid}`, a: g.a, b: g.b, items, part: i + 1, parts, total: Math.max(g.count || 0, ids.length)});
+      out.push({key: `${g.a.id}|${g.b.id}|${items[0].uuid}`, a: g.a, b: g.b, items});
     }
   }
-  return out;
+  return tally(out);
+}
+/**
+ * 按现在的卡重算每张卡上这一对的 parts（共几张卡）、total（共几张图）：答掉同一对的一张卡以后，其余卡上「这一对共 N 张」跟着变。
+ * 返回新的卡（对象换了，ui/keyed.js 照常按键复用节点）。接口给的 items 是全量，所以各卡的张数加起来就是这一对的张数。
+ */
+export function tally(cards) {
+  const pairs = new Map();
+  for (const c of cards) {
+    const k = c.a.id + '|' + c.b.id, p = pairs.get(k) || {parts: 0, total: 0};
+    p.parts++; p.total += c.items.length; pairs.set(k, p);
+  }
+  return cards.map(c => ({...c, ...pairs.get(c.a.id + '|' + c.b.id)}));
 }
 
 /**

@@ -9,8 +9,11 @@
 //   （后端回 400）时重读队列。
 // - 卡按键复用（ui/keyed.js）：撤销、学习落定、大图里改了图以后重读，没变的卡留在原处，图不重新加载。同一路由上的几次重读只认
 //   最后发出的那次（page.seq）；重读不把点掉的图复位。
-// - 「点掉的是…」打开的角色选择器属于这一页：离开这一页时关掉；选的时候这张卡已经不在了或离开了这一页，就不写。
-import {CARD_MAX, doubtAnswer, doubtCards, doubtLater, loadDoubts} from '../core/doubts.js';
+// - 「点掉的是…」打开的角色选择器属于这一页（ui/answer.js 的 pickFor）：离开这一页时关掉；选的时候这张卡已经不在了或离开了这一页，
+//   就不写。另一项修改还在写时，回答和「点掉的是…」都不发，提示一句。
+// - 换了 NSFW：旧卡先撤下再重读。
+import {CARD_MAX, doubtAnswer, doubtCards, doubtLater, loadDoubts, tally} from '../core/doubts.js';
+import {edits} from '../core/edits.js';
 import {imageUrl, number} from '../core/format.js';
 import {t} from '../core/i18n.js';
 import {refreshMeta} from '../core/meta.js';
@@ -20,7 +23,7 @@ import {charHash} from '../core/route.js';
 import {readError} from '../core/session.js';
 import {state} from '../core/state.js';
 import {minus} from '../core/tidy.js';
-import {sendAnswer} from './answer.js';
+import {pickFor, sendAnswer} from './answer.js';
 import {$, error, toast} from './dom.js';
 import {attr, make, refill, rich, show, text, tpl} from './el.js';
 import {drawEmpty} from './empty.js';
@@ -28,7 +31,7 @@ import {judgeCard} from './judge.js';
 import {keyed} from './keyed.js';
 import {openPicker} from './palette.js';
 import {count} from './rail.js';
-import {clearFooter, collapse, drawFailure, leaving, setPeekList} from './tidy_group.js';
+import {clearFooter, collapse, drawFailure, leaving, revealThumb, setPeekList} from './tidy_group.js';
 
 // 先显示几张卡，「再显示」每次多几张。
 const PAGE = 20;
@@ -56,11 +59,14 @@ function doubtCard(page, c) {
   const s = page.scope.child('doubt'), {el, refs} = CARD();
   let current = c;
   const none = ({kept}) => !kept.length, act = how => off => page.answer(current, how, off);
-  const judge = judgeCard({scope: s, look: 'strip', max: CARD_MAX, shrink: true, tip: {off: t('点一下：不是 TA'), on: t('点一下：改回「是」')},
+  // 卡上有 A、B 两个人：图上的提示写明是 A。
+  const judge = judgeCard({scope: s, look: 'strip', max: CARD_MAX, shrink: true,
+    tip: {off: () => t('点一下：不是 {name}', {name: current.a.name}), on: () => t('点一下：改回「是 {name}」', {name: current.a.name})},
     onOff: off => page.off.set(current.key, off),
     actions: [
-      {key: 'a', label: ({k, kept}) => k ? t('其余 {n} 张是 {name}', {n: number(kept.length), name: current.a.name}) : t('是 {name}', {name: current.a.name}),
-        primary: true, disabled: none, title: ({k}) => k ? t('点掉的记成不是 {name}', {name: current.a.name}) : '', run: act('a')},
+      // 全部点掉以后没有「其余」：写回「是 A」，灰掉（只剩「点掉的是…」和整张卡的回答能点）。
+      {key: 'a', label: ({k, kept}) => k && kept.length ? t('其余 {n} 张是 {name}', {n: number(kept.length), name: current.a.name}) : t('是 {name}', {name: current.a.name}),
+        primary: true, disabled: none, title: ({k, kept}) => k && kept.length ? t('点掉的记成不是 {name}', {name: current.a.name}) : '', run: act('a')},
       {key: 'b', label: () => t('是 {name}', {name: current.b.name}), title: ({n}) => t('{n} 张都记成 {name}', {n: number(n), name: current.b.name}), run: act('b')},
       {key: 'none', label: t('都不是', {context: 'pair'}), title: () => t('{a}、{b} 都记成不是', {a: current.a.name, b: current.b.name}), run: act('none')},
       {key: 'other', label: t('点掉的是…'), when: ({k}) => k > 0, run: off => page.other(current, off)},
@@ -88,9 +94,6 @@ function doubtsView(scope) {
   // pick：打开角色选择器（测试换成自己的）。
   const page = {scope, cards: [], shown: PAGE, off: new Map(), busy: new Set(), loaded: false, seq: 0, pick: openPicker};
   const list = keyed(refs.list, {key: c => c.key, create: c => doubtCard(page, c), exit: collapse, scope});
-  let picking = null;
-  // 离开这一页：关掉本页打开的角色选择器。
-  scope.add(() => { if (picking && $('picker').open) $('picker').close(); picking = null; });
 
   function draw() {
     const pairs = new Set(page.cards.map(c => c.a.id + '|' + c.b.id)).size, images = page.cards.reduce((n, c) => n + c.items.length, 0);
@@ -123,42 +126,49 @@ function doubtsView(scope) {
   }
   const cardEl = key => [...refs.list.children].find(n => n.dataset.key === key && !n.inert);
   const lock = (c, on) => { if (on) page.busy.add(c.key); else page.busy.delete(c.key); list.get(c.key)?.busy(on); };
-  // 卡上的 ids 写完了：拿掉它们，卡上没图了就收起；活页条的数字按张数先减。
-  function shed(c, ids) {
-    const rest = c.items.filter(x => !ids.includes(x.uuid));
-    if (!rest.length) { leaving(cardEl(c.key)); page.cards = page.cards.filter(x => x.key !== c.key); page.off.delete(c.key); }
-    else {
-      page.cards = page.cards.map(x => x.key === c.key ? {...x, items: rest} : x);
-      const off = page.off.get(c.key); if (off) for (const u of ids) off.delete(u);
+  // 卡上的 ids 写完了：拿掉它们，卡上没图了就收起；活页条的数字按张数先减。按键取现在的那张卡：写入途中重读过，就从重读回来的
+  // 卡里减（不拿写入前的旧卡盖掉重读的结果）；卡已经不在了就只减数字。同一对其余卡上的「这一对共 N 张」跟着变（core/doubts.js 的 tally）。
+  function shed(key, ids) {
+    const c = page.cards.find(x => x.key === key);
+    if (c) {
+      const rest = c.items.filter(x => !ids.includes(x.uuid));
+      if (!rest.length) { leaving(cardEl(key)); page.cards = page.cards.filter(x => x !== c); page.off.delete(key); }
+      else {
+        page.cards = page.cards.map(x => x === c ? {...x, items: rest} : x);
+        const off = page.off.get(key); if (off) for (const u of ids) off.delete(u);
+      }
+      page.cards = tally(page.cards);
     }
     count('doubts', minus(state.pools[DOUBT_POOL], ids.length));
     draw();
   }
+  // 换了 NSFW：旧卡先撤下（可能正是现在不该显示的图），重读回来再画；读失败时留在空白处写原因。
+  function clear() { page.cards = []; page.loaded = false; page.off = new Map(); show(refs.empty, false); draw(); }
+  // 另一项修改（别的卡的回答、撤销）还在写：这次不发，说一声（不然 core/edits.js 的 exclusive 会把它静默丢掉）。
+  const waiting = () => { if (!edits.busy) return false; toast(t('上一项修改还没写完，等它写完再点。')); return true; };
   // 写一步：写入期间锁着这张卡；写成了按写掉的图收起或缩小。
   async function write(c, body, ids) {
-    if (page.busy.has(c.key)) return;
+    if (page.busy.has(c.key) || waiting()) return;
     lock(c, true);
-    // 卡片过期（400：这几张的备选归属已经变了，例如关了折叠以后同一组的副本分在两张卡上）：重读队列，不只在本地留着。
-    const ok = await sendAnswer(body, scope, {refused: e => { if (e.status === 400) load(true); }});
+    // 卡片过期（400：这几张的备选归属已经变了，例如关了折叠以后同一组的副本分在两张卡上）：重读队列，不只在本地留着；页面已经
+    // 自己重读了，提示里不写后端原文的「请刷新」。
+    const ok = await sendAnswer(body, scope, {refused: e => {
+      if (e.status !== 400) return false;
+      toast(t('卡上的图已经变了，已重新读取。')); load(true); return true;
+    }});
     lock(c, false);
-    if (ok && scope.alive) shed(c, ids);
+    if (ok && scope.alive) shed(c.key, ids);
   }
   page.answer = (c, how, off) => {
     const all = c.items.map(x => x.uuid);
     write(c, doubtAnswer(c, how, off), all);
   };
   page.other = (c, off) => {
-    const ids = c.items.filter(x => off.has(x.uuid)).map(x => x.uuid), ticket = {};
-    if (!ids.length || page.busy.has(c.key)) return;
-    picking = ticket;
-    $('picker').addEventListener('close', () => { if (picking === ticket) picking = null; }, {once: true});
-    page.pick({title: t('点掉的是…'), subject: ids, exclude: [c.a.id], suggest: {ids},
-      sentence: e => t('把 {n} 张从 {from} 换成 {name}', {n: number(ids.length), from: c.a.name, name: e.name}),
-      pick: async e => {
-        if (picking !== ticket || !scope.alive || !onPage(state.route, 'doubts') || !page.cards.some(x => x.key === c.key)) return;
-        picking = null;
-        await write(c, doubtAnswer(c, 'other', new Set(ids), e.id), ids);
-      }});
+    const ids = c.items.filter(x => off.has(x.uuid)).map(x => x.uuid);
+    if (!ids.length || page.busy.has(c.key) || waiting()) return;
+    pickFor(scope, {ids, exclude: [c.a.id], sentence: e => t('把 {n} 张从 {from} 换成 {name}', {n: number(ids.length), from: c.a.name, name: e.name}),
+      still: () => onPage(state.route, 'doubts') && page.cards.some(x => x.key === c.key),
+      pick: e => write(c, doubtAnswer(c, 'other', new Set(ids), e.id), ids)}, page.pick);
   };
   page.later = async c => {
     if (page.busy.has(c.key)) return;
@@ -166,22 +176,20 @@ function doubtsView(scope) {
     try { await doubtLater(c); } catch (e) { lock(c, false); toast(readError(e)); return; }
     lock(c, false);
     if (!scope.alive) return;
-    shed(c, c.items.map(x => x.uuid));
+    shed(c.key, c.items.map(x => x.uuid));
     refreshMeta().catch(() => {});   // 页头页签上的张数（活页条的数字 shed 已先减了）
   };
   scope.on(refs.empty, 'click', e => { if (e.target.closest('[data-empty="retry"]')) load(); });
   scope.on(refs.more, 'click', () => { page.shown += PAGE; draw(); });
-  return {scope, load, page};
+  return {scope, load, clear, page};
 }
 
 let view = null;
-// 大图关掉时把最后看的那张缩略图滚进视野。
-function revealThumb(uuid) { [...$('groupsPage').querySelectorAll('[data-peek]')].find(x => x.dataset.peek === uuid)?.scrollIntoView({block: 'nearest'}); }
 
 implement({
   // 在这页开的大图里改了图（'edit' 时大图还开着）：重读，免得卡上还留着已经改过的图。卡上按钮的写入不走这里，它们自己收起。
   doubts: {render: ({samePage, scope}) => { if (!samePage || !view?.scope.alive) view = doubtsView(scope); return view.load(); }, reveal: revealThumb,
-    refresh: why => { if (why === 'undo' || why === 'learned' || why === 'edit' && state.viewer >= 0) return view?.load(true); if (why === 'nsfw') return view?.load(); }},
+    refresh: why => { if (why === 'undo' || why === 'learned' || why === 'edit' && state.viewer >= 0) return view?.load(true); if (why === 'nsfw') { view?.clear(); return view?.load(); } }},
 });
 // 测试用：当前这一页。
 export const current = () => view;

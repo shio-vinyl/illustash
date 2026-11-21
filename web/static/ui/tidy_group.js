@@ -55,6 +55,8 @@ function peekList(el) {
   for (let node = el; node; node = node.parentElement) { const f = peekLists.get(node); if (f) return f(el); }
   return [];
 }
+/** 大图关掉时把最后看的那张缩略图滚进视野（整理各页登记的 reveal，主区都是 #groupsPage）。 */
+export function revealThumb(uuid) { [...$('groupsPage').querySelectorAll('[data-peek]')].find(x => x.dataset.peek === uuid)?.scrollIntoView({block: 'nearest'}); }
 /** 整理各页的主区共用一个 #groupsPage：看大图在它上面登记一次（页面启动时，app.js）。 */
 export function wireTidyPeek() { wirePeek($('groupsPage'), peekList); }
 

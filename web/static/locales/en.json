@@ -784,13 +784,17 @@
     "one": "Show {n} more group",
     "other": "Show {n} more groups"
   },
-  "把点掉的图设为已有的角色": "Set the ones left out to an existing character",
+  "把点掉的图设为另一个角色": "Set the ones left out to another character",
   "是 {a} 还是 {b}？": "{a} or {b}?",
   "其余 {n} 张是 {name}": "The other {n} are {name}",
   "点掉的记成不是 {name}": "The ones left out are marked as not {name}",
   "{n} 张都记成 {name}": "Mark all {n} as {name}",
   "{a}、{b} 都记成不是": "Mark as neither {a} nor {b}",
   "pair\u0004都不是": "Neither",
+  "点一下：不是 {name}": "Click: not {name}",
+  "点一下：改回「是 {name}」": "Click: back to “{name}”",
+  "上一项修改还没写完，等它写完再点。": "The previous change is still being saved; try again when it finishes.",
+  "卡上的图已经变了，已重新读取。": "The pictures on this card have changed; the list was reloaded.",
   "{n} 张 · 这一对共 {total} 张": {
     "one": "{n} picture · {total} for this pair",
     "other": "{n} pictures · {total} for this pair"

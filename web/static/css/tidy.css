@@ -1,6 +1,8 @@
 /* 整理页（#713）：按组整理、可能认错（#787）、相似的图、身份整理、画师抽查。分组用 css/base.css 的 .group（浅底，不描边），组头一行、下面一排方图
    （ui/tidy_group.js）；只用 css/tokens.css 的令牌和 css/base.css 的公共部件。子页签是 .chip（ui/tidy.js）。
-   还借用 app.css 里的 .progress、.local-dot、.chips-row、.artist-name、.link：清旧样式时要知道整理页在用。 */
+   还借用 app.css 里的 .progress、.local-dot、.chips-row、.artist-name、.link：清旧样式时要知道整理页在用。
+   .tidy-acts-in 是身份整理（ui/identity.js）的判断按钮和画师抽查（ui/artist_audit.js）每位画师的按钮外面那层；按组整理、可能认错的
+   按钮是判断卡的 .judge-acts（css/base.css）。 */
 @layer pages{
 .tidy-page{display:flex;flex-direction:column;gap:var(--space-16);max-width:1240px;padding-bottom:var(--space-24)}
 .tidy-bar{display:flex;flex-wrap:wrap;align-items:center;gap:var(--space-8)}
@@ -18,11 +20,11 @@
 .tidy-q a{color:var(--ink);font-weight:var(--fw-600)}
 .tidy-q small{margin-left:var(--space-6);color:var(--muted);font-size:var(--fs-11)}
 .tidy-unknown{color:var(--muted)}
-.tidy-acts{display:flex;flex-wrap:wrap;align-items:center;gap:var(--space-6)}
+.tidy-acts,.tidy-acts-in{display:flex;flex-wrap:wrap;align-items:center;gap:var(--space-6)}
 .tidy-note{margin:0;color:var(--muted);font-size:var(--fs-12)}
 
 /* 一排方图：占满一行宽，窄窗口少放几张。按组整理的方图是 css/base.css 的判断卡（.judge-tiles.is-strip）；这里是身份整理只看的方图，
-   .tidy-thumbs 只是 keyed 的容器，不占格子。 */
+   .tidy-thumbs 只是 keyed 的容器，不占格子。网格和 .judge-tiles.is-strip 是同一套，改的时候两处一起改。 */
 .tidy-strip{display:grid;grid-template-columns:repeat(auto-fill,minmax(88px,1fr));gap:var(--space-6)}
 .tidy-thumbs{display:contents}
 .tidy-thumb{position:relative;display:block;aspect-ratio:1;margin:0;padding:0;border:0;border-radius:var(--radius-8);overflow:hidden;background:var(--line);cursor:zoom-in}

@@ -7,16 +7,18 @@
 //   · 写的途中卡片换了一批（切 NSFW、关掉「偶尔问一句」）：锁不在途中放开；写成以后只把旧批记进 skip，不把它放回卡上（#757 核对）。
 // - 读到的一批只认最后一次读取，而且 NSFW 设置和「偶尔问一句」开关都和发出时一样。读失败时卡片写「没读到」并给「重试」，
 //   不和「没有可问的」一样整张藏起来。
-// - 「点掉的是…」打开的角色选择器属于这一页：离开这一页时关掉；选的时候卡片已经换了一批或离开了这一页，就不写。
-import {askAnswer, askLater, readAsk} from '../core/days.js';
+// - 「点掉的是…」打开的角色选择器属于这一页（ui/answer.js 的 pickFor）：离开这一页时关掉；选的时候卡片已经换了一批或离开了这一页，
+//   就不写。
+import {askAnswer} from '../core/ask.js';
+import {askLater, readAsk} from '../core/days.js';
 import {edits} from '../core/edits.js';
 import {number} from '../core/format.js';
 import {t} from '../core/i18n.js';
 import {onPage, pageOf} from '../core/pages.js';
 import {readError} from '../core/session.js';
 import {state} from '../core/state.js';
-import {sendAnswer} from './answer.js';
-import {$, toast} from './dom.js';
+import {pickFor, sendAnswer} from './answer.js';
+import {toast} from './dom.js';
 import {askCard} from './day_cards.js';
 import {viewOpts} from '../core/view_opts.js';
 import {openPicker} from './palette.js';
@@ -24,15 +26,13 @@ import {openPicker} from './palette.js';
 // pick：打开角色选择器（默认 ui/palette.js 的 openPicker；测试换成自己的）。
 export function dayAsk(scope, {pick: choose = openPicker} = {}) {
   const skip = [];
-  let batch = null, seq = 0, busy = false, writing = false, picking = null;
+  let batch = null, seq = 0, busy = false, writing = false;
   const card = scope.add(askCard({answer, other, later, retry: () => next()}));
   const lock = on => { busy = on; if (scope.alive) card.busy(on); };
   // 换上一批（或藏起来、或写「没读到」）：这时才放开锁；写入途中换的不放（写完再放）。
   const put = (b, failed = false) => { batch = b; card.update({batch: b, failed}); if (!writing) lock(false); };
   // 写完以后卡片还是这一批吗：不是（写的途中换了），就放开锁、不再动卡片，返回 false。
   const still = b => { if (batch === b) return true; lock(false); return false; };
-  // 离开这一页：关掉本页打开的角色选择器。
-  scope.add(() => { if (picking && $('picker').open) $('picker').close(); picking = null; });
 
   async function next() {
     const mine = ++seq, nsfw = state.nsfw;
@@ -65,19 +65,15 @@ export function dayAsk(scope, {pick: choose = openPicker} = {}) {
   // 「点掉的是…」（#675 第二步）：选一个角色，点掉的那几张一步记成「不是 TA、是选中的角色」，一个撤销；其余几张留在卡上。
   function other(off) {
     const b = batch; if (!b || !off.size || busy || edits.busy) return;
-    const ids = b.items.filter(x => off.has(x.uuid)).map(x => x.uuid), ticket = {};
-    picking = ticket;
-    $('picker').addEventListener('close', () => { if (picking === ticket) picking = null; }, {once: true});
-    choose({title: t('点掉的是…'), subject: ids, exclude: [b.entity], suggest: {ids},
-      sentence: e => t('把 {n} 张从 {from} 换成 {name}', {n: number(ids.length), from: b.name, name: e.name}),
+    const ids = b.items.filter(x => off.has(x.uuid)).map(x => x.uuid);
+    pickFor(scope, {ids, exclude: [b.entity], sentence: e => t('把 {n} 张从 {from} 换成 {name}', {n: number(ids.length), from: b.name, name: e.name}),
+      still: () => batch === b && !busy && onPage(state.route, 'days'),
       pick: async e => {
-        if (picking !== ticket || !scope.alive || batch !== b || busy || !onPage(state.route, 'days')) return;
-        picking = null;
         if (!await write(askAnswer(b, 'other', off, e.id))) return;
         if (!still(b)) { skip.push(b.entity); return; }   // 写的途中换了一批：剩下的几张不放回去
         const rest = b.items.filter(x => !off.has(x.uuid));
         if (rest.length) put({...b, items: rest}); else { skip.push(b.entity); next(); }
-      }});
+      }}, choose);
   }
   async function later() {
     const b = batch; if (!b || busy) return;

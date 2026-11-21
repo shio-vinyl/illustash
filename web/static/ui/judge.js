@@ -13,12 +13,12 @@
 //   look     'tiles' 按宽高比排成一样高（认一认）；'strip' 方图占满一行（按组整理、可能认错）
 //   max      最多画几张（默认 16）；items 里没画出来的照样算在 n、kept 里（按组整理的回答对整组生效）
 //   tip      {off, on}：图上的提示，off 是还没点掉时（「点一下：不是 TA」），on 是点掉以后（「点一下：改回「是」」），后面接
-//            「长按或 Space 看大图」
+//            「长按或 Space 看大图」；可以是值，也可以是 () => 值（可能认错的提示里写着 A 的名字）
 //   status   ({n, k}) => 文字：按钮最前面的一句（认一认的「N 张不是 TA」）；不给就不画
 //   actions  回答按钮，按次序画，每个 {key, label, when, disabled, primary, quiet, title, href, run}：
 //            label、title、when、disabled、primary 可以是值，也可以是 ({n, k, kept}) => 值（n 图的张数，k 点掉的张数，kept 没点掉的
 //            uuid）；when 为假时藏起来；href 给了画成链接（不调 run）；run(off) 点了调，off 是点掉的集合的一份拷贝。
-//            按钮带 data-ref 和 data-act，值都是 key
+//            按钮带 data-ref，值是 key（页面和走查按它找按钮）
 //   onOff(off)  点掉的变了（按组整理把它记进页面，重读以后还在）
 //   shrink   拿掉的图缩小淡出（认一认、可能认错：「点掉的是…」写完，那几张从卡上走掉）；不给就直接摘掉
 //
@@ -56,7 +56,7 @@ export function judgeCard({scope: parent, look = 'strip', max = 16, tip, status 
   if (say) acts.append(say);
   const buttons = actions.map(a => {
     const b = (a.href ? LINK : BUTTON)().el;
-    attr(b, 'data-ref', a.key); attr(b, 'data-act', a.key);
+    attr(b, 'data-ref', a.key);
     acts.append(b);
     if (!a.href) s.on(b, 'click', () => { if (!locked) a.run?.(new Set(off)); });
     return [a, b];
@@ -92,7 +92,7 @@ export function judgeCard({scope: parent, look = 'strip', max = 16, tip, status 
       if (node.inert) continue;
       const no = off.has(node.dataset.peek);
       attr(node, 'aria-pressed', String(no));
-      attr(node, 'title', (no ? tip.on : tip.off) + ' · ' + t('长按或 Space 看大图'));
+      attr(node, 'title', val(no ? tip.on : tip.off, ctx) + ' · ' + t('长按或 Space 看大图'));
       prop(node, 'disabled', locked);
     }
   }

@@ -559,24 +559,24 @@ class FrontendArchitectureTest(unittest.TestCase):
     def test_existing_css_literals_are_frozen(self):
         with Tree() as tree:
             frozen = tree.baseline()['css-literal']
-            self.assertIn('font: 9px', frozen)
+            self.assertIn('font-size: .62em', frozen)
             self.assertEqual(tree.errors(), [])
             # 基线里已有的字面量，再多用一处也算新增
-            tree.append('app.css', '\n.new-thing{font:800 9px/1 inherit}\n')
-            message = self.assertViolation(tree, 'css-literal', 'font: 9px')
-            self.assertIn(f'基线允许 {frozen["font: 9px"]} 处', message)
+            tree.append('app.css', '\n.new-thing{font-size:.62em}\n')
+            message = self.assertViolation(tree, 'css-literal', 'font-size: .62em')
+            self.assertIn(f'基线允许 {frozen["font-size: .62em"]} 处', message)
 
     def test_fixed_css_literal_must_be_shrunk(self):
         with Tree() as tree:
-            tree.replace('app.css', 'font:800 9px/1', 'font:800 var(--fs-11)/1')
+            tree.replace('app.css', 'font-size:max(var(--fs-11),.62em)', 'font-size:var(--fs-11)')
             errors, stale = check(tree.root)
             self.assertEqual(errors, [])
-            self.assertTrue(any('css-literal' in line and 'font: 9px' in line for line in stale))
+            self.assertTrue(any('css-literal' in line and 'font-size: .62em' in line for line in stale))
             code, output = tree.run_main('--strict-stale')
             self.assertEqual(code, 1)
             self.assertIn('--shrink', output)
             tree.run_main('--shrink')
-            self.assertNotIn('font: 9px', tree.baseline()['css-literal'])
+            self.assertNotIn('font-size: .62em', tree.baseline()['css-literal'])
             self.assertEqual(tree.run_main('--strict-stale')[0], 0)
 
     def test_css_declarations_track_lines_and_nesting(self):
@@ -778,7 +778,7 @@ class FrontendArchitectureTest(unittest.TestCase):
             self.assertIn('首次登记', output)
             # 首次登记也不能多于现状
             inflated = json.loads(json.dumps(full))
-            inflated['css-literal']['font: 9px'] += 1
+            inflated['css-literal']['font-size: .62em'] += 1
             tree.write_baseline(inflated)
             code, output = tree.run_main('--base-ref', 'HEAD')
             self.assertEqual(code, 1)

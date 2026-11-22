@@ -28,7 +28,12 @@
 .hide-marks .card-chip,.hide-marks .grid .dup-badge.folded,.hide-marks .grid .machine-dot{display:none}
 /* 写入后要离开本页的卡片先淡出（ui/grid.js 的 write） */
 .grid .card.leaving .card-stage{transform:scale(.86);opacity:0}
-.grid .card.skeleton{background:var(--soft);animation:none}
+/* 骨架只扫过一次。Chromium 静态骨架滚动时会让已滚离视野的图像长期留在 GPU 转存缓存（#769）。 */
+.grid .card.skeleton{background:var(--soft)}
+@media (prefers-reduced-motion:no-preference){
+  .grid .card.skeleton{background:linear-gradient(90deg,var(--soft),var(--line),var(--soft));background-size:200% 100%;animation:grid-skeleton-sweep 1.4s linear}
+  @keyframes grid-skeleton-sweep{to{background-position:-200% 0}}
+}
 
 /* 悬停、键盘光标在上面时：底部压暗一条，写角色名。右边让出心形（css/base.css 的 .fav-mark，26px 宽，离右边 --space-4） */
 .card-info{position:absolute;right:0;bottom:0;left:0;display:flex;align-items:baseline;gap:var(--space-6);min-width:0;padding:var(--space-24) calc(26px + var(--space-6)) var(--space-8) var(--space-10);

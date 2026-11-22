@@ -231,15 +231,13 @@ pub fn current_fold(state: &State) -> Option<Table> {
             (r[asset[0]].as_str().unwrap().to_owned(), px)
         })
         .collect::<BTreeMap<_, _>>();
-    let a = columns(assertions, &["uuid", "entity", "status", "origin"]);
+    let a = columns(assertions, &["uuid", "entity", "status"]);
     let mut decisions: BTreeMap<String, BTreeSet<(String, String)>> = BTreeMap::new();
     for row in rows(assertions) {
-        if row[a[3]] != "album" {
-            decisions
-                .entry(row[a[0]].as_str().unwrap().into())
-                .or_default()
-                .insert((row[a[1]].as_str().unwrap().into(), row[a[2]].as_str().unwrap().into()));
-        }
+        decisions
+            .entry(row[a[0]].as_str().unwrap().into())
+            .or_default()
+            .insert((row[a[1]].as_str().unwrap().into(), row[a[2]].as_str().unwrap().into()));
     }
     let cols = columns(duplicates, &["uuid", "grp", "pos", "rep", "hidden"]);
     let mut groups: BTreeMap<String, Vec<Vec<Value>>> = BTreeMap::new();

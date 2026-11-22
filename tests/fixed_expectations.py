@@ -576,9 +576,8 @@ def expected_folds(assets, assertions, duplicates):
     """按当前规则构造测试期望；同组任一图片的人工记录均属本组须保留的记录。"""
     area = {uuid: (width or 0) * (height or 0) for uuid, width, height in assets}
     decisions = {}
-    for uuid, entity, status, origin in assertions:
-        if origin != 'album':
-            decisions.setdefault(uuid, set()).add((entity, status))
+    for uuid, entity, status in assertions:
+        decisions.setdefault(uuid, set()).add((entity, status))
     groups = {}
     for uuid, grp, pos in duplicates:
         groups.setdefault(grp, []).append((uuid, pos))
@@ -607,7 +606,7 @@ def _refresh_reference_folds(frozen, state):
 
     expected = {
         uuid: (rep, hidden) for uuid, rep, hidden in expected_folds(
-            rows('assets', 'uuid width height'), rows('assertions', 'uuid entity status origin'),
+            rows('assets', 'uuid width height'), rows('assertions', 'uuid entity status'),
             rows('duplicates', 'uuid grp pos'))
     }
     duplicates = app['duplicates']

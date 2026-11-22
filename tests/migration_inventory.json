@@ -275,7 +275,7 @@
 
  "native/terms/src/app_imports.rs":"82aefe32aa3ca072d0a6787d531fe7b5e10fd2ee2ee376cf3704f7d859618664",
 
- "native/terms/src/app_index.rs":"4ae24d41024220913f0523495ec28587a3cc297222d786118458c9142119cb96",
+ "native/terms/src/app_index.rs":"439ddfc56acafeeb3d17cf0e45d808246b1969f4b8cc5eb60b8330c0c4defa70",
 
  "native/terms/src/app_integrity.rs":"7281f9384bf6a9f390e88b25d6ff509ec3194fa1677c7d5bdddc996581152a19",
 
@@ -431,7 +431,7 @@
 
  "native/terms/src/index_compute/numeric.rs":"ea9d101efc128f914e23126799a8b9048bcda8e03dfbfa45c93f2c755bb16a8c",
 
- "native/terms/src/index_compute/scan.rs":"09a6654abb079846d7ec4f713b614b1c2b46ba00b780781bf910436e50632bad",
+ "native/terms/src/index_compute/scan.rs":"bff66909dd52c3cb050a353940d2c86b87d346f3a597ab239fce3ae44128d76d",
 
  "native/terms/src/index_generation.rs":"940c236d35bee6001cc2225701d64d0be2964a2575a653a897449650535ad2fa",
 
@@ -675,7 +675,7 @@
  "crates/core/src/character_commands.rs":{"database-write":[[0,11],[184,2],198,[317,2],[318,2],316,14,15,"INSERT OR REPLACE INTO:assertions",[312,2],313,18,[35,4],"INSERT OR IGNORE INTO:deferred",[321,2],[322,2],315,"INSERT OR REPLACE INTO:identity_uncertain",175,314,190,"DELETE FROM:identity_anchor_decisions","INSERT INTO:identity_anchor_decisions","INSERT INTO:identity_anchor_history","INSERT OR IGNORE INTO:asked"]},
  "native/terms/src/http_host_get.rs":{"http-branch":[17,306,97,"/api/diagnostics",42,39,"/api/similar|/api/clusters",26,41,43,296,295,305,293,291,"/api/human-conclusions","/api/human-conclusions/report","/api/settings","/api/libraries","/api/files","/api/index/coverage",330,"/api/wd-extension","/api/learning","/api/packs","/api/index/base"]},
  "native/terms/src/app_create.rs":{"database-write":{"ATTACH":1,"dynamic-or-wrapper":9,"INSERT INTO:main.":1,"CREATE INDEX:if":1,"COMMIT":3,"DETACH":1,"ALTER TABLE:assets":1,"INSERT OR IGNORE INTO:meta":1}},
- "native/terms/src/app_index.rs":{"database-write":[[0,8],34,[1,5],33,283,284,285,286,[208,2],12,[199,2],287,249,201,[3,2],2,185],"entrypoint":[4]},
+ "native/terms/src/app_index.rs":{"database-write":[[0,8],34,[1,5],33,283,284,285,286,[208,2],[12,2],[199,2],287,249,201,[3,2],2,185],"entrypoint":[4]},
  "native/terms/src/http_browse.rs":{"http-branch":["/api/assets|/api/ids",[246,3],[77,2],[248,3],24,99,89,"/api/assets|/api/assets/count|/api/ids",[78,2],331,332,[382,2],"/api/ambiguous"],"database-write":[[7,3],[0,2]]},
  ".claude/launch.json":{"entrypoint":[[333,3]]},
  "crates/core/src/character_sql/tag_memberships.sql":{"database-write":["INSERT INTO:tag_memberships"]},

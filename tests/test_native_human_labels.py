@@ -69,6 +69,32 @@ def assert_response_headers(test, reference, response):
         test.assertEqual(reference['headers'].get(header), response['headers'].get(header), header)
 
 
+def assert_write_wait_exhausted(test, url, body):
+    """写锁到期时核对每一边各自的前后状态和原生 HTTP 回执。"""
+    item = {'url': url, 'method': 'POST', 'body': json.dumps(body).encode(),
+            'headers': {'Content-Type': 'application/json', 'X-CSRF-Token': test.token}}
+    with closing(sqlite3.connect(test.left.db)) as left, closing(sqlite3.connect(test.right.db)) as right:
+        left.execute('BEGIN IMMEDIATE')
+        right.execute('BEGIN IMMEDIATE')
+        before = states(test.right)
+        reference_before = test.rec.state('before')
+        test.assertEqual(test.reference_response('response', item)['status'], 500)
+        response = fetch(test.origin, item, test.origin)
+        test.assertEqual(response['status'], 503)
+        test.assertEqual(response['route'], 'core')
+        test.assertEqual(json.loads(response['body']), {'error': '服务繁忙，请稍后重试'})
+        diagnostic = json.loads(response['headers']['X-Illustash-Diagnostic'])
+        test.assertRegex(diagnostic['id'], r'^D-[0-9a-f]{32}$')
+        test.assertEqual({k: v for k, v in diagnostic.items() if k != 'id'},
+                         {'stored': True, 'publication': 'not_committed', 'retry': 'retry'})
+        test.assertEqual(states(test.right), before)
+        reference_after = test.rec.state('after')
+        test.assertEqual(reference_after, reference_before)
+        test.assertEqual(reference_after, states(test.right))
+        test.assertEqual(response['headers']['Content-Length'], str(len(response['body'])))
+        test.assertFalse(test.sentinel.exists())
+
+
 def snapshot(path):
     """schema 和每张表（带类型的单元格和物理 rowid），以逐表摘要的形式给出。"""
     from tests.fixed_expectations import table_digests
@@ -480,29 +506,8 @@ class NativeHumanLabelsTest(unittest.TestCase):
                     self.pair('/api/undo', {'id': value}, expected=400 if rejected else 200)
 
     def test_write_lock_contention_preserves_exact_error_and_all_data(self):
-        # #828：历史宿主对超时的写锁报 500。当前宿主在已知没有提交时应报告可重试。
         body = {'ids': ['a'], 'tag': '合成 标签'}
-        item = {'url': '/api/tag', 'method': 'POST', 'body': json.dumps(body).encode(),
-                'headers': {'Content-Type': 'application/json', 'X-CSRF-Token': self.token}}
-        with closing(sqlite3.connect(self.right.db)) as right:
-            right.execute('BEGIN IMMEDIATE')
-            before = states(self.right)
-            reference_before = self.rec.state('before')
-            self.assertEqual(self.reference_response('response', item)['status'], 500)
-            response = fetch(self.origin, item, self.origin)
-            self.assertEqual(response['status'], 503)
-            self.assertEqual(response['route'], 'core')
-            self.assertEqual(json.loads(response['body']), {'error': '服务繁忙，请稍后重试'})
-            diagnostic = json.loads(response['headers']['X-Illustash-Diagnostic'])
-            self.assertRegex(diagnostic['id'], r'^D-[0-9a-f]{32}$')
-            self.assertEqual({k: v for k, v in diagnostic.items() if k != 'id'},
-                             {'stored': True, 'publication': 'not_committed', 'retry': 'retry'})
-            self.assertEqual(states(self.right), before)
-            reference_after = self.rec.state('after')
-            self.assertEqual(reference_after, reference_before)
-            self.assertEqual(reference_after, states(self.right))
-            self.assertEqual(response['headers']['Content-Length'], str(len(response['body'])))
-            right.rollback()
+        assert_write_wait_exhausted(self, '/api/tag', body)
         self.pair('/api/tag', body)
         self.undo_latest()
 

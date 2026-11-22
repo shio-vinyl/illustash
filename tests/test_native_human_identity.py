@@ -175,11 +175,10 @@ class NativeHumanIdentityTest(unittest.TestCase):
             self.undo_latest()
 
     def test_write_lock_refuses_without_partial_commit(self):
-        with closing(sqlite3.connect(self.left.db)) as left, closing(sqlite3.connect(self.right.db)) as right:
-            left.execute('BEGIN IMMEDIATE'); right.execute('BEGIN IMMEDIATE')
-            self.pair('/api/merge', {'source':self.bob,'target':self.alice}, expected=500)
-            left.rollback(); right.rollback()
-        self.pair('/api/merge', {'source':self.bob,'target':self.alice}); self.undo_latest()
+        body = {'source': self.bob, 'target': self.alice}
+        labels.assert_write_wait_exhausted(self, '/api/merge', body)
+        self.pair('/api/merge', body)
+        self.undo_latest()
 
     def test_security_and_inflight_switch_isolation(self):
         commands = [('/api/identity/decision', {'a':self.alice,'b':self.bob,'kind':'different_from','status':'accepted','reason':'x'}),

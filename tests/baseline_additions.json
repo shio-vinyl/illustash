@@ -105,7 +105,7 @@
     }
   ],
   "meta_keys": [
-    {"name": "fold_projection", "introduced_in": 11, "checks": ["app_curation::tests::reopens_old_folding_projection_once_without_touching_human_decisions"]},
+    {"name": "fold_projection", "introduced_in": 11, "checks": ["native/terms/src/app_curation.rs::reopens_old_folding_projection_once_without_touching_human_decisions"]},
     {
       "name": "human_revision",
       "introduced_in": 9,

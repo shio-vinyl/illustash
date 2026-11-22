@@ -342,6 +342,26 @@ class InstalledIndexAppTest(CandidateIndexAdapter, unittest.TestCase):
         self.assertNotIn('carol_example', (self.shared/'char-anchors.txt').read_text().splitlines())
         self.assertFalse((self.lib.path/'index-job.json').exists()); self.assertFalse(self.sentinel.exists())
 
+    def test_rescued_orphan_keeps_saved_claim_during_index_rebuild(self):
+        # 抢救保留应用库认识的 b 的认领和向量，来源资产行已丢。相同向量的正常资产 c 应更新。
+        old = ('b', 'char_ext', 'alice', .42, 'char_index', 'old-model', 'old-run')
+        with contextlib.closing(sqlite3.connect(self.lib.source)) as source, source:
+            source.execute("DELETE FROM assets WHERE uuid='b'")
+            source.execute("DELETE FROM labels WHERE uuid='b' AND dim='char_ext'")
+            source.execute("INSERT INTO labels(uuid,dim,value,conf,source,model_ver,run_id) VALUES (?,?,?,?,?,?,?)", old)
+            source.execute("INSERT INTO embeddings VALUES ('b','ccip',?)", (self.reference_rows[1].tobytes(),))
+        self.check()
+        self.seed_reference()
+        self.index({'action': 'apply', 'tags': ['carol_example']})
+        result = self.finish()
+        self.assertEqual(result['state']['status'], 'done', result['state'])
+        with contextlib.closing(sqlite3.connect(self.lib.source)) as source:
+            rows = source.execute("SELECT uuid,dim,value,conf,source,model_ver,run_id FROM labels WHERE uuid='b' AND dim='char_ext'").fetchall()
+            self.assertEqual(rows, [old])
+            self.assertTrue(source.execute("SELECT 1 FROM labels WHERE uuid='c' AND dim='char_ext' AND value='carol_example'").fetchone())
+        self.assertEqual(snapshot(self.lib.db)['actions'], self.human)
+        self.assertEqual(snapshot(self.lib.db)['assertions'], self.human_assertions)
+
     def test_source_failure_rollback_retry_with_actual_adapter(self):
         self.check(); self.seed_reference(); expected = self.expected()
         with contextlib.closing(sqlite3.connect(self.lib.source)) as c, c:

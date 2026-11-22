@@ -23,6 +23,7 @@ import {filterBar, wireFilterBar} from './filters.js';
 import {wireGalleries} from './gallery_actions.js';
 import {saveButton, wireSaveButton} from './gallery_save.js';
 import {enter} from './motion.js';
+import {lockInert, unlockInert} from './inert.js';
 import {railRoute, refresh as refreshRail} from './rail.js';
 import {page as pageScope, currentPage} from './scope.js';
 
@@ -35,33 +36,71 @@ function metaShown({error: e, directory}) {
   const view = viewOf(state.route, state.char);
   if (view.onMeta) view.onMeta({directory}); else renderChrome();
 }
+let routeLoad = null;
+function beginRouteLoad() {
+  const status = $('routeLoading'), viewport = $('viewport');
+  routeLoad?.finish(true);
+  const lock = {}, loading = {
+    freeze() { lockInert(viewport, lock); },
+    thaw() { unlockInert(viewport, lock); },
+    finish(continuing = false) {
+      clearTimeout(timer);
+      loading.thaw();
+      if (routeLoad !== loading) return;
+      routeLoad = null;
+      if (!continuing) text(status, '');
+    },
+  };
+  // 快切不闪提示，仍在读取时再切换则沿用已经显示的提示。
+  const timer = currentPage() ? setTimeout(() => text(status, t('正在读取…')), 300) : null;
+  routeLoad = loading;
+  return loading;
+}
 export async function applyRoute() {
+  const loading = beginRouteLoad();
+  let view;
+  try { view = await switchRoute(loading); }
+  finally {
+    if (view?.drawn) void Promise.resolve(view.drawn).finally(() => loading.finish());
+    else loading.finish();
+  }
+}
+async function switchRoute(loading) {
   const route = parseHash(); route.sort = route.sort || defaultSort(route);
   const legacy = route.legacy; delete route.legacy;
-  // 要离开的是自己渲染的页面（按天、资料库、设置……）：按历史记录的序号记下它滚到哪里，后退、前进回到这一条时恢复（#526）。
-  if (pageOf(state.route).render) panelScroll.set(historyEntry(), $('viewport').scrollTop);
-  const traversed = noteHistory(legacy ? hashFor(route) : undefined);   // 旧地址就地改成新的；这一条记下序号，后退不退出页面
+  // 路由已写进历史记录、角色页还在读页头时，屏幕上仍是上一条实际显示过的页面。
+  const previous = state.route;
+  if (pageOf(previous).render) panelScroll.set(viewEntry ?? historyEntry(), $('viewport').scrollTop);
+  const traversed = noteHistory(legacy ? hashFor(route) : undefined), entry = historyEntry();
   $('backButton').hidden = !canGoBack();
-  const samePage = state.route.page === route.page && state.route.id === route.id && state.route.char === route.char;   // 切换子视图仍是同一页
-  // 换页（含同一页换子视图、换参数）：大图关掉，因为它下面的列表要重读、序号不再对得上；选择和光标复位；
-  // 详情栏只在换了页面或角色时关。大图是被换页关掉的，不动焦点。
+  const samePage = previous.page === route.page && previous.id === route.id && previous.char === route.char;
+  // 换页（含同页换子视图和参数）先关大图，再记网格离开时的位置（#402）。
   closeViewer('silent');
-  // 再记下要离开的网格页停在哪里，回到这个地址时恢复（#402）。放在关大图之后：关大图让详情栏跟到大图里最后看的那张、
-  // 把光标那张滚进视野，记下的详情栏、光标和位置才是同一张。
   rememberPlace();
+  let character = null;
+  if (route.char) {
+    // 角色读完才换页，等待时保留上一页。旧回复不能换走后续选到的页面。
+    if (!samePage) loading.freeze();
+    try { character = await fetchChar(route.char); }
+    catch (e) {
+      if (routeLoad === loading && state.route === previous) {
+        noteHistory(hashFor(previous)); viewEntry = entry; error(readError(e));
+      }
+      return;
+    }
+    if (routeLoad !== loading || state.route !== previous) return;
+    character ||= {id: route.char, name: t('角色'), work: '', count: 0, unchecked: 0, variants: []};
+  }
+  loading.thaw();
   setRoute(route); resetForRoute();
   if (!samePage) closeInspector();
-  // 每个页面一个作用域（ui/scope.js）：换了页面就释放上一页登记的监听、计时器和部件；同一页换子视图沿用。
   const scope = !samePage || !currentPage() ? pageScope(route.page || 'library') : currentPage();
   const page = pageOf(route);
   railRoute(route);
-  setChar(null);
+  setChar(character);
   if (page.prepare && await page.prepare(route) === false) return;
-  if (route.char) {
-    let character; try { character = await fetchChar(route.char); } catch (e) { if (state.route === route) error(readError(e)); return; }
-    if (state.route !== route) return;
-    setChar(character || {id: route.char, name: t('角色'), work: '', count: 0, unchecked: 0, variants: []});
-  }
+  if (routeLoad !== loading || state.route !== route) return;
+  viewEntry = entry;
   showArea(page.area);
   // 换了页面：内容页淡入（#706，和活页条的切换一起）；同一页换子视图不动。
   if (!samePage) enter($('viewport'), {from: 'fade'});
@@ -70,7 +109,7 @@ export async function applyRoute() {
   // 自己渲染的页面（按天、资料库、设置、按组整理……）换到时从顶部开始，不沿用上一页的滚动位置；后退、前进回到记过
   // 位置的那一条时，画完再滚回去（restore 让按天视图按上次读到的天数读，见 ui/days.js）。同一页换子视图、刷新时由页面自己
   // 决定留在哪里。网格页由 reload 定位（回到记过的地址时恢复，否则回顶部）。
-  const saved = traversed ? panelScroll.get(historyEntry()) : undefined;
+  const saved = traversed ? panelScroll.get(entry) : undefined;
   if (page.render && !samePage) $('viewport').scrollTop = 0;
   // 网格页顶上跟着滚动的头部（角色页的横幅，#712）：进页和同一页又画一次时交给这一页（core/pages.js 的 gridHead）。
   viewOf(route, state.char).gridHead?.({samePage, scope});
@@ -78,12 +117,13 @@ export async function applyRoute() {
   // 面板页的底栏：选择栏藏起来，张数清空（要写的页面读到数据以后自己写），提示写注册表的 hint。网格页的由 reload 写。
   $('selectionBar').hidden = true; $('resultCount').textContent = ''; $('hint').textContent = page.hint?.(route) || '';
   const drawn = page.render({samePage, restore: saved !== undefined, scope});
-  if (saved === undefined) return;
+  if (saved === undefined) return {drawn};
   await drawn;
   if (state.route === route) $('viewport').scrollTop = saved;
 }
 // 自己渲染的页面在各条历史记录里停在哪里：{序号: scrollTop}。
 const panelScroll = new Map();
+let viewEntry = null;
 
 // ---------- 页头：标题、副标题、本页的按钮，切换（图库的三种视图、整理的四个页签），右侧的控件组 ----------
 // 各页用 head(r, ctx) 登记页头：返回 {title, sub?, alert?, actions?}，只收文字和节点（core/pages.js 的 implement 说明）：

@@ -878,6 +878,33 @@ class NativeLifecycleTest(unittest.TestCase):
         current = json.loads(self.request('/api/assets')['body'])
         self.assertEqual({item['uuid'] for item in current['items']}, set('abc'))
 
+    def test_reads_are_answered_while_a_page_write_waits_for_the_write_lock(self):
+        """页面命令等应用库写锁时只持会话读锁：读取照常应答，锁释放后命令只执行一次（#828）。"""
+        def actions():
+            with closing(sqlite3.connect(self.lib.db)) as c:
+                return c.execute('SELECT count(*) FROM actions').fetchone()[0]
+        ident = json.loads(self.request('/api/assets')['body'])['items'][0]['uuid']
+        replies = []
+        writer = threading.Thread(target=lambda: replies.append(self.request('/api/favorite', {'ids': [ident]})))
+        with closing(sqlite3.connect(self.lib.db)) as lock:
+            lock.execute('BEGIN IMMEDIATE')
+            recorded = actions()
+            writer.start()
+            time.sleep(0.5)  # 让页面命令进入等锁；锁在本连接手里，它拿不到写锁就不会应答。
+            read = self.request('/api/assets')
+            self.assertEqual(read['status'], 200, read['body'])
+            self.assertIn(ident, {item['uuid'] for item in json.loads(read['body'])['items']})
+            # 读取没有排在页面命令后面：命令仍在等锁，还没有应答。
+            self.assertTrue(writer.is_alive())
+            self.assertEqual(replies, [])
+            lock.rollback()
+        writer.join(WAIT)
+        self.assertFalse(writer.is_alive())
+        self.assertEqual(replies[0]['status'], 200, replies[0]['body'])
+        self.assertEqual(json.loads(replies[0]['body'])['undo']['label'], '已收藏 1 张')
+        self.assertEqual(actions(), recorded + 1)
+        self.assertFalse(self.sentinel.exists())
+
     def test_upgrade_rejection_with_cold_wal_only_creates_sqlite_coordination_files(self):
         broken = self.package('cold-wal')  # 它录制的历史里有 'cold-failure-history'
         with closing(sqlite3.connect(broken.db)) as c:

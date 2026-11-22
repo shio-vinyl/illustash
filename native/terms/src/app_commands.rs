@@ -11,7 +11,8 @@ use std::{
     time::Duration,
 };
 
-/// 给页面操作多一次默认写等待的时间。SQLite 在连接内等待，宿主不会重放已经执行过的命令。
+/// 给页面操作多一次默认写等待的时间。SQLite 在连接内等待，宿主不会重放已经执行过的命令；
+/// 等待期间宿主只持会话读锁（`http_host_post` 的 `page_write`），其他请求照常应答。
 const PAGE_WRITE_WAIT: Duration = Duration::from_secs(10);
 
 pub(crate) fn request(context: &LibraryContext, path: &str, body: &Json) -> Result<Json> {

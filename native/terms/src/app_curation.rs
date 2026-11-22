@@ -382,10 +382,9 @@ mod tests {
         );
         assert_eq!(f.count("actions"), 0);
     }
-    #[test]
-    fn reopens_old_folding_projection_once_without_touching_human_decisions() {
-        let f = Fixture::new(false);
-        let package = f.root.join("old-fold.pilib");
+    /// 0.4.0 存下的副本折叠：两份图都显示，人工判断在较小的那份上，还没有版本标记。
+    fn old_fold_package(f: &Fixture, name: &str) -> (PathBuf, crate::app_library::Library) {
+        let package = f.root.join(name);
         crate::app_create::create_folder(&package, &f.root, None, None, None).unwrap();
         let library = crate::app_library::Library::open(&package).unwrap();
         let mut c = crate::sqlite::open(library.db()).unwrap();
@@ -404,6 +403,25 @@ mod tests {
         // 表示 0.4.0 时每份图各自的人工判断；旧缓存同时显示两份图。
         tx.execute("INSERT INTO assertions VALUES ('manual','a','confirmed','review')", []).unwrap();
         crate::schema::commit_writing(tx).unwrap();
+        (package, library)
+    }
+    fn fold_rows(c: &Connection) -> Vec<(String, i64, i64)> {
+        c.prepare("SELECT uuid,rep,hidden FROM duplicates ORDER BY uuid")
+            .unwrap()
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
+            .unwrap()
+            .collect::<rusqlite::Result<_>>()
+            .unwrap()
+    }
+    fn fold_marker(c: &Connection) -> Option<String> {
+        c.query_row("SELECT value FROM meta WHERE key='fold_projection'", [], |r| r.get(0)).optional().unwrap()
+    }
+
+    #[test]
+    fn reopens_old_folding_projection_once_without_touching_human_decisions() {
+        let f = Fixture::new(false);
+        let (package, library) = old_fold_package(&f, "old-fold.pilib");
+        let c = crate::sqlite::open(library.db()).unwrap();
 
         let claims = || {
             let mut rows = c.prepare("SELECT uuid,entity,status,origin FROM assertions ORDER BY uuid,entity").unwrap();
@@ -430,15 +448,70 @@ mod tests {
             c.query_row("SELECT value FROM meta WHERE key='fold_projection'", [], |r| r.get::<_, String>(0)).unwrap(),
             FOLD_PROJECTION
         );
-        // 用触发器确认再开时无需重写持久标记。重复打开应继续得到同样的代表图。
+        // 用触发器记下再开时有没有重写持久标记（刷新失败不挡住打开，所以只记录、不报错）。重复打开应继续得到同样的代表图。
         c.execute_batch(
-            "CREATE TRIGGER refresh_twice BEFORE INSERT ON meta WHEN new.key='fold_projection'
-            BEGIN SELECT RAISE(ABORT, 'synthetic duplicate refresh'); END;",
+            "CREATE TRIGGER refresh_twice AFTER INSERT ON meta WHEN new.key='fold_projection'
+            BEGIN INSERT OR REPLACE INTO prefs VALUES ('synthetic_refresh','again'); END;",
         )
         .unwrap();
         drop((opened, owner));
         let _reopened = crate::app_service::open_owned(&package, None, None).unwrap();
         assert_eq!(claims(), before);
+        assert_eq!(fold_rows(&c), [("large".into(), 0, 1), ("manual".into(), 1, 0)]);
+        let refreshed: i64 =
+            c.query_row("SELECT count(*) FROM prefs WHERE key='synthetic_refresh'", [], |r| r.get(0)).unwrap();
+        assert_eq!(refreshed, 0);
+    }
+
+    #[test]
+    fn a_failed_fold_refresh_still_opens_the_library_and_retries_on_the_next_open() {
+        let f = Fixture::new(false);
+        let (package, library) = old_fold_package(&f, "refresh-fails.pilib");
+        let c = crate::sqlite::open(library.db()).unwrap();
+        let old = fold_rows(&c);
+        // 写版本标记时失败，整个刷新回滚；数据库忙、只读或磁盘满时也是这样的普通 SQL 错误。
+        c.execute_batch(
+            "CREATE TRIGGER refresh_fails BEFORE INSERT ON meta WHEN new.key='fold_projection'
+            BEGIN SELECT RAISE(ABORT, 'synthetic refresh failure'); END;",
+        )
+        .unwrap();
+        let (opened, owner) = crate::app_service::open_owned(&package, None, None).unwrap();
+        assert_eq!(fold_rows(&c), old);
+        assert_eq!(fold_marker(&c), None);
+        drop((opened, owner));
+        c.execute_batch("DROP TRIGGER refresh_fails").unwrap();
+        let _reopened = crate::app_service::open_owned(&package, None, None).unwrap();
+        assert_eq!(fold_rows(&c), [("large".into(), 0, 1), ("manual".into(), 1, 0)]);
+        assert_eq!(fold_marker(&c).as_deref(), Some(FOLD_PROJECTION));
+    }
+
+    #[test]
+    fn a_corrupt_library_found_by_the_fold_refresh_is_recorded_as_damaged() {
+        let f = Fixture::new(false);
+        let (package, library) = old_fold_package(&f, "refresh-damaged.pilib");
+        let c = crate::sqlite::open(library.db()).unwrap();
+        c.query_row("PRAGMA wal_checkpoint(TRUNCATE)", [], |_| Ok(())).unwrap();
+        let size: usize = c.query_row("PRAGMA page_size", [], |r| r.get(0)).unwrap();
+        let pages: Vec<usize> = c
+            .prepare("SELECT rootpage FROM sqlite_master WHERE tbl_name='duplicates' AND rootpage>0")
+            .unwrap()
+            .query_map([], |r| r.get(0))
+            .unwrap()
+            .collect::<rusqlite::Result<_>>()
+            .unwrap();
+        drop(c);
+        // 副本表和它的索引坏页：打开时的校验只读 meta，第一次读到它们的是折叠刷新。
+        let mut bytes = fs::read(library.db()).unwrap();
+        for page in pages {
+            bytes[(page - 1) * size] = 0;
+        }
+        fs::write(library.db(), bytes).unwrap();
+        let Err(error) = crate::app_service::open_owned(&package, None, None) else {
+            panic!("损坏的图库不应打开");
+        };
+        assert!(matches!(&error, Error::Conflict(m) if m == crate::app_integrity::LIBRARY_DAMAGED), "{error}");
+        let damage = crate::app_integrity::recorded_damage(library.instance_path()).unwrap();
+        assert!(matches!(damage.database, crate::app_integrity::Database::Library));
     }
 
     #[test]

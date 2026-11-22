@@ -133,7 +133,21 @@ fn finish_open(
     owner: Arc<Owner>,
     checked: &[crate::app_integrity::Database],
 ) -> Result<(Library, Arc<Owner>)> {
-    crate::app_curation::refresh_fold_on_open(&library)?;
+    // 副本折叠是派生状态：刷新失败（数据库忙、只读、磁盘满）不挡住打开。版本标记随刷新一起回滚，下次打开再刷新。
+    // 数据库损坏照打开时的损坏处理（#212）：完整检查后记下损坏，不当成普通的打开失败。
+    if let Err(error) = crate::app_curation::refresh_fold_on_open(&library) {
+        if matches!(&error, Error::Sql(e) if crate::app_library::corruption(e).is_some()) {
+            return Err(match crate::app_integrity::check_both(&library, None)? {
+                Some(damage) => {
+                    owner.health.damaged(damage.clone())?;
+                    damage.error()
+                }
+                None => error,
+            });
+        }
+        use crate::diagnostics::{failure, Operation, Publication, Stage};
+        failure(Operation::Library, Stage::Write, &error, Publication::NotCommitted);
+    }
     owner.health.opened(checked)?;
     Ok((library, owner))
 }

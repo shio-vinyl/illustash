@@ -636,6 +636,55 @@ fn chinese(name: &str, work: &str, subjects: &[Value], wiki: &[String]) -> bool 
             })
             || (subjects.is_empty() && wiki.iter().any(|s| normalize(s) == normalize(name))))
 }
+/// 按角色目录的取名提示，从按 ID 取到的 Bangumi 角色里挑名字（#837）。
+///
+/// 提示是 `''`（中文名用「简体中文名」）、`name`（国产作品：原名就是中文名，「简体中文名」常空着或写的是别名）、
+/// `p0`/`p1`…（「A／B」这种一个条目写了两个名字的，取第几段，原名同样取那一段），可以写成 `name:p1`。
+/// 返回的写法和 [`character_values`] 一样：（名字列表，要另记成别名的「简体中文名」）。
+pub(crate) fn picked_values(v: &Value, pick: &str) -> (Vec<Value>, Option<String>) {
+    let (field, part) = match pick.split_once(':') {
+        Some((f, p)) => (f, Some(p)),
+        None if pick.starts_with('p') => ("", Some(pick)),
+        None => (pick, None),
+    };
+    let index = part.and_then(|p| p.strip_prefix('p')).and_then(|n| n.parse::<usize>().ok());
+    if part.is_some() && index.is_none() {
+        return (vec![], None);
+    }
+    let segment = |s: &str| -> Option<String> {
+        let s = s.trim();
+        if s.is_empty() {
+            return None;
+        }
+        match index {
+            None => Some(s.to_owned()),
+            Some(i) => Regex::new(r"\s*[／/]\s*")
+                .expect("constant regular expression is valid")
+                .split(s)
+                .nth(i)
+                .map(str::trim)
+                .filter(|x| !x.is_empty())
+                .map(str::to_owned),
+        }
+    };
+    let name = v["name"].as_str().unwrap_or("");
+    let boxed = infobox(v);
+    if field == "name" {
+        let zh = segment(name);
+        return (
+            zh.into_iter().map(|z| json!(["zh", z])).collect(),
+            boxed.filter(|b| Some(b.as_str()) != segment(name).as_deref()),
+        );
+    }
+    let mut values = vec![];
+    if let Some(original) = segment(name).filter(|n| !hangul(n)) {
+        values.push(json!([if kana(&original) || han(&original) { "ja" } else { "en" }, original]));
+    }
+    if let Some(zh) = boxed.as_deref().and_then(segment) {
+        values.push(json!(["zh", zh]));
+    }
+    (values, None)
+}
 pub(crate) fn character_values(
     v: &Value,
     work: &str,
@@ -753,6 +802,30 @@ mod tests {
             (vec![json!(["zh", "合成角色"])], Some("另一个名字".into()))
         );
         assert_eq!(normalize("Ａ_・ リス"), "a_リス");
+    }
+
+    #[test]
+    fn catalog_pick_chooses_field_and_segment() {
+        let row = |name: &str, zh: &str| json!({"name":name,"infobox":[{"key":"简体中文名","value":zh}]});
+        // 默认：原名记成日文，「简体中文名」是中文。
+        assert_eq!(
+            picked_values(&row("初音ミク", "初音未来"), ""),
+            (vec![json!(["ja", "初音ミク"]), json!(["zh", "初音未来"])], None)
+        );
+        // 国产作品：原名是中文名，「简体中文名」写的是别名，另记成别名。
+        assert_eq!(
+            picked_values(&row("雷电将军", "巴尔泽布"), "name"),
+            (vec![json!(["zh", "雷电将军"])], Some("巴尔泽布".into()))
+        );
+        // 一个条目写两个名字：按 tag 取对应的那一段，原名同样取那一段。
+        let two = row("春野はるか／キュアフローラ", "春野遥／花神天使");
+        assert_eq!(picked_values(&two, "p1"), (vec![json!(["ja", "キュアフローラ"]), json!(["zh", "花神天使"])], None));
+        assert_eq!(picked_values(&two, "p0").0[1], json!(["zh", "春野遥"]));
+        assert_eq!(picked_values(&row("甲/乙", ""), "name:p1"), (vec![json!(["zh", "乙"])], None));
+        // 段号超出、提示认不出、名字是空的：挑不出中文名。
+        assert!(!picked_values(&two, "p5").0.iter().any(|v| v[0] == "zh"));
+        assert!(picked_values(&two, "px").0.is_empty());
+        assert!(!picked_values(&row("Alice", ""), "").0.iter().any(|v| v[0] == "zh"));
     }
 }
 

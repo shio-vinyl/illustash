@@ -7,6 +7,8 @@
 
  "crates/core/src/ccip_longtail.rs":"04f901a024fd2f26d4fc86486e6db7b8a7c43c046483f0974acc15ad736306b0",
 
+ "crates/core/src/character_catalog.rs":"cacfe0a6111bc1d3306af39cac676c736fd62f7ec28028d9e86493b19832c7ff",
+
  "crates/core/src/character_commands.rs":"562159c0d8990af2ca52d85e6b3f559a29f12fb6c1d6248b7d886d796f7656da",
 
  "crates/core/src/character_entities.rs":"5cb8eceface17854d3a2c727d12218b8d1834ac71837c1cb4b5a0f28ee6275dd",
@@ -99,7 +101,7 @@
 
  "crates/core/src/legacy_names.rs":"f9ad0e0b8b0794964720853b67cc3375423705d35d6b8b29994217e7d221e48a",
 
- "crates/core/src/lib.rs":"571c3078561ae4e76176bfebd3dcd8c898fd70adb26685825d148655a6a132bd",
+ "crates/core/src/lib.rs":"c7f0a7b261fc2269a5572113b275342cc0c5d0cc84f82ce420270ff596574a41",
 
  "crates/core/src/names_commands.rs":"8f3dfc749925ab864763ac19d82e86b2498a1219ba4163e5cf970e54ef05afdd",
 
@@ -311,9 +313,9 @@
 
  "native/terms/src/app_models/shards.rs":"2bec6706281233ea03287af7030a277707672631895ad5d97aa861a1a773e174",
 
- "native/terms/src/app_name_sources.rs":"a9d895621405e92c2bdacd7f547f28feec7f294f307d628ea25d5e2bf27f9515",
+ "native/terms/src/app_name_sources.rs":"9b46b634b5cbd8edb8cd85ba9ca582c4aa6febaa44335040808ed54b84bed442",
 
- "native/terms/src/app_names.rs":"5cdd4349f426234489ce5fb9f378bf9d60a4c4fd756de5d905c2fe553eef01b5",
+ "native/terms/src/app_names.rs":"3a49f4fcab15cc0165d5dbaff2034d01753bc01873c8523891172572e8f96677",
 
  "native/terms/src/app_names/model_api.rs":"e739104e01f34986d74330d04fc6569054dcd3b07f23980df7975a5b417b20e2",
 
@@ -435,7 +437,7 @@
 
  "native/terms/src/index_generation.rs":"940c236d35bee6001cc2225701d64d0be2964a2575a653a897449650535ad2fa",
 
- "native/terms/src/lib.rs":"b0eedbcd5a919ea9cee6a566847e4efa9884275753e9777a100600697a5b90ce",
+ "native/terms/src/lib.rs":"d0b9bcf930dc19e4e2a95813676551866485dac7b45d4fc0af2710fcf6974f31",
 
  "native/terms/src/platform_process.rs":"62046a3cf19fa77c1f3105770d4937a6cd780b24e9219a84106c4014aaf1f500",
 

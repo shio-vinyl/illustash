@@ -339,6 +339,46 @@ fn matched(c: &Connection, work: &str) -> Result<Vec<Value>> {
         _ => vec![],
     })
 }
+#[cfg(test)]
+thread_local! {
+    /// 测试换用的角色目录（名称任务在调用测试的线程里同步跑）。
+    static TEST_CATALOG: std::cell::Cell<Option<&'static crate::character_catalog::Catalog>> =
+        const { std::cell::Cell::new(None) };
+}
+
+/// 测试默认用空目录，原有的按名字搜索的测试不受编进应用的目录影响；要测目录的测试自己换一份。
+#[cfg(test)]
+fn catalog() -> &'static crate::character_catalog::Catalog {
+    static EMPTY: std::sync::OnceLock<crate::character_catalog::Catalog> = std::sync::OnceLock::new();
+    TEST_CATALOG.with(std::cell::Cell::get).unwrap_or_else(|| {
+        EMPTY.get_or_init(|| {
+            let columns = r#"["id","tag","tags","parent","relation","action","variant","bangumi","pick","wikidata"]"#;
+            let doc = format!(
+                r#"{{"format":"{}","revision":1,"columns":{columns},"characters":[],"works":[]}}"#,
+                crate::character_catalog::FORMAT
+            );
+            crate::character_catalog::Catalog::parse(&doc).expect("空目录能解析")
+        })
+    })
+}
+
+#[cfg(not(test))]
+fn catalog() -> &'static crate::character_catalog::Catalog {
+    crate::character_catalog::bundled()
+}
+
+/// 角色目录里有 Bangumi 角色 ID 的，按 ID 取这个角色，按目录的取名提示挑中文名（#837）。
+/// 目录里没有、条目取不到或者挑不出名字时返回 None，交给按名字搜索。
+fn catalog_values(source: &mut Source, tag: &str) -> Option<(Vec<Value>, Option<String>)> {
+    let entry = catalog().character(tag)?;
+    let id = entry.bangumi?;
+    let v = source.bg(&format!("/characters/{id}"), None).ok()?;
+    if v["id"].as_u64() != Some(id) {
+        return None;
+    }
+    let (values, alias) = net::picked_values(&v, &entry.pick);
+    values.iter().any(|x| x[0] == "zh").then_some((values, alias))
+}
 fn enrich(source: &mut Source, kind: &str, key: &str, work: &str, targets: &[&str]) -> Result<Vec<Value>> {
     let mut c = net::db(&source.path)?;
     let wiki_tag = if kind == "work" {
@@ -435,9 +475,12 @@ fn enrich(source: &mut Source, kind: &str, key: &str, work: &str, targets: &[&st
             chosen.map(|r| vec![json!(["ja", r["name"]]), json!(["zh", r["name_cn"]])]).unwrap_or_default(),
         ));
     } else {
+        // 角色目录给了 Bangumi 角色 ID（#837）：按 ID 直接取，不再按名字搜；取不到时照旧搜。
+        let listed = catalog_values(source, key);
         let mut chosen = None;
         let mut related = HashMap::<String, Vec<Value>>::new();
-        for keyword in net::keywords(&query, true) {
+        let keywords = if listed.is_some() { vec![] } else { net::keywords(&query, true) };
+        for keyword in keywords {
             let data = source.bg("/search/characters?limit=10", Some(json!({"keyword":keyword})))?;
             let mut matches: Vec<Value> = data["data"]
                 .as_array()
@@ -501,7 +544,12 @@ fn enrich(source: &mut Source, kind: &str, key: &str, work: &str, targets: &[&st
             break;
         }
         let mut values = vec![];
-        if let Some(r) = chosen {
+        if let Some((v, alias)) = listed {
+            values = v;
+            if let Some(alias) = alias {
+                ops.push(json!({"op":"bangumi_alias","tag":key,"value":alias}));
+            }
+        } else if let Some(r) = chosen {
             let sub = related.remove(&dump(&r["id"])).filter(|s| !s.is_empty()).unwrap_or(matched(&c, work)?);
             let (v, alias) = net::character_values(&r, work, &sub, &wiki);
             values = v;
@@ -2038,6 +2086,10 @@ mod sources_tests {
                         })
                         .collect();
                     json!({"data": rows})
+                } else if path == "/characters/77" {
+                    json!({"id":77,"name":"アリス","infobox":[{"key":"简体中文名","value":"目录爱丽丝"}]})
+                } else if path == "/characters/78" {
+                    return None;
                 } else if path.starts_with("/characters/") && path.ends_with("/subjects") {
                     json!([{"name":"エグザンプル","name_cn":"示例作品"}])
                 } else if path == "/chat/completions" {
@@ -2233,6 +2285,42 @@ mod sources_tests {
         assert_eq!(named(lib.char("bob")), pair("Bob", "readable"));
         assert!(!p.calls().iter().any(|(u, _)| u.contains("/characters/11")));
         assert_eq!(net::normalize("Ａ ・ リ ス"), net::normalize("A･リス"));
+    }
+
+    fn use_catalog(bangumi: u64) {
+        let columns = r#"["id","tag","tags","parent","relation","action","variant","bangumi","pick","wikidata"]"#;
+        let doc = format!(
+            r#"{{"format":"{}","revision":1,"columns":{columns},"characters":[[1,"alice",[],null,null,null,null,{bangumi},"",null]],"works":[]}}"#,
+            crate::character_catalog::FORMAT
+        );
+        let catalog = Box::leak(Box::new(crate::character_catalog::Catalog::parse(&doc).unwrap()));
+        TEST_CATALOG.with(|c| c.set(Some(catalog)));
+    }
+
+    #[test]
+    fn catalog_bangumi_id_is_fetched_directly_instead_of_searching() {
+        let (p, lib) = (Providers::start(), Library::load());
+        use_catalog(77);
+        lib.run(&p, None, false).unwrap();
+        TEST_CATALOG.with(|c| c.set(None));
+        assert_eq!(named(lib.char("alice")), pair("目录爱丽丝", "bangumi"));
+        assert_eq!(lib.char("alice").names[1].as_deref(), Some("アリス"));
+        let calls = p.calls();
+        assert!(calls.iter().any(|(u, _)| u.starts_with("/characters/77")));
+        let searched_alice = |(u, b): &(String, Option<Value>)| {
+            u.starts_with("/search/characters") && b.as_ref().is_some_and(|b| b.to_string().contains("アリス"))
+        };
+        assert!(!calls.iter().any(searched_alice));
+    }
+
+    #[test]
+    fn catalog_bangumi_id_that_cannot_be_fetched_falls_back_to_search() {
+        let (p, lib) = (Providers::start(), Library::load());
+        use_catalog(78);
+        lib.run(&p, None, false).unwrap();
+        TEST_CATALOG.with(|c| c.set(None));
+        assert_eq!(named(lib.char("alice")), pair("爱丽丝", "bangumi"));
+        assert!(p.calls().iter().any(|(u, _)| u.starts_with("/characters/78")));
     }
 
     #[test]

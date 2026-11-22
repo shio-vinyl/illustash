@@ -6,6 +6,7 @@
 pub mod backup;
 pub mod casefold;
 pub mod ccip_longtail;
+pub mod character_catalog;
 pub mod character_commands;
 pub mod character_entities;
 pub mod character_evidence;

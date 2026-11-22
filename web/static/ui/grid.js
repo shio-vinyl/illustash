@@ -29,6 +29,7 @@ import {paintHearts, writeFavorite} from './favorites.js';
 import {key as frameKey, write as frameWrite} from './frame.js';
 import {dupHue, gridCard, gridContext, skeletonCard} from './grid_card.js';
 import {cardRect, fixedLayout, flowing, indexAt, layout, layoutKey, rowAt, rowCount, rowHeight, rowOf, rowReach, rowStart, rowTop, headResized, verticalStep} from './grid_rows.js';
+import {gridWindow, pagesBetween, visibleEnd, visibleOffsets} from './grid_window.js';
 import {enter} from './motion.js';
 import {app} from './scope.js';
 
@@ -42,13 +43,6 @@ export const zoomSlider = () => sizeToSlider(state.size);
 export function zoomFromSlider(v) { requestZoom(() => setSize(sliderToSize(v), undefined, undefined, true)); }
 // 进行中的分页读取，以及读取视口附近各页的防抖。查询参数和读取在 core/assets.js。
 let abortList, pageTimer;
-// 从第 first 张到第 last 张所在的几页（最多 4 页）。
-function pagesBetween(first, last) {
-  const offsets = []; for (let o = Math.floor(first / PAGE) * PAGE; o < Math.max(last, 1); o += PAGE) offsets.push(o);
-  return offsets.slice(0, 4);
-}
-const visibleEnd = v => rowStart(rowAt(v.scrollTop + v.clientHeight) + 2);
-function visibleOffsets() { const v = $('viewport'); return pagesBetween(rowStart(rowAt(v.scrollTop)), visibleEnd(v)); }
 // ---------- 回到原位置（#402） ----------
 // 离开网格页时按地址记下位置：第一张可见的图的序号、在它那一行里滚过的比例、这一屏到哪一张，以及详情栏里的图和键盘光标。
 // 回到同一地址（侧栏、后退、从角色页返回）时，reload 先读这几张所在的页，再一步定位到那里，不先读顶部再跳。
@@ -83,12 +77,12 @@ export async function reload(reset = false, place = null) {
   const gen = ++state.generation; abortList?.abort(); abortList = new AbortController(); state.pending.clear();
   showArea('grid'); error('');
   if (reset) {
-    resetScrollPreview();
+    windowRows.reset();
     $('viewport').scrollTop = 0; $('resultCount').textContent = t('正在读取…'); state.totalReady = false;
   }
   layout();
   try {
-    const offsets = place ? pagesBetween(place.anchor, place.end) : reset ? [0] : visibleOffsets();
+    const offsets = place ? pagesBetween(place.anchor, place.end) : reset ? [0] : visibleOffsets($('viewport'));
     const pages = await Promise.all(offsets.map((o, i) => readPage(o, {count: i === 0, signal: abortList.signal})));
     if (gen !== state.generation || route !== state.route) return;
     if (epoch !== state.readEpoch) return reload(reset, place);
@@ -187,31 +181,11 @@ export const gridHead = () => $('gridHead');
 let mounted = new Map(), cards = null, ctx = null, ctxKey = '';
 // 滚出范围的卡片部件留着复用（park），不一直新建、丢弃：Chromium 里丢掉的卡片和它的 <img> 迟迟不释放（#708）。
 const spare = [], SPARE_MAX = 160;
-// 快滚时新卡先用小图，限制连续上传的位图量；速度降下来后升级此时可见的卡片（#769）。
-const PREVIEW_SPEED = 1.6, PREVIEW_SETTLE = 300;  // 像素/毫秒，毫秒
-let fastScroll = false, lastPaintTop = 0, lastPaintAt = 0, previewTimer;
-function resetScrollPreview() {
-  clearTimeout(previewTimer);
-  fastScroll = false;
-  lastPaintAt = 0;
-}
-function updateScrollPreview(top) {
-  const now = performance.now(), elapsed = now - lastPaintAt;
-  if (lastPaintAt && elapsed > 0 && elapsed < 100 && Math.abs(top - lastPaintTop) / elapsed > PREVIEW_SPEED) {
-    fastScroll = true;
-    clearTimeout(previewTimer);
-    previewTimer = setTimeout(() => {
-      fastScroll = false;
-      scheduleGrid();
-    }, PREVIEW_SETTLE);
-  }
-  lastPaintTop = top;
-  lastPaintAt = now;
-}
+const windowRows = gridWindow(() => scheduleGrid());
 export function renderGrid(relayout = false) {
   if ($('grid').hidden) return;
   const v = $('viewport'), grid = $('grid');
-  updateScrollPreview(v.scrollTop);
+  windowRows.track(v.scrollTop);
   // 钉住第一张可见的图：它上方的行重新排布时（分页到达、新的估计值），视图保持不动。
   const anchorRow = rowAt(v.scrollTop), anchor = rowStart(anchorRow), within = v.scrollTop - rowTop(anchorRow);
   const oldLayout = layoutKey();
@@ -222,18 +196,12 @@ export function renderGrid(relayout = false) {
   }
   if (relayout || before[0] !== state.cols || before[1] !== state.rowH) state.gridKey = '';
   const rows = rowCount(); grid.style.height = `${rowTop(rows)}px`;
-  const top = v.scrollTop, bottom = top + v.clientHeight;
-  const first = Math.max(0, rowAt(top - rowReach()) - (flowing() ? 1 : 2)), last = Math.min(rows, rowAt(bottom) + 2);
+  const {first, last, ahead, behind, key: previewKey} = windowRows.measure(v, rows);
   // 屏幕倍率也算进键：窗口拖到倍率不同的屏幕后，下一次重画（滚动、改窗口大小）就按新倍率换缩略图档位（#452）。
-  // 已经挂上的小图随着可见范围变化升级，即使预挂载的整段卡片还没变。
-  const visibleRows = fastScroll ? 'fast' : `${rowAt(top)}:${rowAt(bottom)}`;
-  const scale = screenScale(), key = `${first}:${last}:${state.dataVersion}:${layoutKey()}:${scale}:${visibleRows}`;
-  if (key !== state.gridKey) { state.gridKey = key; placeCards(rowStart(first), rowStart(last), scale, top, bottom); }
+  const scale = screenScale(), key = `${first}:${last}:${state.dataVersion}:${layoutKey()}:${scale}:${previewKey}`;
+  if (key !== state.gridKey) { state.gridKey = key; placeCards(rowStart(first), rowStart(last), scale); }
   syncCards();
   clearTimeout(pageTimer); const gen = state.generation;
-  // 先是可见的几页，然后是上方和下方大约一屏，这样尺寸通常在各行滚进视野之前就到了，两端对齐的行不会在屏幕上重新
-  // 洗牌。
-  const ahead = rowStart(Math.min(rows, rowAt(v.scrollTop + 2 * v.clientHeight) + 1)), behind = rowStart(rowAt(v.scrollTop - v.clientHeight));
   pageTimer = setTimeout(() => {
     if (gen !== state.generation) return;
     for (let o = Math.floor(rowStart(first) / PAGE) * PAGE; o < rowStart(last); o += PAGE) loadPage(o);
@@ -241,7 +209,7 @@ export function renderGrid(relayout = false) {
   }, 60);
 }
 // 挂上第 from 到 to - 1 张，摘掉范围外的（摘掉时放掉解码后的位图，#683）。
-function placeCards(from, to, scale, top, bottom) {
+function placeCards(from, to, scale) {
   const grid = $('grid'), view = viewOf(state.route), dup = !!view.card?.dup;
   // 这一轮共用的上下文（页面、视图选项、格宽）：内容没变就沿用上一份，卡片据此判断要不要重画。
   const next = gridContext({route: state.route, view, fit: flowing(), cellW: state.cellW, hints: viewOpts.hints, hue: hueAt});
@@ -257,8 +225,7 @@ function placeCards(from, to, scale, top, bottom) {
     mounted.delete(key);
     // 重复页的角标颜色看前一组：前面一页后读到时颜色可能变，变了的卡片要重画。
     const box = cardRect(i), hue = dup && item?.dup ? hueAt(i) : null;
-    const visible = box.y + box.h > top && box.y < bottom;
-    const preview = fastScroll ? 'fast' : visible ? 'visible' : 'offscreen';
+    const preview = windowRows.preview(box);
     if (m.item !== item || m.i !== i || m.ctx !== ctx || m.hue !== hue || m.preview !== preview || !sameBox(m.box, box)) {
       m.comp.update({item, index: i, box, ctx, preview});
       Object.assign(m, {item, i, box, ctx, hue, preview});
@@ -327,7 +294,7 @@ export function toggleSelecting() { state.selecting = !state.selecting; if (!sta
 // 取消选择并退出选择模式（Esc、选择栏的 ×、写入之后、切换 NSFW）。
 export function quitSelecting() { state.selecting = false; clearSelection(); }
 // 换页时复位网格这一侧的状态：退出选择模式、清空选择、光标归位、张数等新读取（ui/shell.js applyRoute 调用）。
-export function resetForRoute() { resetScrollPreview(); quitSelecting(); state.cursor = -1; state.totalReady = false; }
+export function resetForRoute() { windowRows.reset(); quitSelecting(); state.cursor = -1; state.totalReady = false; }
 // 键盘光标移到第 i 张（详情栏和大图翻页时跟着走）。
 export function setCursor(i) { state.cursor = i; }
 // I 和大图底栏的「信息」：开关详情栏（#424 的 2-7）。大图里是关掉大图、在详情栏里看这张；网格里看光标那张（没有光标取

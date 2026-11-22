@@ -1643,19 +1643,20 @@ fn write_result(tx: &Connection, result: &protocol::IndexResponse, id: &str) -> 
             tx.execute("INSERT OR IGNORE INTO character_aliases(char_id,alias) VALUES (?,?)", params![r.0, r.1])?;
         }
     }
-    // 来源资产已丢的认领沿用抢救留下的原行（含来源和批次），明确移除了角色时才一起清掉。
-    tx.execute_batch(
-        "DELETE FROM labels WHERE dim='char_ext' AND
-         (EXISTS (SELECT 1 FROM assets a WHERE a.uuid=labels.uuid) OR
-          NOT EXISTS (SELECT 1 FROM characters c WHERE c.char_id=labels.value))",
+    // 有来源资产的认领按新结果重写。其余旧行只在结果保留同一认领时原样留下，保住来源和批次。
+    tx.execute(
+        "DELETE FROM labels WHERE dim='char_ext' AND EXISTS (SELECT 1 FROM assets a WHERE a.uuid=labels.uuid)",
+        [],
     )?;
-    let preserved = tx
-        .prepare("SELECT DISTINCT uuid FROM labels WHERE dim='char_ext'")?
-        .query_map([], |r| r.get::<_, String>(0))?
-        .collect::<rusqlite::Result<BTreeSet<_>>>()?;
+    let orphan_rows = tx
+        .prepare("SELECT uuid,value FROM labels WHERE dim='char_ext'")?
+        .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    let mut unclaimed: BTreeSet<_> =
+        orphan_rows.iter().map(|(uuid, entity)| (uuid.as_str(), entity.as_str())).collect();
     let label_cols = columns(tx, "labels")?;
     for r in &result.labels {
-        if preserved.contains(&r.0) {
+        if unclaimed.remove(&(r.0.as_str(), r.1.as_str())) {
             continue;
         }
         if ["source", "model_ver", "run_id"].iter().all(|k| label_cols.iter().any(|c| c == k)) {
@@ -1663,6 +1664,9 @@ fn write_result(tx: &Connection, result: &protocol::IndexResponse, id: &str) -> 
             continue;
         }
         tx.execute("INSERT INTO labels(uuid,dim,value,conf) VALUES (?,'char_ext',?,?)", params![r.0, r.1, r.2])?;
+    }
+    for (uuid, entity) in unclaimed {
+        tx.execute("DELETE FROM labels WHERE uuid=? AND dim='char_ext' AND value=?", params![uuid, entity])?;
     }
     Ok(())
 }

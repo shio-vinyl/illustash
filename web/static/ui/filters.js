@@ -106,7 +106,7 @@ export function wireFilterBar(r) {
   for (const b of bar.querySelectorAll('[data-drop]')) b.onclick = () => go(dropCondition(r, b.dataset.drop));
   bar.querySelector('[data-drop-dates]')?.addEventListener('click', () => go(setDates(r)));
   $('condButton').onclick = () => { const open = !popOpen($('condPopover')); setMenu(open); if (open) { userTags = null; $('condSearch').focus(); loadOptions(); } };
-  onTyped($('condSearch'), loadOptions, 120);
+  onTyped($('condSearch'), e => loadOptions(e.target), 120);
   // 焦点留在搜索框里：↑ ↓ 在选项之间循环，↵ 或点击加上这个条件，Esc 关菜单、焦点回到按钮（同标签菜单，#432）。
   nav = listNav($('condSearch'), $('condOptions'), {shown: () => popOpen($('condPopover')), count: () => options.length,
     pick: i => { if ($('condSearch').value.trim() === resultQuery) choose(options[i]); }});
@@ -163,8 +163,9 @@ async function candidates(q) {
     return counts[o.section] <= (limit[o.section] ?? Infinity);
   }).map(o => rank(o) < 2 ? {...o, section: 'best'} : o);
 }
-async function loadOptions() {
-  const input = $('condSearch'), q = input.value.trim();
+async function loadOptions(input = $('condSearch')) {
+  if (!input || input !== $('condSearch')) return;
+  const q = input.value.trim();
   let found; let failure;
   try { found = await candidates(q); } catch (e) { failure = e; }
   if (input !== $('condSearch') || q !== input.value.trim()) return;

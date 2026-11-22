@@ -290,21 +290,10 @@ p{color:var(--muted)}
 .icon{border-radius:var(--radius-8);color:var(--ink2)}
 .icon:hover,.quiet:hover{background:var(--soft)}
 button:active:not(:disabled){transform:scale(.97)}
-/* NSFW 三态标牌（类名 .r18 是早先的叫法） */
-.nsfw-toggle{height:var(--h-36);padding:0 var(--space-8);border:0;border-radius:var(--radius-pill);display:inline-flex;align-items:center;justify-content:center;background:var(--soft);color:var(--muted);transition:background .2s,color .2s}
-.nsfw-toggle:hover{background:rgba(var(--sh),.09);color:var(--ink2)}
-.r18{width:44px;height:20px;display:block;overflow:visible}
-.r18 .plate{fill:transparent;stroke:currentColor;stroke-width:1.5;transition:fill .25s,stroke .25s}
-.r18 text{font:800 9px/1 -apple-system,BlinkMacSystemFont,"SF Pro Text",sans-serif;letter-spacing:.3px;fill:currentColor;transition:fill .25s,fill-opacity .25s}
-.r18 .cut,.r18 .slash{fill:none;stroke-linecap:round;stroke-dasharray:36;stroke-dashoffset:36;transition:stroke-dashoffset .32s var(--ease)}
-.r18 .cut{stroke:var(--accent-soft);stroke-width:4.2}
-.r18 .slash{stroke:currentColor;stroke-width:1.7}
-.nsfw-toggle.s-hide{color:var(--accent-ink);background:var(--accent-soft)}
-.nsfw-toggle.s-hide .cut,.nsfw-toggle.s-hide .slash{stroke-dashoffset:0}
-.nsfw-toggle.s-hide text{fill-opacity:.55}
-.nsfw-toggle.s-only{color:var(--r18);background:var(--r18-soft)}
-.nsfw-toggle.s-only .plate{fill:var(--r18);stroke:var(--r18)}
-.nsfw-toggle.s-only text{fill:var(--r18-on)}
+/* NSFW 三态，和页头其余按钮共用圆形外框，字标分两行。 */
+.top-actions .nsfw-toggle>.r18{width:var(--h-28);height:var(--h-28);fill:currentColor;stroke:none;font-size:var(--fs-11);font-weight:var(--fw-750)}
+.top-actions .nsfw-toggle.s-hide{color:var(--accent-ink);background:var(--accent-soft);box-shadow:inset 0 0 0 1px var(--accent)}
+.top-actions .nsfw-toggle.s-only{color:var(--r18-on);background:var(--r18)}
 /* 工具栏控件 */
 .toolbar{padding-bottom:var(--space-14);gap:var(--space-8)}
 .search-wrap{border:0;background:var(--soft);border-radius:var(--radius-pill);height:var(--h-36);padding:0 var(--space-10) 0 var(--space-14);color:var(--muted)}

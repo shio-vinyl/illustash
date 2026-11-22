@@ -557,12 +557,11 @@ export async function favoriteSelection(payload) {
 
 // ---------- NSFW 筛选 ----------
 // 一次点击在 显示 → 隐藏 → 仅 NSFW 之间循环；H 切换隐藏。NSFW = WD 评级 questionable/explicit。
-// NSFW 标牌：空心 = 全部显示，划线 = 隐藏，实心 = 只看 NSFW。
+// NSFW 圆形按钮：中性色 = 全部显示，强调色描边 = 隐藏，实心警戒色 = 只看 NSFW。
 const NSFW_TIP = {'': t('NSFW：显示中 · 点击隐藏（H）'), hide: t('NSFW：已隐藏 · 点击只看 NSFW'), only: t('NSFW：只看 NSFW · 点击恢复全部')};
-const R18_ICON = '<svg class="r18" viewBox="0 0 44 20" aria-hidden="true"><rect class="plate" x="1.2" y="1.2" width="41.6" height="17.6" rx="5.5"/><text x="22" y="14.1" text-anchor="middle">NSFW</text><path class="cut" d="M6 17.5 38 2.5"/><path class="slash" d="M6 17.5 38 2.5"/></svg>';
 function renderNsfw() {
-  const b = $('nsfwButton'); if (!b.firstChild) b.innerHTML = R18_ICON;
-  b.className = 'nsfw-toggle s-' + (state.nsfw || 'all'); b.title = NSFW_TIP[state.nsfw]; b.setAttribute('aria-label', NSFW_TIP[state.nsfw]);
+  const b = $('nsfwButton');
+  b.className = 'icon nsfw-toggle s-' + (state.nsfw || 'all'); b.title = NSFW_TIP[state.nsfw]; b.setAttribute('aria-label', NSFW_TIP[state.nsfw]);
 }
 export function setNsfw(mode) {
   state.nsfw = mode; prefs.set('nsfw', mode); reRoute({}); renderNsfw(); quitSelecting();   // 新路由对象：切换前发出的读取晚回来不画

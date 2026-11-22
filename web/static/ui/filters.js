@@ -108,8 +108,13 @@ export function wireFilterBar(r) {
   $('condButton').onclick = () => { const open = !popOpen($('condPopover')); setMenu(open); if (open) { userTags = null; $('condSearch').focus(); loadOptions(); } };
   onTyped($('condSearch'), e => loadOptions(e.target), 120);
   // 焦点留在搜索框里：↑ ↓ 在选项之间循环，↵ 或点击加上这个条件，Esc 关菜单、焦点回到按钮（同标签菜单，#432）。
-  nav = listNav($('condSearch'), $('condOptions'), {shown: () => popOpen($('condPopover')), count: () => options.length,
-    pick: i => { if ($('condSearch').value.trim() === resultQuery) choose(options[i]); }});
+  // 点选的是屏幕上那份结果。回车时结果还没跟上输入（输入后 120 ms 防抖），等这次输入的结果回来再选第一项。
+  const search = $('condSearch'), stale = () => search.value.trim() !== resultQuery;
+  nav = listNav(search, $('condOptions'), {shown: () => popOpen($('condPopover')), count: () => options.length || Number(stale()),
+    pick: (i, e) => {
+      if (e?.type === 'click' || !stale()) { choose(options[i]); return; }
+      loadOptions(search).then(() => { if (search === $('condSearch') && popOpen($('condPopover')) && !stale()) choose(options[0]); });
+    }});
 }
 // 选择器是非模态浮层，Esc、点外关闭由浮层管理器处理；元素随工具栏重画换掉，所以按 id 找。
 const layer = createLayer({kind: 'popover', id: 'condition-menu', el: () => $('condPopover'), anchor: () => $('condButton'), focusIn: 'first', onDismiss: reason => setMenu(false, reason)});

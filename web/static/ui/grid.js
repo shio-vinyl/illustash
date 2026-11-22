@@ -664,10 +664,10 @@ export function wireGrid() {
     const back = isMac ? e.metaKey && !e.altKey && (e.key === '[' || e.key === ']') : e.altKey && !mod && (e.key === 'ArrowLeft' || e.key === 'ArrowRight');
     if (back) { e.preventDefault(); stepHistory(e.key === '[' || e.key === 'ArrowLeft' ? -1 : 1); return; }
     // 活页条（#706）：⌘1–4 切一级，⌥↑↓ 在二级里移动，⌥⇧↑↓ 挪动钉住的项。
-    if (railKey(e) || $('viewport').inert) return;
-    // ⌘＋／⌘－：大图打开时缩放大图；否则只在有网格的页面改网格列数，别的页面什么也不做（也不交给浏览器缩放）。
-    if (mod && (key === '=' || key === '+' || key === '-')) {
-      e.preventDefault(); const bigger = key !== '-';
+    if (railKey(e)) return;
+    // ⌘＋／⌘－：大图打开时缩放大图；否则只在有网格的页面改网格列数，别的页面和换页读取中什么也不做（也不交给浏览器缩放）。
+    const zoom = mod && (key === '=' || key === '+' || key === '-'), frozen = $('viewport').inert; if (zoom || frozen) {
+      if (zoom) e.preventDefault(); if (frozen) return; const bigger = key !== '-';
       if (m.viewer) zoomView(bigger ? 1.4 : 1 / 1.4, innerWidth / 2, innerHeight / 2);
       else if (onGrid()) stepColumns(bigger ? -1 : 1);
       return;

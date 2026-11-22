@@ -48,15 +48,26 @@ function beginRouteLoad() {
       loading.thaw();
       if (routeLoad !== loading) return;
       routeLoad = null;
-      if (!continuing) text(status, '');
+      if (!continuing) show(status, false);
     },
   };
-  // 快切不闪提示，仍在读取时再切换则沿用已经显示的提示。
-  const timer = currentPage() ? setTimeout(() => text(status, t('正在读取…')), 300) : null;
+  // 快切不闪提示，仍在读取时再切换则沿用已经显示的提示。提示浮在页面上，不占版面、不推动浏览区；
+  // 正在显示的操作提示（撤销等）优先，同一位置不叠两个。
+  const timer = currentPage() ? setTimeout(() => {
+    if (!$('toast').hidden) return;
+    text(status, t('正在读取…')); show(status, true);
+  }, 300) : null;
   routeLoad = loading;
   return loading;
 }
+// 读角色失败后退回的地址：到达时页面一直停在那里，只登记历史，不重画。
+let returning = null;
 export async function applyRoute() {
+  if (returning !== null) {
+    const back = returning, here = parseHash(); returning = null;
+    here.sort = here.sort || defaultSort(here); delete here.legacy;
+    if (hashFor(here) === back) { noteHistory(); $('backButton').hidden = !canGoBack(); return; }
+  }
   const loading = beginRouteLoad();
   let view;
   try { view = await switchRoute(loading); }
@@ -84,7 +95,10 @@ async function switchRoute(loading) {
     try { character = await fetchChar(route.char); }
     catch (e) {
       if (routeLoad === loading && state.route === previous) {
-        noteHistory(hashFor(previous)); viewEntry = entry; error(readError(e));
+        error(readError(e));
+        // 页面停在原来那页。刚点出的新历史退回去，免得后退时多按一次；前进、后退到的那条（或启动时的第一条）就地改回原地址。
+        if (!traversed && canGoBack()) { returning = hashFor(previous); history.back(); }
+        else { noteHistory(hashFor(previous)); viewEntry = entry; }
       }
       return;
     }

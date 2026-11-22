@@ -19,9 +19,9 @@ English · [简体中文](README.zh-CN.md)
 
 </div>
 
-![Catalog: series and characters, organized](docs/assets/readme/en/library.jpg)
+![Catalog character shelf sorted by the number of pictures in the collection](docs/assets/readme/zh/library.jpg)
 
-<sub>Screenshots come from a demo library picked for this purpose. The illustrations belong to their original artists; to request removal, please <a href="https://github.com/shio-vinyl/illustash/issues">open an issue</a>.</sub>
+<sub>Screenshots show the Chinese interface and come from a demo library picked for this purpose. The illustrations belong to their original artists; to request removal, please <a href="https://github.com/shio-vinyl/illustash/issues">open an issue</a>.</sub>
 
 Illustash reads illustrations saved from X and Pixiv in macOS Photos and local folders, recognizes characters and picture content on your computer, and builds a catalog by series, character, and form. Results can be corrected by hand, and later recognition takes the corrections into account. Through its Pixiv and X integration, Illustash finds artists and original posts without uploading pictures. Unlike asset managers such as Eagle, it does not require setting up categories or tagging pictures by hand.
 
@@ -44,15 +44,15 @@ Recognition and sorting are done by the machine. You only confirm or correct res
 - Unidentified characters and original characters are grouped automatically by look, hair color, eye color, animal ears, and similar traits; once the character is known, the whole group can be assigned at once.
 - Pending-work counts are hidden by default, and the library can be used before everything is sorted.
 
-![Character page and details panel: confirm or correct a character](docs/assets/readme/en/character.jpg)
+![Character page with a detail card for confirming or correcting a character](docs/assets/readme/zh/character.jpg)
 
-![Unidentified › By group: unidentified characters grouped by look](docs/assets/readme/en/groups.jpg)
+![Organize › Unidentified › By group shows unidentified characters grouped by appearance](docs/assets/readme/zh/groups.jpg)
+
+![Organize › Possibly wrong asks which of two characters appears in a picture](docs/assets/readme/zh/doubts.jpg)
 
 **Picture content**: About 8,100 picture tags are recognized, about 7,700 of them with Chinese names; R18 ratings are detected; photos, screenshots, chat logs, text-only images, and other non-illustrations are excluded automatically. Custom tags can be added as well.
 
 **Duplicates and variants**: Pictures are compared pixel by pixel on your computer to find re-saves, crops, versions with added or removed text, censored versions, and variants, which are then grouped together. Duplicates fold by default, and changing the character of any picture in a group updates the whole group. “Compare” marks the areas where two pictures differ.
-
-![Compare: marking where two pictures differ](docs/assets/readme/en/compare.jpg)
 
 **Planned**: flagging illustrations that appear to be AI-generated ([#184](https://github.com/shio-vinyl/illustash/issues/184)).
 
@@ -81,7 +81,13 @@ All of these run only when you trigger them, with request volumes similar to nor
 
 **Browse**: The Catalog has series, character, and artist directories. Pictures can be added to favorites, and “More like this” finds similar pictures by picture or by character, starting from one or more pictures.
 
+![Library › By day shows the pictures added each day and the characters in them](docs/assets/readme/zh/days.jpg)
+
+![Series page with a banner, character posters, and recently added pictures](docs/assets/readme/zh/work.jpg)
+
 **Filter**: The filter bar combines characters, series, artists, picture tags, custom tags, origin, year, date range, and favorites, and each condition can be set to include or exclude. Picture tags can be searched in Chinese, Japanese, or English. Frequently used filters can be saved as galleries, which appear in the sidebar. R18 content can be hidden or shown on its own.
+
+![Magazine, one of five ways to display a gallery](docs/assets/readme/zh/gallery.jpg)
 
 **Use**: Pictures can be opened, shown in Finder or File Explorer, dragged into other apps, or exported as copies into folders by character or artist. Exports never overwrite existing files and never modify the originals.
 

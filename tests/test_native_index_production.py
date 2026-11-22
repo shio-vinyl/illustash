@@ -378,13 +378,15 @@ class InstalledIndexAppTest(CandidateIndexAdapter, unittest.TestCase):
             source.execute("DELETE FROM assets WHERE uuid='b'")
             source.execute("DELETE FROM labels WHERE uuid='b' AND dim='char_ext'")
             source.execute("DROP TABLE embeddings")
+            # 旧 B 与清单 b 大小写不同，且 B 没有扫描输入，因此撤下其认领。
+            source.execute("INSERT INTO labels(uuid,dim,value,conf) VALUES ('B','char_ext','alice',0.42)")
         (self.features/'full-manifest.csv').write_text('uuid\na\n b \nc\n')
         self.check(); self.seed_reference()
         self.index({'action': 'apply', 'tags': ['carol_example']})
         result = self.finish()
         self.assertEqual(result['state']['status'], 'done', result['state'])
         with contextlib.closing(sqlite3.connect(self.lib.source)) as source, source:
-            self.assertIsNone(source.execute("SELECT 1 FROM labels WHERE uuid='b' AND dim='char_ext'").fetchone())
+            self.assertIsNone(source.execute("SELECT 1 FROM labels WHERE uuid IN ('b','B') AND dim='char_ext'").fetchone())
             self.assertIsNotNone(source.execute("SELECT 1 FROM labels WHERE uuid='c' AND dim='char_ext' AND value='carol_example'").fetchone())
         self.assertEqual(snapshot(self.lib.db)['actions'], self.human)
         self.assertEqual(snapshot(self.lib.db)['assertions'], self.human_assertions)

@@ -104,11 +104,7 @@ pub(super) fn scan(
     while let Some(row) = rows.next()? {
         let uuid: String = row.get(0)?;
         let entity: String = row.get(1)?;
-        if !missing_assets.contains(&uuid) && !have.contains(&uuid.trim().to_uppercase()) {
-            continue;
-        }
-        missing_assets.insert(uuid.clone());
-        if known.contains(entity.as_str()) {
+        if missing_assets.contains(&uuid) && known.contains(entity.as_str()) {
             preserved.push((uuid, entity, row.get(2)?));
         }
     }

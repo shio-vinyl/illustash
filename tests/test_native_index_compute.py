@@ -156,33 +156,61 @@ class NativeIndexComputeTest(unittest.TestCase):
         references = numeric_reference_mode.references(self)
         from tests import numpy_index_reference as reference
         with tempfile.TemporaryDirectory() as tmp:
-            root=Path(tmp);old=root/'old';new=root/'new';tags,centres,edges=self.prepare_large(old)
-            shutil.copytree(old,new)
-            expected=[]
+            root = Path(tmp)
+            old = root/'old'
+            _, _, edges = self.prepare_large(old)
+            with (old/'full-manifest.csv').open(newline='') as manifest:
+                manifest_ids = [row['uuid'].strip() for row in csv.DictReader(manifest)]
+            self.assertEqual((len(manifest_ids), len(set(manifest_ids))), (129, 129))
+            with contextlib.closing(sqlite3.connect(old/'pi.db')) as db:
+                source_ids = {uuid for (uuid,) in db.execute('SELECT uuid FROM assets')}
+                old_claims = {uuid for (uuid,) in db.execute("SELECT uuid FROM labels WHERE dim='char_ext'")}
+            self.assertTrue(source_ids.isdisjoint(manifest_ids))
+            self.assertTrue(old_claims.isdisjoint(manifest_ids))
+
+            def request_for(folder):
+                path = folder/'request.json'
+                path.write_text(json.dumps(dict(format='illustash-index/1', identity={'task_id': 'large'}, before='fixed',
+                                                action='apply', rows=[], review=str(folder), reason=None)))
+                return path
+
+            expected = []
             for kind in references:
-                folder=root/kind;shutil.copytree(old,folder)
-                request=dict(format='illustash-index/1',identity={'task_id':'large'},before='fixed',
-                             action='apply',rows=[],review=str(folder),reason=None)
-                (folder/'request.json').write_text(json.dumps(request))
-                result=(reference.cached_apply(folder,folder/'tags.csv',folder/'request.json') if kind=='numpy'
-                        else self.legacy(folder,folder/'tags.csv',folder/'request.json'))
-                expected.append((kind,folder,result))
-            request.update(review=str(new))
-            (new/'request.json').write_text(json.dumps(request))
-            proc=subprocess.run([str(self.binary),str(new/'request.json'),str(new/'response.json')],
-                                env=os.environ|{'PATH':'','ILLUSTASH_INDEX_TAGS':str(new/'tags.csv')},capture_output=True)
-            self.assertEqual(proc.returncode,0,proc.stderr.decode())
-            actual=json.loads((new/'response.json').read_text())
-            for kind,folder,result in expected:
-                with numeric_reference_mode.comparing(self,kind):
-                    boundary=reference.boundary_edges(folder,edges) if kind=='numpy' else edges
-                    labels={(u,c)for u,c,_ in result['labels']}
-                    for i,parent,within in boundary:
-                        self.assertIn((f'asset{i}',f'large{parent if within else i:03}'),labels)
-                    self.assertEqual(actual['characters'],result['characters'])
-                    self.assertEqual(sorted(actual['aliases']),sorted(result['aliases']))
-                    self.assertEqual(sorted(actual['labels']),sorted(result['labels']))
-                    checks.assert_index_files(self,new,folder)
+                folder = root/kind
+                shutil.copytree(old, folder)
+                request = request_for(folder)
+                result = (reference.cached_apply(folder, folder/'tags.csv', request) if kind == 'numpy'
+                          else self.legacy(folder, folder/'tags.csv', request))
+                expected.append((kind, folder, result))
+
+            candidates = []
+            # 原源表下只检查扫描诊断；登记相同清单后精确比较可发布的全部认领。
+            for name in ('orphan', 'registered'):
+                folder = root/name
+                shutil.copytree(old, folder)
+                if name == 'registered':
+                    with contextlib.closing(sqlite3.connect(folder/'pi.db')) as db, db:
+                        db.executemany('INSERT INTO assets(uuid) VALUES (?)', ((uuid,) for uuid in manifest_ids))
+                request = request_for(folder)
+                response = folder/'response.json'
+                proc = subprocess.run([str(self.binary), str(request), str(response)], capture_output=True,
+                                      env=os.environ | {'PATH': '', 'ILLUSTASH_INDEX_TAGS': str(folder/'tags.csv')})
+                self.assertEqual(proc.returncode, 0, proc.stderr.decode())
+                candidates.append((name, folder, json.loads(response.read_text())))
+
+            for kind, folder, result in expected:
+                with numeric_reference_mode.comparing(self, kind):
+                    boundary = reference.boundary_edges(folder, edges) if kind == 'numpy' else edges
+                    labels = {(u, c) for u, c, _ in result['labels']}
+                    self.assertEqual({u for u, _ in labels}, set(manifest_ids))
+                    for i, parent, within in boundary:
+                        self.assertIn((f'asset{i}', f'large{parent if within else i:03}'), labels)
+                    for name, candidate, actual in candidates:
+                        self.assertEqual(actual['characters'], result['characters'], name)
+                        self.assertEqual(sorted(actual['aliases']), sorted(result['aliases']), name)
+                        claims = result['labels'] if name == 'registered' else []
+                        self.assertEqual(sorted(actual['labels']), sorted(claims), name)
+                        checks.assert_index_files(self, candidate, folder)
 
     def test_recognition_snapshot_alias_and_claims_on_large_boundary(self):
         references = numeric_reference_mode.references(self)

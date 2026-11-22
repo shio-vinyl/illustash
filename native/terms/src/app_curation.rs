@@ -70,7 +70,7 @@ pub(crate) fn refresh_excluded(c: &Connection, ids: &[String]) -> Result<()> {
     }
     c.execute("DELETE FROM excluded WHERE uuid IN (SELECT uuid FROM touched)", [])?;
     c.execute("INSERT INTO excluded SELECT a.uuid,coalesce(r.reason,'manual'),CASE WHEN k.status='excluded' THEN 'review' ELSE 'rule' END FROM assets a LEFT JOIN curation k ON k.uuid=a.uuid LEFT JOIN auto_rules r ON r.uuid=a.uuid AND r.kind='exclude' WHERE (k.status='excluded' OR (r.uuid IS NOT NULL AND k.uuid IS NULL)) AND a.uuid IN (SELECT uuid FROM touched)", [])?;
-    Ok(())
+    crate::character_projection::fold_touched(c)
 }
 
 pub(crate) fn fold(c: &mut Connection, context: &LibraryContext, body: &Json) -> Result<Json> {
@@ -105,19 +105,21 @@ pub(crate) fn fold(c: &mut Connection, context: &LibraryContext, body: &Json) ->
     Ok(Json::object([("kinds", Json::Array(kinds.into_iter().map(Json::from).collect()))]))
 }
 
+const FOLD_PROJECTION: &str = "3";
+
 /// 开库、发布会话前按新规则刷新曾存下的折叠结果。版本标记与派生表一起提交。
 pub(crate) fn refresh_fold_on_open(library: &crate::app_library::Library) -> Result<()> {
     const NEEDS_REFRESH: &str = "SELECT EXISTS(SELECT 1 FROM duplicates)
-            AND NOT EXISTS(SELECT 1 FROM meta WHERE key='fold_projection' AND value='2')";
-    if library.frozen()
-        || !crate::app_library::read_connection(&library.db())?.query_row(NEEDS_REFRESH, [], |r| r.get::<_, bool>(0))?
-    {
+            AND NOT EXISTS(SELECT 1 FROM meta WHERE key='fold_projection' AND value=?)";
+    let needs_refresh =
+        |c: &Connection| -> Result<bool> { Ok(c.query_row(NEEDS_REFRESH, [FOLD_PROJECTION], |r| r.get(0))?) };
+    if library.frozen() || !needs_refresh(&crate::app_library::read_connection(&library.db())?)? {
         return Ok(());
     }
     let mut c = crate::sqlite::open_with_flags(library.db(), OpenFlags::SQLITE_OPEN_READ_WRITE)?;
     crate::configure(&c)?;
     let tx = c.transaction_with_behavior(TransactionBehavior::Immediate)?;
-    if tx.query_row(NEEDS_REFRESH, [], |r| r.get::<_, bool>(0))? {
+    if needs_refresh(&tx)? {
         rebuild_fold(&tx)?;
     }
     tx.commit()?;
@@ -127,7 +129,7 @@ pub(crate) fn refresh_fold_on_open(library: &crate::app_library::Library) -> Res
 /// 写入既有事务；首次打开和改设置都发布同一版本的派生状态。
 fn rebuild_fold(c: &Connection) -> Result<()> {
     crate::character_projection::fold(c)?;
-    c.execute("INSERT OR REPLACE INTO meta VALUES ('fold_projection','2')", [])?;
+    c.execute("INSERT OR REPLACE INTO meta VALUES ('fold_projection',?)", [FOLD_PROJECTION])?;
     Ok(())
 }
 
@@ -426,7 +428,7 @@ mod tests {
         );
         assert_eq!(
             c.query_row("SELECT value FROM meta WHERE key='fold_projection'", [], |r| r.get::<_, String>(0)).unwrap(),
-            "2"
+            FOLD_PROJECTION
         );
         // 用触发器确认再开时无需重写持久标记。重复打开应继续得到同样的代表图。
         c.execute_batch(
@@ -437,6 +439,90 @@ mod tests {
         drop((opened, owner));
         let _reopened = crate::app_service::open_owned(&package, None, None).unwrap();
         assert_eq!(claims(), before);
+    }
+
+    #[test]
+    fn mixed_exclusion_keeps_both_pages_visible_after_reopen_curation_undo_and_rules() {
+        let f = Fixture::new(false);
+        let package = f.root.join("mixed-fold.pilib");
+        crate::app_create::create_folder(&package, &f.root, None, None, None).unwrap();
+        let library = crate::app_library::Library::open(&package).unwrap();
+        let mut c = crate::sqlite::open(library.db()).unwrap();
+        let tx = c.transaction().unwrap();
+        crate::schema::begin_writing(&tx).unwrap();
+        crate::character_commands::command(&tx, &json!({"op":"create_entity","id":"a","name":"合成角色","lang":"zh"}))
+            .unwrap();
+        tx.execute_batch(
+            "INSERT INTO assets(uuid,filename,src_path,src_kind,added_at,width,height) VALUES
+                 ('manual','manual.png','manual.png','orig','2026-10-01',10,10),
+                 ('large','large.png','large.png','orig','2026-10-02',20,20);
+             INSERT INTO duplicates(uuid,grp,size,pos,grp_added,rep,hidden) VALUES
+                 ('manual','same',2,1,'2026-10-02',1,0), ('large','same',2,2,'2026-10-02',0,1);
+             INSERT INTO assertions VALUES ('manual','a','confirmed','review');
+             INSERT INTO auto_rules VALUES ('manual','exclude','photo');
+             INSERT INTO excluded VALUES ('manual','photo','rule');
+             INSERT INTO meta VALUES ('fold_projection','2');",
+        )
+        .unwrap();
+        crate::schema::commit_writing(tx).unwrap();
+        let (_library, _owner) = crate::app_service::open_owned(&package, None, None).unwrap();
+        let context = LibraryContext {
+            db: library.db(),
+            library: Some(package),
+            source: Some(library.source()),
+            tags: f.context.tags.clone(),
+            generation: "synthetic".into(),
+            token: None,
+            read_only: None,
+            examples: None,
+        };
+        let check = |c: &Connection, included: &[&str], excluded: &[&str]| {
+            for (query, expected) in
+                [(HashMap::new(), included), (HashMap::from([("pool".into(), "excluded".into())]), excluded)]
+            {
+                let (where_, args, _) = crate::http_browse::selection(c, &context, &query).unwrap();
+                let ids: Vec<String> = c
+                    .prepare(&format!("SELECT a.uuid FROM assets a WHERE {where_} ORDER BY a.uuid"))
+                    .unwrap()
+                    .query_map(params_from_iter(&args), |r| r.get(0))
+                    .unwrap()
+                    .collect::<rusqlite::Result<_>>()
+                    .unwrap();
+                assert_eq!(ids.iter().map(String::as_str).collect::<Vec<_>>(), expected);
+            }
+            assert_eq!(
+                c.query_row("SELECT uuid||':'||entity||':'||status||':'||origin FROM assertions", [], |r| r
+                    .get::<_, String>(0))
+                    .unwrap(),
+                "manual:a:confirmed:review"
+            );
+            assert_eq!(c.query_row("SELECT count(*) FROM assertions", [], |r| r.get::<_, i64>(0)).unwrap(), 1);
+        };
+        let post = |path: &str, body: Value| {
+            crate::app_commands::request(&context, path, &Fixture::body(&body.to_string())).unwrap()
+        };
+        check(&c, &["large"], &["manual"]);
+        let step =
+            post("/api/curate", json!({"ids":["manual"],"action":"include"})).field("undo").field("id").integer();
+        check(&c, &["manual"], &[]);
+        post("/api/undo", json!({"id":step}));
+        check(&c, &["large"], &["manual"]);
+        let step = post("/api/curate", json!({"ids":["large"],"action":"exclude"})).field("undo").field("id").integer();
+        check(&c, &[], &["manual"]);
+        post("/api/undo", json!({"id":step}));
+        check(&c, &["large"], &["manual"]);
+        for (realistic, excluded) in [(&[][..], &[][..]), (&["large"][..], &["large"][..])] {
+            let tx = c.transaction().unwrap();
+            crate::schema::begin_writing(&tx).unwrap();
+            crate::character_commands::command(
+                &tx,
+                &json!({"op":"rederive","realistic":realistic,
+                "rating_indexed":"synthetic","general_indexed":"synthetic"}),
+            )
+            .unwrap();
+            crate::schema::commit_writing(tx).unwrap();
+            check(&c, &["manual"], excluded);
+        }
     }
 
     #[test]

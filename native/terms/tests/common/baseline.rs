@@ -209,7 +209,7 @@ static ADDITIONS: LazyLock<Additions> = LazyLock::new(|| {
     additions
 });
 
-/// 只从录制的分组、图片大小和人工结论推算 #836 的两列派生结果。
+/// 只从录制的分组、图片大小、人工结论和排除状态推算 #836 的两列派生结果。
 pub fn current_fold(state: &State) -> Option<Table> {
     let duplicates = state.get("duplicates")?;
     if duplicates.rows.is_empty() {
@@ -223,6 +223,10 @@ pub fn current_fold(state: &State) -> Option<Table> {
         let names: &[&str] = names;
         names.iter().map(|name| table.columns.iter().position(|c| c == *name).unwrap()).collect::<Vec<_>>()
     };
+    let excluded = state.get("excluded").map_or_else(BTreeSet::new, |excluded| {
+        let idx = columns(excluded, &["uuid"])[0];
+        rows(excluded).into_iter().map(|row| row[idx].as_str().unwrap().to_owned()).collect()
+    });
     let asset = columns(assets, &["uuid", "width", "height"]);
     let size = rows(assets)
         .into_iter()
@@ -263,11 +267,12 @@ pub fn current_fold(state: &State) -> Option<Table> {
             })
             .unwrap();
         let id = uuid(best);
-        let complete = all_decisions(&id).len() == all.len();
+        let foldable = all_decisions(&id).len() == all.len()
+            && group.iter().all(|row| excluded.contains(&uuid(row)) == excluded.contains(&id));
         for mut row in group {
             let rep = uuid(&row) == id;
             row[cols[3]] = Value::from(i64::from(rep));
-            row[cols[4]] = Value::from(i64::from(complete && !rep));
+            row[cols[4]] = Value::from(i64::from(foldable && !rep));
             *expected.rows.entry(serde_json::to_string(&row).unwrap()).or_default() += 1;
         }
     }

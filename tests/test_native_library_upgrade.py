@@ -505,7 +505,7 @@ class NativeLibraryUpgradeTest(unittest.TestCase):
         with closing(sqlite3.connect(lib.db)) as c:
             self.assertEqual(c.execute("SELECT value FROM meta WHERE key='terms_schema'").fetchone()[0],
                              str(TERMS_VERSION))
-            self.assertEqual(c.execute("SELECT value FROM meta WHERE key='fold_projection'").fetchone(), ('2',))
+            self.assertEqual(c.execute("SELECT value FROM meta WHERE key='fold_projection'").fetchone(), ('3',))
             self.assertEqual(c.execute('SELECT uuid,rep,hidden FROM duplicates ORDER BY pos').fetchall(),
                              [('manual', 1, 0), ('large', 0, 1)])
             self.assertEqual(c.execute('SELECT * FROM assertions').fetchall(), decisions)

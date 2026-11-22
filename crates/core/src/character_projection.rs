@@ -197,10 +197,21 @@ pub fn single(c: &Connection, uuids: Option<&[String]>) -> Result<()> {
 }
 
 pub fn memberships(c: &Connection, uuids: Option<&[String]>) -> Result<()> {
+    memberships_before_excluded(c, uuids)?;
+    if uuids.is_some() {
+        fold_touched(c)
+    } else {
+        fold(c)
+    }
+}
+/// 归属已更新，调用方接下来会重算排除，再刷新折叠。
+pub(crate) fn memberships_before_excluded(c: &Connection, uuids: Option<&[String]>) -> Result<()> {
     memberships_in(c, uuids, true)
 }
 pub fn legacy_memberships(c: &Connection) -> Result<()> {
-    memberships_in(c, None, false)
+    memberships_in(c, None, false)?;
+    c.execute(FOLD_LEGACY, [])?;
+    Ok(())
 }
 fn memberships_in(c: &Connection, uuids: Option<&[String]>, core: bool) -> Result<()> {
     touch(c, uuids)?;
@@ -254,16 +265,6 @@ fn memberships_in(c: &Connection, uuids: Option<&[String]>, core: bool) -> Resul
     if core {
         crate::character_extension::fill_unassigned(c, uuids.is_some())?;
         c.execute_batch("DELETE FROM previous_extension_sources;")?;
-    }
-    if core {
-        if uuids.is_some() {
-            let scope = "WHERE d.grp IN (SELECT grp FROM duplicates WHERE uuid IN (SELECT uuid FROM touched))";
-            c.execute(&scoped(FOLD, "/* group scope */", scope)?, [])?;
-        } else {
-            fold(c)?;
-        }
-    } else {
-        c.execute(FOLD_LEGACY, [])?;
     }
     if core {
         mirror(c, uuids.is_some())
@@ -357,6 +358,13 @@ pub fn fold(c: &Connection) -> Result<()> {
     Ok(())
 }
 
+/// 在同一事务里刷新临时表 `touched` 中图片所属的全部副本组。
+pub fn fold_touched(c: &Connection) -> Result<()> {
+    let scope = "WHERE d.grp IN (SELECT grp FROM duplicates WHERE uuid IN (SELECT uuid FROM touched))";
+    c.execute(&scoped(FOLD, "/* group scope */", scope)?, [])?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -368,6 +376,7 @@ mod tests {
             "CREATE TABLE assets(uuid TEXT PRIMARY KEY,width INTEGER,height INTEGER);
              CREATE TABLE assertions(uuid TEXT,entity TEXT,status TEXT,origin TEXT,PRIMARY KEY(uuid,entity));
              CREATE TABLE memberships(uuid TEXT,entity TEXT);
+             CREATE TABLE excluded(uuid TEXT PRIMARY KEY);
              CREATE TABLE duplicates(uuid TEXT PRIMARY KEY,grp TEXT,pos INTEGER,rep INTEGER,hidden INTEGER);
              INSERT INTO duplicates VALUES
                 ('same-small','same',1,0,0),('same-large','same',2,1,0),

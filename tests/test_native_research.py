@@ -98,6 +98,7 @@ note('正常结束')
         with sqlite3.connect(self.lib.db) as c:
             self.fold_assets = c.execute('SELECT uuid,width,height FROM assets').fetchall()
             self.fold_assertions = c.execute('SELECT uuid,entity,status FROM assertions').fetchall()
+            self.fold_excluded = {row[0] for row in c.execute('SELECT uuid FROM excluded')}
         self.alice=self.rec.value('alice')
         pixels=np.random.default_rng(1).integers(0,255,(150,120,3),dtype=np.uint8)
         for u in list('abc')+[('seed'+str(i)) if i<6 else 'unmatched'+str(i) for i in range(9)]: Image.fromarray(pixels).save(self.lib.path/(u+'.png'))
@@ -155,7 +156,7 @@ note('正常结束')
         projection = {
             uuid: (rep, hidden)
             for uuid, rep, hidden in expected_folds(
-                self.fold_assets, self.fold_assertions, ((r[0], r[1], r[3]) for r in duplicates))
+                self.fold_assets, self.fold_assertions, ((r[0], r[1], r[3]) for r in duplicates), self.fold_excluded)
         }
         expected['duplicates'] = [(*r[:5], *projection[r[0]]) for r in duplicates]
         self.assertEqual(masked(native), masked(expected))

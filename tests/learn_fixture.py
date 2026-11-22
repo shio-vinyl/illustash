@@ -19,7 +19,8 @@ def assert_memberships_current(test, store):
     with store.connect() as c:
         expected = expected_folds(c.execute('SELECT uuid,width,height FROM assets'),
                                   c.execute('SELECT uuid,entity,status FROM assertions'),
-                                  c.execute('SELECT uuid,grp,pos FROM duplicates'))
+                                  c.execute('SELECT uuid,grp,pos FROM duplicates'),
+                                  (row[0] for row in c.execute('SELECT uuid FROM excluded')))
         actual = c.execute('SELECT uuid,rep,hidden FROM duplicates')
         test.assertEqual(sorted(map(tuple, actual)), sorted(expected))
     with store.connect() as c:

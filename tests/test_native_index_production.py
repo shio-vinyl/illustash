@@ -362,6 +362,7 @@ class InstalledIndexAppTest(CandidateIndexAdapter, unittest.TestCase):
         # 显式移除角色时清掉该角色的旧孤立认领，保留同图上仍有效的原行。
         with contextlib.closing(sqlite3.connect(self.lib.source)) as source, source:
             source.execute("INSERT INTO labels(uuid,dim,value,conf) VALUES ('b','char_ext','carol_example',0.25)")
+            source.execute("DELETE FROM embeddings WHERE uuid='b'")  # 其余特征仍在独立的扫描清单里。
         self.index({'action': 'drop', 'char': 'carol_example', 'reason': '合成撤回'})
         result = self.finish()
         self.assertEqual(result['state']['status'], 'done', result['state'])
@@ -370,6 +371,24 @@ class InstalledIndexAppTest(CandidateIndexAdapter, unittest.TestCase):
             self.assertEqual(rows, [old])
         self.assertEqual(snapshot(self.lib.db)['actions'], self.human)
         self.assertEqual(snapshot(self.lib.db)['assertions'], self.human_assertions)
+
+    def test_manifest_only_orphan_without_claim_does_not_block_valid_assets(self):
+        # 旧图库的向量可只存在于清单。抢救没有找回 b 的来源资产或认领，c 仍应正常更新。
+        with contextlib.closing(sqlite3.connect(self.lib.source)) as source, source:
+            source.execute("DELETE FROM assets WHERE uuid='b'")
+            source.execute("DELETE FROM labels WHERE uuid='b' AND dim='char_ext'")
+            source.execute("DROP TABLE embeddings")
+        (self.features/'full-manifest.csv').write_text('uuid\na\n b \nc\n')
+        self.check(); self.seed_reference()
+        self.index({'action': 'apply', 'tags': ['carol_example']})
+        result = self.finish()
+        self.assertEqual(result['state']['status'], 'done', result['state'])
+        with contextlib.closing(sqlite3.connect(self.lib.source)) as source, source:
+            self.assertIsNone(source.execute("SELECT 1 FROM labels WHERE uuid='b' AND dim='char_ext'").fetchone())
+            self.assertIsNotNone(source.execute("SELECT 1 FROM labels WHERE uuid='c' AND dim='char_ext' AND value='carol_example'").fetchone())
+        self.assertEqual(snapshot(self.lib.db)['actions'], self.human)
+        self.assertEqual(snapshot(self.lib.db)['assertions'], self.human_assertions)
+        self.assertFalse((self.lib.path/'index-job.json').exists())
 
     def test_source_failure_rollback_retry_with_actual_adapter(self):
         self.check(); self.seed_reference(); expected = self.expected()

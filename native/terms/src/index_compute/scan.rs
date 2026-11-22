@@ -1,6 +1,27 @@
 use super::*;
 use crate::recognition_compute::anchors::{self, Metadata};
+use rusqlite::Connection;
 use std::collections::{HashMap, HashSet};
+
+/// 老清单可独立于 embeddings 表存在。以扫描输出使用的 UUID 查来源资产，分批避免构造整份 JSON。
+fn missing_from_manifest(db: &Connection, assets: &[String]) -> Result<HashSet<String>> {
+    let mut missing = HashSet::new();
+    if assets.is_empty() {
+        return Ok(missing);
+    }
+    let mut stmt = db.prepare(
+        "SELECT j.value FROM json_each(?) j LEFT JOIN assets a ON a.uuid=j.value COLLATE BINARY WHERE a.uuid IS NULL",
+    )?;
+    for batch in assets.chunks(4096) {
+        let ids: Vec<_> = batch.iter().map(|id| id.trim()).collect();
+        let encoded = serde_json::to_string(&ids).map_err(|e| Error::invalid(e.to_string()))?;
+        for uuid in stmt.query_map([encoded], |r| r.get(0))? {
+            missing.insert(uuid?);
+        }
+    }
+    Ok(missing)
+}
+
 pub(super) fn scan(
     review: &Path,
     characters: &[Value],
@@ -40,7 +61,7 @@ pub(super) fn scan(
             r.get(0)
         })?;
     // 抢救后仍认识的旧图可能缺来源资产行。保持原矩阵形状，单独决定哪些认领可以发布。
-    let mut missing_assets = HashSet::new();
+    let mut missing_assets = missing_from_manifest(&db, &assets)?;
     if exists {
         let mut stmt = db.prepare(
             "SELECT e.uuid,e.vec,a.uuid IS NULL FROM embeddings e LEFT JOIN assets a ON a.uuid=e.uuid WHERE e.model='ccip'",

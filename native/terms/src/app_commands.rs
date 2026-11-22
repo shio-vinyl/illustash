@@ -35,6 +35,11 @@ pub(crate) fn request_prepared(
             initialized(&c)?;
             crate::app_identity::request(&mut c, path, body)
         }
+        // 拆开角色目录合并或挂上的角色（#837）。
+        "/api/catalog/split" => {
+            initialized(&c)?;
+            crate::app_identity::request(&mut c, path, body)
+        }
         "/api/curate" => {
             initialized(&c)?;
             crate::app_curation::curate(&mut c, context, body)
@@ -51,7 +56,8 @@ pub(crate) fn request_prepared(
     if matches!(
         path,
         "/api/undo" | "/api/identity/decision" | "/api/merge" | "/api/character/profile" | "/api/local-links"
-    ) {
+    ) || path == "/api/catalog/split"
+    {
         crate::app_effects::drain_after_commit(&context.db);
     }
     Ok(result)

@@ -348,6 +348,79 @@ pub fn catalog_apply(c: &Connection) -> Result<Value> {
     Ok(json!({"merged": merged, "attached": attached}))
 }
 
+/// 拆开角色目录做的一处改动（#837）：词表合并进来的角色拆回来，词表挂上的造型改回顶层角色。不必是最近一步。
+/// 拆开以后记下这一对，以后的目录修订不再合并、不再挂。
+///
+/// 合并的拆法：把那一步合并标成已撤销，再照撤销合并恢复；合并之后在别的步骤里下的结论照旧有效（裁决按没撤销的
+/// 最新一条算）。拆开本身记成历史里的一步（只有文案，撤销它不会再合回去）。
+pub fn catalog_split(c: &Connection, args: &Value) -> Result<Value> {
+    let Some(entity) = args["entity"].as_str() else { return Err(Error::invalid("请选择角色")) };
+    let mut state = catalog_state(c)?;
+    let pick = |kind: &str| state[kind].as_array().into_iter().flatten().find(|p| p[0] == entity).cloned();
+    let (kind, other) = if let Some(p) = pick("merged") {
+        ("merged", p[1].as_str().unwrap_or("").to_owned())
+    } else if let Some(p) = pick("attached") {
+        ("attached", p[1].as_str().unwrap_or("").to_owned())
+    } else {
+        return Err(Error::invalid("这个角色不是角色词表合并或挂上的"));
+    };
+    let mut shown = crate::character_labels::Shown::new();
+    let label = if kind == "merged" {
+        let merged_into: Option<String> = c
+            .prepare_cached(&format!("SELECT merged_into FROM {ENTITIES} WHERE id=?"))?
+            .query_row([entity], |r| r.get(0))
+            .optional()?
+            .flatten();
+        if merged_into.as_deref() != Some(other.as_str()) {
+            return Err(Error::invalid("这次合并已经被改过，不能再拆开"));
+        }
+        let mut found = None;
+        let mut rows = c.prepare(
+            "SELECT id,before_json FROM actions WHERE undone=0 AND label LIKE '角色词表：%' ORDER BY id DESC",
+        )?;
+        for row in rows.query_map([], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?)))? {
+            let (id, before) = row?;
+            let before = crate::strict_json::parse(&before).map_err(Error::Invalid)?;
+            let items = crate::character_commands::owns(&before)?.unwrap_or_default();
+            if let Some(m) = items.iter().find_map(|i| i.get("merge")).filter(|m| m["source"] == entity) {
+                found = Some((id, m.clone()));
+                break;
+            }
+        }
+        let Some((action, snapshot)) = found else { return Err(Error::invalid("找不到这次合并的记录")) };
+        c.prepare_cached("UPDATE actions SET undone=1 WHERE id=?")?.execute([action])?;
+        crate::character_merge::undo(c, action, &snapshot)?;
+        format!("已拆开角色词表合并的 {} 和 {}", shown.name(c, entity)?, shown.name(c, &other)?)
+    } else {
+        let parent: Option<String> = c
+            .prepare_cached(&format!("SELECT parent_id FROM {ENTITIES} WHERE id=?"))?
+            .query_row([entity], |r| r.get(0))
+            .optional()?
+            .flatten();
+        if parent.as_deref() != Some(other.as_str()) {
+            return Err(Error::invalid("这个造型已经被改过，不能再拆开"));
+        }
+        c.prepare_cached(&format!("UPDATE term_tree SET parent_id=NULL,variant='' WHERE {OF}"))?.execute([entity])?;
+        c.prepare_cached("UPDATE terms SET kind='character' WHERE key=? AND kind='skin'")?.execute([entity])?;
+        let uuids: Vec<String> = c
+            .prepare_cached("SELECT uuid FROM candidates WHERE entity=?")?
+            .query_map([entity], |r| r.get(0))?
+            .collect::<rusqlite::Result<_>>()?;
+        character_projection::evidence(c, Some(&uuids))?;
+        character_projection::memberships(c, Some(&uuids))?;
+        format!("已把 {} 从 {} 下面拆开（角色词表挂上的造型）", shown.name(c, entity)?, shown.name(c, &other)?)
+    };
+    state = catalog_state(c)?;
+    let list = state[kind].as_array().cloned().unwrap_or_default();
+    state[kind] = Value::Array(list.into_iter().filter(|p| p[0] != entity).collect());
+    let mut declined = state["declined"].as_array().cloned().unwrap_or_default();
+    declined.push(json!([entity, other]));
+    state["declined"] = Value::Array(declined);
+    c.execute("INSERT OR REPLACE INTO meta VALUES (?, ?)", params![CATALOG_META, character_json::dump(&state, true)])?;
+    c.prepare_cached("INSERT INTO actions(label,before_json) VALUES (?,'[]')")?.execute([&label])?;
+    Ok(json!({"split": kind}))
+}
+
 /// 目录把这个 tag 标成要自动挂的造型时，把刚建的角色挂到上级下面（写法照 `hierarchy()`）。
 /// 上级在图库里还没有，就先建一个只有 danbooru 链接的上级；上级自己已经是造型的不挂，免得出现两层。
 fn catalog_attach(c: &Connection, ids: &Ids, child: &str, tag: &str) -> Result<()> {
@@ -879,6 +952,7 @@ pub fn command(c: &Connection, op: &str, args: &Value) -> Result<Option<Value>> 
         "rederive" => rederive(c, args)?,
         "default_tags" => defaults(c)?,
         "catalog_apply" => catalog_apply(c)?,
+        "catalog_split" => catalog_split(c, args)?,
         _ => return Ok(None),
     }))
 }

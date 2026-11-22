@@ -731,6 +731,7 @@ fn route(
         | "/api/sweep"
         | "/api/identity/decision"
         | "/api/identity/skip"
+        | "/api/catalog/split"
         | "/api/merge" => crate::app_commands::request(&session.context(&host.tags), url, body),
         "/api/provenance" => session.provenance.post(body),
         "/api/onboarding" => {

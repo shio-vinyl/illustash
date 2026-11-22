@@ -24,6 +24,7 @@ pub(crate) fn request(c: &mut Connection, path: &str, body: &Json) -> Result<Jso
                 "evidence":argument(body,"evidence")?})
         }
         "/api/merge" => json!({"op":"merge", "source":argument(body,"source")?, "target":argument(body,"target")?}),
+        "/api/catalog/split" => json!({"op":"catalog_split", "entity":argument(body,"entity")?}),
         _ => return Err(Error::Invalid("接口不存在".into())),
     };
     let tx = c.transaction_with_behavior(TransactionBehavior::Immediate).map_err(app_commands::core_error)?;

@@ -1265,9 +1265,13 @@ mod tests {
     }
 
     fn catalog_with(rows: &str) -> &'static illustash_core::character_catalog::Catalog {
+        catalog_revision(rows, 1)
+    }
+
+    fn catalog_revision(rows: &str, revision: u32) -> &'static illustash_core::character_catalog::Catalog {
         let columns = r#"["id","tag","tags","parent","relation","action","variant","bangumi","pick","wikidata"]"#;
         let doc = format!(
-            r#"{{"format":"{}","revision":1,"columns":{columns},"characters":[{rows}],"works":[]}}"#,
+            r#"{{"format":"{}","revision":{revision},"columns":{columns},"characters":[{rows}],"works":[]}}"#,
             illustash_core::character_catalog::FORMAT
         );
         Box::leak(Box::new(illustash_core::character_catalog::Catalog::parse(&doc).unwrap()))
@@ -1344,6 +1348,27 @@ mod tests {
             assert_eq!(
                 crate::character_commands::command(tx, &json!({"op":"catalog_apply"}))?,
                 json!({"skipped": true})
+            );
+            // 拆开：合并的拆回来，挂上的造型改回顶层；拆过的不能再拆。
+            let split = |id: &str| crate::character_commands::command(tx, &json!({"op":"catalog_split","entity":id}));
+            assert_eq!(split(&gone)?, json!({"split": "merged"}));
+            assert_eq!(tree(tx, &gone)?.2, None);
+            assert_eq!(split(&swim)?, json!({"split": "attached"}));
+            assert_eq!(tree(tx, &swim)?.0, None);
+            assert!(split(&swim).is_err());
+            Ok(())
+        })
+        .unwrap();
+        // 新的目录修订：拆开过的两对不再合并、不再挂。
+        illustash_core::character_catalog::override_for_thread(Some(catalog_revision(
+            r#"[1,"base_(w)",["base_old"],null,null,null,null,null,"",null],
+            [2,"base_(swimsuit)_(w)",[],1,"appearance","auto","swimsuit",null,"",null]"#,
+            2,
+        )));
+        f.write(|tx| {
+            assert_eq!(
+                crate::character_commands::command(tx, &json!({"op":"catalog_apply"}))?,
+                json!({"merged": 0, "attached": 0})
             );
             Ok(())
         })

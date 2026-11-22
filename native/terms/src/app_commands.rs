@@ -701,7 +701,7 @@ mod tests {
         let f = Fixture::new();
         let c = crate::sqlite::open(&f.context.db).unwrap();
         c.execute_batch(
-            "INSERT INTO assets VALUES ('c','2026-09-29'),('d','2026-09-28');
+            "INSERT INTO assets(uuid,added_at) VALUES ('c','2026-09-29'),('d','2026-09-28');
              CREATE TABLE similar_groups(uuid TEXT PRIMARY KEY,gid INTEGER);
              INSERT INTO similar_groups VALUES ('b',7),('c',7);
              CREATE TABLE relations(a TEXT,b TEXT,kind TEXT);

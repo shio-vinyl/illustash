@@ -196,6 +196,7 @@ pub fn single(c: &Connection, uuids: Option<&[String]>) -> Result<()> {
     Ok(())
 }
 
+/// 重算指定图片（或全库）的角色归属，并刷新相应副本组的代表和可见性。
 pub fn memberships(c: &Connection, uuids: Option<&[String]>) -> Result<()> {
     memberships_before_excluded(c, uuids)?;
     if uuids.is_some() {
@@ -204,10 +205,11 @@ pub fn memberships(c: &Connection, uuids: Option<&[String]>) -> Result<()> {
         fold(c)
     }
 }
-/// 归属已更新，调用方接下来会重算排除，再刷新折叠。
+/// 只更新角色归属。需要重算排除状态的调用方在该步骤之后统一刷新折叠。
 pub(crate) fn memberships_before_excluded(c: &Connection, uuids: Option<&[String]>) -> Result<()> {
     memberships_in(c, uuids, true)
 }
+/// 按旧版存储结构重建全库角色归属，并沿用该结构的副本折叠规则。
 pub fn legacy_memberships(c: &Connection) -> Result<()> {
     memberships_in(c, None, false)?;
     c.execute(FOLD_LEGACY, [])?;

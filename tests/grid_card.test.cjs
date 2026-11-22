@@ -41,6 +41,42 @@ test('位置写 transform 和宽高，主色写进 --tint，缩略图按实际�
   assert.match(img.getAttribute('src'), /size=medium/);
 });
 
+test('快滚小图保留到标准档解码完成，旧卡片的晚到结果不覆盖新图', async t => {
+  const decodes = [], original = globalThis.Image;
+  globalThis.Image = class {
+    decode() { return new Promise((resolve, reject) => decodes.push({resolve, reject, src: this.src})); }
+  };
+  t.after(() => { if (original === undefined) delete globalThis.Image; else globalThis.Image = original; });
+
+  const {c} = card(), [img] = c.el.querySelectorAll('img');
+  const update = (preview, uuid = 'u1') => c.update({item: item({uuid}), index: 0, box: {...box, w: 400}, ctx: ctx(), preview});
+  const src = () => img.getAttribute('src');
+  update('fast');
+  assert.match(src(), /id=u1&size=thumb$/);
+  img.complete = true;
+  img.naturalWidth = 400;
+  update('offscreen');
+  assert.equal(decodes.length, 0);
+  update('visible');
+  assert.match(decodes[0].src, /id=u1&size=medium$/);
+  assert.match(src(), /id=u1&size=thumb$/);
+  decodes[0].reject(new Error('合成读取错误'));
+  await Promise.resolve();
+  assert.match(src(), /id=u1&size=thumb$/);
+  update('visible');
+  decodes[1].resolve();
+  await Promise.resolve();
+  assert.match(src(), /id=u1&size=medium$/);
+
+  update('fast', 'u2');
+  update('visible', 'u2');
+  c.park();
+  update('visible', 'u3');
+  decodes[2].resolve();
+  await Promise.resolve();
+  assert.match(src(), /id=u3&size=medium$/);
+});
+
 test('悬停时的角色名：一位写名字；几位写第一位和「另外 N 位」，窄卡只写「N 位」；没有角色不写', () => {
   const {c} = card(), info = () => one(c.el, 'card-info');
   c.update({item: item(), index: 0, box, ctx: ctx()});

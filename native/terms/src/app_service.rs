@@ -172,6 +172,8 @@ pub(crate) struct Session {
     /// 这次打开以后已经替等着默认启用的图库启动过角色资料包的启用（#630）。每次打开只自动启动一次：失败或取消后
     /// 卡片上照常有「重试」「启用…」，不在后台反复重试。
     pack_default_started: bool,
+    /// 这次打开以后已经按角色目录补过一遍（#837），或者查过不用补。
+    catalog_checked: bool,
 }
 impl Session {
     pub(crate) fn token() -> Result<String> {
@@ -238,6 +240,7 @@ impl Session {
             rescued: None,
             halted: false,
             pack_default_started: false,
+            catalog_checked: false,
         };
         session.syncer.resource_root = root.to_owned();
         session.syncer.per_run = startup.sync_limit;
@@ -497,6 +500,11 @@ impl Application {
         }
         if let Err(error) = self.start_pack_default(&mut session) {
             eprintln!("角色资料包未能默认启用：{error}");
+        }
+        if !busy && self.wd_busy(&session).is_none() {
+            if let Err(error) = apply_catalog(&mut session) {
+                eprintln!("角色目录未能补到图库里：{error}");
+            }
         }
         session.names.recover(&library);
         if let Err(error) = session.research.recover(&library, busy) {
@@ -762,6 +770,39 @@ pub(crate) fn character_request(db: &Path, input: &serde_json::Value) -> crate::
     }
     crate::schema::commit_writing(tx)?;
     Ok(result)
+}
+
+/// 编进应用的角色目录比图库里记的修订新时，按目录补一遍（#837，`character_import::catalog_apply`）：合并 D 站改名
+/// 前后各建了一个的角色、补挂造型。每秒都会走到这里：先只读修订号，大多数时候到这里就结束；每次打开最多写一次。
+fn apply_catalog(session: &mut Session) -> Result<()> {
+    use rusqlite::OptionalExtension;
+    if session.catalog_checked || session.library.frozen() {
+        return Ok(());
+    }
+    let revision = i64::from(crate::character_catalog::current().revision);
+    let app = crate::app_library::read_connection(&session.library.db())?;
+    let applied: Option<i64> = app
+        .query_row(
+            "SELECT json_extract(value,'$.revision') FROM meta WHERE key=?",
+            [illustash_core::character_import::CATALOG_META],
+            |r| r.get(0),
+        )
+        .optional()?
+        .flatten();
+    drop(app);
+    session.catalog_checked = true;
+    if applied.is_some_and(|a| a >= revision) {
+        return Ok(());
+    }
+    let mut app = crate::sqlite::open_with_flags(session.library.db(), rusqlite::OpenFlags::SQLITE_OPEN_READ_WRITE)?;
+    crate::configure(&app)?;
+    app.busy_timeout(crate::app_library::TASK_WRITE_WAIT)?;
+    crate::schema::require_current(&app)?;
+    let tx = app.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+    crate::schema::begin_writing(&tx)?;
+    crate::character_commands::command(&tx, &serde_json::json!({"op": "catalog_apply"}))?;
+    crate::schema::commit_writing(tx)?;
+    Ok(())
 }
 
 #[cfg(test)]

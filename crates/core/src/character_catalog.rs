@@ -187,6 +187,21 @@ pub fn bundled() -> &'static Catalog {
     CATALOG.get_or_init(|| Catalog::parse(BUNDLED).expect("编进应用的角色目录由测试保证能解析"))
 }
 
+thread_local! {
+    static OVERRIDE: std::cell::Cell<Option<&'static Catalog>> = const { std::cell::Cell::new(None) };
+}
+
+/// 导入时用的目录：平时是编进应用的那份；测试可以用 [`override_for_thread`] 在当前线程换一份。
+pub fn current() -> &'static Catalog {
+    OVERRIDE.with(std::cell::Cell::get).unwrap_or_else(bundled)
+}
+
+/// 只给测试用：在当前线程换用另一份目录，`None` 换回编进应用的那份。
+#[doc(hidden)]
+pub fn override_for_thread(catalog: Option<&'static Catalog>) {
+    OVERRIDE.with(|o| o.set(catalog));
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

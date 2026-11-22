@@ -1195,6 +1195,163 @@ mod tests {
     }
 
     #[test]
+    fn catalog_joins_renamed_tags_and_attaches_costumes_on_import() {
+        let columns = r#"["id","tag","tags","parent","relation","action","variant","bangumi","pick","wikidata"]"#;
+        let rows = r#"[1,"base_(w)",["base_old"],null,null,null,null,null,"",null],
+            [2,"base_(swimsuit)_(w)",[],1,"appearance","auto","swimsuit",null,"",null],
+            [3,"base_(alt)_(w)",[],1,"form","ask",null,null,"",null],
+            [4,"lonely_(swimsuit)_(w)",[],5,"appearance","auto","swimsuit",null,"",null],
+            [5,"lonely_(w)",[],null,null,null,null,null,"",null]"#;
+        let doc = format!(
+            r#"{{"format":"{}","revision":1,"columns":{columns},"characters":[{rows}],"works":[]}}"#,
+            illustash_core::character_catalog::FORMAT
+        );
+        let catalog = Box::leak(Box::new(illustash_core::character_catalog::Catalog::parse(&doc).unwrap()));
+        illustash_core::character_catalog::override_for_thread(Some(catalog));
+        let f = Fixture::new();
+        let assets = ["old", "new", "swim", "alt", "lonely"];
+        f.write(|tx| {
+            let rows: Vec<Value> =
+                assets.iter().map(|u| json!([u, "s.png", "s.png", 8, 8, "2026-11-23", "folder"])).collect();
+            crate::character_commands::command(
+                tx,
+                &json!({"op":"refresh","assets":rows,"indexed":"2026-11-23","index":{},
+                    "labels":[["old","base_old",0.9,"character"]],"decisions":[],"duplicates":[]}),
+            )?;
+            let hits: Vec<Hit> = [
+                ("new", "base_(w)"),
+                ("swim", "base_(swimsuit)_(w)"),
+                ("alt", "base_(alt)_(w)"),
+                ("lonely", "lonely_(swimsuit)_(w)"),
+            ]
+            .iter()
+            .map(|(u, t)| Hit { uuid: (*u).into(), tag: (*t).into(), probability: 0.99, candidate_only: false })
+            .collect();
+            let scope: Vec<String> = assets.iter().map(|s| (*s).to_owned()).collect();
+            wd_extension::apply_scoped(tx, "synthetic-catalog", &scope, &hits)?;
+            let owner = |key: &str| -> rusqlite::Result<String> {
+                tx.query_row(
+                    &format!("SELECT l.entity_id FROM {} l WHERE l.key=?", illustash_core::character_links::LINKS),
+                    [key],
+                    |r| r.get(0),
+                )
+            };
+            let tree = |id: &str| -> rusqlite::Result<(Option<String>, Option<String>)> {
+                tx.query_row(
+                    &format!(
+                        "SELECT parent_id,variant FROM {} e WHERE e.id=?",
+                        illustash_core::character_entities::ENTITIES
+                    ),
+                    [id],
+                    |r| Ok((r.get(0)?, r.get(1)?)),
+                )
+            };
+            let base = owner("base_old")?;
+            // 改名后的新 tag 并到旧 tag 已有的角色上。
+            assert_eq!(owner("base_(w)")?, base);
+            // 泳装自动挂到本体下；形态照旧是顶层角色。
+            assert_eq!(tree(&owner("base_(swimsuit)_(w)")?)?, (Some(base.clone()), Some("swimsuit".into())));
+            assert_eq!(tree(&owner("base_(alt)_(w)")?)?.0, None);
+            // 本体还没有时，先建一个本体再挂上去。
+            let lonely = owner("lonely_(w)")?;
+            assert_eq!(tree(&owner("lonely_(swimsuit)_(w)")?)?.0, Some(lonely));
+            let record: String =
+                tx.query_row("SELECT value FROM meta WHERE key='character_catalog'", [], |r| r.get(0))?;
+            assert_eq!(serde_json::from_str::<Value>(&record).unwrap()["attached"].as_array().unwrap().len(), 2);
+            Ok(())
+        })
+        .unwrap();
+        illustash_core::character_catalog::override_for_thread(None);
+    }
+
+    fn catalog_with(rows: &str) -> &'static illustash_core::character_catalog::Catalog {
+        let columns = r#"["id","tag","tags","parent","relation","action","variant","bangumi","pick","wikidata"]"#;
+        let doc = format!(
+            r#"{{"format":"{}","revision":1,"columns":{columns},"characters":[{rows}],"works":[]}}"#,
+            illustash_core::character_catalog::FORMAT
+        );
+        Box::leak(Box::new(illustash_core::character_catalog::Catalog::parse(&doc).unwrap()))
+    }
+
+    #[test]
+    fn catalog_apply_merges_renamed_duplicates_and_attaches_costumes_once() {
+        // 先在没有目录的情况下导入：旧 tag、新 tag、泳装各建一个顶层角色，和 0.4.0 的图库一样。
+        illustash_core::character_catalog::override_for_thread(Some(catalog_with("")));
+        let f = Fixture::new();
+        let assets = ["old", "new", "swim", "named_old", "named_new"];
+        f.write(|tx| {
+            let rows: Vec<Value> =
+                assets.iter().map(|u| json!([u, "s.png", "s.png", 8, 8, "2026-11-23", "folder"])).collect();
+            crate::character_commands::command(
+                tx,
+                &json!({"op":"refresh","assets":rows,"indexed":"2026-11-23","index":{},
+                    "labels":[["old","base_old",0.9,"character"],["named_old","named_old",0.9,"character"]],
+                    "decisions":[],"duplicates":[]}),
+            )?;
+            let hits: Vec<Hit> = [("new", "base_(w)"), ("swim", "base_(swimsuit)_(w)"), ("named_new", "named_(w)")]
+                .iter()
+                .map(|(u, t)| Hit { uuid: (*u).into(), tag: (*t).into(), probability: 0.99, candidate_only: false })
+                .collect();
+            let scope: Vec<String> = assets.iter().map(|s| (*s).to_owned()).collect();
+            wd_extension::apply_scoped(tx, "synthetic-catalog", &scope, &hits)?;
+            Ok(())
+        })
+        .unwrap();
+        let owner = |tx: &Connection, key: &str| -> rusqlite::Result<String> {
+            tx.query_row(
+                &format!("SELECT l.entity_id FROM {} l WHERE l.key=?", illustash_core::character_links::LINKS),
+                [key],
+                |r| r.get(0),
+            )
+        };
+        let tree = |tx: &Connection, id: &str| -> rusqlite::Result<(Option<String>, Option<String>, Option<String>)> {
+            tx.query_row(
+                &format!(
+                    "SELECT parent_id,variant,merged_into FROM {} e WHERE e.id=?",
+                    illustash_core::character_entities::ENTITIES
+                ),
+                [id],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            )
+        };
+        // 用户给其中一对起过名字：这一对不合并。
+        f.write(|tx| {
+            let id = owner(tx, "named_old")?;
+            illustash_core::character_names::put_name(tx, &id, "zh", "user", "用户起的名字", "display", 0, 1)?;
+            Ok(())
+        })
+        .unwrap();
+        illustash_core::character_catalog::override_for_thread(Some(catalog_with(
+            r#"[1,"base_(w)",["base_old"],null,null,null,null,null,"",null],
+            [2,"base_(swimsuit)_(w)",[],1,"appearance","auto","swimsuit",null,"",null],
+            [3,"named_(w)",["named_old"],null,null,null,null,null,"",null]"#,
+        )));
+        f.write(|tx| {
+            let (old, new, swim) = (owner(tx, "base_old")?, owner(tx, "base_(w)")?, owner(tx, "base_(swimsuit)_(w)")?);
+            assert_ne!(old, new);
+            let done = crate::character_commands::command(tx, &json!({"op":"catalog_apply"}))?;
+            assert_eq!(done, json!({"merged": 1, "attached": 1}));
+            // 两个一样多图时按 id 排第一个当合并目标；另一个合进去。
+            let (survivor, gone) = if tree(tx, &old)?.2.is_some() { (new, old) } else { (old, new) };
+            assert_eq!(tree(tx, &gone)?.2, Some(survivor.clone()));
+            assert_eq!(tree(tx, &swim)?.0, Some(survivor));
+            let label: String = tx.query_row("SELECT label FROM actions ORDER BY id DESC LIMIT 1", [], |r| r.get(0))?;
+            assert!(label.starts_with("角色词表："), "{label}");
+            // 用户起过名字的那一对照旧是两个角色。
+            assert_eq!(tree(tx, &owner(tx, "named_old")?)?.2, None);
+            assert_ne!(owner(tx, "named_old")?, owner(tx, "named_(w)")?);
+            // 同一修订只跑一次。
+            assert_eq!(
+                crate::character_commands::command(tx, &json!({"op":"catalog_apply"}))?,
+                json!({"skipped": true})
+            );
+            Ok(())
+        })
+        .unwrap();
+        illustash_core::character_catalog::override_for_thread(None);
+    }
+
+    #[test]
     fn evidence_replaces_and_restores_without_rewriting_old_sources() {
         round_trip(false);
         round_trip(true);

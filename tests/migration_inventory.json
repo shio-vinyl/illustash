@@ -7,7 +7,7 @@
 
  "crates/core/src/ccip_longtail.rs":"04f901a024fd2f26d4fc86486e6db7b8a7c43c046483f0974acc15ad736306b0",
 
- "crates/core/src/character_catalog.rs":"cacfe0a6111bc1d3306af39cac676c736fd62f7ec28028d9e86493b19832c7ff",
+ "crates/core/src/character_catalog.rs":"fa761a9bdf8aa9dd7a4c125df4d1593556477b96123d4bee0f964c280fb445a4",
 
  "crates/core/src/character_commands.rs":"562159c0d8990af2ca52d85e6b3f559a29f12fb6c1d6248b7d886d796f7656da",
 
@@ -21,7 +21,7 @@
 
  "crates/core/src/character_identity.rs":"106fcf70a3fe2ec3d20195cf6bdf7c84aaf22b2e8e9ee8e3dac314d66d2cb505",
 
- "crates/core/src/character_import.rs":"0cc5602a3b1877df70631a7f62eac0be2bdc45b14913f2ed9c288a42dc7d3b72",
+ "crates/core/src/character_import.rs":"524f648120fb3db443eb8bbcb20a03f3827af9e4bfc0f17fdaaf16f6e45822c8",
 
  "crates/core/src/character_json.rs":"9a60f525976d786c9edfcd8420c100481ba117bbaa78e839f02e7002ff328046",
 
@@ -349,7 +349,7 @@
 
  "native/terms/src/app_resources.rs":"d691ec21499b906972a02d49a21790f2a301c34eb4dea0bd9c301675dd9e2c0a",
 
- "native/terms/src/app_service.rs":"1fa1ed83fc0fe56ad66996887c79195ae79813b5c3daf69bb01136f938ee7b95",
+ "native/terms/src/app_service.rs":"650fea50ca091edf64ae1db212fef2e4819b916b40070e1a25c68f03e8571038",
 
  "native/terms/src/app_settings.rs":"20f5eb9c25a3a14920b85b48e75186564c5e01f6129cca02b06b2f63d60b2c41",
 
@@ -369,7 +369,7 @@
 
  "native/terms/src/app_upgrade.rs":"6e4ad40e954505cfc85eb6abf2c4394ca35d4b2429ccc06dec2df9914153d82f",
 
- "native/terms/src/app_wd_extension.rs":"cd49205d8320d34f21d780e2f38561b8984bfaa7f62bc902eead7ad7d6aac49e",
+ "native/terms/src/app_wd_extension.rs":"ad697020d148b39a73146b7df041c14c4a8e2801de116d0d0169d19c6f11ee04",
 
  "native/terms/src/app_wd_extension/scoring.rs":"c486e27eae74356b12c836caee045adb61e164c5ffb433171327df47e55b1221",
 
@@ -683,7 +683,7 @@
  "crates/core/src/character_sql/tag_memberships.sql":{"database-write":["INSERT INTO:tag_memberships"]},
  "crates/core/src/names_commands.rs":{"database-write":{"INSERT OR IGNORE INTO:term_key_names":1,"dynamic-or-wrapper":8,"DELETE FROM:term_names":4,"DELETE FROM:term_key_names":1,"DELETE FROM:term_key_aliases":1,"INSERT INTO:term_key_aliases":1}},
  "native/terms/src/app_profiles.rs":{"http-branch":[[23,8],[16,5],[17,7],[44,3],[83,3],[242,4],[98,3]],"database-write":[[3,3],0]},
- "crates/core/src/character_import.rs":{"database-write":{"INSERT OR IGNORE INTO:term_links":1,"dynamic-or-wrapper":15,"UPDATE:term_tree":3,"UPDATE:terms":1,"INSERT INTO:term_batches":1,"INSERT OR IGNORE INTO:assertions":1,"INSERT INTO:imported":1,"DELETE FROM:auto_rules":1,"INSERT OR IGNORE INTO:auto_rules":4,"INSERT INTO:excluded":1,"DELETE FROM:excluded":1,"DELETE FROM:touched":1,"INSERT OR IGNORE INTO:touched":1,"INSERT INTO:assets":1,"DELETE FROM:duplicates":1,"INSERT INTO:duplicates":1,"INSERT OR REPLACE INTO:meta":2,"DELETE FROM:assets":1,"DELETE FROM:candidates":1,"REINDEX":3,"INSERT OR REPLACE INTO:sync_added":1}},
+ "crates/core/src/character_import.rs":{"database-write":{"INSERT OR IGNORE INTO:term_links":1,"dynamic-or-wrapper":17,"UPDATE:term_tree":5,"UPDATE:terms":3,"INSERT INTO:term_batches":1,"INSERT OR IGNORE INTO:assertions":1,"INSERT INTO:imported":1,"DELETE FROM:auto_rules":1,"INSERT OR IGNORE INTO:auto_rules":4,"INSERT INTO:excluded":1,"DELETE FROM:excluded":1,"DELETE FROM:touched":1,"INSERT OR IGNORE INTO:touched":1,"INSERT INTO:assets":1,"DELETE FROM:duplicates":1,"INSERT INTO:duplicates":1,"INSERT OR REPLACE INTO:meta":4,"DELETE FROM:assets":1,"DELETE FROM:candidates":1,"REINDEX":3,"INSERT OR REPLACE INTO:sync_added":1}},
  "native/terms/src/http_host_post.rs":{"http-branch":[[303,2],[282,2],[275,2],[280,2],[279,2],[274,2],[294,2],264,295,345,346,305,347,348,349,[307,2],[308,2],[309,2],350,265,351,266,267,[41,2],268,352,353,270,292,354,355,356,357,358,359,247,360,331,361,231,74,88,24,23,16,17,44,83,242,98,80,79,76,269,100,37,95,40,42,293,[230,2],39,362,43,271,272,273,[277,2],[363,2],364,365,366,278,281,296,[26,2],380,381]},
  "native/terms/src/app_provenance.rs":{"database-write":{"INSERT OR IGNORE INTO:pending_runs":3,"UPDATE:runs":3,"INSERT OR IGNORE INTO:native_meta":2,"dynamic-or-wrapper":4,"UPDATE:native_meta":1,"COMMIT":2,"INSERT INTO:runs":1,"DELETE FROM:pending_runs":1,"ATTACH":2,"PRAGMA:c.execute_batch(\"pragma defer_foreign_keys":1,"INSERT INTO:leads|UPDATE:set":1,"INSERT INTO:native_delivery":1},"entrypoint":{"process-start":1}},
  "crates/core/src/character_sql/evidence_default.sql":{"database-write":[196]},
@@ -694,7 +694,7 @@
  "crates/core/src/backup.rs":{"database-write":[0]},
  "crates/core/src/lib.rs":{"database-write":[0]},
  "crates/platform/src/picker.rs":{"entrypoint":[4]},
- "native/terms/src/app_service.rs":{"database-write":[0,2,3]},
+ "native/terms/src/app_service.rs":{"database-write":[[0,2],2,3]},
  "native/terms/src/recognition_compute/session.rs":{"database-write":[1]},
  "native/terms/examples/recognition-compute.rs":{"entrypoint":[10]},
  "native/terms/examples/research-compute.rs":{"entrypoint":[10]},

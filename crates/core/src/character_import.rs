@@ -175,8 +175,209 @@ fn entity(c: &Connection, ids: &Ids, system: &str, key: &str, name: &str, work: 
 pub const EXTENSION_CHARACTER_ORIGIN: &str = "extension:character";
 
 pub(crate) fn extension_entity(c: &Connection, tag: &str) -> Result<String> {
+    if let Some(found) = linked(c, "danbooru", tag)? {
+        return Ok(found);
+    }
+    if let Some(same) = catalog_same(c, tag)? {
+        link(c, &same, "danbooru", tag)?;
+        return Ok(same);
+    }
     let work = crate::character_profile::qualifier(tag);
-    entity(c, &Ids(&Value::Null), "danbooru", tag, tag, work, EXTENSION_CHARACTER_ORIGIN)
+    let ids = Ids(&Value::Null);
+    let ident = entity(c, &ids, "danbooru", tag, tag, work, EXTENSION_CHARACTER_ORIGIN)?;
+    catalog_attach(c, &ids, &ident, tag)?;
+    Ok(ident)
+}
+
+// ---- 角色目录（#837） ----
+
+/// 角色目录新建的上级用这个创建来源。
+pub const CATALOG_CHARACTER_ORIGIN: &str = "catalog:character";
+/// 角色目录对图库做过的改动记在 meta 的这个键里（JSON），以后撤回或拆开时只动这些。
+pub const CATALOG_META: &str = "character_catalog";
+
+/// 目录里同一个角色的另一个 tag（D 站改名前后）已经有角色时，返回那个角色（跟到合并目标）。
+fn catalog_same(c: &Connection, tag: &str) -> Result<Option<String>> {
+    let Some(entry) = crate::character_catalog::current().character(tag) else { return Ok(None) };
+    for other in std::iter::once(&entry.tag).chain(&entry.tags).filter(|t| t.as_str() != tag) {
+        for system in ["danbooru", "wd"] {
+            if let Some(found) = linked(c, system, other)? {
+                return Ok(Some(resolve(c, &found)?));
+            }
+        }
+    }
+    Ok(None)
+}
+
+/// 图库里属于目录这个角色的角色（任一 tag 的 danbooru 或 WD 链接）。
+fn catalog_entity(c: &Connection, entry: &crate::character_catalog::Character) -> Result<Option<String>> {
+    for t in std::iter::once(&entry.tag).chain(&entry.tags) {
+        for system in ["danbooru", "wd"] {
+            if let Some(found) = linked(c, system, t)? {
+                return Ok(Some(resolve(c, &found)?));
+            }
+        }
+    }
+    Ok(None)
+}
+
+/// 记下目录做过的一处改动：`kind` 是 `attached`（挂成造型）或 `merged`（合并重复），值是 [角色, 另一方]。
+pub(crate) fn catalog_record(c: &Connection, kind: &str, entity: &str, other: &str) -> Result<()> {
+    let old: Option<String> =
+        c.query_row("SELECT value FROM meta WHERE key=?", [CATALOG_META], |r| r.get(0)).optional()?;
+    let mut doc: Value = old.and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_else(|| json!({}));
+    let list = doc[kind].as_array_mut().map(std::mem::take).unwrap_or_default();
+    let mut list: Vec<Value> = list.into_iter().filter(|v| v[0] != entity).collect();
+    list.push(json!([entity, other]));
+    doc[kind] = Value::Array(list);
+    c.execute("INSERT OR REPLACE INTO meta VALUES (?, ?)", params![CATALOG_META, character_json::dump(&doc, true)])?;
+    Ok(())
+}
+
+fn catalog_state(c: &Connection) -> Result<Value> {
+    let old: Option<String> =
+        c.query_row("SELECT value FROM meta WHERE key=?", [CATALOG_META], |r| r.get(0)).optional()?;
+    Ok(old.and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_else(|| json!({})))
+}
+
+/// 顶层角色（不是造型、没被合并、不是作品）。
+fn top_level(c: &Connection, id: &str) -> Result<bool> {
+    Ok(c.prepare_cached(&format!(
+        "SELECT 1 FROM {ENTITIES} WHERE id=? AND parent_id IS NULL AND merged_into IS NULL AND kind<>'work'"
+    ))?
+    .query_row([id], |_| Ok(()))
+    .optional()?
+    .is_some())
+}
+
+/// 用户动过的角色：起过名字，或者被拆开过（拆开记在目录状态的 `declined` 里）。
+fn user_touched(c: &Connection, state: &Value, id: &str) -> Result<bool> {
+    let declined = state["declined"].as_array().into_iter().flatten().any(|p| p[0] == id || p[1] == id);
+    let named: bool = c
+        .prepare_cached(&format!("SELECT EXISTS(SELECT 1 FROM term_names WHERE term_id={TERM_OF} AND source='user')"))?
+        .query_row([id], |r| r.get(0))?;
+    Ok(declined || named)
+}
+
+/// 已有图库按角色目录补一遍（#837；直接模式）。每个目录修订在一个图库里只跑一次，用户动过的角色不碰：
+/// 1. 同一个目录角色在图库里有两个以上顶层角色（D 站改名前后的 tag 各建了一个）：用现有的合并命令合成一个，
+///    合到图多的那个上；每次合并是历史里的一步，文案写明是角色词表合并的（用户 2026-11-22 定：自动合，可撤销）；
+/// 2. 目录标成自动挂的造型、在图库里还是顶层角色的：挂到本体下面。
+///
+/// hybrid 图库的结构由身份基线和人工裁决投影出来，不能替用户自动改，这里只记下修订号。
+pub fn catalog_apply(c: &Connection) -> Result<Value> {
+    let catalog = crate::character_catalog::current();
+    let mut state = catalog_state(c)?;
+    if state["revision"].as_u64().is_some_and(|r| r >= u64::from(catalog.revision)) {
+        return Ok(json!({"skipped": true}));
+    }
+    let (mut merged, mut attached) = (0, 0);
+    if !hybrid(c)? {
+        let images = |id: &str| -> Result<i64> {
+            Ok(c.prepare_cached("SELECT count(*) FROM memberships WHERE entity=?")?.query_row([id], |r| r.get(0))?)
+        };
+        for entry in catalog.characters() {
+            let mut found: Vec<String> = Vec::new();
+            for t in std::iter::once(&entry.tag).chain(&entry.tags) {
+                for system in ["danbooru", "wd"] {
+                    if let Some(id) = linked(c, system, t)? {
+                        let id = resolve(c, &id)?;
+                        if !found.contains(&id) && top_level(c, &id)? {
+                            found.push(id);
+                        }
+                    }
+                }
+            }
+            if found.len() < 2 {
+                continue;
+            }
+            let mut ranked = Vec::new();
+            for id in found {
+                ranked.push((images(&id)?, id));
+            }
+            ranked.sort_by(|a, b| b.0.cmp(&a.0).then(a.1.cmp(&b.1)));
+            let target = ranked[0].1.clone();
+            if user_touched(c, &state, &target)? {
+                continue;
+            }
+            for (_, source) in &ranked[1..] {
+                if user_touched(c, &state, source)? {
+                    continue;
+                }
+                let done = crate::character_merge::merge(c, &json!({"source": source, "target": target}))?;
+                if let Some(action) = done["action"].as_i64() {
+                    let label: String = c.query_row("SELECT label FROM actions WHERE id=?", [action], |r| r.get(0))?;
+                    crate::character_commands::relabel(c, action, &format!("角色词表：{label}（D 站改名前后的 tag）"))?;
+                }
+                catalog_record(c, "merged", source, &target)?;
+                merged += 1;
+            }
+        }
+        let mut touched: BTreeSet<String> = BTreeSet::new();
+        for entry in catalog.characters() {
+            if entry.action != Some(crate::character_catalog::Action::Auto) {
+                continue;
+            }
+            let (Some(child), Some(parent)) = (catalog_entity(c, entry)?, catalog.parent(entry)) else { continue };
+            let Some(parent) = catalog_entity(c, parent)? else { continue };
+            if child == parent || !top_level(c, &child)? || !top_level(c, &parent)? || user_touched(c, &state, &child)?
+            {
+                continue;
+            }
+            let variant = entry.variant.clone().unwrap_or_else(|| entry.tag.clone());
+            c.prepare_cached(&format!("UPDATE term_tree SET parent_id=?2,variant=?3,work_id=NULL WHERE {OF}"))?
+                .execute(params![child, parent, variant])?;
+            c.prepare_cached("UPDATE terms SET kind='skin' WHERE key=? AND kind IS NOT 'skin'")?.execute([&child])?;
+            catalog_record(c, "attached", &child, &parent)?;
+            for u in
+                c.prepare_cached("SELECT uuid FROM candidates WHERE entity=?")?.query_map([&child], |r| r.get(0))?
+            {
+                touched.insert(u?);
+            }
+            attached += 1;
+        }
+        if !touched.is_empty() {
+            let uuids: Vec<String> = touched.into_iter().collect();
+            character_projection::evidence(c, Some(&uuids))?;
+            character_projection::memberships(c, Some(&uuids))?;
+        }
+    }
+    state = catalog_state(c)?;
+    state["revision"] = json!(catalog.revision);
+    c.execute("INSERT OR REPLACE INTO meta VALUES (?, ?)", params![CATALOG_META, character_json::dump(&state, true)])?;
+    Ok(json!({"merged": merged, "attached": attached}))
+}
+
+/// 目录把这个 tag 标成要自动挂的造型时，把刚建的角色挂到上级下面（写法照 `hierarchy()`）。
+/// 上级在图库里还没有，就先建一个只有 danbooru 链接的上级；上级自己已经是造型的不挂，免得出现两层。
+fn catalog_attach(c: &Connection, ids: &Ids, child: &str, tag: &str) -> Result<()> {
+    let catalog = crate::character_catalog::current();
+    let Some(entry) = catalog.character(tag) else { return Ok(()) };
+    if entry.action != Some(crate::character_catalog::Action::Auto) {
+        return Ok(());
+    }
+    let Some(parent) = catalog.parent(entry) else { return Ok(()) };
+    let parent_id = match catalog_entity(c, parent)? {
+        Some(p) => p,
+        None => {
+            let work = crate::character_profile::qualifier(&parent.tag);
+            entity(c, ids, "danbooru", &parent.tag, &parent.tag, work, CATALOG_CHARACTER_ORIGIN)?
+        }
+    };
+    let parent_id = resolve(c, &parent_id)?;
+    let grand: Option<String> = c
+        .prepare_cached(&format!("SELECT parent_id FROM {ENTITIES} WHERE id=?"))?
+        .query_row([&parent_id], |r| r.get(0))
+        .optional()?
+        .flatten();
+    if parent_id == child || grand.is_some() {
+        return Ok(());
+    }
+    let variant = entry.variant.clone().unwrap_or_else(|| tag.to_owned());
+    c.prepare_cached(&format!("UPDATE term_tree SET parent_id=?2,variant=?3,work_id=NULL WHERE {OF}"))?
+        .execute(params![child, parent_id, variant])?;
+    c.prepare_cached("UPDATE terms SET kind='skin' WHERE key=? AND kind IS NOT 'skin'")?.execute([child])?;
+    catalog_record(c, "attached", child, &parent_id)
 }
 
 // ---- 索引同步：`_characters`（含 `_hierarchy`、`_tags`、别名、`_default_tags`） ----
@@ -342,10 +543,20 @@ fn candidate(c: &Connection, ids: &Ids, row: &Value, chars: &Chars, wd: &Wd) -> 
                 None => match linked(c, "danbooru", value)? {
                     Some(i) => i,
                     // WD 结果没有索引给的作品文字：取 tag 末尾括号里的后缀（与索引取 `copyright` 的办法相同）。
-                    None => {
-                        let work = if import_builds_works() { crate::character_profile::qualifier(value) } else { "" };
-                        entity(c, ids, "wd", value, value, work, legacy_characters::ORIGIN)?
-                    }
+                    // 角色目录说这是另一个已有角色改名前后的 tag：挂到那个角色上，不另建（#837）。
+                    None => match catalog_same(c, value)? {
+                        Some(same) => {
+                            link(c, &same, "wd", value)?;
+                            same
+                        }
+                        None => {
+                            let work =
+                                if import_builds_works() { crate::character_profile::qualifier(value) } else { "" };
+                            let ident = entity(c, ids, "wd", value, value, work, legacy_characters::ORIGIN)?;
+                            catalog_attach(c, ids, &ident, value)?;
+                            ident
+                        }
+                    },
                 },
             },
         }
@@ -667,6 +878,7 @@ pub fn command(c: &Connection, op: &str, args: &Value) -> Result<Option<Value>> 
         "import" => import(c, args)?,
         "rederive" => rederive(c, args)?,
         "default_tags" => defaults(c)?,
+        "catalog_apply" => catalog_apply(c)?,
         _ => return Ok(None),
     }))
 }

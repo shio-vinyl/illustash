@@ -1,10 +1,10 @@
 // 桌面布局里覆盖整个页面的部件（#199）：按 id 找元素、带撤销按钮的 toast、错误横幅和工具栏里的撤销按钮。它们的状态在
 // core/session.js 和 core/edits.js。
-import {t, tb} from '../core/i18n.js';
+import {t} from '../core/i18n.js';
 import {esc, isMac, platformText, shortcut} from '../core/format.js';
 import {prefs} from '../core/prefs.js';
 import {session, STALE, onStale, readError} from '../core/session.js';
-import {onLatest, setLatest} from '../core/edits.js';
+import {editLabel, onLatest, setLatest} from '../core/edits.js';
 import {workLabel} from '../core/labels.js';
 import {AREAS, pageOf} from '../core/pages.js';
 import {state} from '../core/state.js';
@@ -56,7 +56,7 @@ export function toast(message, withUndo = false) {
 // 给正在显示的 toast 追加一点：再补几个字，可选再加一个按钮（如对刚设好的角色所属作品「关注」，#293）。toast 随后会多
 // 停留一会儿。
 // 一次可撤销的写入成功之后（#432 ③-7）：撤销指向这一步，toast 写明做了什么并带「撤销」。text 默认是后端给这一步的名字。
-export function written(undo, text = tb(undo.label)) { setLatest(undo); toast(text, true); }
+export function written(undo, text = editLabel(undo)) { setLatest(undo); toast(text, true); }
 export function toastMore(text, label = '', run = null) {
   if (!popOpen($('toast'))) return;
   $('toastText').textContent += text;
@@ -145,6 +145,6 @@ export function wireDom() {
   });
   onLatest(({latest, busy}) => {
     $('undoButton').disabled = !latest || busy;
-    $('undoButton').title = latest ? t('撤销：{label}（{key}）', {label: tb(latest.label), key: shortcut('Z')}) : t('暂无可撤销操作');
+    $('undoButton').title = latest ? t('撤销：{label}（{key}）', {label: editLabel(latest), key: shortcut('Z')}) : t('暂无可撤销操作');
   });
 }

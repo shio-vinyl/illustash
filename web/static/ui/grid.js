@@ -482,8 +482,8 @@ const syncUndone = () => t('已撤销，计数在同步结束后更新');
 export async function undo() {
   if (!edits.latest) return;
   const waiting = await exclusive(async () => {
-    let label;
-    try { label = await undoLatest(); } catch (e) {
+    let step;
+    try { step = await undoLatest(); } catch (e) {
       // 历史可能已经往前走了（另一个窗口，或服务端提交之后才失败）：显示它最新的一步。
       // 撤销一次人工结论导入被拒（后面有改动依赖它）时，说清楚为什么（core/human.js）。
       toast(undoRefusal(e, edits.latest)); refreshMeta().catch(err => error(readError(err)));
@@ -492,12 +492,12 @@ export async function undo() {
     const first = await learningNow();
     if (first?.state === 'pending') {
       const settled = learningSettled(first, {marking: true});
-      toast(undoneText(label)); renderHeading();
+      toast(undoneText(step)); renderHeading();
       return settled;
     }
     // 同步进行中：同步结束后接着等的那一段也显示「正在更新」。
     learningSettled(first, {marking: true});
-    toast(first?.state === 'sync' ? syncUndone() : undoneText(label)); await reread('undo');
+    toast(first?.state === 'sync' ? syncUndone() : undoneText(step)); await reread('undo');
     return null;
   });
   if (!waiting) return;

@@ -147,19 +147,22 @@ test('the names and new-characters cards read their data when they open', async 
 
 test('an older library is opened only after the person agrees to upgrade it (#193)', async () => {
   // openLibrary() 在 ui/settings_libraries.js：后端的拒绝指明需要升级，页面询问用户，然后带上 upgrade 再请求一次。
+  const explanation = '这个图库需要升级到新格式才能打开。升级后旧版本的 Illustash 打不开它；升级前会自动备份，升级没有完成时图库保持原样。';
   const sent = [], nodes = {}, dialogs = [];
   const element = () => ({hidden: true, textContent: '', innerHTML: '', contains: () => false});
   globalThis.document = {getElementById: id => nodes[id] ||= element(), activeElement: null, body: {append(d) { dialogs.push(d); setImmediate(() => d.close('')); }},
     createElement() { const parts = {}; return {setAttribute() {}, querySelector: s => parts[s] ||= {}, showModal() {}, addEventListener() {}, remove() {}, close(v = '') { this.returnValue = v; this.onclose(); }}; }};
   globalThis.fetch = async (path, options) => {
     sent.push(JSON.parse(options.body));
-    return {status: 409, ok: false, json: async () => ({error: '这个图库需要升级到新格式才能打开。升级后旧版本的 Illustash 打不开它；升级前会自动备份，升级没有完成时图库保持原样。'})};
+    const headers = new Headers({'X-Illustash-Diagnostic': JSON.stringify({id: 'D-example', stored: true})});
+    return {status: 409, ok: false, headers, json: async () => ({error: explanation})};
   };
   const setTimeout = globalThis.setTimeout; globalThis.setTimeout = () => 0;
   const {openLibrary} = await web.load('ui/settings_libraries.js');
   try { await openLibrary('/tmp/synthetic.pilib', '合成'); } finally { globalThis.setTimeout = setTimeout; }
   assert.deepEqual(sent, [{path: '/tmp/synthetic.pilib'}]);
   assert.equal(dialogs.length, 1, 'asked before upgrading; declined, so nothing more was sent');
+  assert.equal(dialogs[0].querySelector('p').textContent, explanation);
 });
 
 test('the full backup section names both backup folders, the upgrade one included (#517)', async () => {

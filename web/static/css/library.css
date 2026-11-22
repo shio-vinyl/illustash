@@ -31,7 +31,8 @@
 /* 骨架只扫过一次。Chromium 静态骨架滚动时会让已滚离视野的图像长期留在 GPU 转存缓存（#769）。 */
 .grid .card.skeleton{background:var(--soft)}
 @media (prefers-reduced-motion:no-preference){
-  .grid .card.skeleton{background:linear-gradient(90deg,var(--soft),var(--line),var(--soft));background-size:200% 100%;animation:grid-skeleton-sweep 1.4s linear}
+  .grid .card.skeleton{background:linear-gradient(90deg,var(--soft),var(--line),var(--soft));background-size:200% 100%;
+    animation:grid-skeleton-sweep calc(var(--dur-1) * 10) var(--ease)}
   @keyframes grid-skeleton-sweep{to{background-position:-200% 0}}
 }
 

@@ -1,6 +1,7 @@
 //! Pixiv 登录窗口：用户在这里亲手登录（有人机验证就自己点过）；之后原生账号模块要的 www.pixiv.net/ajax 只读请求，
 //! 在这个窗口的 www.pixiv.net 页面里用 fetch 发出，状态码和正文原样交回。不改请求头、不伪装、不处理验证页。
-//! 窗口用单独的网站数据存储（macOS 14+），解绑时只清它，不动主窗口的数据。
+//! 窗口在 macOS 14+ 使用独立网站数据存储，在 Windows 使用独立 WebView2 用户数据目录。
+//! 解绑只清 Pixiv 窗口的数据存储。
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{sync_channel, SyncSender};
@@ -74,10 +75,12 @@ fn window(app: &AppHandle) -> Result<WebviewWindow, String> {
             // cookie 可能比服务器端的会话活得久。窗口一直显示到用户关掉为止；
             // 光凭页面加载完成不能证明登录成功。
         });
+    let cannot_open = |e: tauri::Error| crate::i18n::tr_with("打不开 Pixiv 窗口：{error}", &[("error", &e)]);
     #[cfg(target_os = "macos")]
     let builder = builder.data_store_identifier(STORE);
-    let win = crate::webview::build(builder)
-        .map_err(|e| crate::i18n::tr_with("打不开 Pixiv 窗口：{error}", &[("error", &e)]))?;
+    #[cfg(windows)]
+    let builder = builder.data_directory(app.path().app_local_data_dir().map_err(cannot_open)?.join("pixiv-webview"));
+    let win = crate::webview::build(builder).map_err(cannot_open)?;
     let hide = win.clone();
     win.on_window_event(move |event| {
         if let WindowEvent::CloseRequested { api, .. } = event {

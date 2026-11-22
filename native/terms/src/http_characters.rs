@@ -328,7 +328,8 @@ fn profile(c: &Connection, e: &str) -> Result<Json> {
     let work = text(&row, "work_id");
     let name =
         if work.is_empty() { String::new() } else { c.query_row("SELECT entity_name(?)", [&work], |r| r.get(0))? };
-    Ok(Json::object([
+    let catalog = catalog_changes(c, &id)?;
+    let mut profile = Json::object([
         ("id", id.clone().into()),
         ("name", shown.field("name").clone()),
         ("user_name", user.into()),
@@ -349,7 +350,32 @@ fn profile(c: &Connection, e: &str) -> Result<Json> {
         ("work_name", name.into()),
         ("oc", (number(&row, "original") != 0).into()),
         ("label_only", (number(&row, "label_only") != 0).into()),
-    ]))
+    ]);
+    // 只在目录动过这个角色时才带这一项，其余资料的响应和以前逐字节相同。
+    if !matches!(&catalog, Json::Array(items) if items.is_empty()) {
+        profile.set("catalog", catalog);
+    }
+    Ok(profile)
+}
+
+/// 角色目录合并进这个角色、挂到它下面的角色（#837），给「编辑资料」里的「拆开」用：[{id, kind, name}]，
+/// kind 是 `merged` 或 `attached`。
+fn catalog_changes(c: &Connection, id: &str) -> Result<Json> {
+    let state = strings(c, "SELECT value FROM meta WHERE key=?", &[illustash_core::character_import::CATALOG_META])?;
+    let state: serde_json::Value =
+        state.first().and_then(|s| serde_json::from_str(s).ok()).unwrap_or(serde_json::Value::Null);
+    let mut out = Vec::new();
+    for kind in ["merged", "attached"] {
+        for pair in state[kind].as_array().into_iter().flatten() {
+            let (Some(other), Some(owner)) = (pair[0].as_str(), pair[1].as_str()) else { continue };
+            if owner != id {
+                continue;
+            }
+            let name: String = c.query_row("SELECT entity_name(?)", [other], |r| r.get(0))?;
+            out.push(Json::object([("id", other.into()), ("kind", kind.into()), ("name", name.into())]));
+        }
+    }
+    Ok(Json::Array(out))
 }
 fn activity(c: &Connection, nsfw: &str) -> Result<Json> {
     let t = crate::platform_time::local_date(30 * 86400);

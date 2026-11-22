@@ -128,9 +128,9 @@ impl Catalog {
             if by_id.insert(c.id, i).is_some() {
                 return invalid(format!("角色目录：ID {} 重复", c.id));
             }
-            for t in std::iter::once(&c.tag).chain(&c.tags) {
-                if by_tag.insert(t.clone(), i).is_some() {
-                    return invalid(format!("角色目录：tag {t} 出现在两个角色里"));
+            for tag in std::iter::once(&c.tag).chain(&c.tags) {
+                if by_tag.insert(tag.clone(), i).is_some() {
+                    return invalid(format!("角色目录：tag {tag} 出现在两个角色里"));
                 }
             }
         }

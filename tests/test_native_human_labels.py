@@ -485,7 +485,7 @@ class NativeHumanLabelsTest(unittest.TestCase):
         with closing(sqlite3.connect(self.right.db)) as right:
             right.execute('BEGIN IMMEDIATE')
             before = states(self.right)
-            self.assertEqual(self.rec.state('before'), before)
+            reference_before = self.rec.state('before')
             self.assertEqual(self.reference_response('response', item)['status'], 500)
             response = fetch(self.origin, item, self.origin)
             self.assertEqual(response['status'], 503)
@@ -496,7 +496,10 @@ class NativeHumanLabelsTest(unittest.TestCase):
             self.assertEqual({k: v for k, v in diagnostic.items() if k != 'id'},
                              {'stored': True, 'publication': 'not_committed', 'retry': 'retry'})
             self.assertEqual(states(self.right), before)
-            self.assertEqual(self.rec.state('after'), states(self.right))
+            reference_after = self.rec.state('after')
+            self.assertEqual(reference_after, reference_before)
+            self.assertEqual(reference_after, states(self.right))
+            self.assertEqual(response['headers']['Content-Length'], str(len(response['body'])))
             right.rollback()
         self.pair('/api/tag', body)
         self.undo_latest()

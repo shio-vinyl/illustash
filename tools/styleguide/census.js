@@ -2,8 +2,8 @@
 window.CENSUS = {
  "source": "web/static/app.css、web/static/css/base.css、web/static/css/catalog.css、web/static/css/character.css、web/static/css/detail.css、web/static/css/galleries.css、web/static/css/library.css、web/static/css/overlays.css、web/static/css/rail.css、web/static/css/settings.css、web/static/css/tidy.css、web/static/css/tokens.css",
  "files": {
-  "app.css": "14bd74033fd34f87b661a7f5feed9e9e00588a1f89673dc92399d451ec751c4e",
-  "css/base.css": "274d8ae6a2a8507270b927581e874fbe298a6524fde58c1e21f9d0f007e3c738",
+  "app.css": "574d3a7d0357cdcd1e4e1f7212461ef762a8c86703349e1090aa4140895a4499",
+  "css/base.css": "3cbbf31351c0a337b97fe6ceddc1bc356e80d06defc4e8f8420b30a9e13cced3",
   "css/catalog.css": "076a0fcebc95af0a6daff5b99fb5e0d5c407fa7bacc908dcd8383bc4e52a6ba2",
   "css/character.css": "c700d9eb883a6ef2848b44e5c9d96446dc649e7b9d63e2ae83ebfbfef7151697",
   "css/detail.css": "a9eaf043f2074eea276c1b235e7da4db3630a280ad99ea15956c62d2ecba2904",
@@ -15,9 +15,9 @@ window.CENSUS = {
   "css/tidy.css": "63c15db2f00a009f88d0b19a20ab688b72849fc49e487ae3bf9260e55dada604",
   "css/tokens.css": "6f31fbe3b32f892a26e753e410d7e5ea94d7e4165ed49d04458eecca3314e787"
  },
- "sha256": "fe5805eca044006adf476fc4be9beeb4224a56946eac362911b3dc6bf73e3194",
- "lines": 2048,
- "rules": 1450,
+ "sha256": "2a6fc68872109a24a01241e92671eed09986b43bdd3235731a233103408ca5c0",
+ "lines": 2055,
+ "rules": 1451,
  "themeVars": {
   "light": {
    "--canvas": "#f4f4f6",
@@ -254,14 +254,13 @@ window.CENSUS = {
    "--tone-steel-bg": 1,
    "--tone-amber-ink": 1,
    "--tone-amber-bg": 1,
-   "--mono": 4,
+   "--mono": 3,
    "--radius-8": 33,
    "--accent-btn": 10,
    "--radius-18": 14,
    "--sheet-shadow": 1,
    "--fs-20": 13,
    "--sh": 28,
-   "--fw-600": 47,
    "--r18-on": 1,
    "--r18": 1,
    "--select-arrow": 1,
@@ -289,6 +288,7 @@ window.CENSUS = {
    "--fw-750": 26,
    "--fs-display-28": 6,
    "--dur-1": 47,
+   "--fw-600": 47,
    "--accent-fill": 7,
    "--on-accent": 10,
    "--btn-hover-filter": 1,

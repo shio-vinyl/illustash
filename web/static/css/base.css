@@ -85,6 +85,16 @@ button.chip:hover,a.chip:hover{background:var(--chip-hover);color:var(--ink)}
 /* 拖到别的应用以后、下一次按下之前：页面不可选（ui/press.js 的 handedOff） */
 body.handed-off{-webkit-user-select:none;user-select:none}
 .page-head>.page-actions{flex:none;margin-left:0}
+/* 通用等宽字族之前优先选 Consolas，避免回落到细衬线字体。 */
+.top-actions .nsfw-toggle{
+  font-family:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,monospace;
+  font-size:var(--fs-11);font-weight:var(--fw-600);line-height:1;letter-spacing:-.025em
+}
+.top-actions .nsfw-toggle>span{transform:translateY(var(--space-1))}
+/* 增强：按大写字母高度居中（Safari 18.2）。退路：沿用上面的 1px 垂直补偿。 */
+@supports (text-box:trim-both cap alphabetic){
+  .top-actions .nsfw-toggle>span{text-box:trim-both cap alphabetic;transform:none}
+}
 .content>.page-tools[hidden]{display:none}
 /* 网格最后的排序、选择和显示方式一起换行，保持从左到右的操作顺序。 */
 .page-tools>.page-actions{flex:none}

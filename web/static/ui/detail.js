@@ -27,7 +27,7 @@ import {wireLift} from './drag.js';
 import {key, write} from './frame.js';
 import {cancelExit, enter, exit} from './motion.js';
 import {detailCard} from './detail_card.js';
-import {bindViewer, closeViewer, openViewer, showViewer, viewerFav, wireViewer} from './viewer.js';
+import {bindViewer, closeViewer, openViewer, showViewer, viewerFav, viewerVisit, wireViewer} from './viewer.js';
 
 export {closeViewer, openViewer, peek, peekAt, showViewer, wirePeek, zoomView} from './viewer.js';
 
@@ -195,7 +195,11 @@ export async function step(delta) {
   const at = cur ? indexOf(cur) : -1;
   const from = at >= 0 ? at : state.viewer >= 0 ? state.viewer : state.cursor;
   const n = Math.max(0, Math.min(state.total - 1, from + delta)); if (n === from || n < 0) return;
-  if (!state.items[n]) await loadPage(Math.floor(n / PAGE) * PAGE);
+  if (!state.items[n]) {
+    const visit = viewerVisit(), route = state.route;
+    await loadPage(Math.floor(n / PAGE) * PAGE);
+    if (visit !== viewerVisit() || route !== state.route) return;
+  }
   if (!state.items[n]) return;
   setCursor(n); ensureVisible(n);
   if (state.viewer >= 0) showViewer(n); else inspect(state.items[n].uuid);

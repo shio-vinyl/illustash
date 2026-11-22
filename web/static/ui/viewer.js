@@ -48,7 +48,7 @@ export function bindViewer(h) { hooks = h; }
 const s = app.child('viewer');
 const PREPARE = s.key('viewer:prepare'), ZOOM = s.key('viewer:zoom'), BOX = s.key('viewer:box');   // 帧任务的令牌（#751）
 const view = {scale: 1, x: 0, y: 0};
-let slots = [], current = null, bar = null, closing = 0, backdrop = null;
+let slots = [], current = null, bar = null, visit = 0, backdrop = null;
 let shownReady = Promise.resolve();   // 最近一次换图时当前那张预览图解码的 promise（openViewer 等它再展开）
 
 // 大图是盖满页面的层：Esc 关它（焦点在层外的输入框里时让位给输入框失焦），关闭时焦点还给打开它的地方。
@@ -81,7 +81,9 @@ function fill(slot, item) {
   css(slot.zoom, 'transform', null);
   ratio(slot, aspect(item), item.width);
   attr(slot.low, 'src', imageUrl(item.uuid, 'preview'));
-  slot.ready = (slot.low.decode?.() || Promise.resolve()).then(() => { if (!aspect(item) && slot.low.naturalWidth) ratio(slot, slot.low.naturalWidth / slot.low.naturalHeight); }, () => {});
+  slot.ready = (slot.low.decode?.() || Promise.resolve()).then(() => {
+    if (slot.uuid === item.uuid && !aspect(item) && slot.low.naturalWidth) ratio(slot, slot.low.naturalWidth / slot.low.naturalHeight);
+  }, () => {});
   return slot.ready;
 }
 // 框按宽高比铺满舞台，但不超过原图的宽度（和旧看图器一样，小图按原尺寸显示、不放大）。原图宽度不知道时只按舞台。
@@ -198,19 +200,22 @@ function viewerActions(d) {
   return out;
 }
 async function refreshBar(item) {
+  const mine = visit, still = () => mine === visit && state.viewerItem?.uuid === item.uuid;
   let d;
-  try { d = await readDetail(item.uuid); } catch (e) { if (state.viewerItem?.uuid === item.uuid) bar?.failed(e.message); return; }
-  if (!d || state.viewerItem?.uuid !== item.uuid) return;
+  try { d = await readDetail(item.uuid); } catch (e) { if (still()) bar?.failed(e.message); return; }
+  if (!d || !still()) return;
   bar?.update(d, adoptDetail(d, item.uuid, hooks.askEnabled()));
 }
 
 // ---------- 开、关、翻 ----------
 const root = () => $('viewer'), chrome = () => [backdrop, root().querySelector('.viewer-top'), $('viewerBar')];
+/** 翻页取数时记住这次开关，用来丢掉关掉大图或重开后的旧回包。 */
+export const viewerVisit = () => visit;
 /** 打开第 i 张的大图。 */
 export function openViewer(i) {
   if (i < 0 || !state.items[i]) return;
   if (state.viewer >= 0) { showViewer(i); return; }
-  const mine = ++closing, item = state.items[i];
+  const mine = ++visit, item = state.items[i], still = () => mine === visit && state.viewer >= 0;
   state.viewer = i;
   document.body.classList.add('viewing');
   // 层先登记上：等预览图解码的这 50–250ms 里按 Esc，关的是大图（onDismiss → closeViewer，开场随之作废），不落到页面上。
@@ -219,11 +224,12 @@ export function openViewer(i) {
   const ready = shownReady;
   // 展开：等预览图解码（有上下限），然后从缩略图的位置长到大图的位置。缩略图等完再找：等的时候网格可能重画过。
   Promise.all([sleep(OPEN_MIN_MS), Promise.race([ready, sleep(OPEN_MAX_MS)])]).then(() => {
-    if (mine !== closing || state.viewer < 0) return;
-    share({from: thumbs.find(item.uuid), to: () => current?.frame, radius: [8, 0], update: () => {
-      if (mine !== closing) return;
+    if (!still()) return;
+    share({from: thumbs.find(item.uuid), to: () => still() ? current?.frame : null, radius: [8, 0], update: () => {
+      // 浏览器可能在关闭或重开之后才调用转场更新。
+      if (!still()) return;
       // 上一次缩回还没走完就又打开：先撤掉它停在终点的动画。
-      for (const el of [...slots.map(x => x.frame), ...chrome()]) for (const anim of el.getAnimations?.() || []) anim.cancel();
+      for (const el of [...slots.map(x => x.frame), ...chrome()]) for (const anim of el?.getAnimations?.() || []) anim.cancel();
       root().hidden = false; cls(root(), 'is-closing', false);
       root().focus?.({preventScroll: true});   // 层登记时大图还藏着，焦点进不去，这里补上
       for (const el of chrome()) enter(el, {from: 'fade', dur: 2});
@@ -238,7 +244,7 @@ export function openViewer(i) {
  */
 export function closeViewer(reason) {
   layer.close(reason); if (state.viewer < 0) return;
-  const follow = detailAfterViewer(), last = state.viewerItem?.uuid, mine = ++closing;
+  const follow = detailAfterViewer(), last = state.viewerItem?.uuid, mine = ++visit;
   hooks.kept.hold = null; state.viewerItem = null; document.body.classList.remove('viewing');
   if (hooks.endPreview()) { state.viewer = -1; reveal(last); hooks.markDetailKeys(); }
   else {
@@ -247,7 +253,7 @@ export function closeViewer(reason) {
   }
   const frameEl = current?.frame;
   const done = () => {
-    if (mine !== closing) return;
+    if (mine !== visit) return;
     root().hidden = true; cls(root(), 'is-closing', false);
     for (const el of [frameEl, ...chrome()]) for (const a of el?.getAnimations?.() || []) a.cancel();
     release();
@@ -256,7 +262,7 @@ export function closeViewer(reason) {
   // 缩回去：等视图把滚进视野的那张画出来（两帧），找它的缩略图；退场期间不接点击（.is-closing）。
   cls(root(), 'is-closing', true);
   nextFrame().then(nextFrame).then(() => {
-    if (mine !== closing) return;
+    if (mine !== visit) return;
     resetView();
     // 顶栏、底栏淡出后停在透明，不藏起来：藏了舞台会变高，大图的框跟着变，缩回去的终点就错位了。
     for (const el of chrome()) animate(el, [{opacity: 1}, {opacity: 0}], {dur: 1, fill: 'forwards'});
@@ -266,7 +272,11 @@ export function closeViewer(reason) {
 /** 显示第 i 张（held 是已经离开列表、但还停在屏幕上的那张）。 */
 export async function showViewer(i, held = null) {
   if (i < 0 && !held) { closeViewer(); return; }
-  if (!held && !state.items[i]) await hooks.loadPage(Math.floor(i / hooks.PAGE) * hooks.PAGE);
+  if (!held && !state.items[i]) {
+    const mine = visit;
+    await hooks.loadPage(Math.floor(i / hooks.PAGE) * hooks.PAGE);
+    if (mine !== visit) return;
+  }
   const item = held || state.items[i]; if (!item) { closeViewer(); return; }
   const same = state.viewerItem?.uuid === item.uuid;
   state.viewer = Math.max(0, i); hooks.setCursor(state.viewer); state.viewerItem = item;

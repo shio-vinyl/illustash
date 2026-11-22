@@ -253,6 +253,32 @@ test('共享元素：有 View Transitions 时用它，等异步的 update 画完
   delete document.startViewTransition;
 });
 
+test('旧转场结束时，保留复用节点上的新转场名字', async () => {
+  const thumb = node({rect: {left: 20, top: 30, width: 50, height: 50}});
+  const big = node({rect: {left: 100, top: 100, width: 400, height: 200}});
+  const finish = [];
+  document.startViewTransition = update => {
+    const end = Promise.withResolvers();
+    finish.push(end.resolve);
+    return {ready: update(), finished: end.promise};
+  };
+  const first = motion.share({from: thumb, to: big});
+  const next = motion.share({from: thumb, to: big});
+  try {
+    await new Promise(setImmediate);
+    const name = big.style.viewTransitionName;
+    finish[0]();
+    assert.equal(await first, true);
+    assert.match(name, /^share-\d+$/);
+    assert.equal(big.style.viewTransitionName, name);
+  } finally {
+    finish[0](); finish[1]();
+    await Promise.all([first, next]);
+    delete document.startViewTransition;
+  }
+  assert.equal(big.style.viewTransitionName, '');
+});
+
 test('共享元素：没有 View Transitions 时先等 update 画完，再对大图做 Web Animations', async () => {
   const thumb = node({rect: {left: 20, top: 30, width: 50, height: 50}}), big = node({rect: {left: 100, top: 100, width: 400, height: 200}});
   const order = [];

@@ -108,19 +108,19 @@ class NativeHumanCurationTest(unittest.TestCase):
     def test_fold_hash_union_relationship_order_rep_ties_and_mixed_memberships(self):
         history = snapshot(self.right.db)['actions']
         self.pair('/api/fold', {'kinds': []})
-        self.assert_duplicates(['d', 'e'], 'hash-two', 'd', hidden=set())
+        self.assert_duplicates(['d', 'e'], 'hash-two', 'e', hidden={'d'})
         self.assert_duplicates(['g', 'h'], 'hash-three', 'g', hidden={'h'})
         response = self.pair('/api/fold', {'kinds': ['edit', 'crop', 'edit']})
         self.assertEqual(response, {'kinds': ['crop', 'edit']})
-        self.assert_duplicates(['d', 'e', 'f', 'g', 'h'], 'hash-three', 'g', hidden=set())
+        self.assert_duplicates(['d', 'e', 'f', 'g', 'h'], 'hash-three', 'e', hidden={'d', 'f', 'g', 'h'})
         self.seed_both()
         self.pair('/api/fold', {'kinds': ['edit', 'crop']})
-        self.assert_duplicates(['d', 'e', 'f', 'g', 'h'], 'hash-three', 'g', hidden=set())
+        self.assert_duplicates(['d', 'e', 'f', 'g', 'h'], 'hash-three', 'e', hidden={'d', 'f', 'g', 'h'})
         self.assertEqual(snapshot(self.right.db)['actions'], history)
         # 没有 stable_hash 的合法旧 source 只按关系处理，不写入 source。
         self.seed_both()
         self.pair('/api/fold', {'kinds': ['crop', 'edit']})
-        self.assert_duplicates(['e', 'f', 'g'], 'sim:e', 'g', hidden=set())
+        self.assert_duplicates(['e', 'f', 'g'], 'sim:e', 'e', hidden={'f', 'g'})
         self.assertEqual(snapshot(self.right.db)['actions'], history)
 
     def assert_duplicates(self, ids, group, representative, hidden):

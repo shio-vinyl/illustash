@@ -19,7 +19,7 @@
 
  "crates/core/src/character_identity.rs":"106fcf70a3fe2ec3d20195cf6bdf7c84aaf22b2e8e9ee8e3dac314d66d2cb505",
 
- "crates/core/src/character_import.rs":"0cc5602a3b1877df70631a7f62eac0be2bdc45b14913f2ed9c288a42dc7d3b72",
+ "crates/core/src/character_import.rs":"38f3b16b45830f6af20c5bf5aa10cc5a71260fd82ce317b0a8005300d380b822",
 
  "crates/core/src/character_json.rs":"9a60f525976d786c9edfcd8420c100481ba117bbaa78e839f02e7002ff328046",
 
@@ -35,7 +35,7 @@
 
  "crates/core/src/character_profile.rs":"eff1d7bfcc0ba8ef23f9e804e9ff1474d0be0b67632632fc3703730951d4bf8e",
 
- "crates/core/src/character_projection.rs":"a15e32d1f556c495336abb603ea07ad2d80361a6bf2d3e79c5e23072851785cf",
+ "crates/core/src/character_projection.rs":"98d5cff7c6bb9d8c68ea102dc1d69f1554913a3aec8df91939ae215c710c915a",
 
  "crates/core/src/character_relations.rs":"a3b3a1139aca9bd85b6d14d83338341caaf4c26e7619c1c11511793d249e6e21",
 
@@ -45,7 +45,9 @@
 
  "crates/core/src/character_sql/evidence_hybrid.sql":"ce9ef0e5b64c3c640278eb63410fd18e27b1b93b393c361f9cc1afb232d2f724",
 
- "crates/core/src/character_sql/fold.sql":"c4bc07a41ca859809c7f20f36d077e5f9da7dcf42c3d5de2f970240654542d9d",
+ "crates/core/src/character_sql/fold.sql":"2b56326801b5e0b1a424e47134220eeeec9849cc5eb8c567e20a19d8d0da5ad1",
+
+ "crates/core/src/character_sql/fold_legacy.sql":"c4bc07a41ca859809c7f20f36d077e5f9da7dcf42c3d5de2f970240654542d9d",
 
  "crates/core/src/character_sql/lead_assets.sql":"c6b4bc0edc2ef9c7e3bbef439e7e408ed10c109a08f26ae756435220e041c1a0",
 
@@ -243,7 +245,7 @@
 
  "native/terms/src/app_create_schema.sql":"f41f751e3f9c2deae935dcb9869cd385a0893a9d20dad2c4b64b7b14d7ef54ae",
 
- "native/terms/src/app_curation.rs":"849dd569bf7fb98738c4edaf0ad73a3e5292afa8b208eb34011e7ec99b8aef76",
+ "native/terms/src/app_curation.rs":"f93e72179cf441511937f271ff0397cb9398c4a93e1a78e45ff4f62640c5b67c",
 
  "native/terms/src/app_desktop.rs":"127f0fd9238bd2f37334b531e4ee170d78e41e573125cc3c584c4020129fd573",
 
@@ -347,7 +349,7 @@
 
  "native/terms/src/app_resources.rs":"d691ec21499b906972a02d49a21790f2a301c34eb4dea0bd9c301675dd9e2c0a",
 
- "native/terms/src/app_service.rs":"1fa1ed83fc0fe56ad66996887c79195ae79813b5c3daf69bb01136f938ee7b95",
+ "native/terms/src/app_service.rs":"9f5f81aa7e27b51fbe83c701409f2783dcd9089f793a11397a4276aaee2c9653",
 
  "native/terms/src/app_settings.rs":"20f5eb9c25a3a14920b85b48e75186564c5e01f6129cca02b06b2f63d60b2c41",
 
@@ -401,7 +403,7 @@
 
  "native/terms/src/http_artists.rs":"2fec7a75db8c4448c9d442d256d5dc52ab19eab1c19be4f54a6b71ad94092577",
 
- "native/terms/src/http_browse.rs":"1bb9288d5987da9149372b8b69a53585046e39c6ea33820d1deaa2c9d977c9a6",
+ "native/terms/src/http_browse.rs":"b486f536f4b168a59304d39f933cdb15e670197b6d83baa21b777be854a02b68",
 
  "native/terms/src/http_characters.rs":"950b68d3b80befe3eb53ace5ceb2f9f61757100b75c3a22450905b5452c3e5c5",
 
@@ -540,7 +542,7 @@
 "format":2,
 "retained_references":[],
 "inventory":{
- "native/terms/src/app_curation.rs":{"policy":"application","current_runtime":"rust","storage_domain":"app","scope_overrides":{"fold":{"storage_domain":"app+source-ro","current_runtime":"rust-fold-with-readonly-source-snapshot"}}},
+ "native/terms/src/app_curation.rs":{"policy":"application","current_runtime":"rust","storage_domain":"app","scope_overrides":{"fold":{"storage_domain":"app+source-ro","current_runtime":"rust-fold-with-readonly-source-snapshot"},"refresh_fold_on_open":{"current_runtime":"rust-fold-cache-refresh","boundary_notes":{"authorization":"#836 首次打开按新规则刷新副本可见性，同事务记录缓存版本；不改图库格式或人工结论。"}}}},
  "native/terms/src/app_research.rs":{"policy":"coordination","current_runtime":"rust-research-publication","storage_domain":"app+source-ro+snapshot"},
  "native/terms/src/app_provenance_cache.rs":{"policy":"coordination","current_runtime":"rust-native","storage_domain":"research+application"},
  "native/terms/src/bin/illustash-worker.rs":{"policy":"coordination","current_runtime":"rust-installed-optional-worker-dispatch","storage_domain":"no-db"},
@@ -604,7 +606,7 @@
  "清单通过≠平台验收。生产HTTP默认原生；历史转发/Store/桥限显式测试参考。worker只算隔离快照，Rust验证发布；无Python安装产物、平台/真实图库须分别验收。"
 ],
 "boundaries":{
- "native/terms/src/app_curation.rs":{"database-write":[[0,6],178,"INSERT OR REPLACE INTO:curation",18,1,60,69,181,195,34,57,61]},
+ "native/terms/src/app_curation.rs":{"database-write":[[0,7],178,"INSERT OR REPLACE INTO:curation",18,[1,2],60,69,181,195,34,57,61,"INSERT OR REPLACE INTO:meta"]},
  "native/terms/src/app_research.rs":{"database-write":{"DELETE FROM:image_sigs":1,"dynamic-or-wrapper":10,"DELETE FROM:relations":1,"DELETE FROM:similar_paired":1,"DELETE FROM:similar_retry":1,"BEGIN":1,"ROLLBACK":1,"CREATE TABLE:assets":1,"COMMIT":1,"CREATE TABLE IF NOT EXISTS:research_runs":1,"INSERT INTO:research_runs|UPDATE:set":1,"INSERT OR IGNORE INTO:research_runs":1,"INSERT INTO:research_runs":1,"UPDATE:backend_effects":2,"UPDATE:research_runs":3,"CREATE TABLE IF NOT EXISTS:similar_paired|CREATE TABLE IF NOT EXISTS:similar_retry":1},"entrypoint":{"process-start":1}},
  "crates/core/src/character_names.rs":{"database-write":{"UPDATE:term_names":1,"dynamic-or-wrapper":2,"INSERT INTO:term_names":1,"UPDATE:set":1}},
  "native/terms/src/app_migration_sql/effects.sql":{"database-write":[126]},
@@ -661,7 +663,7 @@
  "native/terms/src/app_identity.rs":{"http-branch":[95,37,40],"database-write":[[0,4],3,34,18,1]},
  "native/terms/src/app_migration_sql/asked.sql":{"database-write":[50,47,51]},
  "crates/core/src/store.rs":{"database-write":[14,9,[0,23],226,67,214,66,"INSERT INTO:term_relations",[1,6],[18,2],[15,2],[72,2],35,"DELETE FROM:wanted_evidence","INSERT INTO:wanted_evidence","DELETE FROM:term_active_evidence","INSERT INTO:term_active_evidence",20,212,221,213,[191,2],206,[185,2],"INSERT INTO:term_packages",59,"UPDATE:term_packages",64,[227,2]]},
- "crates/core/src/character_projection.rs":{"database-write":{"DELETE FROM:touched":1,"INSERT OR IGNORE INTO:touched":1,"dynamic-or-wrapper":23,"DELETE FROM:candidate_scope":1,"INSERT OR IGNORE INTO:candidate_scope":1,"DELETE FROM:candidates":1,"INSERT INTO:candidates":1,"DELETE FROM:family_evidence":2,"DROP TABLE IF EXISTS:temp.projected_membership_rules":1,"DROP TABLE:temp.projected_membership_rules":1,"INSERT INTO:term_assets":1,"UPDATE:set":1,"DELETE FROM:term_projection":1,"INSERT INTO:term_projection":1,"DELETE FROM:previous_extension_sources":2,"INSERT INTO:previous_extension_sources":1,"DELETE FROM:assignable_scope":1,"DELETE FROM:assignable_extension":1,"INSERT OR IGNORE INTO:assignable_scope":1,"INSERT OR IGNORE INTO:assignable_extension":1}},
+ "crates/core/src/character_projection.rs":{"database-write":{"DELETE FROM:touched":1,"INSERT OR IGNORE INTO:touched":1,"dynamic-or-wrapper":24,"DELETE FROM:candidate_scope":1,"INSERT OR IGNORE INTO:candidate_scope":1,"DELETE FROM:candidates":1,"INSERT INTO:candidates":1,"DELETE FROM:family_evidence":2,"DROP TABLE IF EXISTS:temp.projected_membership_rules":1,"DROP TABLE:temp.projected_membership_rules":1,"INSERT INTO:term_assets":1,"UPDATE:set":1,"DELETE FROM:term_projection":1,"INSERT INTO:term_projection":1,"DELETE FROM:previous_extension_sources":2,"INSERT INTO:previous_extension_sources":1,"DELETE FROM:assignable_scope":1,"DELETE FROM:assignable_extension":1,"INSERT OR IGNORE INTO:assignable_scope":1,"INSERT OR IGNORE INTO:assignable_extension":1}},
  "native/terms/src/app_characters.rs":{"http-branch":[80,79,76,269,100],"database-write":[0,2,3]},
  "crates/core/src/character_identity.rs":{"database-write":[[0,6],[205,2],64,63,15,18,35,71]},
  "native/terms/src/app_create_schema.sql":{"database-write":[53,135,124,104,127,105,139,120,101,131,153,123,103,122,49,152,164,155,113,160,115,[50,2],[47,2],[51,2],132,157,158,159,[45,11],109,171,108,165,161,137,110,167,52,133,107,130,169,168,118,166,117,129,106,128,163,170,119,162,116,154,125,136,172,56,156,114,54,48,174,55,148,146,145,144,142,143,112,149,150,151,140,141,147,173,126,2,[31,22]]},
@@ -745,7 +747,8 @@
  "native/terms/src/app_similar_seen.rs":{"database-write":{"dynamic-or-wrapper":4,"INSERT INTO:similar_seen":2,"DELETE FROM:similar_seen":2,"INSERT INTO:actions":1,"COMMIT":1}},
  "native/terms/src/app_relocation.rs":{"database-write":[341,[232,5],182,[0,17],176,[5,2],[7,3],342,[339,2],[343,2],11,[344,4],379,[1,3]]},
  "native/terms/src/app_colors.rs":{"http-branch":{"/api/works":2,"/api/calendar":3,"/api/detail":3,"/api/assets|/api/artist-directory":1,"/api/assets":1,"/api/galleries/covers|/api/characters":1,"/api/home|/api/calendar":1},"database-write":{"dynamic-or-wrapper":3,"CREATE TABLE IF NOT EXISTS:colors":1,"INSERT INTO:colors":1,"COMMIT":1,"ATTACH":5}},
- "native/terms/src/app_names/model_api.rs":{"database-write":{"dynamic-or-wrapper":2,"DELETE FROM:name_settings":2,"INSERT OR REPLACE INTO:name_settings":1,"COMMIT":1}}
+ "native/terms/src/app_names/model_api.rs":{"database-write":{"dynamic-or-wrapper":2,"DELETE FROM:name_settings":2,"INSERT OR REPLACE INTO:name_settings":1,"COMMIT":1}},
+ "crates/core/src/character_sql/fold_legacy.sql":{"database-write":["UPDATE:duplicates"]}
 },
 "policies":{
  "application":{"final_owner":"rust","responsibility":"HTTP 参数/目标、人工命令、正式事务/投影；Python 包装待迁移","acceptance":"合成状态码/原始字节、返回/DB/历史/撤销/事件对照；竞争与注入失败原子回滚","deletion_condition":"Rust 调用链及无 Python 验收后删生产 Python；保留旧对照","stages":["M2","M3"]},

@@ -53,8 +53,8 @@ export function build(main, scope) {
     {key: 'exclude', title: t('排除规则'), scope: 'library', note: t('照片、截图、文字图这类不是插画的图不算进图库。你的判断优先于自动规则。'), parts: [
       {kind: 'block', key: 'tiles', mount: tiles(excluded)},
     ]},
-    {key: 'fold', title: t('重复与相似'), scope: 'library', note: t('勾选的关系会合并显示：图库里只留分辨率最高的一张，整组在「重复」页查看。'),
-     more: t('改动组里任一张会同步到整组。组里角色不一致时不合并，留在「重复」页等你处理。字节完全相同的副本总是合并。'), parts: [
+    {key: 'fold', title: t('重复与相似'), scope: 'library', note: t('图库优先显示保有整组人工结论的副本，其次按分辨率选取。'),
+     more: t('字节相同和勾选的关系参与折叠。人工结论分散在不同副本时，图库保留整组。'), parts: [
       startupRow('similar', t('启动时检测相似图片'), t('只比较新导入的图')),
       ...FOLD_OPTIONS.map(foldRow),
     ]},

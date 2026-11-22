@@ -89,15 +89,14 @@ export function queues(route = state.route) {
   const q = [
     {key: 'unmatched', kind: 'queue', label: t('未识别'), count: state.pools.unmatched || 0, href: '#/groups', meta: t('还没认出角色的图')},
     {key: 'doubts', kind: 'queue', label: t('可能认错'), count: state.pools[DOUBT_POOL] || 0, href: '#/doubts', meta: t('算给了某个角色、和另一个角色分不太清的图')},
-    {key: 'duplicates', kind: 'queue', label: t('重复'), count: state.dupInfo.mixed || 0, href: state.dupInfo.mixed ? '#/duplicates?dup=mixed' : '#/duplicates',
-      meta: t('角色不一致的副本组')},
+    {key: 'duplicates', kind: 'queue', label: t('重复'), count: 0, href: '#/duplicates'},
     {key: 'excluded', kind: 'queue', label: t('已排除'), count: state.pendingCount || 0, href: state.pendingCount ? '#/pending' : '#/excluded', meta: t('像截图、待确认的图')},
   ];
   if (state.pools.audit || at === 'audit') q.push({key: 'audit', kind: 'queue', label: t('随机抽查'), count: state.pools.audit || 0, href: '#/audit', meta: t('随机抽查还剩几张')});
   if (state.identityCount || at === 'identity') {
     q.push({key: 'identity', kind: 'queue', label: t('身份整理'), count: state.identityCount || 0, href: '#/identity', meta: t('长得像、可能是同一人或同一人另一个造型的角色对')});
   }
-  for (const x of q) x.meta = x.count ? `${x.meta} · ${number(x.count)}` : x.meta;
+  for (const x of q) if (x.count) x.meta = `${x.meta} · ${number(x.count)}`;
   return q;
 }
 

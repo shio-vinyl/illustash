@@ -115,7 +115,7 @@ const list = [
     hint: () => t('点击或拖动选择 · Space 看大图 · C 设为角色 · S 跳过')},
   {name: 'duplicates', area: 'grid', panel: false, click: 'browse', entry: 'tidy', item: 'duplicates', tabs: 'duplicates', tab: 'all',
     toolbar: 'grid', sorts: NEWEST, pool: 'duplicates', bar: 'default', card: {dup: true}, emptyIcon: 'check',
-    params: r => r.dup ? {dup: r.dup} : {}, empty: r => r.dup ? t('所有副本的角色都一致。') : t('没有重复的图片。'),
+    empty: () => t('没有重复的图片。'),
     hint: () => t('同色角标是同一组')},
   {name: 'similar', area: 'groupsPage', panel: true, click: 'own', entry: 'tidy', item: 'duplicates', tabs: 'duplicates', tab: 'similar', toolbar: 'tabs'},
   {name: 'sgroup', prefix: 's', area: 'grid', panel: false, click: 'cleanup', entry: 'tidy', item: 'duplicates', tabs: 'duplicates', tab: 'similar',

@@ -8,6 +8,7 @@ const HYBRID: &str = include_str!("character_sql/evidence_hybrid.sql");
 const MEMBERS: &str = include_str!("character_sql/memberships.sql");
 const TAGS: &str = include_str!("character_sql/tag_memberships.sql");
 const FOLD: &str = include_str!("character_sql/fold.sql");
+const FOLD_LEGACY: &str = include_str!("character_sql/fold_legacy.sql");
 const SINGLE: &str = include_str!("character_sql/single_assets.sql");
 const LEAD: &str = include_str!("character_sql/lead_assets.sql");
 const MULTI: &[&str] = &[
@@ -254,12 +255,16 @@ fn memberships_in(c: &Connection, uuids: Option<&[String]>, core: bool) -> Resul
         crate::character_extension::fill_unassigned(c, uuids.is_some())?;
         c.execute_batch("DELETE FROM previous_extension_sources;")?;
     }
-    let scope = if uuids.is_some() {
-        " WHERE d.grp IN (SELECT grp FROM duplicates WHERE uuid IN (SELECT uuid FROM touched))"
+    if core {
+        if uuids.is_some() {
+            let scope = "WHERE d.grp IN (SELECT grp FROM duplicates WHERE uuid IN (SELECT uuid FROM touched))";
+            c.execute(&scoped(FOLD, "/* group scope */", scope)?, [])?;
+        } else {
+            fold(c)?;
+        }
     } else {
-        ""
-    };
-    c.execute(&format!("{}{scope}", FOLD.trim_end()), [])?;
+        c.execute(FOLD_LEGACY, [])?;
+    }
     if core {
         mirror(c, uuids.is_some())
     } else {
@@ -346,7 +351,7 @@ pub(crate) fn refresh_delayed(c: &Connection) -> Result<()> {
     Ok(())
 }
 
-/// 在调用方现有的事务里刷新折叠后的身份。
+/// 在调用方现有的事务里刷新副本组的代表和折叠状态。
 pub fn fold(c: &Connection) -> Result<()> {
     c.execute(FOLD, [])?;
     Ok(())
@@ -355,6 +360,61 @@ pub fn fold(c: &Connection) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn fold_keeps_manual_decisions_visible_and_prefers_the_larger_copy_on_a_tie() {
+        let c = Connection::open_in_memory().unwrap();
+        c.execute_batch(
+            "CREATE TABLE assets(uuid TEXT PRIMARY KEY,width INTEGER,height INTEGER);
+             CREATE TABLE assertions(uuid TEXT,entity TEXT,status TEXT,origin TEXT,PRIMARY KEY(uuid,entity));
+             CREATE TABLE memberships(uuid TEXT,entity TEXT);
+             CREATE TABLE duplicates(uuid TEXT PRIMARY KEY,grp TEXT,pos INTEGER,rep INTEGER,hidden INTEGER);
+             INSERT INTO duplicates VALUES
+                ('same-small','same',1,0,0),('same-large','same',2,1,0),
+                ('machine-small','machine',1,0,0),('machine-large','machine',2,1,0),
+                ('human-small','human',1,0,0),('human-large','human',2,1,0),
+                ('conflict-small','conflict',1,0,0),('conflict-large','conflict',2,1,1),
+                ('split-small','split',1,0,0),('split-large','split',2,1,1);
+             INSERT INTO assets SELECT uuid,10*pos,10*pos FROM duplicates;
+             INSERT INTO memberships VALUES ('same-small','A'),('same-large','A'),
+                ('machine-small','A'),('machine-large','B');
+             INSERT INTO assertions VALUES
+                ('same-small','A','confirmed','review'),('same-large','A','confirmed','review'),
+                ('machine-small','A','confirmed','album'),
+                ('human-small','A','confirmed','review'),('human-small','B','rejected','review'),
+                ('conflict-small','A','confirmed','review'),('conflict-large','A','rejected','review'),
+                ('split-small','A','confirmed','review'),('split-large','B','confirmed','review');",
+        )
+        .unwrap();
+        fold(&c).unwrap();
+        let rows: Vec<(String, bool, bool)> = c
+            .prepare("SELECT uuid,rep,hidden FROM duplicates ORDER BY grp,pos")
+            .unwrap()
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
+            .unwrap()
+            .collect::<rusqlite::Result<_>>()
+            .unwrap();
+        assert_eq!(
+            rows,
+            [
+                ("conflict-small", false, false),
+                ("conflict-large", true, false),
+                ("human-small", true, false),
+                ("human-large", false, true),
+                ("machine-small", false, true),
+                ("machine-large", true, false),
+                ("same-small", false, true),
+                ("same-large", true, false),
+                ("split-small", false, false),
+                ("split-large", true, false),
+            ]
+            .map(|(id, rep, hidden)| (id.to_owned(), rep, hidden)),
+        );
+        let preserved: i64 = c
+            .query_row("SELECT count(*) FROM assertions WHERE uuid='human-small' AND origin='review'", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(preserved, 2);
+    }
 
     #[test]
     fn every_scope_anchor_is_replaced_exactly_once() {

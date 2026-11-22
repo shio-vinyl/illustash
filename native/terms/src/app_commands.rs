@@ -77,11 +77,7 @@ pub(crate) fn last_action(c: &Connection) -> Result<Json> {
     let Some(row) = rows.into_iter().next() else {
         return Ok(None::<String>.into());
     };
-    Ok(Json::object([
-        ("id", row.get("id").expect("app_commands internal invariant").clone()),
-        ("label", crate::http_app::action_label(c, &row)?.into()),
-        ("ts", row.get("ts").expect("app_commands internal invariant").clone()),
-    ]))
+    crate::http_app::action_summary(c, &row)
 }
 fn string(value: Option<&Json>) -> Option<&str> {
     match value {

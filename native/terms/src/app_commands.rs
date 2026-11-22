@@ -11,8 +11,8 @@ use std::{
     time::Duration,
 };
 
-/// 页面操作可以等后台任务交出写锁。SQLite 在连接内等待，宿主不会重放已经执行过的命令。
-const PAGE_WRITE_WAIT: Duration = Duration::from_secs(20);
+/// 给页面操作多一次默认写等待的时间。SQLite 在连接内等待，宿主不会重放已经执行过的命令。
+const PAGE_WRITE_WAIT: Duration = Duration::from_secs(10);
 
 pub(crate) fn request(context: &LibraryContext, path: &str, body: &Json) -> Result<Json> {
     request_prepared(context, path, body, None)

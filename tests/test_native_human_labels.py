@@ -478,11 +478,27 @@ class NativeHumanLabelsTest(unittest.TestCase):
                     self.pair('/api/undo', {'id': value}, expected=400 if rejected else 200)
 
     def test_write_lock_contention_preserves_exact_error_and_all_data(self):
-        with closing(sqlite3.connect(self.left.db)) as left, closing(sqlite3.connect(self.right.db)) as right:
-            left.execute('BEGIN IMMEDIATE'); right.execute('BEGIN IMMEDIATE')
-            self.pair('/api/tag', {'ids': ['a'], 'tag': '合成 标签'}, expected=500)
-            left.rollback(); right.rollback()
-        self.pair('/api/tag', {'ids': ['a'], 'tag': '合成 标签'})
+        # #828：历史宿主对超时的写锁报 500。当前宿主在已知没有提交时应报告可重试。
+        body = {'ids': ['a'], 'tag': '合成 标签'}
+        item = {'url': '/api/tag', 'method': 'POST', 'body': json.dumps(body).encode(),
+                'headers': {'Content-Type': 'application/json', 'X-CSRF-Token': self.token}}
+        with closing(sqlite3.connect(self.right.db)) as right:
+            right.execute('BEGIN IMMEDIATE')
+            before = states(self.right)
+            self.assertEqual(self.rec.state('before'), before)
+            self.assertEqual(self.reference_response('response', item)['status'], 500)
+            response = fetch(self.origin, item, self.origin)
+            self.assertEqual(response['status'], 503)
+            self.assertEqual(response['route'], 'core')
+            self.assertEqual(json.loads(response['body']), {'error': '服务繁忙，请稍后重试'})
+            diagnostic = json.loads(response['headers']['X-Illustash-Diagnostic'])
+            self.assertRegex(diagnostic['id'], r'^D-[0-9a-f]{32}$')
+            self.assertEqual({k: v for k, v in diagnostic.items() if k != 'id'},
+                             {'stored': True, 'publication': 'not_committed', 'retry': 'retry'})
+            self.assertEqual(states(self.right), before)
+            self.assertEqual(self.rec.state('after'), states(self.right))
+            right.rollback()
+        self.pair('/api/tag', body)
         self.undo_latest()
 
     def test_inflight_old_token_cannot_write_after_library_switch(self):

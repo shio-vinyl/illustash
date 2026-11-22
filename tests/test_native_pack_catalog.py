@@ -15,7 +15,7 @@ import sqlite3
 import struct
 import subprocess
 import tempfile
-from threading import Thread
+from threading import Event, Thread
 import time
 import unittest
 from urllib.parse import urlsplit
@@ -43,7 +43,7 @@ def sha(data):
 
 
 @contextmanager
-def github(files):
+def github(files, activity=None):
     """`files` 是「路径 → 字节」，随时可以改；`seen` 记下每个请求的路径。
 
     它也能当 `HTTPS_PROXY` 用：经代理发来的本机请求（请求行是完整地址）照常答复，去别处的 HTTPS（`CONNECT`）一律拒绝，
@@ -58,6 +58,8 @@ def github(files):
                 path = parts.path + (f'?{parts.query}' if parts.query else '')
             seen.append(path)
             body = b'[]' if path == RELEASES else files.get(path)
+            if callable(body):
+                body = body()
             if body is False:
                 # 模拟服务器在给出回应前中断连接。
                 self.connection.shutdown(socket.SHUT_RDWR)
@@ -67,6 +69,16 @@ def github(files):
             self.send_header('Content-Length', str(len(body)))
             self.end_headers()
             self.wfile.write(body)
+
+        def do_POST(self):
+            if activity is None or self.path != '/platform/activity':
+                self.send_error(404)
+                return
+            activity.append(json.loads(self.rfile.read(int(self.headers['Content-Length']))))
+            self.send_response(200)
+            self.send_header('Content-Length', '2')
+            self.end_headers()
+            self.wfile.write(b'{}')
 
         def do_CONNECT(self):
             self.send_response(403)
@@ -227,6 +239,42 @@ class NativePackCatalogTest(unittest.TestCase):
 
         state = wait_until(finished)
         self.assertEqual((state['status'], state['total']), ('needs_recognition', count), state)
+
+    def test_shell_receives_pack_download_enable_and_withdraw(self):
+        files, activity = {}, []
+        release = Event()
+
+        def reported(key, kind):
+            return any(item['kind'] == 'pack' and item['variant'] == kind
+                       for message in activity for item in message[key])
+
+        with github(files, activity) as (origin, _):
+            files.update(self.serve(origin))
+            self.env.update(ILLUSTASH_DESKTOP_BRIDGE=origin, ILLUSTASH_DESKTOP_TOKEN='synthetic-token')
+            self.restart()
+            url = '/builtin/wd-extension-v1.bin'
+            body = files[url]
+
+            def held():
+                release.wait(WAIT)
+                return body
+
+            files[url] = held
+            try:
+                self.packs({'action': 'download'})
+                wait_until(lambda: reported('busy', 'download'))
+            finally:
+                release.set()
+            self.assertEqual(self.settle('download')['current']['status'], 'ready')
+            wait_until(lambda: reported('ended', 'download'))
+            for action in ('enable', 'withdraw'):
+                # 持有应用库写锁，让真实包任务在取锁阶段等候一次活动上报。
+                with closing(sqlite3.connect(self.lib.db)) as blocker:
+                    blocker.execute('BEGIN IMMEDIATE')
+                    self.packs({'action': action})
+                    wait_until(lambda: reported('busy', action))
+                self.assertEqual(self.settle('task')['task']['status'], 'done')
+                wait_until(lambda: reported('ended', action))
 
     def test_one_pack_follows_update_check_then_download_switch_back_and_withdraw(self):
         files = {}

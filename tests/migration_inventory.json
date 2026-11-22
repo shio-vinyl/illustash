@@ -179,7 +179,7 @@
 
  "desktop/build.rs":"ba1c3b9097208d998ecbebb7b5ab044ceef97999132afb8f1a55a1a61b077034",
 
- "desktop/src/background.rs":"b5a7dfb92716d63049b0dd9206ffd9131c47964980a1d4b0b2ea12afab05ce3c",
+ "desktop/src/background.rs":"234c661eb444f3ab03ac50e99d786d2956630c3f850684a63d81107f607421b0",
 
  "desktop/src/bridge.rs":"be5cba9602c1c9e3651c5c4aee2cf336ab8b6cdb50e3202cdf18639dde8edc0f",
 
@@ -219,7 +219,7 @@
 
  "native/terms/src/app_accounts.rs":"87e3053630c382802c801c4e2f9bf9c4864cf1d4b2c0037aa8f8c1b394d140ec",
 
- "native/terms/src/app_activity.rs":"0b1bf47c69df7d53a7767ac7f549dbbed9b9d57ab461f63e78649be2d539e0a1",
+ "native/terms/src/app_activity.rs":"cfa41dffc3553c400034d8d866b48a9ed72213f4d789e5223981271779472ce8",
 
  "native/terms/src/app_archives.rs":"3a922c55998a6413ecece1a983037dee71323fee9e9ebdfd9cd655371ac42892",
 

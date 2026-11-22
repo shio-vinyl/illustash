@@ -134,6 +134,19 @@ pub fn describe(ended: &Ended) -> Option<(String, String)> {
         ("export", "error") => failed(tr("导出失败")),
         ("files", "done") => Some((tr("导出图片完成"), String::new())),
         ("files", "error") => failed(tr("导出图片失败")),
+        ("pack", "done") if ended.variant == "withdraw" => Some((tr("已撤回角色资料包"), String::new())),
+        ("pack", "done") if matches!(ended.variant.as_str(), "import" | "download") => {
+            Some((tr("角色资料包已就位"), String::new()))
+        }
+        ("pack", "done") => Some((tr("角色资料包"), tr("完成"))),
+        ("pack", "failed" | "error") => {
+            let body = if ended.reason.is_empty() {
+                tr("操作失败。")
+            } else {
+                tr_with("错误编号：{id}", &[("id", &ended.reason)])
+            };
+            Some((tr("角色资料包"), body))
+        }
         ("models", "done") if ended.variant == "import" => Some((tr("识别模型已导入"), String::new())),
         ("models", "done") => Some((tr("识别模型已下载"), String::new())),
         ("models", "failed" | "error") => failed(tr("识别模型下载失败")),
@@ -248,6 +261,13 @@ pub fn summary(busy: &[Busy]) -> String {
                 "import" => tr("导入中"),
                 "export" => tr("导出图库中"),
                 "files" => tr("导出图片中"),
+                "pack" => match one.variant.as_str() {
+                    "withdraw" => tr("撤回角色资料包中"),
+                    "enable" => tr("检查角色资料包中"),
+                    "import" => tr("导入角色资料包中"),
+                    "catalog" => tr("正在读取角色资料包目录"),
+                    _ => tr("下载角色资料包中"),
+                },
                 "models" if one.variant == "import" => tr("导入识别模型中"),
                 "models" => tr("下载识别模型中"),
                 _ => tr("任务进行中"),

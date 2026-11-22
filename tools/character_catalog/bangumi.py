@@ -17,6 +17,8 @@ import zipfile
 # 用 -I 运行时脚本目录不在 sys.path 里，按文件位置找仓库根。
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
+from tools.character_catalog import zhtext  # noqa: E402
+
 FIELD = re.compile(r'^\|\s*([^=|]+?)\s*=\s*(.*)$')
 ITEM = re.compile(r'^\[(.*)\]$')
 SEPARATORS = '・·•･=＝ 　_-‐'
@@ -87,8 +89,14 @@ def load(zip_path):
                 if isinstance(box.get(k), str) and box[k]:
                     names.add(box[k])
                     labelled.setdefault(k, box[k])
+            zh = zh.strip() if isinstance(zh, str) else ''
+            original = row.get('name') or ''
+            # 国产作品的角色，原名本身就是中文，「简体中文名」常空着或者写的是别名（如雷电将军写成巴尔泽布）。
+            if (original and not zh and zhtext.han(original) and not zhtext.kana(original)
+                    and not zhtext.hangul(original) and zhtext.gb2312(zhtext.unify_dots(original).replace('·', ''))):
+                zh = original
             characters[row['id']] = {
-                'name': row.get('name') or '', 'zh': zh.strip() if isinstance(zh, str) else '',
+                'name': original, 'zh': zh,
                 'names': {n for n in names if n}, 'labelled': labelled, 'role': row.get('role'),
                 'collects': row.get('collects') or 0,
             }

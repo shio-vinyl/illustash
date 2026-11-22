@@ -159,6 +159,9 @@ def main(argv=None):
     glob = [(c, characters[matched[c]]['name'], characters[matched[c]]['zh']) for c in matched if how_of[c] == 'global']
     random.Random(3).shuffle(glob)
     print('全库按名字对上的抽样', glob[:25])
+    out = {c: {'id': cid, 'how': how_of[c], 'name': characters[cid]['name'], 'zh': characters[cid]['zh']}
+           for c, cid in matched.items()}
+    json.dump(out, open(work.root / 'bangumi_matched.json', 'w', encoding='utf-8'), ensure_ascii=False)
     rnd = random.Random(7)
     for e in rnd.sample(ex, min(20, len(ex))):
         print('   ', e)

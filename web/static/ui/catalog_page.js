@@ -10,7 +10,7 @@ import {loadIndex} from '../core/jobs.js';
 import {number} from '../core/format.js';
 import {t} from '../core/i18n.js';
 import {onTyped} from '../core/keys.js';
-import {refreshMeta} from '../core/meta.js';
+import {canShowChars, refreshMeta} from '../core/meta.js';
 import {implement} from '../core/pages.js';
 import {prefs} from '../core/prefs.js';
 import {readError} from '../core/session.js';
@@ -74,7 +74,9 @@ function indexView(s) {
   }
   async function enterCast(route) {
     cast.list = null; value(q.input, '');
+    // 摘要已有首屏用的名字、数量和封面。变体的张数等完整数据回来再补。
     if (state.chars.some(c => c.summary)) {
+      if (canShowChars()) drawCast();
       try { await refreshMeta(); } catch (e) { fail(route, e); return; }
       if (!here(route)) return;
     }

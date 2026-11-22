@@ -668,7 +668,7 @@ export function wireGrid() {
     const back = isMac ? e.metaKey && !e.altKey && (e.key === '[' || e.key === ']') : e.altKey && !mod && (e.key === 'ArrowLeft' || e.key === 'ArrowRight');
     if (back) { e.preventDefault(); stepHistory(e.key === '[' || e.key === 'ArrowLeft' ? -1 : 1); return; }
     // 活页条（#706）：⌘1–4 切一级，⌥↑↓ 在二级里移动，⌥⇧↑↓ 挪动钉住的项。
-    if (railKey(e)) return;
+    if (railKey(e) || $('viewport').inert) return;
     // ⌘＋／⌘－：大图打开时缩放大图；否则只在有网格的页面改网格列数，别的页面什么也不做（也不交给浏览器缩放）。
     if (mod && (key === '=' || key === '+' || key === '-')) {
       e.preventDefault(); const bigger = key !== '-';

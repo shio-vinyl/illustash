@@ -1342,6 +1342,73 @@ fn publication_preserves_existing_files_and_rotation_checks_only_owned_valid_sna
 }
 
 #[test]
+fn page_curation_waits_for_human_import_publication() {
+    use std::{sync::mpsc, thread, time::Duration};
+
+    struct Pause<'a> {
+        locked: mpsc::Sender<()>,
+        release: &'a mpsc::Receiver<()>,
+    }
+    impl crate::app_imports::Observer for Pause<'_> {
+        fn publish(&self, apply: &mut dyn FnMut() -> Result<()>) -> Result<()> {
+            self.locked.send(()).unwrap();
+            self.release.recv_timeout(crate::test_wait::limit()).unwrap();
+            apply()
+        }
+    }
+
+    let source = Fixture::new("busy-source");
+    source.source();
+    let path = source.export();
+    let target = Fixture::new("busy-target");
+    target.target();
+    let context = target.context();
+
+    let (locked, in_publication) = mpsc::channel();
+    let (release, resume) = mpsc::channel();
+    let (result, finished) = mpsc::channel();
+    thread::scope(|scope| {
+        let importer = scope.spawn(move || {
+            import_run(
+                &target.db,
+                &target.id,
+                &path,
+                &|| Ok(()),
+                &Pause { locked, release: &resume },
+                "blocked-report",
+                None,
+            )
+            .map(|(report, _)| (target, report))
+            .unwrap()
+        });
+        in_publication.recv_timeout(crate::test_wait::limit()).unwrap();
+        let body = crate::http_json::parse_request(r#"{"ids":["new-d"],"action":"exclude"}"#).unwrap();
+        let db = context.db.clone();
+        scope.spawn(move || result.send(crate::app_commands::request(&context, "/api/curate", &body)).unwrap());
+
+        // 原有五秒等待在同一把锁上确实耗尽。再留一个短观察窗口，确保页面未提前失败。
+        let probe = crate::sqlite::open(db).unwrap();
+        crate::configure(&probe).unwrap();
+        let busy = probe.execute_batch("BEGIN IMMEDIATE; ROLLBACK;").unwrap_err();
+        assert_eq!(busy.sqlite_error_code(), Some(rusqlite::ErrorCode::DatabaseBusy));
+        let early = finished.recv_timeout(Duration::from_secs(1));
+        release.send(()).unwrap();
+        assert!(matches!(early, Err(mpsc::RecvTimeoutError::Timeout)), "{early:?}");
+
+        let (target, report) = importer.join().unwrap();
+        let reply = finished.recv_timeout(crate::test_wait::limit()).unwrap().unwrap();
+        assert_eq!(report.action_id, Some(1));
+        assert_eq!(reply.field("undo").field("id").integer(), 2);
+        assert_eq!(target.count("SELECT count(*) FROM actions"), 2);
+        assert_eq!(target.count("SELECT count(*) FROM curation WHERE uuid='new-d' AND status='excluded'"), 1);
+        assert_eq!(target.count("SELECT count(*) FROM curation WHERE uuid='new-a' AND status='included'"), 1);
+        target.undo(2).unwrap();
+        assert_eq!(target.count("SELECT count(*) FROM actions WHERE undone=0"), 1);
+        assert_eq!(target.count("SELECT count(*) FROM curation WHERE uuid='new-d'"), 0);
+    });
+}
+
+#[test]
 fn denied_publication_rolls_back_conclusions_cache_and_reports_together() {
     struct Cancel;
     impl crate::app_imports::Observer for Cancel {

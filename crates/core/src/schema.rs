@@ -843,11 +843,20 @@ pub fn begin_writing(tx: &Connection) -> Result<()> {
 }
 
 pub fn commit_writing(tx: rusqlite::Transaction<'_>) -> Result<()> {
+    commit_writing_with(tx, |_| Ok(()))
+}
+
+/// 投影更新后，在事务内构造回执，再提交。回执构造失败时回滚。
+pub fn commit_writing_with<T>(
+    tx: rusqlite::Transaction<'_>,
+    receipt: impl FnOnce(&Connection) -> Result<T>,
+) -> Result<T> {
     // 名字已在核心时，这个事务改到名字相关的数据就同事务补齐名字主数据、重建显示投影（docs/TERMS_NAMES.md「方案」）。
     crate::legacy_names::after_write(&tx)?;
     tx.execute("DELETE FROM meta WHERE key=?1", [WRITER_KEY])?;
+    let receipt = receipt(&tx)?;
     tx.commit()?;
-    Ok(())
+    Ok(receipt)
 }
 
 const V2_VERDICTS: &str = "

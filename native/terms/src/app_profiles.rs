@@ -149,7 +149,7 @@ fn names(c: &Connection, id: Option<&str>) -> Result<()> {
     c.execute("INSERT INTO backend_effects(kind) VALUES (?)", [kind])?;
     Ok(())
 }
-/// 事务提交后请求的回复。
+/// 在写事务内构造的请求回复。
 enum Reply {
     /// 早已存在的身份，在事务内渲染；什么都没改，所以没有要登记的名称。
     Existing(Json),
@@ -163,12 +163,18 @@ enum Reply {
     Work(String),
     /// 核心命令自己的回复。
     Answer(Json),
+    /// 核心命令的回复，附带刚登记的撤销。
+    AnswerWithUndo(Json),
 }
 impl Reply {
-    /// 提交后的回复；名称会重新登记，所以显示的是请求写入的内容。
+    /// 名称投影更新后构造回复，显示本次写入的数据。
     fn render(self, c: &Connection) -> Result<Json> {
         match self {
             Reply::Existing(v) | Reply::Answer(v) => Ok(v),
+            Reply::AnswerWithUndo(mut v) => {
+                v.set("undo", last_action(c)?);
+                Ok(v)
+            }
             Reply::Shown(_, Some(v)) => http_read::display(c, v),
             Reply::Shown(id, None) => shown(c, &id),
             Reply::Saved(id) => Ok(Json::object([("undo", last_action(c)?), ("id", id.into())])),
@@ -218,12 +224,7 @@ pub(crate) fn request(c: &mut Connection, body: &Json, path: &str, prepared: Opt
         "/api/works" => edit_work(&tx, v)?,
         _ => set_field(&tx, v, path)?,
     };
-    crate::schema::commit_writing(tx)?;
-    if let Reply::Existing(v) = reply {
-        return Ok(v);
-    }
-    http_read::register_names(c)?;
-    reply.render(c)
+    crate::app_commands::commit_writing_reply(tx, |c| reply.render(c))
 }
 /// `sql` 查到的第一个身份，带显示内容；可能没有。
 fn existing(c: &Connection, sql: &str, args: &[&str]) -> Result<Option<Reply>> {
@@ -405,7 +406,10 @@ fn set_field(c: &Connection, mut v: Value, path: &str) -> Result<Reply> {
     let mut out = run(c, &v)?;
     let action = out.as_object_mut().expect("角色标记命令返回对象").remove("action");
     let mut response: Json = out.into();
-    // 在写事务里取刚登记的一步，避免其他写入抢在提交后的读取之前。
-    response.set("undo", if action.is_some() { last_action(c)? } else { Value::Null.into() });
-    Ok(Reply::Answer(response))
+    if action.is_some() {
+        Ok(Reply::AnswerWithUndo(response))
+    } else {
+        response.set("undo", Value::Null.into());
+        Ok(Reply::Answer(response))
+    }
 }

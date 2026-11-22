@@ -1,5 +1,5 @@
 //! 角色裁决的 HTTP 参数与选区适配层；业务规则和历史记录用共享的核心。
-use crate::{app_commands, character_commands, http::LibraryContext, http_json::Json, http_read, Error, Result};
+use crate::{app_commands, character_commands, http::LibraryContext, http_json::Json, Error, Result};
 use rusqlite::{Connection, TransactionBehavior};
 use serde_json::{json, Value};
 
@@ -53,11 +53,15 @@ pub(crate) fn request(c: &mut Connection, context: &LibraryContext, path: &str, 
     }
     let out = character_commands::command(&tx, &args).map_err(app_commands::core_error)?;
     tx.execute("INSERT INTO backend_effects(kind) VALUES ('verdict')", [])?;
-    crate::schema::commit_writing(tx).map_err(app_commands::core_error)?;
-    http_read::register_names(c)?;
-    // 只含 later 的回答没有操作，即使之前有可撤销的操作。
-    let undo =
-        if op == "answer" && out["action"].is_null() { Json::from(Value::Null) } else { app_commands::last_action(c)? };
+    let undo = app_commands::commit_writing_reply(tx, |c| {
+        // 只含 later 的回答没有操作，即使之前有可撤销的操作。
+        if op == "answer" && out["action"].is_null() {
+            Ok(Value::Null.into())
+        } else {
+            app_commands::last_action(c)
+        }
+    })
+    .map_err(app_commands::core_error)?;
     crate::app_effects::drain_after_commit(&context.db);
     Ok(Json::object([("undo", undo)]))
 }

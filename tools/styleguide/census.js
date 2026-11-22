@@ -3,7 +3,7 @@ window.CENSUS = {
  "source": "web/static/app.css、web/static/css/base.css、web/static/css/catalog.css、web/static/css/character.css、web/static/css/detail.css、web/static/css/galleries.css、web/static/css/library.css、web/static/css/overlays.css、web/static/css/rail.css、web/static/css/settings.css、web/static/css/tidy.css、web/static/css/tokens.css",
  "files": {
   "app.css": "574d3a7d0357cdcd1e4e1f7212461ef762a8c86703349e1090aa4140895a4499",
-  "css/base.css": "3cbbf31351c0a337b97fe6ceddc1bc356e80d06defc4e8f8420b30a9e13cced3",
+  "css/base.css": "18d8e9194960f9bd76dc9f70d15ab45b4cd0cc1c06b415a395a875ceba5d7451",
   "css/catalog.css": "076a0fcebc95af0a6daff5b99fb5e0d5c407fa7bacc908dcd8383bc4e52a6ba2",
   "css/character.css": "c700d9eb883a6ef2848b44e5c9d96446dc649e7b9d63e2ae83ebfbfef7151697",
   "css/detail.css": "a9eaf043f2074eea276c1b235e7da4db3630a280ad99ea15956c62d2ecba2904",
@@ -15,9 +15,9 @@ window.CENSUS = {
   "css/tidy.css": "63c15db2f00a009f88d0b19a20ab688b72849fc49e487ae3bf9260e55dada604",
   "css/tokens.css": "6f31fbe3b32f892a26e753e410d7e5ea94d7e4165ed49d04458eecca3314e787"
  },
- "sha256": "2a6fc68872109a24a01241e92671eed09986b43bdd3235731a233103408ca5c0",
- "lines": 2055,
- "rules": 1451,
+ "sha256": "44fb5d6401a26dd1813544be1d69ff48b651b4ae9b28d448038f6330b9d9b9c2",
+ "lines": 2054,
+ "rules": 1450,
  "themeVars": {
   "light": {
    "--canvas": "#f4f4f6",
@@ -248,7 +248,7 @@ window.CENSUS = {
    "--hint-ink": 2,
    "--space-20": 18,
    "--warn": 8,
-   "--space-1": 15,
+   "--space-1": 14,
    "--z-menu": 3,
    "--tone-steel-ink": 1,
    "--tone-steel-bg": 1,
@@ -651,7 +651,7 @@ window.CENSUS = {
    {
     "name": "--space-1",
     "value": "1px",
-    "uses": 15
+    "uses": 14
    },
    {
     "name": "--space-2",

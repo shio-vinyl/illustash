@@ -90,10 +90,9 @@ body.handed-off{-webkit-user-select:none;user-select:none}
   font-family:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,monospace;
   font-size:var(--fs-11);font-weight:var(--fw-600);line-height:1;letter-spacing:-.025em
 }
-.top-actions .nsfw-toggle>span{transform:translateY(var(--space-1))}
-/* 增强：按大写字母高度居中（Safari 18.2）。退路：沿用上面的 1px 垂直补偿。 */
+/* 增强：按大写字母高度居中（Safari 18.2）。退路：圆按钮用弹性布局居中整个行框。 */
 @supports (text-box:trim-both cap alphabetic){
-  .top-actions .nsfw-toggle>span{text-box:trim-both cap alphabetic;transform:none}
+  .top-actions .nsfw-toggle>span{text-box:trim-both cap alphabetic}
 }
 .content>.page-tools[hidden]{display:none}
 /* 网格最后的排序、选择和显示方式一起换行，保持从左到右的操作顺序。 */

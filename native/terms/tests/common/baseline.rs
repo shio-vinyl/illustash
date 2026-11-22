@@ -12,7 +12,7 @@
 use regex::Regex;
 use rusqlite::{types::ValueRef, Connection};
 use serde_json::{json, Map, Value};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::LazyLock;
 
 pub const FORMAT: i64 = 1;
@@ -208,6 +208,71 @@ static ADDITIONS: LazyLock<Additions> = LazyLock::new(|| {
     }
     additions
 });
+
+/// 只从录制的分组、图片大小和人工结论推算 #836 的两列派生结果。
+pub fn current_fold(state: &State) -> Option<Table> {
+    let duplicates = state.get("duplicates")?;
+    if duplicates.rows.is_empty() {
+        return None;
+    }
+    let assets = state.get("assets")?;
+    let assertions = state.get("assertions")?;
+    let rows =
+        |table: &Table| table.rows.keys().map(|r| serde_json::from_str::<Vec<Value>>(r).unwrap()).collect::<Vec<_>>();
+    let columns = |table: &Table, names| {
+        let names: &[&str] = names;
+        names.iter().map(|name| table.columns.iter().position(|c| c == *name).unwrap()).collect::<Vec<_>>()
+    };
+    let asset = columns(assets, &["uuid", "width", "height"]);
+    let size = rows(assets)
+        .into_iter()
+        .map(|r| {
+            let px = i128::from(r[asset[1]].as_i64().unwrap_or(0)) * i128::from(r[asset[2]].as_i64().unwrap_or(0));
+            (r[asset[0]].as_str().unwrap().to_owned(), px)
+        })
+        .collect::<BTreeMap<_, _>>();
+    let a = columns(assertions, &["uuid", "entity", "status"]);
+    let mut decisions: BTreeMap<String, BTreeSet<(String, String)>> = BTreeMap::new();
+    for row in rows(assertions) {
+        decisions
+            .entry(row[a[0]].as_str().unwrap().into())
+            .or_default()
+            .insert((row[a[1]].as_str().unwrap().into(), row[a[2]].as_str().unwrap().into()));
+    }
+    let cols = columns(duplicates, &["uuid", "grp", "pos", "rep", "hidden"]);
+    let mut groups: BTreeMap<String, Vec<Vec<Value>>> = BTreeMap::new();
+    for row in rows(duplicates) {
+        groups.entry(row[cols[1]].as_str().unwrap().into()).or_default().push(row);
+    }
+    let uuid = |row: &[Value]| row[cols[0]].as_str().unwrap().to_owned();
+    let empty = BTreeSet::new();
+    let all_decisions = |id: &str| decisions.get(id).unwrap_or(&empty);
+    let mut expected = Table { columns: duplicates.columns.clone(), rows: BTreeMap::new() };
+    for group in groups.into_values() {
+        let all: BTreeSet<_> = group.iter().flat_map(|r| all_decisions(&uuid(r)).iter()).collect();
+        let best = group
+            .iter()
+            .min_by_key(|r| {
+                let id = uuid(r);
+                (
+                    std::cmp::Reverse(all_decisions(&id).len()),
+                    std::cmp::Reverse(size.get(&id).copied().unwrap_or(0)),
+                    r[cols[2]].as_i64().unwrap(),
+                    id,
+                )
+            })
+            .unwrap();
+        let id = uuid(best);
+        let complete = all_decisions(&id).len() == all.len();
+        for mut row in group {
+            let rep = uuid(&row) == id;
+            row[cols[3]] = Value::from(i64::from(rep));
+            row[cols[4]] = Value::from(i64::from(complete && !rep));
+            *expected.rows.entry(serde_json::to_string(&row).unwrap()).or_default() += 1;
+        }
+    }
+    Some(expected)
+}
 
 fn meta_key_row(row: &str, key: &str) -> bool {
     let cells: Vec<Value> = serde_json::from_str(row).unwrap();

@@ -374,13 +374,14 @@ mod tests {
                 ('machine-small','machine',1,0,0),('machine-large','machine',2,1,0),
                 ('human-small','human',1,0,0),('human-large','human',2,1,0),
                 ('conflict-small','conflict',1,0,0),('conflict-large','conflict',2,1,1),
-                ('split-small','split',1,0,0),('split-large','split',2,1,1);
+                ('split-small','split',1,0,0),('split-large','split',2,1,1),
+                ('album-small','album',1,0,0),('album-large','album',2,1,0);
              INSERT INTO assets SELECT uuid,10*pos,10*pos FROM duplicates;
              INSERT INTO memberships VALUES ('same-small','A'),('same-large','A'),
                 ('machine-small','A'),('machine-large','B');
              INSERT INTO assertions VALUES
                 ('same-small','A','confirmed','review'),('same-large','A','confirmed','review'),
-                ('machine-small','A','confirmed','album'),
+                ('album-small','A','confirmed','album'),
                 ('human-small','A','confirmed','review'),('human-small','B','rejected','review'),
                 ('conflict-small','A','confirmed','review'),('conflict-large','A','rejected','review'),
                 ('split-small','A','confirmed','review'),('split-large','B','confirmed','review');",
@@ -397,6 +398,8 @@ mod tests {
         assert_eq!(
             rows,
             [
+                ("album-small", true, false),
+                ("album-large", false, true),
                 ("conflict-small", false, false),
                 ("conflict-large", true, false),
                 ("human-small", true, false),

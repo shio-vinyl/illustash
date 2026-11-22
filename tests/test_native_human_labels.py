@@ -433,11 +433,13 @@ class NativeHumanLabelsTest(unittest.TestCase):
         self.assertEqual(created['route'], 'core')
         action = json.loads(created['body'])['undo']
         self.assertEqual(action['label'], '已给 1 张加上标签 全新故障标签')
-        expected_tags = self.rec.value('reference reading of the native tags')
+        historical_tags = self.rec.value('reference reading of the native tags')
+        self.assertEqual(historical_tags, [{'tag': '全新故障标签', 'count': 2}])
         tags = fetch(self.origin, {'url': '/api/user-tags'}, self.origin)
         self.assertEqual(tags['status'], 200)
+        # 标签仍写入两份副本，按图库里可见的一张计数（#836）。
+        expected_tags = [{'tag': '全新故障标签', 'count': 1}]
         self.assertEqual(tags['body'], json.dumps(expected_tags, ensure_ascii=False).encode())
-        self.assertEqual([entry['tag'] for entry in expected_tags], ['全新故障标签'])
         with closing(sqlite3.connect(self.right.db)) as c:
             self.assertEqual(c.execute('SELECT uuid,tag FROM asset_tags ORDER BY uuid,tag').fetchall(),
                              [('a', '全新故障标签'), ('b', '全新故障标签')])

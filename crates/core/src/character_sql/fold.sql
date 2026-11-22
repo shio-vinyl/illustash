@@ -5,7 +5,7 @@ WITH copies AS MATERIALIZED (
  /* group scope */
 ), judgments AS MATERIALIZED (
  SELECT x.grp,x.uuid,s.entity,s.status
- FROM copies x JOIN assertions s ON s.uuid=x.uuid AND s.origin<>'album'
+ FROM copies x JOIN assertions s ON s.uuid=x.uuid
 ), totals AS (
  SELECT grp,count(*) AS n FROM (SELECT DISTINCT grp,entity,status FROM judgments) GROUP BY grp
 ), per_copy AS (

@@ -18,7 +18,7 @@ def assert_memberships_current(test, store):
     test.assertEqual([tuple(r) for r in stored], [tuple(r) for r in fresh])
     with store.connect() as c:
         expected = expected_folds(c.execute('SELECT uuid,width,height FROM assets'),
-                                  c.execute('SELECT uuid,entity,status,origin FROM assertions'),
+                                  c.execute('SELECT uuid,entity,status FROM assertions'),
                                   c.execute('SELECT uuid,grp,pos FROM duplicates'))
         actual = c.execute('SELECT uuid,rep,hidden FROM duplicates')
         test.assertEqual(sorted(map(tuple, actual)), sorted(expected))

@@ -35,7 +35,7 @@
 
  "crates/core/src/character_profile.rs":"eff1d7bfcc0ba8ef23f9e804e9ff1474d0be0b67632632fc3703730951d4bf8e",
 
- "crates/core/src/character_projection.rs":"98d5cff7c6bb9d8c68ea102dc1d69f1554913a3aec8df91939ae215c710c915a",
+ "crates/core/src/character_projection.rs":"fa43275b1a7e8a3d87d47a961bf567bbce906df59172bf2522f34b86625ab4e0",
 
  "crates/core/src/character_relations.rs":"a3b3a1139aca9bd85b6d14d83338341caaf4c26e7619c1c11511793d249e6e21",
 
@@ -45,7 +45,7 @@
 
  "crates/core/src/character_sql/evidence_hybrid.sql":"ce9ef0e5b64c3c640278eb63410fd18e27b1b93b393c361f9cc1afb232d2f724",
 
- "crates/core/src/character_sql/fold.sql":"2b56326801b5e0b1a424e47134220eeeec9849cc5eb8c567e20a19d8d0da5ad1",
+ "crates/core/src/character_sql/fold.sql":"7011d2563feef3342e735953968321ddddb219aa17765864aa545f4582a03c8f",
 
  "crates/core/src/character_sql/fold_legacy.sql":"c4bc07a41ca859809c7f20f36d077e5f9da7dcf42c3d5de2f970240654542d9d",
 
@@ -245,7 +245,7 @@
 
  "native/terms/src/app_create_schema.sql":"f41f751e3f9c2deae935dcb9869cd385a0893a9d20dad2c4b64b7b14d7ef54ae",
 
- "native/terms/src/app_curation.rs":"f93e72179cf441511937f271ff0397cb9398c4a93e1a78e45ff4f62640c5b67c",
+ "native/terms/src/app_curation.rs":"f544b75aaf88814d0f3c7e8658b2936038fc3d8345ab512834aabd0fe2aa2ecf",
 
  "native/terms/src/app_desktop.rs":"127f0fd9238bd2f37334b531e4ee170d78e41e573125cc3c584c4020129fd573",
 

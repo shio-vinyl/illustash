@@ -8,16 +8,16 @@ window.CENSUS = {
   "css/character.css": "c700d9eb883a6ef2848b44e5c9d96446dc649e7b9d63e2ae83ebfbfef7151697",
   "css/detail.css": "a9eaf043f2074eea276c1b235e7da4db3630a280ad99ea15956c62d2ecba2904",
   "css/galleries.css": "2ce38f58bf8ff9228202c489de9cd3eb9c7448666f7f524404ed7728ad7ed5b2",
-  "css/library.css": "568309af6199b42dda2d7950203701af8f560efa7484c0c27d2473b08375d7c1",
+  "css/library.css": "f27e451570faad3bec97b148dfe39fcfa12ff872445a0f28f7e1c9dc0db7075a",
   "css/overlays.css": "73dda4f60b805591d5e8be074f37a4665cc0441b8b6906e3d0508bf906d1fc80",
   "css/rail.css": "46c7f0c9d78ccf56fc89e476d8978c9b345b26c6d4f7727fc27648cca65ea0ac",
   "css/settings.css": "cc4715b8dcdd1bb9d1168d5a5067e61ab3d560c7ab42b019afe3c865143f3c71",
   "css/tidy.css": "63c15db2f00a009f88d0b19a20ab688b72849fc49e487ae3bf9260e55dada604",
   "css/tokens.css": "6f31fbe3b32f892a26e753e410d7e5ea94d7e4165ed49d04458eecca3314e787"
  },
- "sha256": "491591f6d2a5758ea31110a9123893008c45472f1fe4ab323ed2e9e7096fe5f7",
- "lines": 2042,
- "rules": 1449,
+ "sha256": "fe5805eca044006adf476fc4be9beeb4224a56946eac362911b3dc6bf73e3194",
+ "lines": 2048,
+ "rules": 1450,
  "themeVars": {
   "light": {
    "--canvas": "#f4f4f6",
@@ -201,7 +201,7 @@ window.CENSUS = {
    "--fs-16": 1,
    "--space-4": 78,
    "--radius-pill": 48,
-   "--soft": 48,
+   "--soft": 50,
    "--accent-soft": 18,
    "--accent-ink": 31,
    "--fs-12": 101,
@@ -221,14 +221,14 @@ window.CENSUS = {
    "--z-toast": 2,
    "--space-16": 36,
    "--space-12": 80,
-   "--line": 31,
+   "--line": 32,
    "--h-36": 8,
    "--space-14": 31,
    "--w": 1,
    "--fs-10": 3,
    "--err": 6,
    "--accent": 48,
-   "--ease": 97,
+   "--ease": 98,
    "--radius-10": 6,
    "--switch-off": 1,
    "--badge-bg": 2,
@@ -288,7 +288,7 @@ window.CENSUS = {
    "--fs-display-40": 4,
    "--fw-750": 26,
    "--fs-display-28": 6,
-   "--dur-1": 46,
+   "--dur-1": 47,
    "--accent-fill": 7,
    "--on-accent": 10,
    "--btn-hover-filter": 1,
@@ -844,7 +844,7 @@ window.CENSUS = {
    {
     "name": "--dur-1",
     "value": "140ms",
-    "uses": 46
+    "uses": 47
    },
    {
     "name": "--dur-2",
@@ -861,7 +861,7 @@ window.CENSUS = {
    {
     "name": "--ease",
     "value": "cubic-bezier(.2,.8,.2,1)",
-    "uses": 97
+    "uses": 98
    },
    {
     "name": "--ease-spring",

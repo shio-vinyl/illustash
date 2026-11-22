@@ -572,7 +572,7 @@ def _baseline_additions():
     return additions
 
 
-def expected_folds(assets, assertions, duplicates):
+def expected_folds(assets, assertions, duplicates, excluded):
     """按当前规则构造测试期望；同组任一图片的人工记录均属本组须保留的记录。"""
     area = {uuid: (width or 0) * (height or 0) for uuid, width, height in assets}
     decisions = {}
@@ -581,12 +581,14 @@ def expected_folds(assets, assertions, duplicates):
     groups = {}
     for uuid, grp, pos in duplicates:
         groups.setdefault(grp, []).append((uuid, pos))
+    excluded = set(excluded)
     for copies in groups.values():
         judgments = {uuid: decisions.get(uuid, set()) for uuid, _ in copies}
         all_decisions = set().union(*judgments.values())
         best, _ = min(copies, key=lambda copy: (-len(judgments[copy[0]]), -area.get(copy[0], 0), copy[1], copy[0]))
+        foldable = judgments[best] == all_decisions and len({uuid in excluded for uuid, _ in copies}) == 1
         for uuid, _ in copies:
-            yield uuid, int(uuid == best), int(uuid != best and judgments[best] == all_decisions)
+            yield uuid, int(uuid == best), int(uuid != best and foldable)
 
 
 def _refresh_reference_folds(frozen, state):
@@ -596,7 +598,7 @@ def _refresh_reference_folds(frozen, state):
         return frozen
     marker = next((cells[1] for row in state.get('app', {}).get('meta', {}).get('rows', [])
                    if (cells := json.loads(row))[0] == 'fold_projection'), None)
-    if marker != '2':
+    if marker != '3':
         return frozen
 
     def rows(table, names):
@@ -607,7 +609,7 @@ def _refresh_reference_folds(frozen, state):
     expected = {
         uuid: (rep, hidden) for uuid, rep, hidden in expected_folds(
             rows('assets', 'uuid width height'), rows('assertions', 'uuid entity status'),
-            rows('duplicates', 'uuid grp pos'))
+            rows('duplicates', 'uuid grp pos'), (uuid for (uuid,) in rows('excluded', 'uuid')))
     }
     duplicates = app['duplicates']
     columns = duplicates['columns']

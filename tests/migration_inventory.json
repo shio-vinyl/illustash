@@ -19,7 +19,7 @@
 
  "crates/core/src/character_identity.rs":"106fcf70a3fe2ec3d20195cf6bdf7c84aaf22b2e8e9ee8e3dac314d66d2cb505",
 
- "crates/core/src/character_import.rs":"38f3b16b45830f6af20c5bf5aa10cc5a71260fd82ce317b0a8005300d380b822",
+ "crates/core/src/character_import.rs":"80b9c41522ad55c10a795344a350370da563404f214d9e64c27704cf6d240f6f",
 
  "crates/core/src/character_json.rs":"9a60f525976d786c9edfcd8420c100481ba117bbaa78e839f02e7002ff328046",
 
@@ -35,7 +35,7 @@
 
  "crates/core/src/character_profile.rs":"eff1d7bfcc0ba8ef23f9e804e9ff1474d0be0b67632632fc3703730951d4bf8e",
 
- "crates/core/src/character_projection.rs":"fa43275b1a7e8a3d87d47a961bf567bbce906df59172bf2522f34b86625ab4e0",
+ "crates/core/src/character_projection.rs":"590f830476369c5be268269c137652f32734232ba731e3c4e48f2f9c34f89527",
 
  "crates/core/src/character_relations.rs":"a3b3a1139aca9bd85b6d14d83338341caaf4c26e7619c1c11511793d249e6e21",
 
@@ -45,7 +45,7 @@
 
  "crates/core/src/character_sql/evidence_hybrid.sql":"ce9ef0e5b64c3c640278eb63410fd18e27b1b93b393c361f9cc1afb232d2f724",
 
- "crates/core/src/character_sql/fold.sql":"7011d2563feef3342e735953968321ddddb219aa17765864aa545f4582a03c8f",
+ "crates/core/src/character_sql/fold.sql":"0e58c2e26e82a5afb4587371d25a41bc7c9888c7707b54bac829b3ac9632b437",
 
  "crates/core/src/character_sql/fold_legacy.sql":"c4bc07a41ca859809c7f20f36d077e5f9da7dcf42c3d5de2f970240654542d9d",
 
@@ -237,7 +237,7 @@
 
  "native/terms/src/app_colors/palette.rs":"db2645476768766de99d58ee7fbb4ade268a75cbf2d0fb55cfe1dd65511e1412",
 
- "native/terms/src/app_commands.rs":"7429d9f911cdaafef34ec9468b3220998e270d7a6611d6a40ee1ebb3a056ca62",
+ "native/terms/src/app_commands.rs":"396651437e4098225da46e6852049e9bcf5d3bad700e31d15fb93d7d58a493a3",
 
  "native/terms/src/app_create.rs":"2aef717d28a0848a50396c75309436a232223ae37f883e47d71462362c15fc44",
 
@@ -245,7 +245,7 @@
 
  "native/terms/src/app_create_schema.sql":"f41f751e3f9c2deae935dcb9869cd385a0893a9d20dad2c4b64b7b14d7ef54ae",
 
- "native/terms/src/app_curation.rs":"f544b75aaf88814d0f3c7e8658b2936038fc3d8345ab512834aabd0fe2aa2ecf",
+ "native/terms/src/app_curation.rs":"7ade0745e5c41829396b72f7ff6e7b312aa40f3f57fe091f39464915f127dfe4",
 
  "native/terms/src/app_desktop.rs":"127f0fd9238bd2f37334b531e4ee170d78e41e573125cc3c584c4020129fd573",
 

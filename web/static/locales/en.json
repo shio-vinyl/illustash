@@ -3271,6 +3271,7 @@
   "条件失效": "Conditions no longer valid",
   "条件失效：{reason}": "Conditions no longer valid: {reason}",
   "标签、角色、作品、画师、出处或年份": "Tag, character, series, artist, origin or year",
+  "最佳匹配": "Best matches",
   "没有匹配的条件": "No matching conditions",
   "点一下改回包含": "Click to include instead",
   "点一下改成不含": "Click to exclude instead",

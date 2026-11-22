@@ -29,7 +29,7 @@
    "core/jobs.js": 4,
    "core/labels.js": 1,
    "core/meta.js": 1,
-   "core/route.js": 3,
+   "core/route.js": 1,
    "ui/catalog.js": 11,
    "ui/detail.js": 2,
    "ui/dom.js": 1,

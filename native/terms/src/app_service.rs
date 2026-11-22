@@ -103,6 +103,7 @@ pub(crate) fn open_owned(
     } else {
         &[]
     };
+    crate::app_curation::refresh_fold_on_open(&library)?;
     owner.health.opened(checked)?;
     Ok((library, owner))
 }

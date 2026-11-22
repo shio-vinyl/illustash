@@ -628,7 +628,7 @@ fn import(c: &Connection, args: &Value) -> Result<Value> {
     character_projection::evidence(c, Some(&added))?;
     character_projection::single(c, Some(&added))?;
     character_projection::memberships(c, Some(&both))?;
-    c.prepare_cached(&format!("{} ", include_str!("character_sql/fold.sql").trim_end()))?.execute([])?;
+    character_projection::fold(c)?;
     rules(c, &args["realistic"])?;
     excluded(c)?;
     if let Some(run) = args["run_id"].as_i64() {

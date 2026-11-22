@@ -35,7 +35,7 @@ const ROWS = {
   '未识别 · 按组整理': {hash: '#/groups', page: 'groups', doc: '`#/groups`'},
   '未识别 · 第 N 组': {hash: '#/g/12', page: 'group', doc: '`#/g/'},
   '可能认错': {hash: '#/doubts', page: 'doubts', doc: '`#/doubts`'},
-  '重复 · 全部 / 角色不一致': {hash: '#/duplicates?dup=mixed', page: 'duplicates', doc: '`#/duplicates'},
+  '重复 · 全部': {hash: '#/duplicates', page: 'duplicates', doc: '`#/duplicates`'},
   '重复 · 相似的图': {hash: '#/similar?kind=near', page: 'similar', doc: '`#/similar'},
   '重复 · 相似组 N': {hash: '#/s/7', page: 'sgroup', doc: '`#/s/'},
   '已排除 · 全部 / 按原因': {hash: '#/excluded?reason=screenshot', page: 'excluded', doc: '`#/excluded'},
@@ -188,11 +188,14 @@ test('地址：能认出的页面名、带编号的页面、子页和旧角色�
   assert.deepEqual(spec('#/days?has=%5B%22fav%22%5D&char=c1').r.has, ['fav']);
   assert.equal(spec('#/calendar?char=c1').r.char, '');
   assert.deepEqual(spec('#/unmatched?has=%5B%22fav%22%5D').r.has, []);
-  for (const hash of ['#/days', '#/calendar', '#/library?day=2026-10-02', '#/characters/works', '#/settings/data', '#/g/3', '#/s/4', '#/groups', '#/duplicates?dup=mixed', '#/excluded?reason=screenshot', '#/library?char=c1&variant=v']) {
+  for (const hash of ['#/days', '#/calendar', '#/library?day=2026-10-02', '#/characters/works', '#/settings/data', '#/g/3', '#/s/4', '#/groups', '#/duplicates', '#/excluded?reason=screenshot', '#/library?char=c1&variant=v']) {
     const {r} = spec(hash);
     assert.equal(route.hashFor(r), hash, hash);
   }
   assert.equal(route.charHash('c1', 'v'), '#/library?char=c1&variant=v');
+  const legacyDuplicates = spec('#/duplicates?dup=mixed').r;
+  assert.equal(legacyDuplicates.legacy, true);
+  assert.equal(route.hashFor(legacyDuplicates), '#/duplicates');
 });
 
 test('implement() 只接受登记过的页面名；每个页面都有标题以外的必要字段', () => {
@@ -215,7 +218,7 @@ test('后端查询参数：pool、分组编号、筛选都从注册表来', () =
   const params = (page, extra = {}) => { const p = pages.PAGES[page]; return {...(p.pool ? {pool: p.pool} : {}), ...(p.params?.({page, ...extra}) || {})}; };
   assert.deepEqual(params('unmatched'), {pool: 'unmatched'});
   assert.deepEqual(params('skipped'), {pool: 'skipped'});
-  assert.deepEqual(params('duplicates', {dup: 'mixed'}), {pool: 'duplicates', dup: 'mixed'});
+  assert.deepEqual(params('duplicates', route.parseHash('#/duplicates?dup=mixed')), {pool: 'duplicates'});
   assert.deepEqual(params('duplicates'), {pool: 'duplicates'});
   assert.deepEqual(params('excluded', {reason: 'screenshot'}), {pool: 'excluded', reason: 'screenshot'});
   assert.deepEqual(params('pending'), {pool: 'pending'});

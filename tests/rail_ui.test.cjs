@@ -29,7 +29,7 @@ before(async () => {
     json: async () => String(path).startsWith('/api/libraries') ? {info: {id: 'lib-a'}} : {days: [], total: 0, prev: null, next: null}});
   rail = await web.load('ui/rail.js');
   ({state} = web.core());
-  Object.assign(state, {pools: {unmatched: 5, audit: 0}, dupInfo: {groups: 1, mixed: 0}, pendingCount: 0, identityCount: 0, charMap: new Map(), chars: [], galleries: []});
+  Object.assign(state, {pools: {unmatched: 5, audit: 0}, dupInfo: {groups: 1}, pendingCount: 0, identityCount: 0, charMap: new Map(), chars: [], galleries: []});
   rail.wireRail();
   await tick();
 });

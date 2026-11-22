@@ -10,7 +10,7 @@ use std::thread;
 
 use serde_json::{json, Value};
 
-use crate::app_service::Application;
+use crate::app_service::{Application, Session};
 use crate::http_json::Json;
 
 pub(crate) const ROUTE: &str = "/platform/activity";
@@ -28,6 +28,8 @@ const RUNNING: &[&str] = &["running"];
 pub(crate) struct Task {
     pub kind: &'static str,
     pub active: bool,
+    /// 应用级资料包下载不随图库切换结束。
+    across_libraries: bool,
     pub status: String,
     /// 进行中：已完成多少、一共多少（没有就是 0）。
     pub done: i64,
@@ -64,6 +66,7 @@ fn task(kind: &'static str, active: &[&str], value: &Json) -> Task {
     let status = text(value.get("status"));
     Task {
         kind,
+        across_libraries: false,
         active: active.contains(&status.as_str()),
         done: number(value.get("done")),
         total: number(value.get("total")),
@@ -75,42 +78,59 @@ fn task(kind: &'static str, active: &[&str], value: &Json) -> Task {
     }
 }
 
-/// 拿不到会话锁（有请求正在改会话）时返回 `None`，这一秒跳过。
+/// 面板的一种活动及其内存快照。同一面板项可以同时有全应用的下载和当前图库的检查。
+struct Source {
+    key: &'static str,
+    active: &'static [&'static str],
+    read: fn(&Application, &Session) -> Json,
+    across_libraries: bool,
+}
+
+impl Source {
+    const fn new(key: &'static str, active: &'static [&'static str], read: fn(&Application, &Session) -> Json) -> Self {
+        Self { key, active, read, across_libraries: false }
+    }
+
+    fn observe(&self, value: &Json) -> Task {
+        let mut item = task(self.key, self.active, value);
+        item.across_libraries = self.across_libraries;
+        match self.key {
+            "sync" => {
+                item.count = number(value.get("imported"));
+                item.recognised = number(value.get("done"));
+            }
+            "index" | "provenance" => item.count = number(value.get("found")),
+            // 包任务的原始错误可能带文件名或路径；外壳用诊断编号指向详情。
+            "pack" => item.reason = text(value.get("diagnostic").and_then(|d| d.get("id"))),
+            _ => {}
+        }
+        item
+    }
+}
+
+fn state(progress: Json) -> Json {
+    progress.get("state").cloned().unwrap_or(Json::Scalar(Value::Null))
+}
+
+const SOURCES: &[Source] = &[
+    Source::new("sync", SYNC_ACTIVE, |_, s| s.syncer.snapshot(&s.library)),
+    Source::new("index", INDEX_ACTIVE, |_, s| state(s.index.progress())),
+    Source::new("names", NAMES_ACTIVE, |_, s| state(s.names.progress())),
+    Source::new("similar", SIMILAR_ACTIVE, |_, s| s.research.similar_state()),
+    Source::new("provenance", PROV_ACTIVE, |_, s| s.provenance.snapshot()),
+    Source::new("export", RUNNING, |app, s| app.exports.state(&s.library, s.generation)),
+    Source::new("files", RUNNING, |_, s| s.asset_exports.state(s.generation)),
+    Source::new("import", IMPORT_ACTIVE, |app, _| app.imports.state()),
+    Source::new("models", RUNNING, |_, _| crate::app_models::job().into()),
+    Source::new("pack", RUNNING, |_, s| s.wd_extension.snapshot().into()),
+    Source { across_libraries: true, ..Source::new("pack", RUNNING, |_, _| crate::app_models::pack_download().into()) },
+];
+
+/// 拿不到会话锁（有请求正在改会话）时返回 `None`，这一秒跳过。只读任务内存。
 pub(crate) fn snapshot(app: &Application) -> Option<(u64, Vec<Task>)> {
     let session = app.session.try_read().ok()?;
-    let generation = session.generation;
-    let mut tasks = Vec::new();
-
-    let sync = session.syncer.snapshot(&session.library);
-    let mut item = task("sync", SYNC_ACTIVE, &sync);
-    item.count = number(sync.get("imported"));
-    item.recognised = number(sync.get("done"));
-    tasks.push(item);
-
-    let index = session.index.progress();
-    let index = index.get("state").cloned().unwrap_or(Json::Object(Vec::new()));
-    let mut item = task("index", INDEX_ACTIVE, &index);
-    item.count = number(index.get("found"));
-    tasks.push(item);
-
-    let names = session.names.progress();
-    tasks.push(task("names", NAMES_ACTIVE, names.get("state").unwrap_or(&Json::Object(Vec::new()))));
-    tasks.push(task("similar", SIMILAR_ACTIVE, &session.research.similar_state()));
-
-    let provenance = session.provenance.snapshot();
-    let mut item = task("provenance", PROV_ACTIVE, &provenance);
-    item.count = number(provenance.get("found"));
-    tasks.push(item);
-
-    tasks.push(task("export", RUNNING, &app.exports.state(&session.library, generation)));
-    // 选中的图导出到文件夹（#450）：进行中关窗也要等它做完。
-    tasks.push(task("files", RUNNING, &session.asset_exports.state(generation)));
-    drop(session);
-
-    tasks.push(task("import", IMPORT_ACTIVE, &app.imports.state()));
-    let models = Json::from(crate::app_models::job());
-    tasks.push(task("models", RUNNING, &models));
-    Some((generation, tasks))
+    let tasks = SOURCES.iter().map(|source| source.observe(&(source.read)(app, &session))).collect();
+    Some((session.generation, tasks))
 }
 
 /// 上一次看到的样子，以及往外壳发消息的线程。
@@ -158,10 +178,14 @@ impl Watcher {
     /// 和上一次比：有变化就给出要发给外壳的消息。换了图库（会话代数变了）时上一个图库的任务不算「结束」。
     pub(crate) fn change(&mut self, (generation, now): (u64, Vec<Task>)) -> Option<Value> {
         let ended: Vec<Value> = match &self.last {
-            Some((last_generation, last)) if *last_generation == generation => last
+            Some((last_generation, last)) => last
                 .iter()
-                .filter(|before| before.active)
-                .filter_map(|before| now.iter().find(|t| t.kind == before.kind && !t.active))
+                .filter(|before| before.active && (*last_generation == generation || before.across_libraries))
+                .filter(|before| !(before.kind == "pack" && before.variant == "catalog"))
+                .filter_map(|before| {
+                    now.iter()
+                        .find(|t| t.kind == before.kind && t.across_libraries == before.across_libraries && !t.active)
+                })
                 .map(|t| {
                     json!({
                         "kind": t.kind,
@@ -199,6 +223,7 @@ mod tests {
     fn item(kind: &'static str, status: &str, active: bool) -> Task {
         Task {
             kind,
+            across_libraries: false,
             active,
             status: status.into(),
             done: 0,
@@ -259,6 +284,45 @@ mod tests {
             let quoted: Vec<String> = list.iter().map(|s| format!("'{s}'")).collect();
             let line = format!("export const {name} = [{}];", quoted.join(", "));
             assert!(jobs.contains(&line), "{name} 与 jobs.js 不一致：{line}");
+        }
+    }
+
+    #[test]
+    fn every_panel_task_has_an_activity_source() {
+        use std::collections::BTreeSet;
+        let tasks = include_str!("../../../web/static/ui/tasks.js");
+        let packs = include_str!("../../../web/static/ui/packs.js");
+        let entries = regex::Regex::new(r"key: '([a-z]+)',\s*name:").unwrap();
+        let panel: BTreeSet<_> = [tasks, packs]
+            .into_iter()
+            .flat_map(|s| entries.captures_iter(s))
+            .map(|c| c.get(1).unwrap().as_str())
+            .collect();
+        assert_eq!(SOURCES.iter().map(|s| s.key).collect::<BTreeSet<_>>(), panel);
+    }
+
+    #[test]
+    fn pack_download_and_library_work_have_independent_end_events() {
+        let event = |shared, kind: &str, status: &str| {
+            SOURCES
+                .iter()
+                .find(|s| s.key == "pack" && s.across_libraries == shared)
+                .unwrap()
+                .observe(&json!({"kind":kind,"status":status,"message":"private/file.zip"}).into())
+        };
+        for operation in ["enable", "withdraw"] {
+            let mut w = watcher();
+            let download = event(true, "download", "running");
+            let check = event(false, operation, "running");
+            let both = w.change((1, vec![download.clone(), check])).unwrap();
+            assert_eq!(both["busy"].as_array().unwrap().len(), 2);
+            let end = w.change((1, vec![download, event(false, operation, "done")])).unwrap();
+            assert_eq!(end["ended"][0]["variant"], operation);
+            assert_eq!(end["busy"][0]["variant"], "download");
+            let switched = w.change((2, vec![event(true, "download", "done"), event(false, "", "")])).unwrap();
+            assert_eq!(switched["ended"][0]["variant"], "download");
+            assert_eq!(switched["ended"][0]["reason"], "");
+            assert_eq!(switched["busy"], json!([]));
         }
     }
 

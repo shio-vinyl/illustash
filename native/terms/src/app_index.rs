@@ -1650,12 +1650,12 @@ fn write_result(tx: &Connection, result: &protocol::IndexResponse, id: &str) -> 
           NOT EXISTS (SELECT 1 FROM characters c WHERE c.char_id=labels.value))",
     )?;
     let preserved = tx
-        .prepare("SELECT uuid,value FROM labels WHERE dim='char_ext'")?
-        .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?
+        .prepare("SELECT DISTINCT uuid FROM labels WHERE dim='char_ext'")?
+        .query_map([], |r| r.get::<_, String>(0))?
         .collect::<rusqlite::Result<BTreeSet<_>>>()?;
     let label_cols = columns(tx, "labels")?;
     for r in &result.labels {
-        if !preserved.is_empty() && preserved.contains(&(r.0.clone(), r.1.clone())) {
+        if preserved.contains(&r.0) {
             continue;
         }
         if ["source", "model_ver", "run_id"].iter().all(|k| label_cols.iter().any(|c| c == k)) {

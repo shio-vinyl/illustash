@@ -359,6 +359,15 @@ class InstalledIndexAppTest(CandidateIndexAdapter, unittest.TestCase):
             rows = source.execute("SELECT uuid,dim,value,conf,source,model_ver,run_id FROM labels WHERE uuid='b' AND dim='char_ext'").fetchall()
             self.assertEqual(rows, [old])
             self.assertTrue(source.execute("SELECT 1 FROM labels WHERE uuid='c' AND dim='char_ext' AND value='carol_example'").fetchone())
+        # 显式移除角色时清掉该角色的旧孤立认领，保留同图上仍有效的原行。
+        with contextlib.closing(sqlite3.connect(self.lib.source)) as source, source:
+            source.execute("INSERT INTO labels(uuid,dim,value,conf) VALUES ('b','char_ext','carol_example',0.25)")
+        self.index({'action': 'drop', 'char': 'carol_example', 'reason': '合成撤回'})
+        result = self.finish()
+        self.assertEqual(result['state']['status'], 'done', result['state'])
+        with contextlib.closing(sqlite3.connect(self.lib.source)) as source:
+            rows = source.execute("SELECT uuid,dim,value,conf,source,model_ver,run_id FROM labels WHERE uuid='b' AND dim='char_ext'").fetchall()
+            self.assertEqual(rows, [old])
         self.assertEqual(snapshot(self.lib.db)['actions'], self.human)
         self.assertEqual(snapshot(self.lib.db)['assertions'], self.human_assertions)
 

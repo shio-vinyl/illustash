@@ -63,7 +63,7 @@ implement({
   doubts: {head: tidy, help: () => [t('机器算给了某个角色、但和另一个角色分不太清的图。'), t('点一下缩略图把它点掉，长按或鼠标停在上面按 Space 看大图。'),
     t('回答只作用于卡上的图。')]},
   duplicates: {head: tidy, subTabs, emptyNext: () => [{label: t('相似的图'), href: '#/similar'}],
-    help: () => [t('同色角标是同一组。'), t('人工结论分散在不同副本时，图库保留整组。')]},
+    help: () => [t('同色角标是同一组。'), t('没有一份副本包含整组人工结论时，图库显示整组。')]},
   similar: {head: tidy, subTabs, help: () => [t('同一幅画的不同文件。'), t('点一组进去看。')]},
   sgroup: {subTabs, emptyNext: () => [{label: t('回到相似的图'), href: '#/similar'}], help: () => [t('选中两张以上可以判断它们的关系。')], helpHint: true},
   excluded: {head: tidy, subTabs, helpHint: true, emptyNext: () => [{label: t('去图库'), href: '#/library'}]},

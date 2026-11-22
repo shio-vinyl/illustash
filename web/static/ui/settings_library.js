@@ -54,7 +54,7 @@ export function build(main, scope) {
       {kind: 'block', key: 'tiles', mount: tiles(excluded)},
     ]},
     {key: 'fold', title: t('重复与相似'), scope: 'library', note: t('图库优先显示保有整组人工结论的副本，其次按分辨率选取。'),
-     more: t('字节相同和勾选的关系参与折叠。人工结论分散在不同副本时，图库保留整组。'), parts: [
+     more: t('字节相同的副本和符合所选关系的图会分在同一组。没有一份副本包含整组人工结论时，图库显示整组。'), parts: [
       startupRow('similar', t('启动时检测相似图片'), t('只比较新导入的图')),
       ...FOLD_OPTIONS.map(foldRow),
     ]},

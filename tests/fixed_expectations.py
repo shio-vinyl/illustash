@@ -690,6 +690,25 @@ def _baseline_file(module):
         return json.load(f)
 
 
+def _curation_selection_with_folding(frozen):
+    """同一批收录动作：d 被折叠后，在首轮可见选区之后随副本组补到快照里。"""
+    app = frozen['app']
+    actions = app['actions']
+    rows = []
+    for row in actions['rows']:
+        cells = json.loads(row)
+        if cells[0] != 6:
+            rows.append(row)
+            continue
+        assert cells[1] == '已收录 6 张'
+        before = json.loads(cells[2])
+        assert [image['uuid'] for image in before] == ['a', 'c', 'd', 'e', 'f', 'g', '图甲', 'b', 'h']
+        before.insert(7, before.pop(2))
+        cells[2] = json.dumps(before, ensure_ascii=False, sort_keys=True, separators=(',', ':'))
+        rows.append(json.dumps(cells, ensure_ascii=False, separators=(',', ':')))
+    return {**frozen, 'app': {**app, 'actions': {**actions, 'rows': sorted(rows)}}}
+
+
 def _check_baseline(slot, state, only=None):
     """录制时为 ``slot``（module、test、key）录下 ``state``；否则返回 True，除非为它录过对照基准且两者不同
     （差异会打印出来）。"""
@@ -701,6 +720,9 @@ def _check_baseline(slot, state, only=None):
     if want is not None:
         want = {db: {t: v for t, v in tables.items() if t not in RETIRED} for db, tables in want.items()}
         want = _refresh_reference_folds(want, state)
+        if (test == 'tests.test_native_human_curation.NativeHumanCurationTest.test_parameter_validation_selection_confirmation_and_error_order'
+                and key in {'51:after', '53:after'}):
+            want = _curation_selection_with_folding(want)
         state = _historical_projection(state, want)
     if only is not None:
         pick = lambda s: {db: {t: s.get(db, {}).get(t) for t in tables} for db, tables in only.items()}

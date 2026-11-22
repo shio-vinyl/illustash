@@ -100,7 +100,7 @@ pub(crate) fn fold(c: &mut Connection, context: &LibraryContext, body: &Json) ->
         crate::character_json::dump(&Value::Array(kinds.iter().cloned().map(Value::String).collect()), true);
     tx.execute("INSERT OR REPLACE INTO prefs VALUES ('fold_kinds',?)", [persisted])?;
     refresh_duplicates(&tx, &src, &kinds)?;
-    crate::character_projection::fold(&tx)?;
+    rebuild_fold(&tx)?;
     tx.commit()?;
     Ok(Json::object([("kinds", Json::Array(kinds.into_iter().map(Json::from).collect()))]))
 }
@@ -118,10 +118,16 @@ pub(crate) fn refresh_fold_on_open(library: &crate::app_library::Library) -> Res
     crate::configure(&c)?;
     let tx = c.transaction_with_behavior(TransactionBehavior::Immediate)?;
     if tx.query_row(NEEDS_REFRESH, [], |r| r.get::<_, bool>(0))? {
-        crate::character_projection::fold(&tx)?;
-        tx.execute("INSERT OR REPLACE INTO meta VALUES ('fold_projection','2')", [])?;
+        rebuild_fold(&tx)?;
     }
     tx.commit()?;
+    Ok(())
+}
+
+/// 写入既有事务；首次打开和改设置都发布同一版本的派生状态。
+fn rebuild_fold(c: &Connection) -> Result<()> {
+    crate::character_projection::fold(c)?;
+    c.execute("INSERT OR REPLACE INTO meta VALUES ('fold_projection','2')", [])?;
     Ok(())
 }
 

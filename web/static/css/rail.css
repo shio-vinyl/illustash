@@ -157,9 +157,9 @@
   .rail-name{left:52px}
   .rail-sep{display:none}
   .rail-l2{position:fixed;top:var(--space-8);bottom:var(--space-8);left:64px;z-index:var(--z-drawer);width:84px;flex:none;border-radius:var(--radius-18);
-    background:var(--canvas);box-shadow:var(--shadow-pop);visibility:hidden;opacity:0;transform:translateX(-12px);
+    background:var(--canvas);box-shadow:var(--shadow-pop);visibility:hidden;pointer-events:none;opacity:0;transform:translateX(-12px);
     transition:opacity var(--dur-1) var(--ease),transform var(--dur-2) var(--ease),visibility 0s var(--ease) var(--dur-2)}
-  .rail.is-drawer .rail-l2{visibility:visible;opacity:1;transform:none;transition:opacity var(--dur-2) var(--ease),transform var(--dur-2) var(--ease)}
+  .rail.is-drawer .rail-l2{visibility:visible;pointer-events:auto;opacity:1;transform:none;transition:opacity var(--dur-2) var(--ease),transform var(--dur-2) var(--ease)}
   .rail.is-drawer.is-empty .rail-l2{visibility:hidden}
   .rail-scroll{padding:var(--space-12) 0}
   #sidebarToggle{display:inline-flex}

@@ -2,22 +2,22 @@
 window.CENSUS = {
  "source": "web/static/app.css、web/static/css/base.css、web/static/css/catalog.css、web/static/css/character.css、web/static/css/detail.css、web/static/css/galleries.css、web/static/css/library.css、web/static/css/overlays.css、web/static/css/rail.css、web/static/css/settings.css、web/static/css/tidy.css、web/static/css/tokens.css",
  "files": {
-  "app.css": "80732ee9fe5ccba79b7a0719e322884682b9196de34666a691916738ad487c4c",
-  "css/base.css": "16a5c876b42ece60820e230773a74c7c480d0c977868af8455a978c3b59550a4",
+  "app.css": "2edb37866932328e3c8c4d7a3f01130b24dc75b7839be2395ea5ffbcee253128",
+  "css/base.css": "274d8ae6a2a8507270b927581e874fbe298a6524fde58c1e21f9d0f007e3c738",
   "css/catalog.css": "076a0fcebc95af0a6daff5b99fb5e0d5c407fa7bacc908dcd8383bc4e52a6ba2",
   "css/character.css": "c700d9eb883a6ef2848b44e5c9d96446dc649e7b9d63e2ae83ebfbfef7151697",
   "css/detail.css": "a9eaf043f2074eea276c1b235e7da4db3630a280ad99ea15956c62d2ecba2904",
   "css/galleries.css": "2ce38f58bf8ff9228202c489de9cd3eb9c7448666f7f524404ed7728ad7ed5b2",
-  "css/library.css": "df0286fc7600ea33d43f1639d8539fd6d71f04bd636e3ccbc8a734e6d822d62b",
+  "css/library.css": "568309af6199b42dda2d7950203701af8f560efa7484c0c27d2473b08375d7c1",
   "css/overlays.css": "73dda4f60b805591d5e8be074f37a4665cc0441b8b6906e3d0508bf906d1fc80",
-  "css/rail.css": "589b1e1f2f6a8ec830520f887de33efdf66c3bf28efd2dc7223f2d9c1be13986",
+  "css/rail.css": "46c7f0c9d78ccf56fc89e476d8978c9b345b26c6d4f7727fc27648cca65ea0ac",
   "css/settings.css": "cc4715b8dcdd1bb9d1168d5a5067e61ab3d560c7ab42b019afe3c865143f3c71",
   "css/tidy.css": "63c15db2f00a009f88d0b19a20ab688b72849fc49e487ae3bf9260e55dada604",
   "css/tokens.css": "6f31fbe3b32f892a26e753e410d7e5ea94d7e4165ed49d04458eecca3314e787"
  },
- "sha256": "94191fc90bb1dec0d90c4a53ea7ced087f306e118f7982ecbde1c8e3e69554f7",
- "lines": 2042,
- "rules": 1453,
+ "sha256": "93c52b84567e71252f2d3d1331594dd0b9f82de568e3bc61c81c29939398e1a7",
+ "lines": 2041,
+ "rules": 1448,
  "themeVars": {
   "light": {
    "--canvas": "#f4f4f6",
@@ -195,25 +195,25 @@ window.CENSUS = {
    "--hair": 9,
    "--sheet": 56,
    "--radius-round": 25,
-   "--muted": 115,
+   "--muted": 114,
    "--space-6": 130,
    "--h-32": 9,
    "--fs-16": 1,
-   "--space-4": 79,
-   "--radius-pill": 49,
-   "--soft": 49,
-   "--accent-soft": 19,
+   "--space-4": 78,
+   "--radius-pill": 48,
+   "--soft": 48,
+   "--accent-soft": 18,
    "--accent-ink": 31,
    "--fs-12": 101,
-   "--ink2": 52,
+   "--ink2": 51,
    "--tone-sand-ink": 2,
    "--space-8": 130,
    "--faint": 9,
    "--z-popover": 2,
    "--gutter": 5,
-   "--fs-11": 83,
+   "--fs-11": 84,
    "--z-page-4": 2,
-   "--space-10": 74,
+   "--space-10": 75,
    "--space-2": 58,
    "--radius-4": 31,
    "--chip-hover": 6,
@@ -222,13 +222,13 @@ window.CENSUS = {
    "--space-16": 36,
    "--space-12": 80,
    "--line": 31,
-   "--h-36": 9,
+   "--h-36": 8,
    "--space-14": 31,
    "--w": 1,
    "--fs-10": 3,
    "--err": 6,
-   "--accent": 47,
-   "--ease": 98,
+   "--accent": 48,
+   "--ease": 97,
    "--radius-10": 6,
    "--switch-off": 1,
    "--badge-bg": 2,
@@ -260,10 +260,11 @@ window.CENSUS = {
    "--radius-18": 14,
    "--sheet-shadow": 1,
    "--fs-20": 13,
-   "--sh": 29,
-   "--r18": 3,
-   "--r18-soft": 1,
+   "--sh": 28,
+   "--h-28": 11,
+   "--fw-750": 27,
    "--r18-on": 1,
+   "--r18": 1,
    "--select-arrow": 1,
    "--radius-12": 24,
    "--seg-on": 4,
@@ -286,14 +287,12 @@ window.CENSUS = {
    "--bad": 5,
    "--z-overlay": 2,
    "--fs-display-40": 4,
-   "--fw-750": 26,
    "--fs-display-28": 6,
    "--dur-1": 46,
    "--fw-600": 46,
    "--accent-fill": 7,
    "--on-accent": 10,
    "--btn-hover-filter": 1,
-   "--h-28": 9,
    "--fw-400": 9,
    "--shadow-hover": 18,
    "--dur-2": 34,
@@ -553,7 +552,7 @@ window.CENSUS = {
    {
     "name": "--fs-11",
     "value": "11px",
-    "uses": 83
+    "uses": 84
    },
    {
     "name": "--fs-12",
@@ -640,7 +639,7 @@ window.CENSUS = {
    {
     "name": "--radius-pill",
     "value": "999px",
-    "uses": 49
+    "uses": 48
    },
    {
     "name": "--radius-round",
@@ -662,7 +661,7 @@ window.CENSUS = {
    {
     "name": "--space-4",
     "value": "4px",
-    "uses": 79
+    "uses": 78
    },
    {
     "name": "--space-6",
@@ -677,7 +676,7 @@ window.CENSUS = {
    {
     "name": "--space-10",
     "value": "10px",
-    "uses": 74
+    "uses": 75
    },
    {
     "name": "--space-12",
@@ -709,7 +708,7 @@ window.CENSUS = {
    {
     "name": "--h-28",
     "value": "28px",
-    "uses": 9
+    "uses": 11
    },
    {
     "name": "--h-32",
@@ -719,7 +718,7 @@ window.CENSUS = {
    {
     "name": "--h-36",
     "value": "36px",
-    "uses": 9
+    "uses": 8
    }
   ],
   "z": [
@@ -818,7 +817,7 @@ window.CENSUS = {
    {
     "name": "--fw-750",
     "value": "750",
-    "uses": 26
+    "uses": 27
    }
   ],
   "shadow": [
@@ -862,7 +861,7 @@ window.CENSUS = {
    {
     "name": "--ease",
     "value": "cubic-bezier(.2,.8,.2,1)",
-    "uses": 98
+    "uses": 97
    },
    {
     "name": "--ease-spring",
@@ -1000,18 +999,11 @@ window.CENSUS = {
    }
   ]
  },
- "rgbaCalls": 71,
+ "rgbaCalls": 70,
  "fontSize": {
-  "kinds": 11,
+  "kinds": 10,
   "uses": 248,
   "table": [
-   {
-    "value": "9px (font 简写)",
-    "uses": 1,
-    "examples": [
-     ".r18 text"
-    ]
-   },
    {
     "value": "var(--fs-10)",
     "uses": 3,
@@ -1023,7 +1015,7 @@ window.CENSUS = {
    },
    {
     "value": "var(--fs-11)",
-    "uses": 82,
+    "uses": 83,
     "examples": [
      ".missing",
      ".footer",
@@ -1106,7 +1098,7 @@ window.CENSUS = {
  },
  "radius": {
   "kinds": 16,
-  "uses": 192,
+  "uses": 191,
   "table": [
    {
     "value": "0",
@@ -1232,7 +1224,7 @@ window.CENSUS = {
    },
    {
     "value": "var(--radius-pill)",
-    "uses": 49,
+    "uses": 48,
     "examples": [
      ".heading-main h1 .icon.small",
      ".staged-chip",
@@ -1254,7 +1246,7 @@ window.CENSUS = {
  },
  "gap": {
   "kinds": 21,
-  "uses": 218,
+  "uses": 219,
   "table": [
    {
     "value": "0",
@@ -1331,7 +1323,7 @@ window.CENSUS = {
    },
    {
     "value": "var(--space-8)",
-    "uses": 49,
+    "uses": 50,
     "examples": [
      ".search-wrap",
      ".top-actions",
@@ -1435,7 +1427,7 @@ window.CENSUS = {
  },
  "padding": {
   "kinds": 90,
-  "uses": 196,
+  "uses": 195,
   "table": [
    {
     "value": "0",
@@ -1667,7 +1659,7 @@ window.CENSUS = {
  },
  "height": {
   "kinds": 55,
-  "uses": 124,
+  "uses": 123,
   "table": [
    {
     "value": "height: 1px",
@@ -1812,12 +1804,12 @@ window.CENSUS = {
    },
    {
     "value": "height: 20px",
-    "uses": 5,
+    "uses": 4,
     "examples": [
-     ".r18",
      ".view-sw",
      ".chip>.avatar",
-     ".piece-tape"
+     ".piece-tape",
+     ".rail-icon>svg"
     ]
    },
    {
@@ -1871,12 +1863,12 @@ window.CENSUS = {
    },
    {
     "value": "height: var(--h-28)",
-    "uses": 6,
+    "uses": 7,
     "examples": [
+     ".top-actions .nsfw-toggle>.r18",
      ".btn.is-small",
      ".chip",
-     ".seg>button,.seg>a",
-     ".glass-bar>button"
+     ".seg>button,.seg>a"
     ]
    },
    {
@@ -1928,7 +1920,7 @@ window.CENSUS = {
    },
    {
     "value": "height: var(--h-36)",
-    "uses": 8,
+    "uses": 7,
     "examples": [
      "#pickerSearch",
      ".modal .field input",
@@ -2016,17 +2008,17 @@ window.CENSUS = {
    },
    {
     "value": "height: 68px",
-    "uses": 2,
+    "uses": 1,
     "examples": [
-     ".avatar.is-large",
-     ".avatar-ring"
+     ".avatar.is-large"
     ]
    },
    {
     "value": "height: 72px",
-    "uses": 1,
+    "uses": 2,
     "examples": [
-     ".oc-split-thumbs img"
+     ".oc-split-thumbs img",
+     ".avatar-ring"
     ]
    },
    {

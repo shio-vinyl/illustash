@@ -152,7 +152,7 @@ export function renderHeading() {
   } else {
     const [title, sub, links = ''] = view.headingHTML?.(r, {n}) || ['', ''];
     const [helpButton, helpPop] = helpTip(help.map(esc));
-    h.innerHTML = `<hgroup class="heading-main"><h1 class="title-page">${title}${helpButton}</h1><p class="page-sub">${updating(sub)}</p>${helpPop}</hgroup>${links}`;
+    h.innerHTML = `<hgroup class="heading-main"><h1 class="title-page">${title ? `<span>${title}</span>` : ''}${helpButton}</h1><p class="page-sub">${updating(sub)}</p>${helpPop}</hgroup>${links}`;
   }
   const sw = drawSwitches(r, view); if (sw) h.append(sw);
   wireHelpTip();
@@ -183,9 +183,9 @@ export function renderChrome() {
     (r.char ? pill('charPill', t('角色 · {name}', {name: esc(short(state.char?.name || ''))}), t('清除角色筛选')) : '') +
     filterBar(r) + saveButton(r) + maybeChip + variants : tabs;
   bar.innerHTML = filtersOnly ? filtersHTML : filtersHTML +
-    `<div class="spacer"></div><select id="sort" aria-label="${t('排序')}">${sorts.map(([v, label]) => `<option value="${v}"${r.sort === v ? ' selected' : ''}>${label}</option>`).join('')}</select>` +
+    `<div class="page-actions"><select id="sort" aria-label="${t('排序')}">${sorts.map(([v, label]) => `<option value="${v}"${r.sort === v ? ' selected' : ''}>${label}</option>`).join('')}</select>` +
     `<button class="quiet" id="selectButton" title="${cleanup() ? t('选中全部符合条件的图片') : t('进入选择模式')}">${cleanup() ? `${t('全选')} <kbd>${shortcut('A')}</kbd>` : t('选择')}</button>` +
-    `<div class="icon-seg" id="fitToggle" role="group" aria-label="${t('显示方式')}"${fixedLayout(r) ? ' hidden' : ''}><button data-fit="0" class="${state.fit ? '' : 'on'}" title="${t('方格：裁成正方形（R）')}" aria-label="${t('方格')}">${FIT_ICONS.square}</button><button data-fit="1" class="${state.fit ? 'on' : ''}" title="${t('原始比例：完整显示整张图（R）')}" aria-label="${t('原始比例')}">${FIT_ICONS.fit}</button></div>`;
+    `<div class="icon-seg" id="fitToggle" role="group" aria-label="${t('显示方式')}"${fixedLayout(r) ? ' hidden' : ''}><button data-fit="0" class="${state.fit ? '' : 'on'}" title="${t('方格：裁成正方形（R）')}" aria-label="${t('方格')}">${FIT_ICONS.square}</button><button data-fit="1" class="${state.fit ? 'on' : ''}" title="${t('原始比例：完整显示整张图（R）')}" aria-label="${t('原始比例')}">${FIT_ICONS.fit}</button></div></div>`;
   if (filtersOnly) { wireSearch(r); wireFilterBar(r); wireSaveButton(r); return; }
   // 改了排序就记成这一类页面的默认值，离开再回来还是它（#386 的 2-26）；记在哪个键由 core/route.js 的 sortKey 定。
   $('sort').onchange = e => { prefs.set(sortKey(r), e.target.value); replaceRoute({sort: e.target.value}); reload(true); };

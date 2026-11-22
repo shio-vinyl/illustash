@@ -290,9 +290,6 @@ p{color:var(--muted)}
 .icon{border-radius:var(--radius-8);color:var(--ink2)}
 .icon:hover,.quiet:hover{background:var(--soft)}
 button:active:not(:disabled){transform:scale(.97)}
-/* NSFW 三态沿用页头圆形按钮。等宽字标给四个字母留出两侧空间，字形略向下对齐圆心。 */
-.top-actions .nsfw-toggle{font-family:var(--mono);font-size:var(--fs-11);font-weight:var(--fw-600);line-height:1;letter-spacing:-.025em}
-.top-actions .nsfw-toggle>span{transform:translateY(var(--space-1))}
 .top-actions .nsfw-toggle.s-hide{color:var(--accent-ink);background:var(--accent-soft);box-shadow:inset 0 0 0 1px var(--accent)}
 .top-actions .nsfw-toggle.s-only{color:var(--r18-on);background:var(--r18)}
 /* 工具栏控件 */

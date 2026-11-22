@@ -142,6 +142,30 @@ pub(super) fn handle(request: Request, host: &Host, received: u64, text: &str, b
             drop(session);
             return respond(request, host.imports.cancel_import(), 200, "core");
         }
+        "/api/tag"
+        | "/api/favorite"
+        | "/api/galleries"
+        | "/api/similar/seen"
+        | "/api/undo"
+        | "/api/artist/verdict"
+        | "/api/curate"
+        | "/api/fold"
+        | "/api/works"
+        | "/api/character/mascot"
+        | "/api/kind"
+        | "/api/oc/shared"
+        | "/api/change"
+        | "/api/audit/answer"
+        | "/api/ask/answer"
+        | "/api/reassign"
+        | "/api/sweep"
+        | "/api/identity/decision"
+        | "/api/identity/skip"
+        | "/api/merge" => {
+            let result = crate::app_commands::request(&session.context(&host.tags), request.url(), &body);
+            drop(session);
+            return page_write_reply(request, result);
+        }
         _ => {}
     }
     match route(request.url(), host, received, &mut session, text, &body, language.as_deref()) {
@@ -567,6 +591,25 @@ fn profiles(request: Request, host: &Host, received: u64, session: RwLockWriteGu
     }
     let result = prepared.and_then(|p| crate::app_commands::request_prepared(&context, request.url(), body, Some(&p)));
     drop(session);
+    page_write_reply(request, result);
+}
+
+/// 这些页面命令返回的 SQLITE_BUSY 都在提交前出现，后台跟进和撤销完成后的读取各自报告错误。
+fn page_write_reply(request: Request, result: Result<Json>) {
+    use crate::diagnostics::{self, Cause, Publication, Retry, Stage};
+    if let Err(Error::Sql(rusqlite::Error::SqliteFailure(code, _))) = &result {
+        if code.code == rusqlite::ErrorCode::DatabaseBusy {
+            let diagnostic = diagnostics::record(
+                diagnostics::operation(request.url()),
+                Stage::Write,
+                Cause::Database,
+                Some(code.extended_code),
+                Publication::NotCommitted,
+                Retry::Retry,
+            );
+            return respond_failure(request, error("服务繁忙，请稍后重试"), 503, Some(diagnostic));
+        }
+    }
     reply(request, result, true);
 }
 fn relate(request: Request, host: &Host, received: u64, mut session: RwLockWriteGuard<Session>, body: &Json) {
@@ -709,29 +752,6 @@ fn route(
     language: Option<&str>,
 ) -> Option<Result<Json>> {
     Some(match url {
-        "/api/tag"
-        | "/api/favorite"
-        | "/api/galleries"
-        | "/api/similar/seen"
-        | "/api/undo"
-        | "/api/artist/verdict"
-        | "/api/curate"
-        | "/api/fold"
-        | "/api/entities"
-        | "/api/character/profile"
-        | "/api/local-links"
-        | "/api/works"
-        | "/api/character/mascot"
-        | "/api/kind"
-        | "/api/oc/shared"
-        | "/api/change"
-        | "/api/audit/answer"
-        | "/api/ask/answer"
-        | "/api/reassign"
-        | "/api/sweep"
-        | "/api/identity/decision"
-        | "/api/identity/skip"
-        | "/api/merge" => crate::app_commands::request(&session.context(&host.tags), url, body),
         "/api/provenance" => session.provenance.post(body),
         "/api/onboarding" => {
             let library = session.library.clone();

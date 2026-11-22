@@ -1643,9 +1643,21 @@ fn write_result(tx: &Connection, result: &protocol::IndexResponse, id: &str) -> 
             tx.execute("INSERT OR IGNORE INTO character_aliases(char_id,alias) VALUES (?,?)", params![r.0, r.1])?;
         }
     }
-    tx.execute("DELETE FROM labels WHERE dim='char_ext'", [])?;
+    // 来源资产已丢的认领沿用抢救留下的原行（含来源和批次），明确移除了角色时才一起清掉。
+    tx.execute_batch(
+        "DELETE FROM labels WHERE dim='char_ext' AND
+         (EXISTS (SELECT 1 FROM assets a WHERE a.uuid=labels.uuid) OR
+          NOT EXISTS (SELECT 1 FROM characters c WHERE c.char_id=labels.value))",
+    )?;
+    let preserved = tx
+        .prepare("SELECT uuid,value FROM labels WHERE dim='char_ext'")?
+        .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?
+        .collect::<rusqlite::Result<BTreeSet<_>>>()?;
     let label_cols = columns(tx, "labels")?;
     for r in &result.labels {
+        if !preserved.is_empty() && preserved.contains(&(r.0.clone(), r.1.clone())) {
+            continue;
+        }
         if ["source", "model_ver", "run_id"].iter().all(|k| label_cols.iter().any(|c| c == k)) {
             sourced_label(tx, r, id)?;
             continue;

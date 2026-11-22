@@ -187,7 +187,7 @@ fn run_with(
     progress(&review, &req["identity"], "build", None, None)?;
     let (characters, aliases, vectors, ids, meta, patched) = build::build(&review, tags)?;
     progress(&review, &req["identity"], "scan", None, None)?;
-    let labels = scan::scan(&review, &vectors, &ids, &meta, &patched)?;
+    let labels = scan::scan(&review, &characters, &vectors, &ids, &meta, &patched)?;
     Ok(
         json!({"format":req["format"],"identity":req["identity"],"before":req["before"],"characters":characters,"aliases":aliases,"labels":labels}),
     )
@@ -298,7 +298,7 @@ mod tests {
         fs::write(p.join("tags.csv"), "name,category\nalice,4\n").unwrap();
         crate::sqlite::open(p.join("pi.db"))
             .unwrap()
-            .execute_batch("CREATE TABLE embeddings(uuid,model,vec);")
+            .execute_batch("CREATE TABLE assets(uuid); CREATE TABLE embeddings(uuid,model,vec); CREATE TABLE labels(uuid,dim,value,conf);")
             .unwrap();
         p
     }

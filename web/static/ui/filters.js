@@ -102,12 +102,19 @@ export function filterBar(r) {
 // 画好以后接上事件；r 是画的时候的路由。
 export function wireFilterBar(r) {
   const bar = $('toolbar');
+  resultQuery = null; options = [];
   for (const b of bar.querySelectorAll('[data-drop]')) b.onclick = () => go(dropCondition(r, b.dataset.drop));
   bar.querySelector('[data-drop-dates]')?.addEventListener('click', () => go(setDates(r)));
   $('condButton').onclick = () => { const open = !popOpen($('condPopover')); setMenu(open); if (open) { userTags = null; $('condSearch').focus(); loadOptions(); } };
-  onTyped($('condSearch'), loadOptions, 120);
+  onTyped($('condSearch'), e => loadOptions(e.target), 120);
   // 焦点留在搜索框里：↑ ↓ 在选项之间循环，↵ 或点击加上这个条件，Esc 关菜单、焦点回到按钮（同标签菜单，#432）。
-  nav = listNav($('condSearch'), $('condOptions'), {shown: () => popOpen($('condPopover')), count: () => options.length, pick: i => choose(options[i])});
+  // 点选的是屏幕上那份结果。回车时结果还没跟上输入（输入后 120 ms 防抖），等这次输入的结果回来再选第一项。
+  const search = $('condSearch'), stale = () => search.value.trim() !== resultQuery;
+  nav = listNav(search, $('condOptions'), {shown: () => popOpen($('condPopover')), count: () => options.length || Number(stale()),
+    pick: (i, e) => {
+      if (e?.type === 'click' || !stale()) { choose(options[i]); return; }
+      loadOptions(search).then(() => { if (search === $('condSearch') && popOpen($('condPopover')) && !stale()) choose(options[0]); });
+    }});
 }
 // 选择器是非模态浮层，Esc、点外关闭由浮层管理器处理；元素随工具栏重画换掉，所以按 id 找。
 const layer = createLayer({kind: 'popover', id: 'condition-menu', el: () => $('condPopover'), anchor: () => $('condButton'), focusIn: 'first', onDismiss: reason => setMenu(false, reason)});
@@ -115,16 +122,22 @@ function setMenu(open, reason) {
   showPop($('condPopover'), open);
   if (open) layer.open(); else layer.close(reason);
 }
-let nav = null, options = [], userTags = null;
+let nav = null, options = [], userTags = null, resultQuery = null;
 
 // ---------- 选择器 ----------
 // 选项：{label, detail, section, cond} 或 {label, section, dates: true}（开起止日期对话框）、{label, year}。角色选项另带
 // html：名字和作品小字，和「跳到角色」同一种写法（dom.js 的 charOption）。
 const fold = s => s.toLocaleLowerCase(I18N.locale).normalize('NFKC');
-const SECTION_NAMES = () => ({source: t('出处'), date: t('时间'), mine: t('我的标签'), tag: t('画面标签'), char: t('角色'), work: t('作品'), artist: t('画师'), other: t('其他')});
+const SECTION_NAMES = () => ({best: t('最佳匹配'), source: t('出处'), date: t('时间'), mine: t('我的标签'), tag: t('画面标签'), char: t('角色'), work: t('作品'), artist: t('画师'), other: t('其他')});
 async function candidates(q) {
   const r = state.route, x = conditions(r), taken = new Set([...x.has, ...x.not]), low = fold(q), hit = s => !q || fold(s).includes(low);
   const free = o => !o.cond || !taken.has(o.cond), out = [];
+  // 同档沿用原来各组的先后。先排序，再给每组限数，避免同组里的模糊匹配把名字对上的项挡在限额外。
+  const rank = o => {
+    if (!q) return 2;
+    const name = fold(o.matchName ?? o.label);
+    return name === low ? 0 : name.startsWith(low) ? 1 : 2;
+  };
   const now = new Date().getFullYear();
   userTags ||= api('/api/user-tags?limit=1000').catch(() => state.userTags);
   const [mine, tags, artists] = await Promise.all([userTags,
@@ -135,23 +148,34 @@ async function candidates(q) {
   for (const y of years) out.push({section: 'date', label: t('{year} 年', {year: y}), year: y});
   if (!q || hit(t('起止日期…')) || hit(t('日期'))) out.push({section: 'date', label: t('起止日期…'), dates: true});
   if (hit(t('收藏')) || hit('fav')) out.push({section: 'other', label: t('收藏'), cond: 'fav'});
-  out.push(...(mine || []).filter(m => hit(m.tag)).slice(0, q ? 12 : 6).map(m => ({section: 'mine', label: '# ' + m.tag, detail: number(m.count), cond: `utag:${m.tag}`})));
+  out.push(...(mine || []).filter(m => hit(m.tag)).map(m => ({
+    section: 'mine', label: '# ' + m.tag, matchName: m.tag, detail: number(m.count), cond: `utag:${m.tag}`,
+  })));
   if (q) {
     // 中文页面上画面标签显示中文名（#446），后面小字是原来的标签。
     const zh = x => I18N.language === 'zh-CN' && x.zh;
-    out.push(...tags.slice(0, 12).map(x => ({section: 'tag', label: zh(x) || tagText(x.tag), detail: zh(x) ? tagText(x.tag) : '', cond: `tag:${x.tag}`})));
-    const chars = state.chars.filter(c => hit(c.name) || (c.tag && hit(c.tag))).slice(0, 8);
+    out.push(...tags.map(x => ({section: 'tag', label: zh(x) || tagText(x.tag), detail: zh(x) ? tagText(x.tag) : '', cond: `tag:${x.tag}`})));
+    const chars = state.chars.filter(c => hit(c.name) || (c.tag && hit(c.tag)));
     out.push(...chars.map(c => ({section: 'char', label: c.name, html: charOption(c), detail: number(c.count), cond: `char:${c.id}`})));
     if (!state.workTree) await loadWorkTree().catch(() => {});
-    out.push(...(state.workTree || []).filter(w => hit(w.name)).slice(0, 6).map(w => ({section: 'work', label: w.name, detail: w.qualifier || '', cond: `work:${w.id}`})));
+    out.push(...(state.workTree || []).filter(w => hit(w.name)).map(w => ({section: 'work', label: w.name, detail: w.qualifier || '', cond: `work:${w.id}`})));
     out.push(...artists.map(a => ({section: 'artist', label: a.name, detail: number(a.count), cond: `artist:${a.id}`})));
   }
-  return out.filter(free);
+  const limit = {mine: q ? 12 : 6, tag: 12, char: 8, work: 6};
+  const counts = {};
+  return out.filter(free).sort((a, b) => rank(a) - rank(b)).filter(o => {
+    counts[o.section] = (counts[o.section] || 0) + 1;
+    return counts[o.section] <= (limit[o.section] ?? Infinity);
+  }).map(o => rank(o) < 2 ? {...o, section: 'best'} : o);
 }
-async function loadOptions() {
-  const q = $('condSearch').value.trim();
-  let found; try { found = await candidates(q); } catch (e) { $('condOptions').textContent = e.message; options = []; return; }
-  if (q !== $('condSearch')?.value.trim()) return;
+async function loadOptions(input = $('condSearch')) {
+  if (!input || input !== $('condSearch')) return;
+  const q = input.value.trim();
+  let found; let failure;
+  try { found = await candidates(q); } catch (e) { failure = e; }
+  if (input !== $('condSearch') || q !== input.value.trim()) return;
+  resultQuery = q;
+  if (failure) { $('condOptions').textContent = failure.message; options = []; return; }
   options = found;
   const sections = SECTION_NAMES();
   let last = '', html = '';

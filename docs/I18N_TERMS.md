@@ -72,6 +72,8 @@
 - 计数放在名词前，按复数规则写（`{n} pictures`）；不方便写复数的句子改写成不依赖单复数的说法。
 - `NSFW`、`Danbooru`、`Pixiv`、`X`、`iCloud`、`Photos` 等专名不译。内容筛选在中英文界面上都叫 NSFW，不写 R18；说的是 Pixiv 上登录才能看的作品时也这样叫（用户 2026-11-19 定，#706）。
 
+- 「重复」用 Duplicates，子页签「全部」和「相似的图」用 All 和 Similar pictures。2026-11-22 用户改定，「角色不一致」子页签移除；折叠说明见 [WEB_V2.md](WEB_V2.md#折叠副本2026-09-23)。
+
 ## 语气
 
 2026-11-16 用户定（#528），中英文都适用：照常见桌面和网页软件的界面文案写，平实、简短，用正常语气，不客套。文案写成标签和事实，说清这一页有什么、这个按钮做什么、现在是什么状态。不当解说员：不替系统讲原理，没人问不安抚，不把几句说明串成一行，不旁白用户在做的事。
@@ -85,7 +87,6 @@
    | 改前 | 改后 |
    |---|---|
    | 长得像的图分成一组，一组一组过 · 每确认一组，系统就学会认 TA 的一种样子<br>Look-alike pictures grouped together, one group at a time · each confirmed group teaches one more look of that character | 按长相分组的未识别图<br>Unidentified pictures grouped by look |
-   | 角色不一致 {n} 组 · 对齐角色后自动折叠<br>{n} groups with disagreeing characters · they fold once the characters are aligned | 角色不一致 {n} 组<br>{n} groups with disagreeing characters |
 
 2. **没人问就安抚、作保证。** 能撤销、只在本机处理、不改原图是这个应用的常态，常态不用说。要说的是例外：不能撤销、会联网发出什么、会动原图文件，而且写在那个动作旁边。
 
@@ -102,7 +103,6 @@
    |---|---|
    | 还剩 {left} / {n} 张 · 鼠标移到角色 tag 上点 ✓ / ✗，或选中多张按 Y / N；打开大图也会问「是 TA 吗？」<br>{left} / {n} left · hover a character tag and click ✓ / ✗, or select several and press Y / N; the large view asks “Is this them?” too | 还剩 {left} / {n} 张<br>{left} / {n} left |
    | {groups} 组 · {n} 张 · 修改任一份会同步到整组<br>{groups} groups · {n} pictures · changing any copy changes the whole group | {groups} 组 · {n} 张<br>{groups} groups · {n} pictures |
-   | 同色角标为同一组 · 修改会同步到整组 · 角色不一致的组对齐后自动折叠<br>Badges of one color are one group · changes apply to the whole group · groups fold once their characters agree | 同色角标是同一组<br>Badges of one color are one group |
 
 4. **用旁白口吻描述用户自己正在做的事。** 用户知道自己在干什么，按钮已经写了能做什么，副标题不再复述一遍。
 

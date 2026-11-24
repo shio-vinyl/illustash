@@ -50,16 +50,16 @@ test('地址落在哪个入口、哪一项：整理五个队列、画廊和收�
 });
 
 test('整理的队列：数字和去处与原来侧栏的计数一致；随机抽查、身份整理有题或正在看时才出现', () => {
-  Object.assign(state, {pools: {unmatched: 5, audit: 0}, dupInfo: {groups: 4, mixed: 2}, pendingCount: 0, identityCount: 0});
+  Object.assign(state, {pools: {unmatched: 5, audit: 0}, dupInfo: {groups: 4}, pendingCount: 0, identityCount: 0});
   let q = rail.queues({page: 'groups'});
-  assert.deepEqual(q.map(x => [x.key, x.count, x.href]), [['unmatched', 5, '#/groups'], ['doubts', 0, '#/doubts'], ['duplicates', 2, '#/duplicates?dup=mixed'],
+  assert.deepEqual(q.map(x => [x.key, x.count, x.href]), [['unmatched', 5, '#/groups'], ['doubts', 0, '#/doubts'], ['duplicates', 0, '#/duplicates'],
     ['excluded', 0, '#/excluded']]);
   assert.equal(rail.tidyWaiting(), true);
-  Object.assign(state, {pools: {unmatched: 0, ambiguous: 7, audit: 3}, dupInfo: {groups: 4, mixed: 0}, pendingCount: 1, identityCount: 2});
+  Object.assign(state, {pools: {unmatched: 0, ambiguous: 7, audit: 3}, dupInfo: {groups: 4}, pendingCount: 1, identityCount: 2});
   q = rail.queues({page: 'groups'});
   assert.deepEqual(q.map(x => [x.key, x.count, x.href]), [['unmatched', 0, '#/groups'], ['doubts', 7, '#/doubts'], ['duplicates', 0, '#/duplicates'], ['excluded', 1, '#/pending'],
     ['audit', 3, '#/audit'], ['identity', 2, '#/identity']]);
-  Object.assign(state, {pools: {unmatched: 0, audit: 0}, dupInfo: {groups: 0, mixed: 0}, pendingCount: 0, identityCount: 0});
+  Object.assign(state, {pools: {unmatched: 0, audit: 0}, dupInfo: {groups: 0}, pendingCount: 0, identityCount: 0});
   assert.deepEqual(rail.queues({page: 'audit'}).map(x => x.key), ['unmatched', 'doubts', 'duplicates', 'excluded', 'audit']);
   assert.equal(rail.tidyWaiting(), false);
   // 一级入口：整理去第一个有待处理的队列

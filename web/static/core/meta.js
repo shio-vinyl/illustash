@@ -13,7 +13,9 @@ export const fetchChar = async id => (await api('/api/characters?' + new URLSear
 export function setChar(c) { state.char = c; }
 // 身份整理还剩几对：元数据读取带回一次，身份整理页翻页时也会带回最新的总数。
 export function setIdentityCount(n) { state.identityCount = n; }
-let metaPending = null, metaRevision = 0, metaFull = false;
+let metaPending = null, metaRevision = 0, metaFull = false, charsNsfw = null;
+// 资料库能先画当前筛选的角色摘要；切换 NSFW 以后必须等新筛选的读取。
+export const canShowChars = () => charsNsfw === state.nsfw;
 // 后端接受了一次写入：仍在进行中的更早的读取不能覆盖它（标签只需要重读标签）。
 export function metaWritten(tagsOnly) { if (metaPending) { metaRevision++; metaFull ||= !tagsOnly; } }
 // 编辑之后，侧栏计数和角色列表（服务端约 0.6 s 的工作）可以等编辑停下再刷新：连续回答 Y / N 只刷新一次，而不是每个回答
@@ -104,6 +106,7 @@ async function refreshMetaOnce(full, revision, bootSeed) {
   state.userTags = tags;
   setLatest(boot.undo);
   state.pools = Object.fromEntries(pools.map(p => [p.kind, p.count]));
+  charsNsfw = state.nsfw;
   state.chars = chars; state.charMap = new Map(chars.map(c => [c.id, c]));
   state.workNames = new Map(chars.filter(c => c.work && c.work_name).map(c => [c.work, c.work_name]));
   state.dupInfo = pools.find(p => p.kind === 'duplicates') || state.dupInfo;

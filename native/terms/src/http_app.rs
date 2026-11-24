@@ -31,7 +31,17 @@ fn counted(r: &Json) -> Option<(UndoLabel, String)> {
     Some((UndoLabel::parse(text("label_kind")?)?, text("label_count")?.to_owned()))
 }
 
-pub(crate) fn action_label(c: &Connection, r: &Json) -> Result<String> {
+pub(crate) fn action_summary(c: &Connection, r: &Json) -> Result<Json> {
+    let (label, removal) = action_label(c, r)?;
+    let mut summary =
+        Json::object([("id", r.field("id").clone()), ("label", label.into()), ("ts", r.field("ts").clone())]);
+    if let Some(removal) = removal {
+        summary.set("removal", removal);
+    }
+    Ok(summary)
+}
+
+fn action_label(c: &Connection, r: &Json) -> Result<(String, Option<Json>)> {
     let label = r.field("label").text();
     let before = parse_python(r.field("before_json").text())?;
     let before = if let Json::Array(v) = &before {
@@ -69,7 +79,7 @@ pub(crate) fn action_label(c: &Connection, r: &Json) -> Result<String> {
                 Json::Scalar(serde_json::Value::String(v)) => v.chars().count(),
                 _ => return Err(Error::Io(std::io::Error::new(std::io::ErrorKind::InvalidData, "历史移动列表无效"))),
             };
-            return Ok(format!("已将 {left} 合并到 {right}（{moved} 条人工结论）"));
+            return Ok((format!("已将 {left} 合并到 {right}（{moved} 条人工结论）"), None));
         }
     }
     let mut seen = HashSet::new();
@@ -80,9 +90,15 @@ pub(crate) fn action_label(c: &Connection, r: &Json) -> Result<String> {
         .filter(|v| !v.is_empty() && seen.insert(v.clone()))
         .collect();
     let counted = counted(r);
-    if let Some((UndoLabel::Swap, n)) = counted.as_ref().filter(|_| ids.len() == 2) {
+    if let Some((kind @ (UndoLabel::Swap | UndoLabel::Remove), n)) = counted.as_ref().filter(|_| ids.len() == 2) {
         if let (Some(left), Some(right)) = (entity_name(c, &ids[0])?, entity_name(c, &ids[1])?) {
-            return Ok(UndoLabel::Swap.fill(n, &left, &right));
+            if *kind == UndoLabel::Swap {
+                return Ok((kind.fill(n, &left, &right), None));
+            }
+            // 「都不是」要随页面语言连接两个名字；角色名本身也可含顿号，从快照的角色 ID 取名字。
+            let removal =
+                Json::object([("count", n.as_str().into()), ("names", Json::Array(vec![left.into(), right.into()]))]);
+            return Ok((label.into(), Some(removal)));
         }
     }
     let sweep = counted.as_ref().filter(|(kind, _)| *kind == UndoLabel::Sweep).map(|(_, n)| n);
@@ -92,14 +108,14 @@ pub(crate) fn action_label(c: &Connection, r: &Json) -> Result<String> {
     if ids.len() == 1 {
         if let Some(name) = entity_name(c, &ids[0])? {
             if let Some(n) = sweep {
-                return Ok(UndoLabel::Sweep.fill(n, &name, ""));
+                return Ok((UndoLabel::Sweep.fill(n, &name, ""), None));
             }
             if let Some((kind, n)) = counted.as_ref().filter(|(kind, _)| *kind != UndoLabel::Swap) {
-                return Ok(kind.fill(n, &name, ""));
+                return Ok((kind.fill(n, &name, ""), None));
             }
         }
     }
-    Ok(label.into())
+    Ok((label.into(), None))
 }
 pub fn read(c: &Connection, context: &LibraryContext, q: &HashMap<String, String>) -> Result<(Json, u16)> {
     let nsfw = q.get("nsfw").map(String::as_str).unwrap_or("");
@@ -118,11 +134,7 @@ pub fn read(c: &Connection, context: &LibraryContext, q: &HashMap<String, String
     )?;
     let indexed: String = c.query_row("SELECT value FROM meta WHERE key='indexed'", [], |r| r.get(0))?;
     let undo = if let Some(r) = rows(c, LAST_ACTION, &[])?.into_iter().next() {
-        Json::object([
-            ("id", r.field("id").clone()),
-            ("label", action_label(c, &r)?.into()),
-            ("ts", r.field("ts").clone()),
-        ])
+        action_summary(c, &r)?
     } else {
         None::<String>.into()
     };

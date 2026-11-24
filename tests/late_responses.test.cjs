@@ -36,6 +36,33 @@ test('a group page answer that arrives after navigating home does not take over 
   assert.ok(!requests.some(p => p.startsWith('/api/assets')), 'the group page never reads its pictures');
 });
 
+test('读取角色页头时保留旧内容，之后收到的旧回复不能换走新页', async () => {
+  const {applyRoute} = await web.load('ui/shell.js'), {state} = web.core();
+  const page = web.fakePage();
+  Object.assign(state, {route: {page: 'days'}, nsfw: ''});
+  page.el('homePage').hidden = false;
+  globalThis.location = {hash: '#/library?char=c1'};
+  globalThis.history = {state: null, replaceState() {}};
+  let reply;
+  globalThis.fetch = path => path.startsWith('/api/characters?')
+    ? new Promise(resolve => { reply = resolve; })
+    : Promise.resolve({status: 200, ok: true, json: async () => ({items: [], total: 0})});
+  const toCharacter = applyRoute();
+  await tick();
+  assert.equal(state.route.page, 'days');
+  assert.equal(page.el('homePage').hidden, false);
+  assert.equal(page.el('viewport').inert, true);
+
+  location.hash = '#/library';
+  await applyRoute();
+  reply({status: 200, ok: true, json: async () => [{id: 'c1', name: '合成角色'}]});
+  await toCharacter;
+  assert.equal(state.route.page, 'library');
+  assert.equal(state.route.char, '');
+  assert.equal(state.char, null);
+  assert.equal(page.el('viewport').inert, false);
+});
+
 test('a recognition batch refreshes an already imported folder while sync is running', async () => {
   const {state, pollSync, onJob} = web.core(), changes = [];
   state.sync = {status: 'recognising', imported: 5, import_done: 0};

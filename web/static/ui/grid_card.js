@@ -123,7 +123,27 @@ export function gridCard(scope) {
   // 图读坏了：记在根节点上，样式藏起图、露出「图片暂不可读」。换了别的图再去掉。
   scope.on(refs.img, 'error', () => attr(el, 'data-broken', true));
 
-  function update({item: next, index, box, ctx}) {
+  let wantedImage = '', previewImage = '';
+  function showImage(src) {
+    if (wantedImage === src) return;
+    wantedImage = src;
+    const upgrading = previewImage && src !== previewImage && refs.img.getAttribute('src') === previewImage;
+    if (!upgrading || !refs.img.complete || !refs.img.naturalWidth) {
+      attr(refs.img, 'src', src);
+      if (src !== previewImage) previewImage = '';
+      return;
+    }
+    // 标准档解码好才替换已显示的小图。卡片换图或回备用池后丢弃晚到的结果，读取失败时仍显示小图。
+    const full = new Image();
+    full.src = src;
+    full.decode().then(() => {
+      if (wantedImage !== src) return;
+      previewImage = '';
+      attr(refs.img, 'src', src);
+    }, () => { if (wantedImage === src) wantedImage = ''; });
+  }
+
+  function update({item: next, index, box, ctx, preview}) {
     const changed = next !== item;
     item = next;
     attr(el, 'data-id', item.uuid);
@@ -136,9 +156,16 @@ export function gridCard(scope) {
     // 原始比例：宽高比超出上下限的图在方框里整张显示（留底色），其余裁满。方格总是裁满。
     const raw = aspect(item);
     cls(el, 'is-whole', ctx.fit && raw > 0 && clampRatio(raw) !== raw);
-    const src = imageUrl(item.uuid, thumbSize(box.w));
-    if (changed || refs.img.getAttribute('src') !== src) attr(el, 'data-broken', null);
-    attr(refs.img, 'src', src);
+    const standardSrc = imageUrl(item.uuid, thumbSize(box.w)), previewSrc = imageUrl(item.uuid, 'thumb');
+    const shown = refs.img.getAttribute('src');
+    if (previewSrc === standardSrc) previewImage = '';
+    const startPreview = preview === 'fast' && shown !== standardSrc;
+    const keepPreview = preview === 'offscreen' && previewImage === previewSrc;
+    const usePreview = previewSrc !== standardSrc && (startPreview || keepPreview);
+    if (usePreview) previewImage = previewSrc;
+    const src = usePreview ? previewSrc : standardSrc;
+    if (changed || shown !== src) attr(el, 'data-broken', null);
+    showImage(src);
     if (item.uuid !== thumb) { thumb = item.uuid; thumbs.mark(refs.img, thumb); }
     const k = chipsKey(item, ctx);
     if (k !== key) { key = k; refs.chips.replaceChildren(...chips(item, ctx)); }
@@ -182,8 +209,8 @@ export function gridCard(scope) {
     // 写入后要离开本页：先淡出（写入失败时 leave(false) 收回）。
     leave(on) { cls(el, 'leaving', on); },
     // 滚出视野、留着下次复用（ui/grid.js 的备用卡片）：去掉图片地址（放掉解码后的位图），下一次 update 当作新的一张来画。
-    park() { attr(refs.img, 'src', null); item = null; cls(el, 'leaving', false); },
-    dispose() { releaseImages(el); scope.dispose(); },
+    park() { wantedImage = previewImage = ''; attr(refs.img, 'src', null); item = null; cls(el, 'leaving', false); },
+    dispose() { wantedImage = previewImage = ''; releaseImages(el); scope.dispose(); },
   };
 }
 

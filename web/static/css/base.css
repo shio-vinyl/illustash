@@ -74,16 +74,34 @@ button.chip:hover,a.chip:hover{background:var(--chip-hover);color:var(--ink)}
 .content>.page-head{flex:none;align-items:center;gap:var(--space-12);padding:var(--space-20) 0 var(--space-12)}
 .page-head>.page-heading{display:flex;flex:1;align-items:center;flex-wrap:wrap;gap:var(--space-12);min-width:0}
 .page-head .page-sub:empty,.page-head .title-page:empty{display:none}
-/* 窄的时候标题截成一行加省略号，不被挤成一个字一行 */
+/* 长标题只截标题文字，旁边的说明按钮始终占自己的宽度。 */
 .page-heading>.heading-main{min-width:0}
-.page-heading .title-page{overflow:hidden;white-space:nowrap;text-overflow:ellipsis;overflow-wrap:normal}
+.heading-main>.title-page{display:flex;align-items:center}
+.heading-main>.title-page>span{min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.heading-main>.title-page>button{flex:none}
 /* 页头的标题暂时藏着（ui/shell.js 的 tuckHeading：角色页的横幅上已经写着名字），露出来时淡入 */
 .page-heading>.heading-main{transition:opacity var(--dur-2) var(--ease)}
 .page-heading>.heading-main.is-tucked{opacity:0}
 /* 拖到别的应用以后、下一次按下之前：页面不可选（ui/press.js 的 handedOff） */
 body.handed-off{-webkit-user-select:none;user-select:none}
 .page-head>.page-actions{flex:none;margin-left:0}
+/* 通用等宽字族之前优先选 Consolas，避免回落到细衬线字体。 */
+.top-actions .nsfw-toggle{
+  font-family:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,monospace;
+  font-size:var(--fs-11);font-weight:var(--fw-600);line-height:1;letter-spacing:-.025em
+}
+/* 增强：按大写字母高度居中（Safari 18.2）。退路：圆按钮用弹性布局居中整个行框。 */
+@supports (text-box:trim-both cap alphabetic){
+  .top-actions .nsfw-toggle>span{text-box:trim-both cap alphabetic}
+}
 .content>.page-tools[hidden]{display:none}
+/* 网格最后的排序、选择和显示方式一起换行，保持从左到右的操作顺序。 */
+.page-tools>.page-actions{flex:none}
+@media (max-width:900px){
+  .content>.page-head{flex-wrap:wrap;row-gap:var(--space-8)}
+  .page-head>.page-actions{flex:1 0 100%;justify-content:flex-end}
+  .page-heading>.heading-actions{flex-wrap:wrap}
+}
 
 /* ---- 空状态：大图标 + 一句事实 + 一个去处 ---- */
 .empty-state{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:var(--space-10);padding:48px var(--space-24);text-align:center}
@@ -107,7 +125,7 @@ a.poster:hover>img,button.poster:hover>img{transform:scale(1.04)}
 .avatar{display:block;flex:none;width:40px;height:40px;border-radius:var(--radius-round);background:var(--tint-soft);object-fit:cover}
 .avatar.is-small{width:28px;height:28px}
 .avatar.is-large{width:68px;height:68px}
-.avatar-ring{position:relative;display:inline-grid;flex:none;width:68px;height:68px;padding:var(--space-4);border-radius:var(--radius-round);
+.avatar-ring{position:relative;display:inline-block;flex:none;width:72px;height:72px;padding:var(--space-4);border-radius:var(--radius-round);
   background:conic-gradient(var(--accent) calc(var(--p,0) * 1%),var(--accent-soft) 0)}
 .avatar-ring>.avatar{width:100%;height:100%;box-shadow:0 0 0 2px var(--sheet)}
 .avatar-ring>em{position:absolute;right:-4px;bottom:-2px;padding:var(--space-1) var(--space-6);border-radius:var(--radius-pill);background:var(--accent-fill);color:var(--on-accent);

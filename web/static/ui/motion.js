@@ -258,9 +258,13 @@ export async function share({from, to, update, toBox, dur = 3, radius, position}
   if (node && typeof document !== 'undefined' && typeof document.startViewTransition === 'function' && !reduced()) {
     const name = `share-${++shares}`;
     let big = null;
+    // 快速关闭、重开会复用同一个节点；旧转场收尾只能清自己的名字。
+    const clear = el => {
+      if (el?.style?.viewTransitionName === name) { el.style.viewTransitionName = ''; el.style.viewTransitionClass = ''; }
+    };
     node.style.viewTransitionName = name; node.style.viewTransitionClass = 'share';
     const transition = document.startViewTransition(async () => {
-      node.style.viewTransitionName = ''; node.style.viewTransitionClass = '';
+      clear(node);
       await update?.();
       big = target();
       if (big?.style) { big.style.viewTransitionName = name; big.style.viewTransitionClass = 'share'; }
@@ -270,8 +274,7 @@ export async function share({from, to, update, toBox, dur = 3, radius, position}
     await Promise.race([Promise.resolve(transition.ready).catch(() => {}), new Promise(r => { limit = setTimeout(r, READY_LIMIT_MS); })]);
     clearTimeout(limit);
     const ok = await settle(transition, duration(3));
-    node.style.viewTransitionName = ''; node.style.viewTransitionClass = '';
-    if (big?.style) { big.style.viewTransitionName = ''; big.style.viewTransitionClass = ''; }
+    clear(node); clear(big);
     return ok;
   }
   const start = node ? node.getBoundingClientRect() : from;

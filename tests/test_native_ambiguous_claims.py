@@ -167,6 +167,8 @@ class NativeAmbiguousClaimsTest(unittest.TestCase):
 
         undo = self.read('/api/ask/answer', body)['undo']
         self.assertEqual(undo['label'], '已将 2 张移出 Alice、Bob')
+        self.assertEqual(undo['removal'], {'count': '2', 'names': ['Alice', 'Bob']})
+        self.assertEqual(self.read('/api/bootstrap')['undo'], undo)
         with self.connect() as c:
             # 隐藏副本跟着否定；问答只记提交的两张。
             rejected = sorted((uid, entity) for uid in ['a', 'a-copy', 'b'] for entity in (self.alice, self.bob))

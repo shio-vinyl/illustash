@@ -13,7 +13,7 @@ use crate::{
 use illustash_core::{error::invalid, legacy_labels::page_asset_tags, schema::FAVORITE_KEY};
 use rusqlite::{types::Value, Connection, OptionalExtension};
 use std::collections::{HashMap, HashSet};
-/// 重复图 `d` 所在的组里，各份副本所属的身份不完全相同。
+/// 旧客户端显式查询 `dup=mixed` 时仍接受角色集合筛选。折叠和队列计数不使用它。
 const MIXED: &str = "EXISTS(
   SELECT 1
   FROM duplicates y
@@ -1310,7 +1310,6 @@ fn pools(c: &Connection, nsfw: &str) -> Result<Json> {
     let dups =
         rows(c, &format!("SELECT count(*) AS n,count(DISTINCT grp) AS groups FROM duplicates d WHERE {listed}"), &[])?
             .remove(0);
-    let mixed = count(c, &format!("SELECT count(DISTINCT d.grp) FROM duplicates d WHERE {MIXED} AND {listed}"), &[])?;
     let mut reasons = Json::Object(Vec::new());
     let mut excluded = 0;
     for x in rows(
@@ -1347,7 +1346,6 @@ fn pools(c: &Connection, nsfw: &str) -> Result<Json> {
             ("name", "重复".into()),
             ("count", get(&dups, "n")),
             ("groups", get(&dups, "groups")),
-            ("mixed", mixed.into()),
             ("cover", null()),
         ]),
         Json::object([

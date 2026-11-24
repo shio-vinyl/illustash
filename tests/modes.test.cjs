@@ -436,6 +436,61 @@ test('详情栏开着时进大图翻几张，关大图后详情栏和快捷键�
   globalThis.fetch = undefined;
 });
 
+test('大图开场跳过没挂载的节点，关掉后再等开场也不会打开', async t => {
+  await wired();
+  stubDetail();
+  t.mock.timers.enable({apis: ['setTimeout']});
+  const viewer = page.el('viewer');
+  viewer.hidden = true;
+  reset({route: {page: 'library'}, cursor: 0});
+  try {
+    keydown(' ');
+    t.mock.timers.tick(250);
+    await new Promise(setImmediate);
+    assert.equal(viewer.hidden, false);
+    keydown(' ');
+    assert.equal(viewer.hidden, true);
+
+    keydown(' ');
+    keydown(' ');
+    t.mock.timers.tick(250);
+    await new Promise(setImmediate);
+    assert.equal(viewer.hidden, true);
+    assert.equal(state.viewer, -1);
+  } finally { globalThis.fetch = undefined; }
+});
+
+test('关掉大图后，跨页翻图的回包不会移动光标或恢复大图', async t => {
+  await wired();
+  stubDetail();
+  t.mock.timers.enable({apis: ['setTimeout']});
+  const detail = await web.load('ui/detail.js');
+  const fallback = globalThis.fetch;
+  try {
+    for (const advance of [() => detail.step(1), () => detail.showViewer(1)]) {
+      reset({route: {page: 'library'}, items: [items[0]], focused: 'a', cursor: 0, pages: new Set(), pending: new Set(), countDirty: false});
+      const response = Promise.withResolvers();
+      let requested = false;
+      globalThis.fetch = (path, opts) => {
+        if (path.startsWith('/api/assets?')) { requested = true; return response.promise; }
+        return fallback(path, opts);
+      };
+      keydown(' ');
+      const move = advance();
+      assert.equal(requested, true);
+      keydown(' ');
+      response.resolve({status: 200, ok: true, json: async () => ({items})});
+      await move;
+      assert.equal(state.viewer, -1);
+      assert.equal(state.viewerItem, null);
+      assert.equal(state.focused, 'a');
+      assert.equal(state.cursor, 0);
+    }
+    t.mock.timers.tick(250);
+    await new Promise(setImmediate);
+  } finally { globalThis.fetch = undefined; }
+});
+
 test('C 换成、A 追加：单图（#399）', async () => {
   await wired();
   stubDetail();

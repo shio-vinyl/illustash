@@ -75,7 +75,7 @@ function rowItem(x) {
     text(refs.work, workOf(c) || '—');
     css(refs.bar, 'width', Math.max(4, Math.log(c.count + 1) / Math.log(max + 1) * 110) + 'px'); text(refs.count, number(c.count));
     text(refs.recent, a?.recent ? '+' + number(a.recent) : '—');
-    text(refs.last, a?.last || ''); text(refs.skins, skins ? String(skins) : '—');
+    text(refs.last, a?.last || ''); text(refs.skins, c.summary ? '' : skins ? String(skins) : '—');
   }
   update(x);
   return {el, update};

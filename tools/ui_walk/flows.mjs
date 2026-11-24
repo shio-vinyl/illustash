@@ -144,6 +144,41 @@ export const FLOWS = [
     },
   },
   {
+    name: 'duplicates',
+    title: '重复：活页条、旧书签及两个子页签（#836）',
+    async run(w, page) {
+      const rail = '#rail .rail-item[data-key="duplicates"]';
+      const tabs = '#toolbar .chips-row a';
+      await goto(page, '#/unmatched');
+      await page.waitFor(`document.querySelector(${JSON.stringify(rail)})?.offsetParent`, 4000);
+      const item = await page.eval(`(() => {
+        const link = document.querySelector(${JSON.stringify(rail)});
+        return [link.getAttribute('href'), link.querySelector('.rail-count').hidden];
+      })()`);
+      w.check('活页条重复链接进入全部且没有待处理数字', same(item, ['#/duplicates', true]), item);
+      await w.step('点击活页条重复', () => goto(page, '#/duplicates'), {shot: true});
+      const links = await page.eval(`[...document.querySelectorAll(${JSON.stringify(tabs)})].map(el => el.getAttribute('href'))`);
+      w.check('重复只有「全部」和「相似的图」两个页签', same(links, ['#/duplicates', '#/similar']), links);
+      await w.step('点击相似的图', async () => {
+        await page.click(`${tabs}[href="#/similar"]`);
+        await page.waitFor("location.hash === '#/similar'", 4000);
+        await gridReady(page);
+      }, {shot: true});
+      const similar = await page.eval(`document.querySelector('${tabs}[href="#/similar"]')?.getAttribute('aria-current')`);
+      w.check('相似的图被选中', similar === 'page', similar);
+      await w.step('打开旧重复书签', async () => {
+        await page.eval("location.hash = '#/duplicates?dup=mixed'");
+        await page.waitFor("location.hash === '#/duplicates'", 4000);
+        await gridReady(page);
+      }, {shot: true});
+      const active = await page.eval(`document.querySelector('${tabs}[aria-current="page"]')?.getAttribute('href')`);
+      w.check('旧书签重定向并选中「全部」', active === '#/duplicates', active);
+      await w.step('打开设置里的折叠说明', () => goto(page, '#/settings/library'), {shot: true});
+      const note = await page.eval(`document.querySelector('[data-group="fold"] [data-ref="noteText"]')?.textContent || ''`);
+      w.check('折叠说明写明会保留人工结论', /人工结论|group’s decisions/.test(note), note);
+    },
+  },
+  {
     name: 'pages',
     title: '主要页面逐个打开，截图并检查控制台和空页',
     async run(w, page) {

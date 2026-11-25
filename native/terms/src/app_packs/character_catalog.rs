@@ -138,6 +138,44 @@ pub(super) fn import_member(
     })
 }
 
+/// 缓存设置页对待启用文件的校验结果。文件由原子改名安装，内容或修订改变时重新核对。
+fn verified_pending(root: &Path, file: &File, revision: u32) -> bool {
+    use std::{
+        collections::HashMap,
+        sync::{LazyLock, Mutex},
+        time::SystemTime,
+    };
+    type Stamps = HashMap<(PathBuf, u32), (SystemTime, bool)>;
+    static STAMPS: LazyLock<Mutex<Stamps>> = LazyLock::new(Mutex::default);
+    let path = local_file(root, file);
+    let Ok(meta) = path.metadata() else { return false };
+    if !meta.is_file() || meta.len() != file.size {
+        return false;
+    }
+    let validate = || matches!(read(root, file, revision), Ok(Some(_)));
+    let Ok(modified) = meta.modified() else { return validate() };
+    let key = (path, revision);
+    let mut cache = STAMPS.lock().expect("角色词表校验缓存锁中毒");
+    if let Some((stamp, valid)) = cache.get(&key) {
+        if stamp == &modified {
+            return *valid;
+        }
+    }
+    let valid = validate();
+    cache.insert(key, (modified, valid));
+    valid
+}
+
+pub(crate) fn status(root: &Path, catalog: Option<&Catalog>, last_error: Option<&str>) -> serde_json::Value {
+    let current = character_catalog::current().revision;
+    let entries = catalog.map(available).unwrap_or_default();
+    let pending = entries.iter().find_map(|(entry, file)| {
+        (entry.revision > current && verified_pending(root, file, entry.revision)).then_some(entry.revision)
+    });
+    let missing = entries.first().is_some_and(|(entry, _)| entry.revision > pending.unwrap_or(current));
+    serde_json::json!({"active": current, "pending": pending, "error": last_error.filter(|_| missing)})
+}
+
 pub(crate) fn load(resources: &Path) {
     character_catalog::initialize(|| match installed(resources) {
         Ok(data) => data,

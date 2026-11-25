@@ -458,3 +458,11 @@ test('任务面板的一项：有下载或任务时才列出，失败时打警�
   assert.equal(failed.diagnostic.id, 'D-1');
   assert.equal(c.packTask(pack({download: {kind: 'import', status: 'running', done: 1, total: 2}})).busy, '导入角色资料包中');
 });
+
+test('角色词表分别显示正在使用的修订、待重启的修订和更新错误', () => {
+  const hint = fields => c.characterCatalogHint({character_catalog: {active: 1, ...fields}});
+  assert.equal(c.characterCatalogHint({}), '');
+  assert.equal(hint({}), '当前修订 1');
+  assert.match(hint({pending: 2}), /当前修订 1 · 修订 2 已下载，重启后生效/);
+  assert.match(hint({error: '模拟断网'}), /当前修订 1 · 词表更新失败：模拟断网/);
+});

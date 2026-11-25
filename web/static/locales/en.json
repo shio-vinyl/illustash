@@ -3476,5 +3476,8 @@
   "D 站改名前后的 tag，已合成一个角色": "The old and new Danbooru tags were merged into one character",
   "已挂成这个角色的造型": "Attached as an outfit of this character",
   "拆开后角色词表不会再合并这一对": "After splitting, the catalog will not merge or attach this pair again",
-  "拆开": "Split"
+  "拆开": "Split",
+  "当前修订 {n}": "Current revision {n}",
+  "修订 {n} 已下载，重启后生效": "Revision {n} downloaded, available after restart",
+  "词表更新失败：{reason}": "Character catalog update failed: {reason}"
 }

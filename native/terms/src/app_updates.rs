@@ -444,7 +444,7 @@ pub(crate) fn post(resources: &Path, body: &Json) -> Result<Json> {
     })?;
     if checked {
         if let Some(result) = crate::app_packs::refresh(resources) {
-            record_packs(&place, result.map(|_| ()))?;
+            record_packs(&place, result)?;
         }
     }
     Ok(reply)
@@ -454,27 +454,46 @@ pub(crate) fn post(resources: &Path, body: &Json) -> Result<Json> {
 /// 结果同样记在 updates.json。没有公钥时什么都不做；失败只记下原因。
 pub(crate) fn refresh_packs(resources: &Path) {
     let Some(result) = crate::app_packs::refresh(resources) else { return };
-    if let Err(error) = Place::app().and_then(|place| record_packs(&place, result.map(|_| ()))) {
+    if let Err(error) = Place::app().and_then(|place| record_packs(&place, result)) {
         eprintln!("没能记下读取角色资料包目录的结果：{error}");
     }
 }
 
-fn record_packs(place: &Place, result: std::result::Result<(), String>) -> Result<()> {
+fn record_packs(place: &Place, result: crate::app_packs::Refresh) -> Result<()> {
     let at = place.now.to_rfc3339_opts(chrono::SecondsFormat::Secs, false);
     update(&place.state, |fields| {
         fields.insert("packs_checked_at".into(), at.into());
         match result {
-            Ok(()) => fields.remove("packs_error"),
-            Err(message) => fields.insert("packs_error".into(), message.into()),
-        };
+            crate::app_packs::Refresh::ManifestFailed(message) => {
+                fields.insert("packs_error".into(), message.into());
+            }
+            crate::app_packs::Refresh::Adopted { character_error } => {
+                fields.remove("packs_error");
+                if let Some(message) = character_error {
+                    fields.insert("character_catalog_error".into(), message.into());
+                } else {
+                    fields.remove("character_catalog_error");
+                }
+            }
+        }
     })
 }
 
-/// 最近一次读数据包目录的时间和错误（`GET /api/packs`）。
-pub(crate) fn packs_state() -> Result<(Option<String>, Option<String>)> {
+pub(crate) struct PacksState {
+    pub checked_at: Option<String>,
+    pub error: Option<String>,
+    pub character_error: Option<String>,
+}
+
+/// 最近一次检查签名清单和下载词表的独立结果。
+pub(crate) fn packs_state() -> Result<PacksState> {
     let state = read(&Place::app()?.state);
     let text = |key: &str| state.get(key).and_then(Value::as_str).map(str::to_owned);
-    Ok((text("packs_checked_at"), text("packs_error")))
+    Ok(PacksState {
+        checked_at: text("packs_checked_at"),
+        error: text("packs_error"),
+        character_error: text("character_catalog_error"),
+    })
 }
 
 fn post_at(

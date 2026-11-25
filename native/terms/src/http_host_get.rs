@@ -44,8 +44,11 @@ fn ccip_task_and_library(
 /// `location` 是共享数据里放角色资料包的文件夹。`wd`、`ccip` 是两个组成部分的旧路由的完整回复。只读，不联网：目录只跟着检查更新读（`app_updates::post`）。
 pub(super) fn packs(host: &Host, session: &Session) -> Result<Json> {
     use serde_json::{json, Value};
-    let (checked_at, error) = crate::app_updates::packs_state()?;
+    let pack_check = crate::app_updates::packs_state()?;
     let catalog = crate::app_packs::cached(&host.root)?;
+    let root = crate::app_packs::extensions_root(&host.root)?;
+    let role_catalog =
+        crate::app_packs::character_catalog::status(&root, catalog.as_ref(), pack_check.character_error.as_deref());
     let lib = crate::app_packs::for_library(&host.root, &session.library)?;
     let download = crate::app_models::pack_download();
     let view = |pack: &crate::app_packs::CharacterPack| -> Result<Value> {
@@ -83,9 +86,10 @@ pub(super) fn packs(host: &Host, session: &Session) -> Result<Json> {
     let vectors = wd["library"]["vectors"].as_u64().unwrap_or(0).max(ccip["library"]["vectors"].as_u64().unwrap_or(0));
     Ok(json!({
         "catalog":{"configured":crate::app_packs::pubkey().is_some(),"serial":catalog.map(|c| c.serial),
-            "checked_at":checked_at,"error":error},
+            "checked_at":pack_check.checked_at,"error":pack_check.error},
+        "character_catalog":role_catalog,
         "current":view(&lib.card)?,"offer":offer,"download":download,
-        "location":crate::app_packs::extensions_root(&host.root)?,
+        "location":root,
         "library":{"enabled":lib.wd.is_some() || lib.ccip.is_some(),"version":lib.enabled.as_ref().map(|p| &p.version),
             "wd":lib.wd.is_some(),"ccip":lib.ccip.is_some(),"prompt":prompt,"images":images,"assigned":assigned,
             "vectors":vectors,"checked_at":checked,"blocked":wd["library"]["blocked"].clone()},

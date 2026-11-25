@@ -135,6 +135,15 @@ export function packManual(x = current()) {
 }
 // 状态行下面的小字：包不在本机、索引更新后要重新检查、上次自动检查的错误、上次检查时间、启用会补归属，以及没就位时的
 // 手动下载说明。
+export function characterCatalogHint(x = current()) {
+  const catalog = x?.character_catalog;
+  if (!catalog) return '';
+  const parts = [t('当前修订 {n}', {n: number(catalog.active)})];
+  if (catalog.pending) parts.push(t('修订 {n} 已下载，重启后生效', {n: number(catalog.pending)}));
+  if (catalog.error) parts.push(t('词表更新失败：{reason}', {reason: tb(catalog.error)}));
+  return parts.join(' · ');
+}
+
 export function packHintText(x = current()) {
   if (!x || packRunning(x) || packDownloading(x)) return '';
   const l = lib(x), parts = [], ccip = x.ccip?.library || {};

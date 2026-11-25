@@ -760,19 +760,28 @@ fn get(agent: &ureq::Agent, address: &str, limit: u64) -> std::result::Result<Ve
     Ok(bytes)
 }
 
-/// 检查更新时顺带读一次目录（`app_updates` 的 check）。没有公钥时什么都不做；失败变成一句话，不影响检查更新本身。
-/// 目录是普通文件，GitHub 的下载地址会跳转到存储服务，所以这里跟随跳转；内容靠签名把关。
-pub(crate) fn refresh(resources: &Path) -> Option<std::result::Result<Adopted, String>> {
+/// 签名清单采用成功后，单独报告角色词表文件的下载结果。
+pub(crate) enum Refresh {
+    ManifestFailed(String),
+    Adopted { character_error: Option<String> },
+}
+
+pub(crate) fn refresh(resources: &Path) -> Option<Refresh> {
     pubkey()?;
-    Some((|| {
+    let manifest = (|| {
         let prefix = crate::app_updates::asset_url(&format!("{RELEASE_PREFIX}{CATALOG_TAG}/"))?;
         let agent = crate::app_models::download_agent(Duration::from_secs(15), &prefix);
         let bytes = get(&agent, &format!("{prefix}{CATALOG_NAME}"), CATALOG_LIMIT)?;
         let signature = get(&agent, &format!("{prefix}{SIGNATURE_NAME}"), SIGNATURE_LIMIT)?;
-        let adopted = adopt(resources, &bytes, &signature).map_err(|e| e.reason())?;
-        character_catalog::fetch(resources, &agent).map_err(|e| e.reason())?;
-        Ok(adopted)
-    })())
+        adopt(resources, &bytes, &signature).map_err(|e| e.reason())?;
+        Ok(agent)
+    })();
+    Some(match manifest {
+        Err(error) => Refresh::ManifestFailed(error),
+        Ok(agent) => {
+            Refresh::Adopted { character_error: character_catalog::fetch(resources, &agent).err().map(|e| e.reason()) }
+        }
+    })
 }
 
 // ---------- 离线导入 ----------

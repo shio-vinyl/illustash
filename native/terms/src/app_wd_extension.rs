@@ -1284,7 +1284,7 @@ mod tests {
         // 先在没有目录的情况下导入：旧 tag、新 tag、泳装各建一个顶层角色，和 0.4.0 的图库一样。
         illustash_core::character_catalog::override_for_thread(Some(catalog_with("")));
         let f = Fixture::new();
-        let assets = ["old", "new", "swim", "named_old", "named_new"];
+        let assets = ["old", "new", "swim", "named_old", "named_new", "missing_base"];
         f.write(|tx| {
             let rows: Vec<Value> =
                 assets.iter().map(|u| json!([u, "s.png", "s.png", 8, 8, "2026-11-23", "folder"])).collect();
@@ -1294,10 +1294,15 @@ mod tests {
                     "labels":[["old","base_old",0.9,"character"],["named_old","named_old",0.9,"character"]],
                     "decisions":[],"duplicates":[]}),
             )?;
-            let hits: Vec<Hit> = [("new", "base_(w)"), ("swim", "base_(swimsuit)_(w)"), ("named_new", "named_(w)")]
-                .iter()
-                .map(|(u, t)| Hit { uuid: (*u).into(), tag: (*t).into(), probability: 0.99, candidate_only: false })
-                .collect();
+            let hits: Vec<Hit> = [
+                ("new", "base_(w)"),
+                ("swim", "base_(swimsuit)_(w)"),
+                ("named_new", "named_(w)"),
+                ("missing_base", "missing_(swimsuit)_(w)"),
+            ]
+            .iter()
+            .map(|(u, t)| Hit { uuid: (*u).into(), tag: (*t).into(), probability: 0.99, candidate_only: false })
+            .collect();
             let scope: Vec<String> = assets.iter().map(|s| (*s).to_owned()).collect();
             wd_extension::apply_scoped(tx, "synthetic-catalog", &scope, &hits)?;
             Ok(())
@@ -1330,13 +1335,16 @@ mod tests {
         illustash_core::character_catalog::override_for_thread(Some(catalog_with(
             r#"[1,"base_(w)",["base_old"],null,null,null,null,null,"",null],
             [2,"base_(swimsuit)_(w)",[],1,"appearance","auto","swimsuit",null,"",null],
-            [3,"named_(w)",["named_old"],null,null,null,null,null,"",null]"#,
+            [3,"named_(w)",["named_old"],null,null,null,null,null,"",null],
+            [4,"missing_(swimsuit)_(w)",[],5,"appearance","auto","swimsuit",null,"",null],
+            [5,"missing_(w)",[],null,null,null,null,null,"",null]"#,
         )));
         f.write(|tx| {
             let (old, new, swim) = (owner(tx, "base_old")?, owner(tx, "base_(w)")?, owner(tx, "base_(swimsuit)_(w)")?);
             assert_ne!(old, new);
             let done = crate::character_commands::command(tx, &json!({"op":"catalog_apply"}))?;
-            assert_eq!(done, json!({"merged": 1, "attached": 1}));
+            assert_eq!(done, json!({"merged": 1, "attached": 2}));
+            assert_eq!(tree(tx, &owner(tx, "missing_(swimsuit)_(w)")?)?.0, Some(owner(tx, "missing_(w)")?));
             // 由规范标签决定合并目标，输入顺序或随机 ID 不改变结果。
             let (survivor, gone) = (new, old);
             assert_eq!(tree(tx, &gone)?.2, Some(survivor.clone()));

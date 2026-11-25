@@ -130,14 +130,24 @@ fn character_rows(c: &Connection, q: &HashMap<String, String>, minimum: i64) -> 
          ORDER BY {ranking}count DESC,name,e.id",
         nsfw = crate::sql_fragments::nsfw("m"),
         matched = if query.is_empty() { "" } else { "JOIN name_matches sm ON sm.entity=e.id" },
-        members = if ident.is_empty() {
-            "memberships"
-        } else {
+        members = if !ident.is_empty() {
             "(SELECT * FROM memberships WHERE entity=? UNION ALL SELECT * FROM tag_memberships WHERE entity=?)"
+        } else if !query.is_empty() {
+            "(SELECT * FROM memberships UNION ALL
+                SELECT m.* FROM tag_memberships m JOIN terms t ON t.key=m.entity
+                JOIN term_tree r ON r.term_id=t.id AND r.label_only=1 AND r.original=0)"
+        } else {
+            "memberships"
         },
         visible = visible("m"),
         rating = rating("m", nsfw)?,
-        mascot = if ident.is_empty() { " AND e.mascot=0" } else { "" },
+        mascot = if !ident.is_empty() {
+            ""
+        } else if query.is_empty() {
+            " AND e.mascot=0 AND NOT (e.label_only=1 AND e.original=0)"
+        } else {
+            " AND e.mascot=0"
+        },
         only = if ident.is_empty() { "" } else { " AND e.id=?" },
         ranking = if query.is_empty() { "" } else { "sm.rank DESC," },
     );

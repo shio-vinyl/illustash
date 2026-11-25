@@ -226,13 +226,28 @@ fn appearance(
 pub(super) fn fresh(c: &Connection, ids: &Ids, id: &str, tag: &str) -> Result<()> {
     let catalog = character_catalog::current();
     let Some(entry) = catalog.character(tag) else { return Ok(()) };
-    if tag == entry.tag && !approved(entry) && !entry.group {
+    if tag == entry.tag && entry.tags.is_empty() && !approved(entry) && !entry.group {
         return Ok(());
     }
     let mut state = State::read(c)?;
     let mut active = id.to_owned();
-    if tag != entry.tag {
-        let target = new_current(c, ids, &entry.tag)?;
+    let target = if tag != entry.tag {
+        Some(new_current(c, ids, &entry.tag)?)
+    } else {
+        // 旧图库可能只有旧标签。新标签入库时沿用这个未被人工区分的既有角色。
+        let mut old = BTreeSet::new();
+        for tag in &entry.tags {
+            if let Some(owner) = exact(c, tag)? {
+                old.insert(resolve(c, &owner)?);
+            }
+        }
+        if old.len() == 1 {
+            old.pop_first()
+        } else {
+            None
+        }
+    };
+    if let Some(target) = target.filter(|target| target != id) {
         if !eligible(c, &state, id, &target)? {
             return Ok(());
         }

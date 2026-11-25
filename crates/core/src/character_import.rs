@@ -270,6 +270,8 @@ fn characters(c: &Connection, index: &Value) -> Result<(Chars, Wd)> {
     if legacy_fixture {
         hierarchy(c, rows, &ids)?;
     } else {
+        // 同批出现新旧标签时，先挂旧标签到本批已有的规范端点。
+        fresh.sort_by_key(|(_, tag)| catalog.character(tag).is_some_and(|entry| entry.tag.as_str() == *tag));
         for (ident, tag) in fresh {
             catalog::fresh(c, &ids, &ident, tag)?;
         }

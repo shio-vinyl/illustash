@@ -608,7 +608,7 @@ fn answer(c: &Connection, args: &Value) -> Result<Value> {
 fn require_ambiguous_pair(c: &Connection, ids: &[String], entity: &str, rival: &str) -> Result<()> {
     let mut stmt = c.prepare_cached(&format!(
         "SELECT 1 FROM ambiguous_claims WHERE uuid=? AND entity=? AND rival=? AND {}",
-        crate::character_identity::asks_about("entity", "rival"),
+        crate::character_identity::asks_about_people("entity", "rival"),
     ))?;
     for id in ids {
         if stmt.query_row(params![id, entity, rival], |_| Ok(())).optional()?.is_none() {

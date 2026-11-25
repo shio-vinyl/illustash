@@ -611,7 +611,7 @@ fn status_filter(status: &str, entity: &str, filter: &mut Filter) -> Result<()> 
         }
         "ambiguous" => {
             let only = if entity.is_empty() { "" } else { " AND x.entity=?" };
-            let asks = crate::character_identity::asks_about("x.entity", "x.rival");
+            let asks = crate::character_identity::asks_about_people("x.entity", "x.rival");
             filter.add(
                 format!("EXISTS(SELECT 1 FROM ambiguous_claims x WHERE x.uuid=a.uuid{only} AND {asks})"),
                 of_entity,
@@ -1063,7 +1063,7 @@ fn question(c: &Connection, id: &str) -> Result<Json> {
              LIMIT 1",
             unasked("m"),
             learnable("m"),
-            crate::character_identity::asks_about("m.entity", "m.rival")
+            crate::character_identity::asks_about_people("m.entity", "m.rival")
         );
         ambiguous = rows(c, &closest, &[id])?.into_iter().next();
         let hinted = format!("{} AND w.uuid=? ORDER BY w.score DESC LIMIT 1", proto_hints("w.entity"));
@@ -1240,8 +1240,10 @@ fn alternatives(c: &Connection, id: &str) -> Result<Json> {
            GROUP BY e.id) x
          WHERE NOT EXISTS(SELECT 1 FROM memberships m WHERE m.uuid=?1 AND m.entity=x.id)
            AND NOT EXISTS(SELECT 1 FROM assertions s WHERE s.uuid=?1 AND s.entity=x.id AND s.status='rejected')
+           AND {people}
          ORDER BY priority,rank,score DESC
-         LIMIT 12"
+         LIMIT 12",
+        people = crate::character_entities::without_groups(&["x.id"]),
     );
     let mut alternatives = Vec::new();
     for r in rows(c, &sql, &[id])? {
@@ -1283,7 +1285,7 @@ fn ambiguous_queue(seen: &str) -> String {
          WHERE {seen} AND NOT EXISTS(
            SELECT 1 FROM asked k WHERE k.uuid=m.uuid AND k.entity=m.entity
              AND k.kind='ambiguous' AND {ASK_DEFERRED}) AND {}",
-        crate::character_identity::asks_about("m.entity", "m.rival")
+        crate::character_identity::asks_about_people("m.entity", "m.rival")
     )
 }
 /// `/api/ambiguous`：按（A，B）分组的「可能认错」。组按张数从多到少，同张数按 A、B 的 ID；组内新加入的在前，

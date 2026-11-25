@@ -60,6 +60,13 @@ pub fn asks_about(a: &str, b: &str) -> String {
     )
 }
 
+/// SQL 条件：仍可询问这两个备选人物。团体标签不是身份候选。
+pub fn asks_about_people(a: &str, b: &str) -> String {
+    let preference = asks_about(a, b);
+    let people = crate::character_entities::without_groups(&[a, b]);
+    format!("({preference} AND {people})")
+}
+
 /// 卡片提交时必须仍然是两个独立角色。过期端点不能重定向到别的人物。
 pub fn require_pair(c: &Connection, a: &str, b: &str) -> Result<()> {
     let count: i64 = c

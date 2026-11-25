@@ -45,9 +45,10 @@ pub(crate) fn unrejected(a: &str) -> String {
         "NOT EXISTS(SELECT 1 FROM assertions s WHERE s.uuid={a}.uuid AND s.entity={a}.entity AND s.status='rejected')"
     )
 }
-/// `HINTS` 中没有被人否定的线索。
+/// `HINTS` 中没有被人否定的人物线索。
 pub(crate) fn leads() -> String {
-    format!("(SELECT v.* FROM {HINTS} v WHERE {})", unrejected("v"))
+    let people = crate::character_entities::without_groups(&["v.entity"]);
+    format!("(SELECT v.* FROM {HINTS} v WHERE {} AND {people})", unrejected("v"))
 }
 /// `asked` 里仍在七天暂缓期内的「以后再说」。
 pub(crate) const ASK_DEFERRED: &str = "answer='later' AND asked_at>=datetime('now','-7 days')";
@@ -140,7 +141,8 @@ mod tests {
             leads(),
             "(SELECT v.* FROM (SELECT uuid,entity,score,0 AS weak FROM family_evidence UNION ALL SELECT uuid,entity,\
              score,1 FROM weak_claims) v WHERE NOT EXISTS(SELECT 1 FROM assertions s WHERE s.uuid=v.uuid AND \
-             s.entity=v.entity AND s.status='rejected'))"
+             s.entity=v.entity AND s.status='rejected') AND NOT EXISTS(SELECT 1 FROM terms t JOIN term_tree r ON r.term_id=t.id
+            WHERE t.key IN (v.entity) AND r.label_only=1 AND r.original=0))"
         );
     }
 
@@ -151,8 +153,12 @@ mod tests {
             "CREATE TABLE family_evidence(uuid TEXT,entity TEXT,score REAL);
              CREATE TABLE weak_claims(uuid TEXT,entity TEXT,score REAL);
              CREATE TABLE assertions(uuid TEXT,entity TEXT,status TEXT);
+             CREATE TABLE terms(id INTEGER PRIMARY KEY,key TEXT);
+             CREATE TABLE term_tree(term_id INTEGER PRIMARY KEY,label_only INTEGER,original INTEGER);
+             INSERT INTO terms VALUES (1,'group');
+             INSERT INTO term_tree VALUES (1,1,0);
              INSERT INTO family_evidence VALUES
-                ('a','X',0.8),('a','Y',0.7),('b','X',0.95),('c','Y',0.98),('other','X',1.0);
+                ('a','X',0.8),('a','Y',0.7),('b','X',0.95),('c','Y',0.98),('c','group',1.0),('other','X',1.0);
              INSERT INTO weak_claims VALUES ('a','Y',0.99),('b','Y',0.9),('b','Z',0.8);
              INSERT INTO assertions VALUES ('b','X','rejected'),('c','Y','rejected');",
         )

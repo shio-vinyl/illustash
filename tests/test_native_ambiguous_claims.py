@@ -230,6 +230,24 @@ class NativeAmbiguousClaimsTest(unittest.TestCase):
         self.assert_queue([self.group(['future', 'front']), self.group(['back'], reverse=True)])
         self.assertEqual(self.read('/api/detail?id=future')['question']['kind'], 'ambiguous')
 
+    def test_catalog_group_cannot_enter_or_answer_a_person_pair(self):
+        with self.connect() as c, c:
+            self.seed(c, 'front', '2026-01-01')
+            self.seed(c, 'back', '2026-01-02', reverse=True)
+        self.assertEqual(self.read('/api/detail?id=front')['question']['kind'], 'ambiguous')
+        with self.connect() as c, c:
+            c.execute("INSERT INTO meta(key,value) VALUES ('terms_writer','1')")
+            c.execute("UPDATE term_tree SET label_only=1 WHERE term_id=(SELECT id FROM terms WHERE key=?)",
+                      (self.bob,))
+            c.execute("DELETE FROM meta WHERE key='terms_writer'")
+        self.assert_queue([])
+        for entity in (self.alice, self.bob):
+            self.assertEqual(self.read('/api/ids?' + urlencode({'entity': entity, 'status': 'ambiguous'})), [])
+        self.assertNotEqual(self.read('/api/detail?id=front')['question']['kind'], 'ambiguous')
+        refusal = self.read('/api/ask/answer', {'kind': 'ambiguous', 'entity': self.alice,
+                                               'also_no': self.bob, 'no': ['front']}, status=400)
+        self.assertEqual(refusal['error'], '图片的备选归属已变更，请刷新')
+
     def test_make_form_keeps_pictures_filterable_and_undo_restores_two_characters(self):
         with self.connect() as c, c:
             self.seed(c, 'front', '2026-01-01')

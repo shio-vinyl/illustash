@@ -1479,6 +1479,82 @@ mod tests {
     }
 
     #[test]
+    fn catalog_split_restores_in_a_portable_snapshot_and_undo_restores_the_catalog_edge() {
+        use illustash_core::human_conclusions::{export, format, import};
+        illustash_core::character_catalog::override_for_thread(Some(catalog_with(
+            r#"[1,"hero",["old_hero"],null,null,null,null,null,"",null],
+            [2,"costume",[],1,"appearance","auto","costume",null,"",null]"#,
+        )));
+        let init = |tx: &Connection| -> Result<Vec<String>> {
+            let characters = json!([
+                {"char_id":"old","danbooru_tag":"old_hero"},
+                {"char_id":"new","danbooru_tag":"hero"},
+                {"char_id":"skin","danbooru_tag":"costume"}
+            ]);
+            crate::character_commands::command(
+                tx,
+                &json!({"op":"refresh","assets":[],"indexed":"2026-11-23",
+                "index":{"characters":characters},"labels":[]}),
+            )?;
+            Ok(tx
+                .prepare(
+                    "SELECT t.key FROM term_links l JOIN terms t ON t.id=l.term_id
+                     WHERE l.system='ccip' ORDER BY l.key",
+                )?
+                .query_map([], |r| r.get(0))?
+                .collect::<rusqlite::Result<_>>()?)
+        };
+        let f = Fixture::new();
+        let mut wire = Vec::new();
+        f.write(|tx| {
+            let ids = init(tx)?;
+            for id in &ids[1..] {
+                crate::character_commands::command(tx, &json!({"op":"catalog_split","entity":id}))?;
+            }
+            export::capture(
+                tx,
+                format::Header::new(
+                    "sample".into(),
+                    "source".into(),
+                    "2026-11-23T00:00:00Z".into(),
+                    format::Policy::Default,
+                ),
+            )?
+            .write(&mut wire)?;
+            Ok(())
+        })
+        .unwrap();
+        let snapshot = format::read(&mut std::io::Cursor::new(wire)).unwrap();
+        let target = Fixture::new();
+        target
+            .write(|tx| {
+                let ids = init(tx)?;
+                let edge_count = || {
+                    tx.query_row(
+                        "SELECT count(*) FROM term_tree WHERE parent_id IS NOT NULL OR merged_into IS NOT NULL",
+                        [],
+                        |r| r.get::<_, i64>(0),
+                    )
+                };
+                assert_eq!(edge_count()?, 2);
+                let applied = import::apply_in(tx, &snapshot, "other-library", &[], &mut || Ok(()))?;
+                assert_eq!(applied.records["applied"], 2);
+                assert_eq!(edge_count()?, 0);
+                assert!(illustash_core::character_identity::kept_apart(tx, &ids[0], &ids[1])?);
+                assert!(illustash_core::character_identity::kept_apart(tx, &ids[0], &ids[2])?);
+                let replay = import::apply_in(tx, &snapshot, "other-library", &[], &mut || Ok(()))?;
+                assert_eq!(replay.records["already_present"], 2);
+                import::undo_in(tx, applied.action_id.unwrap())?;
+                assert_eq!(edge_count()?, 2);
+                assert!(!illustash_core::character_identity::kept_apart(tx, &ids[0], &ids[1])?);
+                assert!(!illustash_core::character_identity::kept_apart(tx, &ids[0], &ids[2])?);
+                Ok(())
+            })
+            .unwrap();
+        illustash_core::character_catalog::override_for_thread(None);
+    }
+
+    #[test]
     fn evidence_replaces_and_restores_without_rewriting_old_sources() {
         round_trip(false);
         round_trip(true);

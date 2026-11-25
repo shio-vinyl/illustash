@@ -134,6 +134,7 @@ fn resolve_existing(
     same_library: bool,
     source: &str,
     definition: &Entity,
+    existing: &BTreeMap<&String, &Entity>,
 ) -> Result<Resolution> {
     // 人工标记的 key 是各图库共用的；没有名字、链接或可映射的身份结构。
     if definition.kind == "mark" {
@@ -174,7 +175,10 @@ fn resolve_existing(
     if !candidates.is_empty() {
         return Ok(Resolution::Blocked);
     }
-    let kind: String = c.query_row("SELECT kind FROM terms WHERE key=?1", [&target], |r| r.get(0))?;
+    let kind = match existing.get(&target) {
+        Some(entity) => entity.kind.clone(),
+        None => c.query_row("SELECT kind FROM terms WHERE key=?1", [&target], |r| r.get(0))?,
+    };
     Ok(if kind == definition.kind { Resolution::Existing(target) } else { Resolution::Blocked })
 }
 
@@ -421,11 +425,20 @@ pub fn apply_in(
             field_counts: BTreeMap::new(),
         });
     }
+    let existing = current(c)?;
+    let existing_entities: BTreeMap<_, _> = existing
+        .records
+        .iter()
+        .filter_map(|r| match r {
+            Record::Entity { key, definition } => Some((key, definition.as_ref())),
+            _ => None,
+        })
+        .collect();
     let mut terms = BTreeMap::new();
     let mut new_definitions = Vec::new();
     for record in &snapshot.records {
         if let Record::Entity { key, definition } = record {
-            match resolve_existing(c, &snapshot.header.library_id, same_library, key, definition)? {
+            match resolve_existing(c, &snapshot.header.library_id, same_library, key, definition, &existing_entities)? {
                 Resolution::Existing(target) => {
                     terms.insert(key.clone(), target);
                 }
@@ -448,15 +461,6 @@ pub fn apply_in(
         *claims.entry(target.clone()).or_default() += 1;
     }
     terms.retain(|_, target| claims[target] == 1);
-    let existing = current(c)?;
-    let existing_entities: BTreeMap<_, _> = existing
-        .records
-        .iter()
-        .filter_map(|r| match r {
-            Record::Entity { key, definition } => Some((key, definition.as_ref())),
-            _ => None,
-        })
-        .collect();
     let fresh: BTreeSet<_> = new_definitions.iter().map(|new| new.source_key.as_str()).collect();
     let source_entities: BTreeMap<_, _> = snapshot
         .records

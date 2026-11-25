@@ -25,7 +25,7 @@ from tests.fixed_expectations import Expectations, unclocked
 from tests.test_native_human_labels import snapshot
 from tests import test_native_lifecycle as lifecycle
 from tests.test_native_lifecycle import NativeLifecycleTest
-from tests.test_read_http import wait_until
+from tests.test_read_http import wait_open_tasks, wait_until
 from tools.wait_limit import WAIT
 
 
@@ -533,6 +533,7 @@ class NativeFolderHTTPTest(unittest.TestCase):
                     src.backup(dest)
         with closing(sqlite3.connect(clone / 'source.sqlite')) as c, c:
             c.execute("DELETE FROM asset_links WHERE system='md5'")
+        self.rec.expect_empty_character_catalog()
         self.assertTrue(self.rec.baseline('old import', clone))
         for url in ('/api/assets','/api/ids','/api/home','/api/assets/count'):
             self.assertEqual(self.request(url)['body'],lifecycle.NativeLifecycleTest.reference_response(self, url)['body'])
@@ -585,7 +586,7 @@ class NativeFolderHTTPTest(unittest.TestCase):
         state = json.loads(self.request('/api/sync')['body'])
         self.assertEqual(state['state']['status'], 'off')
         self.assertEqual(self.request('/api/sync', {})['status'], 400)
-        lifecycle.wait_human_backup(self, self.origin)
+        wait_open_tasks(self, self.origin, other.path)
         before=snapshot(other.db)
         refused=subprocess.run([str(self.binary),'library-scan','--library',str(other.path)],env=self.env,capture_output=True)
         self.assertNotEqual(refused.returncode,0)

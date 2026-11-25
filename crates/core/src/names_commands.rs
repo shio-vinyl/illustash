@@ -148,6 +148,25 @@ fn replace(
     Ok(())
 }
 
+/// 替换角色的 wiki 中文显示候选。调用方在核心写事务内检查作品和别名；旁证标记不改变人工名称的偏好。
+pub fn set_wiki_display(c: &Connection, entity: &str, name: Option<(&str, bool)>) -> Result<()> {
+    c.prepare_cached(&format!(
+        "DELETE FROM term_names WHERE term_id = {TERM_OF} AND source = 'wiki' AND role = 'display' AND lang = 'zh'"
+    ))?
+    .execute([entity])?;
+    if let Some((value, confirmed)) = name {
+        put_name(c, entity, "zh", "wiki", value, "display", 0, 0)?;
+        if confirmed {
+            c.prepare_cached(&format!(
+                "UPDATE term_names SET preferred = 1 WHERE term_id = {TERM_OF} AND source = 'wiki'
+                 AND role = 'display' AND lang = 'zh'"
+            ))?
+            .execute([entity])?;
+        }
+    }
+    Ok(())
+}
+
 /// `NameUpdater.aliases(fetch=True)` 写库的那一半：Danbooru wiki 的别名按顺序整批替换。
 fn danbooru_aliases(
     c: &Connection,

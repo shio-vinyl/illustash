@@ -375,12 +375,14 @@ impl View {
             self.names.get(&(kind.to_owned(), key.to_owned())).map(|v| v.iter().collect()).unwrap_or_default();
         let mut keyed = Vec::with_capacity(rows.len());
         for r in rows.drain(..) {
-            keyed.push(((!r.preferred, priority(&r.source)?, r.value.clone()), r));
+            // 角色的 wiki preferred 只记录旁证状态。来源和用户的偏好继续管同语言取舍。
+            let preferred = r.preferred && !(kind == "character" && r.source == "wiki");
+            keyed.push(((!preferred, priority(&r.source)?, r.value.clone()), r));
         }
         keyed.sort_by(|a, b| a.0.cmp(&b.0));
-        let mut best: BTreeMap<String, (String, String)> = BTreeMap::new();
+        let mut best: BTreeMap<String, (String, String, bool)> = BTreeMap::new();
         for (_, r) in keyed {
-            best.entry(r.lang.clone()).or_insert((r.value.clone(), r.source.clone()));
+            best.entry(r.lang.clone()).or_insert((r.value.clone(), r.source.clone(), r.preferred));
         }
         if kind == "skin" {
             if let Some(zh) = skin_zh(key) {
@@ -389,25 +391,26 @@ impl View {
                     Some(old) => priority(&old.1)? > priority("builtin")?,
                 };
                 if replace {
-                    best.insert("zh".into(), (zh, "builtin".into()));
+                    best.insert("zh".into(), (zh, "builtin".into(), false));
                 }
             }
         }
         if kind == "work" {
             if let Some(w) = work_name(key) {
                 if best.get("zh").map(|v| v.1.as_str()) != Some("user") {
-                    best.insert("zh".into(), (w.to_owned(), "builtin".into()));
+                    best.insert("zh".into(), (w.to_owned(), "builtin".into(), false));
                 }
             }
         }
         let langs: &[&str] = if kind == "skin" { &["zh", "en"] } else { &LANGS };
-        // min 取第一个最小的；wiki 的中文按 bangumi 排。
+        // 同档选第一种语言。角色的 wiki 中文有旁证才提档。
         let mut chosen: Option<(usize, (String, String))> = None;
         for lang in langs.iter().filter(|l| **l != "en") {
             if let Some(v) = best.get(*lang) {
-                let rank = if v.1 == "wiki" && *lang == "zh" { priority("bangumi")? } else { priority(&v.1)? };
+                let promoted = v.1 == "wiki" && *lang == "zh" && (kind != "character" || v.2);
+                let rank = priority(if promoted { "bangumi" } else { &v.1 })?;
                 if chosen.as_ref().is_none_or(|(r, _)| rank < *r) {
-                    chosen = Some((rank, v.clone()));
+                    chosen = Some((rank, (v.0.clone(), v.1.clone())));
                 }
             }
         }

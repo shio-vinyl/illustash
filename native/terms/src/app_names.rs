@@ -1,5 +1,6 @@
 //! 原生名称任务的持有者。不可变的图库包路径、持久的请求和可重试的失败。
 pub(crate) mod model_api;
+mod wiki;
 
 use crate::error::invalid;
 use crate::{
@@ -364,20 +365,22 @@ fn catalog() -> &'static crate::character_catalog::Catalog {
 
 #[cfg(not(test))]
 fn catalog() -> &'static crate::character_catalog::Catalog {
-    crate::character_catalog::bundled()
+    crate::character_catalog::current()
 }
 
 /// 角色目录里有 Bangumi 角色 ID 的，按 ID 取这个角色，按目录的取名提示挑中文名（#837）。
 /// 目录里没有、条目取不到或者挑不出名字时返回 None，交给按名字搜索。
-fn catalog_values(source: &mut Source, tag: &str) -> Option<(Vec<Value>, Option<String>)> {
-    let entry = catalog().character(tag)?;
-    let id = entry.bangumi?;
-    let v = source.bg(&format!("/characters/{id}"), None).ok()?;
+fn catalog_values(source: &mut Source, tag: &str) -> Result<Option<(Vec<Value>, Option<String>)>> {
+    let Some((id, pick)) = catalog().character(tag).and_then(|entry| Some((entry.bangumi?, entry.pick.as_str())))
+    else {
+        return Ok(None);
+    };
+    let v = source.bg(&format!("/characters/{id}"), None)?;
     if v["id"].as_u64() != Some(id) {
-        return None;
+        return Ok(None);
     }
-    let (values, alias) = net::picked_values(&v, &entry.pick);
-    values.iter().any(|x| x[0] == "zh").then_some((values, alias))
+    let (values, alias) = net::picked_values(&v, pick);
+    Ok(values.iter().any(|x| x[0] == "zh").then_some((values, alias)))
 }
 fn enrich(source: &mut Source, kind: &str, key: &str, work: &str, targets: &[&str]) -> Result<Vec<Value>> {
     let mut c = net::db(&source.path)?;
@@ -476,7 +479,7 @@ fn enrich(source: &mut Source, kind: &str, key: &str, work: &str, targets: &[&st
         ));
     } else {
         // 角色目录给了 Bangumi 角色 ID（#837）：按 ID 直接取，不再按名字搜；取不到时照旧搜。
-        let listed = catalog_values(source, key);
+        let listed = catalog_values(source, key)?;
         let mut chosen = None;
         let mut related = HashMap::<String, Vec<Value>>::new();
         let keywords = if listed.is_some() { vec![] } else { net::keywords(&query, true) };
@@ -558,9 +561,6 @@ fn enrich(source: &mut Source, kind: &str, key: &str, work: &str, targets: &[&st
             }
         }
         ops.push(replace(kind, key, "bangumi", values));
-        let zh = choose(&c, "work", work)?.names[0].clone().unwrap_or_default();
-        let found = net::wiki_zh(&wiki, &[zh, crate::names_view::work_name(work).unwrap_or("").into()]);
-        ops.push(replace(kind, key, "wiki", found.map(|v| vec![json!(["zh", v])]).unwrap_or_default()));
     }
     let settings = model_api::Options::read(&c)?;
     if !settings.has_credential() {
@@ -572,6 +572,9 @@ fn enrich(source: &mut Source, kind: &str, key: &str, work: &str, targets: &[&st
     crate::schema::begin_writing(&tx)?;
     for op in &ops {
         crate::names_commands::one_checked(&tx, op, targets)?;
+    }
+    if kind == "character" {
+        wiki::refresh(&tx, Some((work, targets)))?;
     }
     // 这个键自己的行，按这个事务写入后的样子读（#105）：不刷新投影，不做全图库加载。
     let choice = choose(&tx, kind, key)?;
@@ -765,6 +768,9 @@ fn run(source: &mut Source, entity: Option<&str>, state: &Mutex<Value>, publishe
     let mut c = net::db(&source.path)?;
     // 先记事件序号，再读名称范围。并发提交至多触发一次额外刷新，不能越过新批次。
     let mut imported = if entity.is_none() { latest_import(&c)? } else { 0 };
+    if entity.is_none() {
+        refresh_old_wiki(&mut c, published)?;
+    }
     let mut rows = scope(&c, entity)?;
     let (done, mut legacy_current) = if entity.is_some() {
         (HashMap::new(), false)
@@ -868,16 +874,20 @@ fn lookup(
     let Some(before) = current(c)? else { return Ok(()) };
     let index = if job.character() { indexed(c, &before)? } else { Value::Null };
     let job_fp = job_fingerprint(c, job, &before, &index, Fingerprint::Job)?;
+    let catalog_entry = job.character().then(|| catalog().character(key)).flatten();
+    let catalog_entry = catalog_entry.filter(|r| r.bangumi.is_some()).map(|r| json!([r.bangumi, r.pick]));
     if let Some(marker) = marker {
-        if legacy_current && marker.parse::<f64>().is_ok() {
+        if catalog_entry.is_none() && legacy_current && marker.parse::<f64>().is_ok() {
             return Ok(());
         }
         if let Ok(done) = serde_json::from_str::<Value>(marker) {
-            if done["sources"].as_str() == Some(&job_fp) {
+            if done.get("catalog_name") == catalog_entry.as_ref() && done["sources"].as_str() == Some(&job_fp) {
                 return Ok(());
             }
             // 旧版完成标记仍匹配时直接沿用，避免升级后全库重做。实际查询与发布只用当前指纹。
             if job.character()
+                && catalog_entry.is_none()
+                && done.get("catalog_name").is_none()
                 && !done["sources"].is_null()
                 && done["sources"].as_str() == Some(&job_fingerprint(c, job, &before, &index, Fingerprint::LegacyJob)?)
             {
@@ -919,11 +929,32 @@ fn lookup(
     for op in ops {
         crate::names_commands::one_checked(&tx, &op, &targets)?;
     }
-    tx.execute("INSERT OR REPLACE INTO name_cache VALUES (?,?)", [job.marker(), dump(&json!({"sources":job_fp}))])?;
+    let mut completed = json!({"sources":job_fp});
+    if let Some(entry) = catalog_entry {
+        completed["catalog_name"] = entry;
+    }
+    let wiki_changed = job.character() && wiki::refresh(&tx, Some((work, &targets)))?;
+    tx.execute("INSERT OR REPLACE INTO name_cache VALUES (?,?)", [job.marker(), dump(&completed)])?;
     net::check(&source.cancel)?;
     // 别名镜像和显示投影在提交时跟着更新一次（legacy_names::after_write）。
     crate::schema::commit_writing(tx)?;
-    if has_ops {
+    if has_ops || wiki_changed {
+        published.set(true);
+    }
+    Ok(())
+}
+/// 旧图库可离线按新的规则撤下共用别名并重排可靠名称。完成标记与显示投影一起写入。
+fn refresh_old_wiki(c: &mut Connection, published: &Cell<bool>) -> Result<()> {
+    let updated = c.query_row("SELECT EXISTS(SELECT 1 FROM name_cache WHERE key=?)", [WIKI_POLICY], |r| r.get(0))?;
+    if updated {
+        return Ok(());
+    }
+    let tx = c.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+    crate::schema::begin_writing(&tx)?;
+    let changed = wiki::refresh(&tx, None)?;
+    tx.execute("INSERT OR IGNORE INTO name_cache VALUES (?, '1')", [WIKI_POLICY])?;
+    crate::schema::commit_writing(tx)?;
+    if changed {
         published.set(true);
     }
     Ok(())
@@ -935,6 +966,8 @@ fn enqueue(c: &Connection, entity: Option<&str>, refresh: bool) -> Result<(i64, 
 }
 /// 0.3.0 的完成标记所对应的整个范围的指纹。
 const SOURCES: &str = "[\"sources\", 1]";
+/// 当前 wiki 选名规则已应用到缓存别名的完成标记。
+const WIKI_POLICY: &str = "[\"wiki-policy\", 1]";
 /// 正在进行的全范围刷新：它的重试保留它已写下的标记。
 const REFRESHING: &str = "[\"refreshing\", 1]";
 /// 失败的请求重试前的等待：一分钟，每连续失败一次加倍，最多半小时。
@@ -1786,11 +1819,11 @@ mod matching_tests {
             a.related.insert(2, same);
         });
         lib.refresh(&p, true).unwrap();
-        // Bangumi 不给结果；wiki 的中文名排在索引的日文名之前。
-        assert_eq!(lib.name(), pair("圣园未花", "wiki"));
+        // Bangumi 的候选相冲突。无旁证的 wiki 中文低于索引的日文。
+        assert_eq!(lib.name(), pair("聖園ミカ", "index"));
         p.set(|a| a.related.clear());
         lib.refresh(&p, true).unwrap();
-        assert_eq!(lib.name().1, "wiki");
+        assert_eq!(lib.name().1, "index");
     }
 
     #[test]
@@ -2089,7 +2122,7 @@ mod sources_tests {
                 } else if path == "/characters/77" {
                     json!({"id":77,"name":"アリス","infobox":[{"key":"简体中文名","value":"目录爱丽丝"}]})
                 } else if path == "/characters/78" {
-                    return None;
+                    Value::Null
                 } else if path.starts_with("/characters/") && path.ends_with("/subjects") {
                     json!([{"name":"エグザンプル","name_cn":"示例作品"}])
                 } else if path == "/chat/completions" {
@@ -2233,7 +2266,10 @@ mod sources_tests {
             net::wiki_zh(
                 &names.iter().map(|s| s.to_string()).collect::<Vec<_>>(),
                 &works.iter().map(|s| s.to_string()).collect::<Vec<_>>(),
+                |_| false,
+                |_| false,
             )
+            .map(|(name, _)| name)
         };
         assert_eq!(zh(&["ホタル", "流螢", "流萤(崩坏:星穹铁道)", "流萤"], &[]).as_deref(), Some("流萤"));
         assert_eq!(
@@ -2267,7 +2303,12 @@ mod sources_tests {
         assert_eq!(named(lib.char("bob")), pair("鲍勃", "wiki"));
         assert!(p.model_calls().is_empty());
         lib.put("character", "bob", "ja", "index", "ボブ");
-        assert_eq!(lib.char("bob").name, "鲍勃"); // 中文优先，即使有带来源的日文名
+        assert_eq!(named(lib.char("bob")), pair("ボブ", "index"));
+        lib.put("character", "bob", "ja", "index", "鲍勃");
+        lib.run(&p, None, true).unwrap();
+        assert_eq!(named(lib.char("bob")), pair("鲍勃", "wiki"));
+        lib.put("character", "bob", "ja", "user", "手动名字");
+        assert_eq!(named(lib.char("bob")), pair("手动名字", "user"));
         p.set(|a| {
             a.wikis.insert("alice".into(), vec!["ア_リス".into(), "爱丽丝酱".into()]);
         });
@@ -2311,6 +2352,55 @@ mod sources_tests {
             u.starts_with("/search/characters") && b.as_ref().is_some_and(|b| b.to_string().contains("アリス"))
         };
         assert!(!calls.iter().any(searched_alice));
+    }
+
+    #[test]
+    fn catalog_name_upgrade_retries_failed_lookup_then_keeps_the_user_name() {
+        let (p, lib) = (Providers::start(), Library::load());
+        lib.run(&p, None, false).unwrap();
+        assert_eq!(named(lib.char("alice")), pair("爱丽丝", "bangumi"));
+        lib.put("character", "alice", "ja", "user", "自己起的名字");
+        lib.run(&p, None, false).unwrap(); // 手动名字已经进入旧版指纹
+        use_catalog(77);
+        p.set(|a| a.down = true);
+        let error = lib.run(&p, None, false).unwrap_err();
+        assert!(matches!(error, Error::Network(_)), "{error:?}");
+        assert_eq!(lib.char("alice").names[0].as_deref(), Some("爱丽丝"));
+        p.set(|a| a.down = false);
+        let previous = p.calls().len();
+        lib.run(&p, None, false).unwrap();
+        assert_eq!(named(lib.char("alice")), pair("自己起的名字", "user"));
+        assert_eq!(lib.char("alice").names[0].as_deref(), Some("目录爱丽丝"));
+        let calls = p.calls();
+        assert_eq!(calls[previous..].iter().filter(|(u, _)| u.starts_with("/characters/77")).count(), 1);
+        lib.run(&p, None, false).unwrap();
+        assert_eq!(p.calls(), calls);
+        TEST_CATALOG.with(|c| c.set(None));
+    }
+
+    #[test]
+    fn shared_wiki_alias_recomputes_both_roles_and_old_projection() {
+        let (p, lib) = (Providers::start(), Library::load());
+        p.set(|a| {
+            a.characters.clear();
+            a.wikis.insert("alice".into(), vec!["同班同学".into(), "合成双子".into(), "艾莉丝".into()]);
+            a.wikis.insert("bob".into(), vec!["同班_同学（示例）".into(), "合成双子".into(), "姐妹红".into()]);
+        });
+        lib.run(&p, None, false).unwrap();
+        assert_eq!(named(lib.char("alice")), pair("艾莉丝", "wiki"));
+        assert_eq!(named(lib.char("bob")), pair("姐妹红", "wiki"));
+        assert_eq!(lib.hits("合成双子"), BTreeSet::from(["alice".into(), "bob".into()]));
+
+        let mut c = lib.db();
+        c.execute("DELETE FROM name_cache WHERE key=?", [WIKI_POLICY]).unwrap();
+        let old = |tag| replace("character", tag, "wiki", vec![json!(["zh", "同班同学"])]);
+        command(&mut c, vec![old("alice"), old("bob")]).unwrap();
+        assert_eq!(named(lib.char("alice")), pair("同班同学", "wiki"));
+        let calls = p.calls();
+        lib.run(&p, None, false).unwrap();
+        assert_eq!(p.calls(), calls);
+        assert_eq!(named(lib.char("alice")), pair("艾莉丝", "wiki"));
+        assert_eq!(named(lib.char("bob")), pair("姐妹红", "wiki"));
     }
 
     #[test]

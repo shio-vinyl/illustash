@@ -81,6 +81,7 @@ pub(crate) fn apply<'a>(
     let in_scope = scope.map(|ids| ids.iter().map(String::as_str).collect::<BTreeSet<_>>());
     let mut after = Active::new();
     let mut terms = HashMap::new();
+    let mut changed = BTreeSet::new();
     let mut registered = false;
     for (uuid, tag, score, candidate_only) in hits {
         if in_scope.as_ref().is_some_and(|ids| !ids.contains(uuid)) {
@@ -108,7 +109,10 @@ pub(crate) fn apply<'a>(
         let (key, term) = &*match terms.entry(tag) {
             Entry::Occupied(entry) => entry.into_mut(),
             Entry::Vacant(entry) => {
-                let key = crate::character_import::extension_entity(c, tag)?;
+                let (key, structure_changed) = crate::character_import::extension_entity(c, tag)?;
+                if structure_changed {
+                    changed.insert(key.clone());
+                }
                 let term: i64 =
                     c.prepare_cached("SELECT id FROM terms WHERE key=?")?.query_row([&key], |r| r.get(0))?;
                 entry.insert((key, term))
@@ -146,8 +150,9 @@ pub(crate) fn apply<'a>(
     if registered {
         store::rebuild_active_evidence(c)?;
     }
-    if !terms.is_empty() {
-        crate::character_import::finish_hybrid_import(c)?;
+    if !terms.is_empty() && character_projection::policy(c)? {
+        crate::character_graph::register_catalog(c, &changed)?;
+        crate::character_graph::baseline(c)?;
     }
     replace(c, extension, &format!("extension:{package}"), &before, &after)
 }

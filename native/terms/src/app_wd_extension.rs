@@ -1455,6 +1455,59 @@ mod tests {
     }
 
     #[test]
+    fn catalog_incremental_hybrid_import_registers_only_changed_structure() {
+        illustash_core::character_catalog::override_for_thread(Some(catalog_with(
+            r#"[1,"hero",["renamed_hero"],null,null,null,null,null,"",null],
+            [2,"hero_costume",[],1,"appearance","auto","costume",null,"",null]"#,
+        )));
+        let f = Fixture::new();
+        f.write(|tx| {
+            tx.execute("INSERT OR REPLACE INTO meta VALUES ('identity_policy','hybrid')", [])?;
+            tx.execute_batch(
+                &include_str!("app_migration_sql/hybrid.sql")
+                    .replace("entities", illustash_core::character_entities::ENTITIES),
+            )?;
+            let assets = ["rename", "costume", "unlisted"];
+            let rows: Vec<_> =
+                assets.iter().map(|u| json!([u, "t.png", "t.png", 8, 8, "2026-11-23", "folder"])).collect();
+            crate::character_commands::command(
+                tx,
+                &json!({"op":"import","rows":rows,"indexed":"2026-11-23",
+                    "labels":[["rename","renamed_hero",0.99,"character"],
+                              ["costume","hero_costume",0.99,"character"],
+                              ["unlisted","unlisted",0.99,"character"]]}),
+            )?;
+            let owner = |tag: &str| {
+                tx.query_row(
+                    "SELECT t.key FROM term_links l JOIN terms t ON t.id=l.term_id WHERE l.key=?1",
+                    [tag],
+                    |r| r.get::<_, String>(0),
+                )
+            };
+            let hero = owner("hero")?;
+            for uuid in ["rename", "costume"] {
+                let member: String =
+                    tx.query_row("SELECT entity FROM memberships WHERE uuid=?", [uuid], |r| r.get(0))?;
+                assert_eq!(member, hero);
+            }
+            let unlisted = owner("unlisted")?;
+            let promoted: bool = tx.query_row(
+                "SELECT EXISTS(SELECT 1 FROM term_identity_baseline WHERE id=?)
+                  OR EXISTS(SELECT 1 FROM identity_canonical WHERE entity=?1)",
+                [&unlisted],
+                |r| r.get(0),
+            )?;
+            assert!(!promoted);
+            let member: String =
+                tx.query_row("SELECT entity FROM memberships WHERE uuid='unlisted'", [], |r| r.get(0))?;
+            assert_eq!(member, unlisted);
+            Ok(())
+        })
+        .unwrap();
+        illustash_core::character_catalog::override_for_thread(None);
+    }
+
+    #[test]
     fn catalog_existing_hybrid_roles_stay_unmodified_and_groups_remain_searchable_as_tags() {
         illustash_core::character_catalog::override_for_thread(Some(catalog_with("")));
         let f = Fixture::new();

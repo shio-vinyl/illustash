@@ -336,9 +336,16 @@ impl Replay<'_> {
             let input: Value = serde_json::from_str(&self.input(&call["input"].to_string())?).unwrap();
             let line = serde_json::json!({"db": db.as_ref().unwrap().to_string_lossy(), "input": input});
             let (bin, counter, verified) = (self.bin, &self.counter, &self.verified);
+            // 只有这两个录制的用例直接检验旧索引猜测的造型层级。其余调用照常走当前入口。
+            let historical_index = matches!(
+                self.name,
+                "tests.test_terms_character_import.Import.test_refresh_with_album_and_skin_hierarchy"
+                    | "tests.test_terms_character_import.HybridImport.test_refresh_with_album_and_skin_hierarchy"
+            );
             let s = self.serve.get_or_insert_with(|| {
                 let mut child = Command::new(bin)
                     .arg("serve")
+                    .args(historical_index.then_some("--historical-index"))
                     .env("ILLUSTASH_TEST_KEY_COUNTER", counter)
                     .env(NO_IMPORT_WORKS, "1")
                     .env(VERIFY_INCREMENTAL, verified)

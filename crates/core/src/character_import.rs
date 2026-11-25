@@ -181,29 +181,36 @@ fn entity(c: &Connection, ids: &Ids, system: &str, key: &str, name: &str, work: 
 /// 只有由角色扩展新建的角色词条才使用此创建来源。
 pub const EXTENSION_CHARACTER_ORIGIN: &str = "extension:character";
 
-pub(crate) fn extension_entity(c: &Connection, tag: &str) -> Result<String> {
+pub(crate) fn extension_entity(c: &Connection, tag: &str) -> Result<(String, bool)> {
     let ids = Ids(&Value::Null);
     tagged_entity(c, &ids, "danbooru", tag, crate::character_profile::qualifier(tag), EXTENSION_CHARACTER_ORIGIN)
 }
 
 /// 跨来源的同一个识别 tag 共用原始词条。目录别名保持各自的原始词条，由目录控制合并指向。
-fn tagged_entity(c: &Connection, ids: &Ids, system: &str, tag: &str, work: &str, origin: &str) -> Result<String> {
+fn tagged_entity(
+    c: &Connection,
+    ids: &Ids,
+    system: &str,
+    tag: &str,
+    work: &str,
+    origin: &str,
+) -> Result<(String, bool)> {
     if let Some(found) = linked(c, system, tag)? {
-        return Ok(found);
+        return Ok((found, false));
     }
     if system == "wd" {
         if let Some(found) = linked(c, "danbooru", tag)? {
-            return Ok(found);
+            return Ok((found, false));
         }
     } else if crate::character_catalog::current().character(tag).is_some() {
         if let Some(found) = linked(c, "wd", tag)? {
             link(c, &found, system, tag)?;
-            return Ok(found);
+            return Ok((found, false));
         }
     }
     let ident = entity(c, ids, system, tag, tag, work, origin)?;
-    catalog::fresh(c, ids, &ident, tag)?;
-    Ok(ident)
+    let structure_changed = catalog::fresh(c, ids, &ident, tag)?;
+    Ok((ident, structure_changed))
 }
 
 // ---- 索引同步：`_characters`（含 `_hierarchy`、`_tags`、别名、`_default_tags`） ----
@@ -211,7 +218,7 @@ fn tagged_entity(c: &Connection, ids: &Ids, system: &str, tag: &str, work: &str,
 type Chars = HashMap<String, String>;
 type Wd = HashMap<String, BTreeSet<String>>;
 
-fn characters(c: &Connection, index: &Value) -> Result<(Chars, Wd)> {
+fn characters(c: &Connection, index: &Value, historical_index: bool) -> Result<(Chars, Wd)> {
     let ids = Ids(&index["new_ids"]);
     let rows = index["characters"].as_array().map(Vec::as_slice).unwrap_or_default();
     let catalog = crate::character_catalog::current();
@@ -223,14 +230,13 @@ fn characters(c: &Connection, index: &Value) -> Result<(Chars, Wd)> {
     }
     let (mut chars, mut wd): (Chars, Wd) = (HashMap::new(), HashMap::new());
     let mut fresh = Vec::new();
-    let legacy_fixture = !import_builds_works();
     for r in rows {
         let char_id = s(&r["char_id"]).ok_or_else(|| Error::Invalid("索引角色缺少 char_id".into()))?;
         let tag = s(&r["danbooru_tag"]).or_else(|| tags.get(char_id).copied()).or(s(&r["wd_tag"]));
         let name = s(&r["name_zh"]).or(s(&r["name_ja"])).or(s(&r["name_en"])).unwrap_or(char_id);
         let work = r["copyright"].as_str().unwrap_or("");
         let prior = linked(c, "ccip", char_id)?;
-        let ident = if let Some(tag) = tag.filter(|tag| catalog.character(tag).is_some()) {
+        let ident = if let Some(tag) = tag.filter(|tag| !historical_index && catalog.character(tag).is_some()) {
             let found = match prior {
                 Some(id) => Some(id),
                 None => catalog::exact(c, tag)?,
@@ -251,8 +257,7 @@ fn characters(c: &Connection, index: &Value) -> Result<(Chars, Wd)> {
         } else {
             entity(c, &ids, "ccip", char_id, name, work, legacy_characters::ORIGIN)?
         };
-        // 录制的旧版对照仍使用索引推测的造型；产品导入只应用审核过的目录关系。
-        if legacy_fixture && !hybrid(c)? {
+        if historical_index && !hybrid(c)? {
             c.prepare_cached(&format!("UPDATE term_tree SET variant=?2 WHERE {OF}"))?
                 .execute([&ident, s(&r["skin"]).unwrap_or("")])?;
         }
@@ -267,7 +272,7 @@ fn characters(c: &Connection, index: &Value) -> Result<(Chars, Wd)> {
             }
         }
     }
-    if legacy_fixture {
+    if historical_index {
         hierarchy(c, rows, &ids)?;
     } else {
         // 同批出现新旧标签时，先挂旧标签到本批已有的规范端点。
@@ -374,10 +379,10 @@ fn hierarchy(c: &Connection, rows: &[Value], ids: &Ids) -> Result<()> {
             .execute(params![child, parent, skin])?;
         c.prepare_cached("UPDATE terms SET kind='skin' WHERE key=? AND kind IS NOT 'skin'")?.execute([&child])?;
     }
-    finish_hybrid_import(c)
+    Ok(())
 }
 
-pub(crate) fn finish_hybrid_import(c: &Connection) -> Result<()> {
+fn finish_hybrid_import(c: &Connection) -> Result<()> {
     if hybrid(c)? {
         let before: i64 =
             c.prepare_cached("SELECT count(*) FROM term_identity_baseline")?.query_row([], |r| r.get(0))?;
@@ -394,27 +399,34 @@ pub(crate) fn finish_hybrid_import(c: &Connection) -> Result<()> {
 // ---- 候选与相册 ----
 
 /// `Store._candidate`：一条源标签 → (图, 身份, WD / CCIP, 分数)。
-fn candidate(c: &Connection, ids: &Ids, row: &Value, chars: &Chars, wd: &Wd) -> Result<(String, String, String, f64)> {
+fn candidate(
+    c: &Connection,
+    ids: &Ids,
+    row: &Value,
+    chars: &Chars,
+    wd: &Wd,
+) -> Result<(String, String, String, f64, bool)> {
     let uuid = row[0].as_str().unwrap_or("").to_owned();
     let value = row[1].as_str().unwrap_or("");
     let conf = row[2].as_f64().ok_or_else(|| Error::Invalid("候选分数不是数".into()))?;
     let dim = row[3].as_str().unwrap_or("");
-    let ident = if dim == "char_ext" {
-        match chars.get(value) {
+    let (ident, structure_changed) = if dim == "char_ext" {
+        let ident = match chars.get(value) {
             Some(i) => i.clone(),
             None => entity(c, ids, "ccip", value, value, "", legacy_characters::ORIGIN)?,
-        }
+        };
+        (ident, false)
     } else {
         let matches = wd.get(value);
         match matches.filter(|m| m.len() == 1) {
-            Some(m) => m.iter().next().expect("一个").clone(),
+            Some(m) => (m.iter().next().expect("一个").clone(), false),
             None => {
                 let work = if import_builds_works() { crate::character_profile::qualifier(value) } else { "" };
                 tagged_entity(c, ids, "wd", value, work, legacy_characters::ORIGIN)?
             }
         }
     };
-    Ok((uuid, ident, if dim == "character" { "WD".into() } else { "CCIP".into() }, conf))
+    Ok((uuid, ident, if dim == "character" { "WD".into() } else { "CCIP".into() }, conf, structure_changed))
 }
 
 type Rows = BTreeMap<(String, String, String), f64>;
@@ -429,12 +441,16 @@ fn candidates(
 ) -> Result<Rows> {
     let mut out: Rows = BTreeMap::new();
     let hybrid = hybrid(c)?;
+    let mut changed = BTreeSet::new();
     let mut resolved: HashMap<String, String> = HashMap::new();
     for row in labels.as_array().into_iter().flatten() {
         if only.is_some_and(|o| !o.contains(row[0].as_str().unwrap_or(""))) {
             continue;
         }
-        let (u, mut e, src, score) = candidate(c, ids, row, chars, wd)?;
+        let (u, mut e, src, score, structure_changed) = candidate(c, ids, row, chars, wd)?;
+        if hybrid && structure_changed {
+            changed.insert(e.clone());
+        }
         if !hybrid {
             e = match resolved.entry(e) {
                 std::collections::hash_map::Entry::Occupied(entry) => entry.get().clone(),
@@ -449,7 +465,7 @@ fn candidates(
         let slot = out.entry((u, e, src)).or_insert(score);
         *slot = slot.max(score);
     }
-    finish_hybrid_import(c)?;
+    character_graph::register_catalog(c, &changed)?;
     Ok(out)
 }
 
@@ -608,8 +624,8 @@ fn indexed(c: &Connection, args: &Value) -> Result<()> {
 // ---- 命令 ----
 
 /// `Store.refresh` 的事务部分。App 先交 WD，再以 finalize_labels 一次生成最终派生；旧调用方仍可单独 rederive。
-fn refresh(c: &Connection, args: &Value) -> Result<Value> {
-    let (chars, wd) = characters(c, &args["index"])?;
+fn refresh(c: &Connection, args: &Value, historical_index: bool) -> Result<Value> {
+    let (chars, wd) = characters(c, &args["index"], historical_index)?;
     let ids = Ids(&args["index"]["new_ids"]);
     c.prepare_cached("DELETE FROM assets")?.execute([])?;
     insert_assets(c, &args["assets"])?;
@@ -638,8 +654,8 @@ fn refresh(c: &Connection, args: &Value) -> Result<Value> {
 }
 
 /// `Store.reindex_characters`。
-fn reindex(c: &Connection, args: &Value) -> Result<Value> {
-    let (chars, wd) = characters(c, &args["index"])?;
+fn reindex(c: &Connection, args: &Value, historical_index: bool) -> Result<Value> {
+    let (chars, wd) = characters(c, &args["index"], historical_index)?;
     let ids = Ids(&args["index"]["new_ids"]);
     let known: BTreeSet<String> =
         c.prepare_cached("SELECT uuid FROM assets")?.query_map([], |r| r.get(0))?.collect::<rusqlite::Result<_>>()?;
@@ -737,8 +753,8 @@ fn defaults(c: &Connection) -> Result<Value> {
 
 pub fn command(c: &Connection, op: &str, args: &Value) -> Result<Option<Value>> {
     Ok(Some(match op {
-        "refresh" => refresh(c, args)?,
-        "reindex" => reindex(c, args)?,
+        "refresh" => refresh(c, args, false)?,
+        "reindex" => reindex(c, args, false)?,
         "import" => import(c, args)?,
         "rederive" => rederive(c, args)?,
         "default_tags" => defaults(c)?,
@@ -746,6 +762,18 @@ pub fn command(c: &Connection, op: &str, args: &Value) -> Result<Option<Value>> 
         "catalog_split" => catalog_split(c, args)?,
         _ => return Ok(None),
     }))
+}
+
+/// 验证构建的固定重放入口，按录制时的层级规则解释旧索引。
+pub fn replay_index(c: &Connection, args: &Value) -> Result<Option<Value>> {
+    if !cfg!(feature = "verify-incremental") {
+        return Err(Error::invalid("历史索引回放仅用于验证构建"));
+    }
+    match args["op"].as_str() {
+        Some("refresh") => refresh(c, args, true).map(Some),
+        Some("reindex") => reindex(c, args, true).map(Some),
+        _ => Ok(None),
+    }
 }
 
 /// 关系出现之前的应用迁移只用历史上的层级/标签部分。

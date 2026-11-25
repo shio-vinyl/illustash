@@ -223,14 +223,15 @@ fn appearance(
 }
 
 /// 只对本次创建的原始身份改结构。hybrid 也在新角色进入身份基线以前执行。
-pub(super) fn fresh(c: &Connection, ids: &Ids, id: &str, tag: &str) -> Result<()> {
+pub(super) fn fresh(c: &Connection, ids: &Ids, id: &str, tag: &str) -> Result<bool> {
     let catalog = character_catalog::current();
-    let Some(entry) = catalog.character(tag) else { return Ok(()) };
+    let Some(entry) = catalog.character(tag) else { return Ok(false) };
     if tag == entry.tag && entry.tags.is_empty() && !approved(entry) && !entry.group {
-        return Ok(());
+        return Ok(false);
     }
     let mut state = State::read(c)?;
     let mut active = id.to_owned();
+    let mut structure_changed = false;
     let target = if tag != entry.tag {
         Some(new_current(c, ids, &entry.tag)?)
     } else {
@@ -249,7 +250,7 @@ pub(super) fn fresh(c: &Connection, ids: &Ids, id: &str, tag: &str) -> Result<()
     };
     if let Some(target) = target.filter(|target| target != id) {
         if !eligible(c, &state, id, &target)? {
-            return Ok(());
+            return Ok(false);
         }
         merge(c, id, &target)?;
         record(
@@ -260,6 +261,7 @@ pub(super) fn fresh(c: &Connection, ids: &Ids, id: &str, tag: &str) -> Result<()
             false,
         )?;
         active = target;
+        structure_changed = true;
     }
     if entry.group {
         label_group(c, &mut state, &active)?;
@@ -272,11 +274,12 @@ pub(super) fn fresh(c: &Connection, ids: &Ids, id: &str, tag: &str) -> Result<()
         if !already_in_baseline && !preserve {
             if let Some(parent) = catalog.parent(entry) {
                 let parent = new_current(c, ids, &parent.tag)?;
-                appearance(c, &mut state, entry, &active, &parent, false)?;
+                structure_changed |= appearance(c, &mut state, entry, &active, &parent, false)?;
             }
         }
     }
-    state.write(c)
+    state.write(c)?;
+    Ok(structure_changed)
 }
 
 fn label_group(c: &Connection, state: &mut State, id: &str) -> Result<bool> {

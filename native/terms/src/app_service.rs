@@ -779,6 +779,14 @@ pub(crate) fn existing(db: &Path) -> crate::Result<rusqlite::Connection> {
 
 /// CLI 与常驻进程使用同一事务边界，每条命令单独连接；空闲时不持有文件或写锁。
 pub(crate) fn character_request(db: &Path, input: &serde_json::Value) -> crate::Result<serde_json::Value> {
+    character_request_with(db, input, false)
+}
+
+pub(crate) fn character_request_with(
+    db: &Path,
+    input: &serde_json::Value,
+    historical_index: bool,
+) -> crate::Result<serde_json::Value> {
     let mut c = existing(db)?;
     crate::schema::require_current(&c)?;
     let tx = c.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
@@ -787,7 +795,11 @@ pub(crate) fn character_request(db: &Path, input: &serde_json::Value) -> crate::
     } else {
         crate::schema::begin_writing(&tx)?;
     }
-    let result = crate::character_commands::command(&tx, input)?;
+    let replayed = if historical_index { illustash_core::character_import::replay_index(&tx, input)? } else { None };
+    let result = match replayed {
+        Some(result) => result,
+        None => crate::character_commands::command(&tx, input)?,
+    };
     if let Some(effect) = input.get("effect").and_then(serde_json::Value::as_str) {
         tx.execute("INSERT INTO backend_effects(kind) VALUES (?)", [effect])?;
     }

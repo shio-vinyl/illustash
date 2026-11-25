@@ -135,7 +135,8 @@ pub fn run(args: &[String]) -> u8 {
         }
         ["library-scan", "--library", path] => crate::app_library::Library::open(Path::new(path)).and_then(|library| crate::app_sync::run(&library,&std::sync::atomic::AtomicBool::new(false),&|_| {})),
         ["library-create", rest @ ..] => create_library(rest),
-        ["serve"] => crate::service::run(),
+        ["serve"] => crate::service::run(false),
+        ["serve", "--historical-index"] => crate::service::run(true),
         ["wd-pending", "--db", db, "--source", source] => existing(Path::new(db)).and_then(|mut c| {
             let mut input = String::new();
             std::io::Read::read_to_string(&mut std::io::stdin(), &mut input)?;

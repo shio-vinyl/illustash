@@ -40,6 +40,30 @@ pub fn baseline(c: &Connection) -> Result<()> {
     Ok(())
 }
 
+/// 新词表结构进入 hybrid 基线，同时登记它依赖的父角色和合并目标。普通候选不因此进入基线。
+pub(crate) fn register_catalog(c: &Connection, changed: &BTreeSet<String>) -> Result<()> {
+    if changed.is_empty() {
+        return Ok(());
+    }
+    let count = c
+        .prepare_cached(&format!(
+            "WITH RECURSIVE selected(id) AS (
+           SELECT value FROM json_each(?1)
+           UNION SELECT e.parent_id FROM selected s JOIN {ENTITIES} e ON e.id=s.id WHERE e.parent_id IS NOT NULL
+           UNION SELECT e.merged_into FROM selected s JOIN {ENTITIES} e ON e.id=s.id WHERE e.merged_into IS NOT NULL
+         )
+         INSERT OR IGNORE INTO term_identity_baseline(id,parent_id,variant,kind,merged_into)
+         SELECT e.id,e.parent_id,e.variant,e.kind,e.merged_into
+         FROM selected s JOIN {ENTITIES} e ON e.id=s.id
+         WHERE e.kind<>'work' ORDER BY e.seq"
+        ))?
+        .execute([json!(changed).to_string()])?;
+    if count != 0 {
+        project(c, &graph(c)?)?;
+    }
+    Ok(())
+}
+
 pub fn graph(c: &Connection) -> Result<Graph> {
     let nodes: Vec<Node> = c
         .prepare_cached("SELECT id,parent_id,variant,kind,merged_into FROM term_identity_baseline ORDER BY seq")?

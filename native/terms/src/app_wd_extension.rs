@@ -1575,8 +1575,8 @@ mod tests {
             })
             .unwrap();
             let mut app = writer(&f.library.db()).unwrap();
-            let excluded = |c| snapshot(c, "SELECT uuid FROM excluded ORDER BY uuid");
-            let hidden = |c| snapshot(c, "SELECT uuid FROM duplicates WHERE hidden=1 ORDER BY uuid");
+            let excluded = |c: &Connection| snapshot(c, "SELECT uuid FROM excluded ORDER BY uuid");
+            let hidden = |c: &Connection| snapshot(c, "SELECT uuid FROM duplicates WHERE hidden=1 ORDER BY uuid");
             assert!(excluded(&app).is_empty());
             assert_eq!(hidden(&app), vec![json!(["copy"])]);
             crate::app_identity::request(

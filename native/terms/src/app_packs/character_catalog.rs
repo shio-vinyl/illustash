@@ -72,24 +72,26 @@ pub(super) fn fetch(resources: &Path, agent: &ureq::Agent) -> Result<()> {
 }
 
 pub(crate) fn load(resources: &Path) {
-    let result = (|| -> Result<()> {
-        let Some(catalog) = cached(resources)? else { return Ok(()) };
-        let root = extensions_root(resources)?;
-        for (entry, file) in available(&catalog) {
-            match read(&root, file, entry.revision) {
-                Ok(Some(data)) => {
-                    character_catalog::use_installed(data);
-                    break;
-                }
-                Ok(None) => (),
-                Err(error) => eprintln!("已下载的角色词表 {} 无法使用：{error}", entry.version),
-            }
+    character_catalog::initialize(|| match installed(resources) {
+        Ok(data) => data,
+        Err(error) => {
+            eprintln!("无法读取已安装的角色词表：{error}");
+            None
         }
-        Ok(())
-    })();
-    if let Err(error) = result {
-        eprintln!("无法读取已安装的角色词表：{error}");
+    });
+}
+
+fn installed(resources: &Path) -> Result<Option<character_catalog::Catalog>> {
+    let Some(catalog) = cached(resources)? else { return Ok(None) };
+    let root = extensions_root(resources)?;
+    for (entry, file) in available(&catalog) {
+        match read(&root, file, entry.revision) {
+            Ok(Some(data)) => return Ok(Some(data)),
+            Ok(None) => (),
+            Err(error) => eprintln!("已下载的角色词表 {} 无法使用：{error}", entry.version),
+        }
     }
+    Ok(None)
 }
 
 #[cfg(test)]

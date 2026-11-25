@@ -19,7 +19,7 @@ use std::sync::OnceLock;
 pub const FORMAT: &str = "illustash-character-catalog/1";
 /// 随应用分发的修订号，用于在启动时选择适用的签名更新。
 pub const BUNDLED_REVISION: u32 = 1;
-static INSTALLED: OnceLock<Catalog> = OnceLock::new();
+static INSTALLED: OnceLock<Option<Catalog>> = OnceLock::new();
 const BUNDLED: &str = include_str!("../../../tags/character_catalog.json");
 
 /// 和上级的关系。
@@ -234,15 +234,13 @@ thread_local! {
 }
 
 /// 选定进程使用的已安装目录。调用方在启动时校验签名清单和文件，后续修订在下次启动时生效。
-pub fn use_installed(catalog: Catalog) {
-    if catalog.revision > BUNDLED_REVISION {
-        let _ = INSTALLED.set(catalog);
-    }
+pub fn initialize(load: impl FnOnce() -> Option<Catalog>) {
+    INSTALLED.get_or_init(|| load().filter(|catalog| catalog.revision > BUNDLED_REVISION));
 }
 
 /// 导入和取名共用的目录；测试可以用 [`override_for_thread`] 在当前线程换一份。
 pub fn current() -> &'static Catalog {
-    OVERRIDE.with(std::cell::Cell::get).or_else(|| INSTALLED.get()).unwrap_or_else(bundled)
+    OVERRIDE.with(std::cell::Cell::get).or_else(|| INSTALLED.get().and_then(Option::as_ref)).unwrap_or_else(bundled)
 }
 
 /// 只给测试用：在当前线程换用另一份目录，`None` 换回编进应用的那份。

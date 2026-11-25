@@ -11,7 +11,8 @@ export const PAGE = 100;
 // 网格现在这一页的查询参数：排序、页面登记的 pool 和参数（core/pages.js；图库的筛选在 params 里）、角色页的角色和状态、NSFW 设置。
 // 选择栏按筛选写入（{filter: …}）时也用它，所以写入和列表是同一个选区。
 export function gridFilters(r = state.route) {
-  const sort = r.sort || defaultSort(r), f = {order: sort === 'suspicious' && r.char && state.char?.mascot ? 'newest' : sort};   // 标签页没有「可疑优先」
+  const sort = r.sort || defaultSort(r), tagPage = r.char && (state.char?.mascot || state.char?.group_tag);
+  const f = {order: sort === 'suspicious' && tagPage ? 'newest' : sort};   // 标签页没有「可疑优先」
   const page = pageOf(r);
   if (!page.pool) Object.assign(f, page.params?.(r));
   if (r.char) { f.entity = r.char; if (r.maybe) f.status = 'maybe'; else if (r.doubt) f.status = 'ambiguous'; else { if (r.variant) f.variant = r.variant; if (r.check) f.status = 'machine'; } }

@@ -368,7 +368,7 @@ fn edge_on(c: &Connection, table: &str, kind: &str, change: &Change) -> Result<b
 pub fn catalog_children(c: &Connection, owner: &str) -> Result<Vec<Value>> {
     let state = State::read(c)?;
     let mut result = Vec::new();
-    let unique_links = |id| -> Result<BTreeSet<_>> { Ok(links(c, id)?.into_iter().collect()) };
+    let unique_links = |id: &str| -> Result<BTreeSet<_>> { Ok(links(c, id)?.into_iter().collect()) };
     for (kind, changes) in [("merged", state.merged), ("attached", state.attached)] {
         for change in changes {
             if change.1 == owner && live(c, kind, &change)? && edge_on(c, ENTITIES, kind, &change)? {

@@ -33,11 +33,11 @@ import time
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from tools.character_catalog import (  # noqa: E402
-    bangumi, graph as graph_mod, match_bangumi, names as names_mod, relations, tagparse, work as work_mod,
+    bangumi, graph as graph_mod, match_bangumi, names as names_mod, relations, reviewed, tagparse, work as work_mod,
 )
 
 FORMAT = 'illustash-character-catalog/1'
-COLUMNS = ['id', 'tag', 'tags', 'parent', 'relation', 'action', 'variant', 'bangumi', 'pick', 'wikidata']
+COLUMNS = ['id', 'tag', 'tags', 'parent', 'relation', 'action', 'variant', 'bangumi', 'pick', 'wikidata', 'group']
 ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -68,6 +68,27 @@ def load(work):
     return graph_mod.Graph(tags, aliases, implications), wiki
 
 
+def assign_ids(objects, previous):
+    """规范 tag 优先沿用原 ID。别名拆出时分配新 ID，消失的最高号也永不复用。"""
+    old_tags, canonical = {}, {}
+    for row in previous.get('characters', []):
+        r = dict(zip(previous['columns'], row, strict=True))
+        canonical[r['tag']] = r['id']
+        for tag in [r['tag'], *r['tags']]:
+            old_tags[tag] = r['id']
+    high_water = max(previous.get('id_high_water', 0), max(canonical.values(), default=0))
+    ids = {tag: canonical[tag] for tag in objects if tag in canonical}
+    used = set(ids.values())
+    for tag in sorted(objects.keys() - ids.keys()):
+        inherited = next((old_tags[t] for t in [tag, *objects[tag]] if t in old_tags and old_tags[t] not in used), None)
+        if inherited is None:
+            high_water += 1
+            inherited = high_water
+        ids[tag] = inherited
+        used.add(inherited)
+    return ids, high_water
+
+
 def build(work, dump, previous=None):
     g, wiki = load(work)
     scope = work.scope
@@ -87,48 +108,49 @@ def build(work, dump, previous=None):
         objects[g.canonical(tag)].append(tag)
     recs = relations.analyze(scope, g, wiki)
     parent_of = {}
-    for tag, rec in recs.items():
+    review = set()
+    for rec in recs.values():
         canon = rec['canonical']
-        for parent, r in rec.get('relations', {}).items():
-            parent_of[canon] = (parent, r['kind'])
+        candidates = rec.get('relations', {})
+        if rec.get('prefix'):
+            review.add(('仅前缀', canon, rec['prefix']))
+        if len(candidates) > 1:
+            review.add(('多个候选上级', canon, ','.join(sorted(candidates))))
+        if len(candidates) != 1 or canon in reviewed.GROUPS:
+            continue
+        parent, result = next(iter(candidates.items()))
+        if parent in reviewed.GROUPS or (canon, parent) in reviewed.INSTANCES:
+            continue
+        kind = result['kind']
+        paragraph = relations.first_paragraph(wiki.get(canon, {}).get('body', ''))
+        if kind == 'appearance' and not reviewed.appearance(canon, parent, paragraph):
+            kind = 'unknown'
+        if kind != 'appearance':
+            review.add((kind, canon, parent))
+        parent_of[canon] = (parent, kind)
     for parent, _ in list(parent_of.values()):
         objects.setdefault(parent, [])
 
     def root(canon):
         """沿自动挂的造型链往上走到头。"""
         seen = set()
-        while canon in parent_of and parent_of[canon][1] == 'appearance' and canon not in seen:
+        while canon in parent_of and parent_of[canon][1] == 'appearance':
+            if canon in seen:
+                raise ValueError(f'造型关系成环：{canon}')
             seen.add(canon)
             canon = parent_of[canon][0]
         return canon
 
-    old = {}
-    if previous:
-        prev = json.loads(Path(previous).read_text(encoding='utf-8'))
-        cols = prev['columns']
-        for row in prev['characters']:
-            r = dict(zip(cols, row))
-            old[r['tag']] = r['id']
-            for t in r['tags']:
-                old.setdefault(t, r['id'])
-    next_id = max(old.values(), default=0) + 1
-    ids = {}
-    for canon in sorted(objects):
-        known = old.get(canon) or next((old[t] for t in objects[canon] if t in old), None)
-        if known:
-            ids[canon] = known
-        else:
-            ids[canon] = next_id
-            next_id += 1
+    prev = json.loads(Path(previous).read_text(encoding='utf-8')) if previous else {}
+    ids, high_water = assign_ids(objects, prev)
 
     rows, stats, work_hits = [], collections.Counter(), collections.defaultdict(collections.Counter)
-    review = []
     matches = {}
     for canon in sorted(objects, key=lambda c: ids[c]):
         tags = objects[canon]
         names = [canon, *[t for t in tags if t != canon]]
         m = matcher.match(names)
-        if m:
+        if m and canon not in reviewed.GROUPS:
             matches[canon] = m
     for canon in sorted(objects, key=lambda c: ids[c]):
         tags = objects[canon]
@@ -148,19 +170,27 @@ def build(work, dump, previous=None):
                 bid = m['id']
                 pick = matcher.pick(m['id'], [canon, *tags])
                 if pick == '?':
-                    review.append(('分不出取哪段', canon, characters[m['id']]['zh']))
+                    review.add(('分不出取哪段', canon, str(m['id'])))
                     bid = pick = None
             stats['bangumi:' + m['how']] += 1
             if m['work']:
-                for sid, _ in links.get(m['id'], []):
-                    work_hits[m['work']][sid] += 1
+                # 只用标题和作品别名能够独立指向的条目；共演、联动、续作都不能单凭票数认作原作。
+                subject_ids = matcher.subjects_of(m['work'])
+                if len(subject_ids) == 1:
+                    sid = next(iter(subject_ids))
+                    if any(item == sid for item, _ in links.get(m['id'], [])):
+                        work_hits[m['work']][sid] += 1
+        if canon in reviewed.BANGUMI:
+            bid, subject, pick = reviewed.BANGUMI[canon]
+            if bid not in characters or subject not in {sid for sid, _ in links.get(bid, [])}:
+                raise ValueError(f'已审核的角色与作品对应发生变化：{canon}')
         qid = None
         for t in [canon, *tags]:
             if t in wd:
                 qid = wd[t]['item'].rsplit('/', 1)[-1]
                 break
         rows.append([ids[canon], canon, [t for t in tags if t != canon], ids.get(parent), relation, action, variant,
-                     bid, pick, qid])
+                     bid, pick, qid, canon in reviewed.GROUPS or None])
         stats['objects'] += 1
         stats['with_bangumi'] += bid is not None
         stats[f'relation:{relation}'] += relation is not None
@@ -169,7 +199,7 @@ def build(work, dump, previous=None):
         sid, n = counter.most_common(1)[0]
         if n >= 2:
             works.append([work_tag, sid])
-    return rows, works, stats, review
+    return rows, works, stats, sorted(review), high_water
 
 
 def sources(work, dump):
@@ -210,10 +240,16 @@ def main(argv=None):
     p.add_argument('--revision', type=int, default=1)
     p.add_argument('--review', type=Path, help='把要人工看的条目写到这里（不进仓库）')
     args = p.parse_args(argv)
+    if args.revision < 1:
+        p.error('修订号必须是正整数')
+    if args.revision > 1 and not args.previous:
+        p.error('后续修订需要 --previous 来延续公共 ID')
+    if args.previous and json.loads(args.previous.read_bytes())['revision'] >= args.revision:
+        p.error('修订号必须比上一版大')
     work = work_mod.open_work(args.work)
-    rows, works, stats, review = build(work, args.dump, args.previous)
+    rows, works, stats, review, high_water = build(work, args.dump, args.previous)
     header = {'format': FORMAT, 'revision': args.revision, 'built': time.strftime('%Y-%m-%d'),
-              'sources': sources(work, args.dump), 'columns': COLUMNS}
+              'id_high_water': high_water, 'sources': sources(work, args.dump), 'columns': COLUMNS}
     write(args.output, header, rows, works)
     for k, v in sorted(stats.items()):
         print(f'{k}\t{v}')

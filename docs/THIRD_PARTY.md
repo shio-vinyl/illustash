@@ -81,6 +81,8 @@ python3 tools/gen_rust_licenses.py
 
 WD 角色扩展 v1（#534）从 Illustash 0.3 起支持，通过项目的 GitHub 模型 Release `wd-extension-v1` 单独分发 `wd-extension-v1.bin`（应用下载）、`wd-extension-v1.zip`（手动下载）和 `SHA256SUMS.txt`。二者中的同一冻结模型文件为 940,701 字节，SHA-256 为 `9da0365457e479eff189150926289c6cf8325cd9bb98c0bd2504c26d7dcae471`，含 228 个分类头和固定阈值 `0.8008725047111511`。随安装包提供模型公告、Apache-2.0 许可和 Character Index 声明的 MIT 许可文本。复封入口见 [构建脚本](../tools/build_wd_extension.py)，启用与撤回见 [安装说明](INSTALL.md#角色资料包)。
 
+角色词表只分发 tag、公开关系的制作端判断、外部编号和取名位置。Danbooru wiki 正文、作为比对材料的 zh-tags 译文和 Bangumi 名称均留在制作端；应用通过 API 获取 Bangumi 名字并保留来源。Wikidata 结构化数据按 CC0 发布。来源见 [Bangumi 公开归档](https://github.com/bangumi/Archive)、[Bangumi 版权和开发者协议](https://bgm.tv/about/copyright) 与 [Wikidata 许可](https://www.wikidata.org/wiki/Wikidata:Licensing)。
+
 2026-11-17 起（#602），WD 角色扩展和下面的 CCIP 长尾参考包合成一个「角色资料包」：上面的 v1 和长尾参考包 v1 合起来是内置的角色资料包 0.1（测试版）；版本号见 [开发说明](DEVELOPMENT.md#发布角色资料包)。以后的版本不随应用发布，列在签名的包目录里（见 [开发说明](DEVELOPMENT.md#发布角色资料包)），每个版本有自己的 Release：包文件、离线包和其中附带的许可文本。目录条目给整个包和每个组成部分各写一个许可（WD 部分 Apache-2.0，CCIP 部分 MIT），每个版本的数据来源、评测口径和变化写在那个版本的 Release 正文和对应的研究 Issue 里；图片、逐图结果和角色明细不公开。
 
 扩展文件按 Apache-2.0 分发。分类头用公开 Danbooru 样本在冻结的 WD 向量上独立拟合，底座为 SmilingWolf 的 WD SwinV2 Tagger v3 经 DeepGHS 重导出的向量模型（固定提交 `4ec31f2aeabf66353f3ee3ccd20d2f07e716851b`）。DeepGHS Character Index（MIT，固定提交 `5ee6075ff09f82c27e23f33044b9f9cabaf1e8c3`）用于筛选原索引未覆盖的角色。扩展模型文件包含词表、参数、阈值与底座指纹。ZIP 附 Apache-2.0 原文、两份 WD 模型卡、Character Index 的归属和 MIT 许可、`NOTICE.txt` 与 `provenance.json`。原始图片的版权归各原作者。[实验输入和评测口径](https://github.com/shio-vinyl/illustash/issues/534#issuecomment-6907588551)

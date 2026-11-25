@@ -2142,6 +2142,8 @@ mod sources_tests {
                     Value::Null
                 } else if path == "/characters/79" {
                     result(79, "アリス", None)
+                } else if path == "/characters/80" {
+                    result(80, "槐", None)
                 } else if path.starts_with("/characters/") && path.ends_with("/subjects") {
                     json!([{"name":"エグザンプル","name_cn":"示例作品"}])
                 } else if path == "/chat/completions" {
@@ -2347,10 +2349,10 @@ mod sources_tests {
         assert_eq!(net::normalize("Ａ ・ リ ス"), net::normalize("A･リス"));
     }
 
-    fn use_catalog(bangumi: u64) {
+    fn use_catalog(bangumi: u64, pick: &str) {
         let columns = r#"["id","tag","tags","parent","relation","action","variant","bangumi","pick","wikidata"]"#;
         let doc = format!(
-            r#"{{"format":"{}","revision":1,"columns":{columns},"characters":[[1,"alice",[],null,null,null,null,{bangumi},"",null]],"works":[]}}"#,
+            r#"{{"format":"{}","revision":1,"columns":{columns},"characters":[[1,"alice",[],null,null,null,null,{bangumi},"{pick}",null]],"works":[]}}"#,
             crate::character_catalog::FORMAT
         );
         let catalog = Box::leak(Box::new(crate::character_catalog::Catalog::parse(&doc).unwrap()));
@@ -2360,7 +2362,7 @@ mod sources_tests {
     #[test]
     fn catalog_bangumi_id_is_fetched_directly_instead_of_searching() {
         let (p, lib) = (Providers::start(), Library::load());
-        use_catalog(77);
+        use_catalog(77, "");
         lib.run(&p, None, false).unwrap();
         TEST_CATALOG.with(|c| c.set(None));
         assert_eq!(named(lib.char("alice")), pair("目录爱丽丝", "bangumi"));
@@ -2380,7 +2382,7 @@ mod sources_tests {
         assert_eq!(named(lib.char("alice")), pair("爱丽丝", "bangumi"));
         lib.put("character", "alice", "ja", "user", "自己起的名字");
         lib.run(&p, None, false).unwrap(); // 手动名字已经进入旧版指纹
-        use_catalog(77);
+        use_catalog(77, "");
         p.set(|a| a.down = true);
         let error = lib.run(&p, None, false).unwrap_err();
         assert!(matches!(error, Error::Network(_)), "{error:?}");
@@ -2423,9 +2425,25 @@ mod sources_tests {
     }
 
     #[test]
+    fn catalog_original_chinese_name_replaces_an_old_wiki_nickname() {
+        let (p, lib) = (Providers::start(), Library::load());
+        p.set(|a| {
+            a.characters.clear();
+            a.wikis.insert("alice".into(), vec!["小叶子".into(), "槐".into()]);
+        });
+        lib.run(&p, None, false).unwrap();
+        assert_eq!(named(lib.char("alice")), pair("小叶子", "wiki"));
+        use_catalog(80, "name");
+        lib.run(&p, None, false).unwrap();
+        assert_eq!(named(lib.char("alice")), pair("槐", "bangumi"));
+        assert_eq!(lib.hits("小叶子"), BTreeSet::from(["alice".into()]));
+        TEST_CATALOG.with(|c| c.set(None));
+    }
+
+    #[test]
     fn catalog_original_name_survives_a_search_hit_for_the_wrong_identity() {
         let (p, lib) = (Providers::start(), Library::load());
-        use_catalog(79);
+        use_catalog(79, "");
         lib.run(&p, None, false).unwrap();
         let name = lib.char("alice");
         assert_eq!(named(name.clone()), pair("アリス", "bangumi"));
@@ -2443,7 +2461,7 @@ mod sources_tests {
     #[test]
     fn catalog_bangumi_id_that_cannot_be_fetched_falls_back_to_search() {
         let (p, lib) = (Providers::start(), Library::load());
-        use_catalog(78);
+        use_catalog(78, "");
         lib.run(&p, None, false).unwrap();
         TEST_CATALOG.with(|c| c.set(None));
         assert_eq!(named(lib.char("alice")), pair("爱丽丝", "bangumi"));

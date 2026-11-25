@@ -543,7 +543,7 @@ Pixiv 不接受就记为「登录已过期」，本次运行停掉 Pixiv（其�
   后台只带 `Referer: https://www.pixiv.net/` 拉 `i.pximg.net` 的 250 与 150 小图都通过，不带 Referer 为 403；所以小图由后台直接拉（`app_provenance_net.rs` 带 Referer），用窗口登录时 `www.pixiv.net` 的接口走窗口；没绑定 Pixiv 时，本地比对的作品列表也由后台直接请求，不带登录。
 - **桌面实现（2026-10-01）**：`desktop/`（Tauri 2）启动自身链接的本地服务，等「图库已启动」再让主窗口加载本地页面，站外链接交给默认浏览器；
   关闭主窗口即退出整个 app（隐藏的 Pixiv 窗口不会阻止退出）；退出时向服务发 SIGINT，10 秒不退就结束进程组；外壳被强制退出时，服务发现桌面管道关闭也会自己收尾（见 [ARCHITECTURE_DIRECTION.md](ARCHITECTURE_DIRECTION.md)「桌面外壳、启动与完整性检查」）。
-  Pixiv 窗口使用独立的网站数据存储（macOS 14+），解绑时只清它。本机通道（`desktop/src/bridge.rs`，只听 127.0.0.1，每次启动随机口令）只接受 `www.pixiv.net/ajax/` 下的 GET，每次一个，间隔由 `app_provenance_net.rs` 控制；
+  Pixiv 窗口在 macOS 14+ 使用独立的网站数据存储，在 Windows 使用独立的 WebView2 用户数据目录（应用本地数据目录下的 `pixiv-webview`），解绑时只清这份存储。旧版 Windows 使用过应用内 Pixiv 登录的用户，升级后需要在 Pixiv 窗口重新登录一次。本机通道（`desktop/src/bridge.rs`，只听 127.0.0.1，每次启动随机口令）只接受 `www.pixiv.net/ajax/` 下的 GET，每次一个，间隔由 `app_provenance_net.rs` 控制；
   页面里只有 `pixiv_reply` 一个命令可调，主窗口没有任何外壳权限。原生账号与稳定查询客户端为 `native/terms/src/app_accounts.rs`，沿用同一桥与登录窗口；授权和同步请求边界见 [架构参考](ARCHITECTURE_DIRECTION.md#原生账号与桌面登录桥)。
   设置页：从桌面 app 打开时「登录 Pixiv…」「重新登录 Pixiv…」「改用窗口登录…」打开窗口并轮询 `pixiv/connect`，只记录是谁（`accounts.json` 里 `via: app`），不存 cookie；
   过期重登会先清除 Pixiv 窗口的网站数据再打开登录页；cookie 存在不再触发自动隐藏，完成后由用户关闭 Pixiv 窗口。绑定轮询串行执行，停止或替换轮询后忽略旧响应。

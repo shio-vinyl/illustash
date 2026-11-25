@@ -17,7 +17,7 @@ from concurrent.futures import ThreadPoolExecutor
 import numpy as np
 from PIL import Image
 from tests import test_native_lifecycle as lifecycle
-from tests.fixed_expectations import unclocked
+from tests.fixed_expectations import expected_folds, unclocked
 from tests.test_read_http import wait_until
 from tools.wait_limit import WAIT
 
@@ -95,6 +95,10 @@ note('正常结束')
                 c.execute('INSERT INTO assets VALUES (?,?,?,?,?,?,?,?,?)',(u,u+'.png',str(self.lib.path/(u+'.png')),120,150,'2026-10-01','orig',1,0))
                 c.execute('INSERT OR REPLACE INTO embeddings VALUES (?,?,?)',(u,'ccip',v.tobytes()))
         self.lib=self.rec.package('prepared',self.lib.path)
+        with sqlite3.connect(self.lib.db) as c:
+            self.fold_assets = c.execute('SELECT uuid,width,height FROM assets').fetchall()
+            self.fold_assertions = c.execute('SELECT uuid,entity,status FROM assertions').fetchall()
+            self.fold_excluded = {row[0] for row in c.execute('SELECT uuid FROM excluded')}
         self.alice=self.rec.value('alice')
         pixels=np.random.default_rng(1).integers(0,255,(150,120,3),dtype=np.uint8)
         for u in list('abc')+[('seed'+str(i)) if i<6 else 'unmatched'+str(i) for i in range(9)]: Image.fromarray(pixels).save(self.lib.path/(u+'.png'))
@@ -132,6 +136,14 @@ note('正常结束')
         self.restart();self.finished()
     def poke_event(self):
         with sqlite3.connect(self.lib.db) as c:c.execute("INSERT INTO backend_effects(kind) VALUES ('imported')")
+    def regroup_with_all_copies(self):
+        """保留合成样本里的每张图，让聚类回归使用和历史录制一致的输入。"""
+        result = self.request('/api/fold', {'kinds': []})
+        self.assertEqual((result['status'], result['body']), (200, b'{"kinds": []}'))
+        self.assertEqual(self.rows(['duplicates'])['duplicates'], [])
+        self.assertEqual(self.request('/api/regroup', {})['body'], b'{"started": true}')
+        self.finished()
+
     def test_real_similar_relate_cluster_and_oc_routes(self):
         # 现有的真实算法跑同样的生成输入，除挂钟时间字段外，表内容完全一致。
         tables=['relations','image_sigs','similar_paired','similar_retry','similar_groups','duplicates']
@@ -139,7 +151,17 @@ note('正常结束')
         self.assertGreater(len(self.rows(['prototypes'])['prototypes']),0)
         # 挂钟时间列（关系是何时算出的）按 <clock> 比较。
         masked=lambda rows:{t:[tuple(unclocked(v) for v in r) for r in rs] for t,rs in rows.items()}
-        self.assertEqual(masked(native),masked(self.rec.value('scanned')))
+        expected = self.rec.value('scanned')
+        duplicates = expected['duplicates']
+        projection = {
+            uuid: (rep, hidden)
+            for uuid, rep, hidden in expected_folds(
+                self.fold_assets, self.fold_assertions, ((r[0], r[1], r[3]) for r in duplicates), self.fold_excluded)
+        }
+        expected['duplicates'] = [(*r[:5], *projection[r[0]]) for r in duplicates]
+        self.assertEqual(masked(native), masked(expected))
+        # 历史录制的学习包含整个副本组。用相同输入比较聚类和 OC。
+        self.regroup_with_all_copies()
         clusters=self.rows(['clusters','cluster_info'])
         self.assertGreater(len(clusters['clusters']),0)
         expected=self.rec.value('clustered')
@@ -214,6 +236,7 @@ note('正常结束')
     def test_inflight_input_change_retries_on_fresh_snapshot(self):
         # #194：worker 计算期间来了一条人工裁决；过期的结果被拒绝、绝不发布，任务在更新的快照上自行完成。
         self.retry_visibly()
+        self.regroup_with_all_copies()
         self.assertIn('unmatched6',self.clustered())
         before=self.rows(['clusters','cluster_info','relations','prototypes'])
         runs=len(self.versions())
@@ -284,6 +307,7 @@ note('正常结束')
 
     def test_unread_tables_written_inflight_do_not_invalidate_learning(self):
         # #29：偏好设置、名称缓存/设置和同步历史都不是研究的输入。
+        self.regroup_with_all_copies()
         before=self.rows(['clusters'])
         self.assertTrue(before['clusters'])
         def write(c):

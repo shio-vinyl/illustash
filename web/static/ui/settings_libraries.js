@@ -49,7 +49,7 @@ export async function openLibrary(path, name, agreed = null) {
   try { await openLibraryRequest(path, agreed); }
   catch (err) {
     if (!agreed && said(err.said, '这个图库需要升级到新格式才能打开。升级后旧版本的 Illustash 打不开它；升级前会自动备份，升级没有完成时图库保持原样。')) {
-      if (await confirmAction(err.message, t('「{name}」需要升级', {name}), t('升级并打开'))) return openLibrary(path, name, 'upgrade');
+      if (await confirmAction(tb(err.said), t('「{name}」需要升级', {name}), t('升级并打开'))) return openLibrary(path, name, 'upgrade');
       return;
     }
     if (!agreed && said(err.said,

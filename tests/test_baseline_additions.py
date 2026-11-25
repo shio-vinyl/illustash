@@ -79,10 +79,10 @@ class HistoricalAdditions(unittest.TestCase):
             'human_object_contributions', 'human_entity_origins', 'human_relation_review_context',
             'human_asset_hashes', 'human_backup_state',
             'human_import_reports', 'human_import_report_rows'})
-        self.assertEqual({e['name'] for e in additions['meta_keys']}, {'human_revision'})
+        self.assertEqual({e['name'] for e in additions['meta_keys']}, {'human_revision', 'fold_projection'})
         self.assertEqual({(e['physical'], e['view']) for e in additions['physical_views']}, {
             ('term_records', 'terms'), ('term_relation_records', 'term_relations')})
-        introduced = {'galleries': 10, 'similar_seen': 10, 'gallery_members': 11}
+        introduced = {'galleries': 10, 'similar_seen': 10, 'gallery_members': 11, 'fold_projection': 11}
         for entry in additions['tables'] + additions['meta_keys'] + additions['physical_views']:
             self.assertEqual(entry['introduced_in'], introduced.get(entry.get('name'), 9))
             for check in entry['checks']:

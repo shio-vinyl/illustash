@@ -146,6 +146,21 @@ impl Replay<'_> {
         baseline::historical_projection(&self.state(path), frozen, self.recorded, illustash_terms::SCHEMA_VERSION)
     }
 
+    /// 对照仍保留旧快照的原始差分，只在比较前按录制的事实推算新版折叠状态。
+    fn compare_frozen(&self, at: &str, path: &Path, frozen: &baseline::State) -> Result<(), String> {
+        let mut expected = std::borrow::Cow::Borrowed(frozen);
+        if self.recorded == 7 {
+            if let Some(duplicates) = baseline::current_fold(frozen) {
+                expected.to_mut().insert("duplicates".into(), duplicates);
+            }
+        }
+        let got = self.historical_state(path, &expected)?;
+        if got != *expected {
+            return Err(format!("{at}: state differs: {:?}", baseline::differences(&expected, &got, 5)));
+        }
+        Ok(())
+    }
+
     /// 参与比较的内容；`version` 是当前的词条核心版本（按录制原样的检查点则用录制时的版本）。
     fn state_at(&self, path: &Path, version: i64) -> baseline::State {
         if !path.exists() {
@@ -191,6 +206,10 @@ impl Replay<'_> {
                     if let Some(change) = self.upgrade(&path, &base)? {
                         self.upgraded.push(change);
                     }
+                }
+                // 旧检查点保留历史分组和裁决，用当前应用打开时的投影作为此次重放的起点。
+                if !baseline::before_cutover(&open(&path)) && baseline::current_fold(&base).is_some() {
+                    illustash_terms::character_projection::fold(&open(&path)).map_err(|e| e.to_string())?;
                 }
                 self.expected.insert(path, base);
             } else {
@@ -276,10 +295,7 @@ impl Replay<'_> {
         let mut before = db.as_ref().and_then(|d| self.expected.get(d).cloned()).unwrap_or_default();
         if let (Some(d), Some(change)) = (&db, call.get("before")) {
             before = baseline::apply(&before, change).map_err(|e| format!("{at}: before: {e}"))?;
-            let actual = self.historical_state(d, &before)?;
-            if actual != before {
-                return Err(format!("{at}: state before the call: {:?}", baseline::differences(&before, &actual, 5)));
-            }
+            self.compare_frozen(&format!("{at}: before"), d, &before)?;
         }
         if call["mode"] == "cli" {
             let args = call["args"]
@@ -348,10 +364,7 @@ impl Replay<'_> {
                 Some(change) => baseline::apply(&before, change).map_err(|e| format!("{at}: {e}"))?,
                 None => before,
             };
-            let got = self.historical_state(&d, &want)?;
-            if got != want {
-                return Err(format!("{at}: state differs: {:?}", baseline::differences(&want, &got, 5)));
-            }
+            self.compare_frozen(at, &d, &want)?;
             self.expected.insert(d, want);
         }
         Ok(())

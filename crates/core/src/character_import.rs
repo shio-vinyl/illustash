@@ -763,11 +763,11 @@ const EXCLUDED: &str = "INSERT INTO excluded SELECT a.uuid,coalesce(r.reason,'ma
             FROM assets a LEFT JOIN curation k ON k.uuid=a.uuid LEFT JOIN auto_rules r ON r.uuid=a.uuid AND r.kind='exclude'
             WHERE (k.status='excluded' OR (r.uuid IS NOT NULL AND k.uuid IS NULL))";
 
-/// `Store._refresh_excluded`（全部）。
+/// 刷新全部排除状态，之后重算折叠，以保留不同收录状态的副本。
 pub fn excluded(c: &Connection) -> Result<()> {
     c.prepare_cached("DELETE FROM excluded")?.execute([])?;
     c.prepare_cached(EXCLUDED)?.execute([])?;
-    Ok(())
+    character_projection::fold(c)
 }
 
 fn touch(c: &Connection, uuids: &[String]) -> Result<()> {
@@ -862,7 +862,7 @@ fn reindex(c: &Connection, args: &Value) -> Result<Value> {
     publish(c, &format!("reindex:{}", args["indexed"].as_str().unwrap_or("")), Scope::Assets(&uuids), &rows)?;
     character_projection::refresh_candidates(c, &uuids)?;
     character_projection::evidence(c, Some(&uuids))?;
-    character_projection::memberships(c, Some(&uuids))?;
+    character_projection::memberships_before_excluded(c, Some(&uuids))?;
     rules(c, &args["realistic"])?;
     excluded(c)?;
     indexed(c, args)?;
@@ -911,8 +911,7 @@ fn import(c: &Connection, args: &Value) -> Result<Value> {
     duplicates(c, &args["duplicates"])?;
     character_projection::evidence(c, Some(&added))?;
     character_projection::single(c, Some(&added))?;
-    character_projection::memberships(c, Some(&both))?;
-    c.prepare_cached(&format!("{} ", include_str!("character_sql/fold.sql").trim_end()))?.execute([])?;
+    character_projection::memberships_before_excluded(c, Some(&both))?;
     rules(c, &args["realistic"])?;
     excluded(c)?;
     if let Some(run) = args["run_id"].as_i64() {
@@ -928,7 +927,7 @@ fn import(c: &Connection, args: &Value) -> Result<Value> {
 /// `Store._refresh_general_hits`（标签已在核心）：WD 结果重交之后重算单人、线索、归属、规则、排除。
 fn rederive(c: &Connection, args: &Value) -> Result<Value> {
     character_projection::single(c, None)?;
-    character_projection::memberships(c, None)?;
+    character_projection::memberships_before_excluded(c, None)?;
     rules(c, &args["realistic"])?;
     excluded(c)?;
     for key in ["rating_indexed", "general_indexed"] {

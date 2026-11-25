@@ -6,9 +6,7 @@ import numpy as np
 
 from tests.research_fixture import Features
 from tests.research_fixture import seed
-MIXED = """EXISTS(SELECT 1 FROM duplicates y WHERE y.grp=d.grp AND y.uuid<>d.uuid AND (
- EXISTS(SELECT entity FROM memberships WHERE uuid=d.uuid EXCEPT SELECT entity FROM memberships WHERE uuid=y.uuid) OR
- EXISTS(SELECT entity FROM memberships WHERE uuid=y.uuid EXCEPT SELECT entity FROM memberships WHERE uuid=d.uuid)))"""
+from tests.fixed_expectations import expected_folds
 
 
 def assert_memberships_current(test, store):
@@ -19,8 +17,12 @@ def assert_memberships_current(test, store):
         fresh = c.execute(f'SELECT {cols} FROM membership_rules ORDER BY uuid,entity').fetchall()
     test.assertEqual([tuple(r) for r in stored], [tuple(r) for r in fresh])
     with store.connect() as c:
-        stale = c.execute(f'SELECT count(*) FROM duplicates AS d WHERE hidden<>(rep=0 AND NOT {MIXED})').fetchone()[0]
-    test.assertEqual(stale, 0)
+        expected = expected_folds(c.execute('SELECT uuid,width,height FROM assets'),
+                                  c.execute('SELECT uuid,entity,status FROM assertions'),
+                                  c.execute('SELECT uuid,grp,pos FROM duplicates'),
+                                  (row[0] for row in c.execute('SELECT uuid FROM excluded')))
+        actual = c.execute('SELECT uuid,rep,hidden FROM duplicates')
+        test.assertEqual(sorted(map(tuple, actual)), sorted(expected))
     with store.connect() as c:
         stored = c.execute('SELECT uuid FROM excluded ORDER BY 1').fetchall()
         fresh = c.execute("""SELECT a.uuid FROM assets a LEFT JOIN curation k ON k.uuid=a.uuid

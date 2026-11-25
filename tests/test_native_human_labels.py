@@ -69,6 +69,32 @@ def assert_response_headers(test, reference, response):
         test.assertEqual(reference['headers'].get(header), response['headers'].get(header), header)
 
 
+def assert_write_wait_exhausted(test, url, body):
+    """写锁到期时核对每一边各自的前后状态和原生 HTTP 回执。"""
+    item = {'url': url, 'method': 'POST', 'body': json.dumps(body).encode(),
+            'headers': {'Content-Type': 'application/json', 'X-CSRF-Token': test.token}}
+    with closing(sqlite3.connect(test.left.db)) as left, closing(sqlite3.connect(test.right.db)) as right:
+        left.execute('BEGIN IMMEDIATE')
+        right.execute('BEGIN IMMEDIATE')
+        before = states(test.right)
+        reference_before = test.rec.state('before')
+        test.assertEqual(test.reference_response('response', item)['status'], 500)
+        response = fetch(test.origin, item, test.origin)
+        test.assertEqual(response['status'], 503)
+        test.assertEqual(response['route'], 'core')
+        test.assertEqual(json.loads(response['body']), {'error': '服务繁忙，请稍后重试'})
+        diagnostic = json.loads(response['headers']['X-Illustash-Diagnostic'])
+        test.assertRegex(diagnostic['id'], r'^D-[0-9a-f]{32}$')
+        test.assertEqual({k: v for k, v in diagnostic.items() if k != 'id'},
+                         {'stored': True, 'publication': 'not_committed', 'retry': 'retry'})
+        test.assertEqual(states(test.right), before)
+        reference_after = test.rec.state('after')
+        test.assertEqual(reference_after, reference_before)
+        test.assertEqual(reference_after, states(test.right))
+        test.assertEqual(response['headers']['Content-Length'], str(len(response['body'])))
+        test.assertFalse(test.sentinel.exists())
+
+
 def snapshot(path):
     """schema 和每张表（带类型的单元格和物理 rowid），以逐表摘要的形式给出。"""
     from tests.fixed_expectations import table_digests
@@ -433,11 +459,13 @@ class NativeHumanLabelsTest(unittest.TestCase):
         self.assertEqual(created['route'], 'core')
         action = json.loads(created['body'])['undo']
         self.assertEqual(action['label'], '已给 1 张加上标签 全新故障标签')
-        expected_tags = self.rec.value('reference reading of the native tags')
+        historical_tags = self.rec.value('reference reading of the native tags')
+        self.assertEqual(historical_tags, [{'tag': '全新故障标签', 'count': 2}])
         tags = fetch(self.origin, {'url': '/api/user-tags'}, self.origin)
         self.assertEqual(tags['status'], 200)
+        # 标签仍写入两份副本，按图库里可见的一张计数（#836）。
+        expected_tags = [{'tag': '全新故障标签', 'count': 1}]
         self.assertEqual(tags['body'], json.dumps(expected_tags, ensure_ascii=False).encode())
-        self.assertEqual([entry['tag'] for entry in expected_tags], ['全新故障标签'])
         with closing(sqlite3.connect(self.right.db)) as c:
             self.assertEqual(c.execute('SELECT uuid,tag FROM asset_tags ORDER BY uuid,tag').fetchall(),
                              [('a', '全新故障标签'), ('b', '全新故障标签')])
@@ -478,11 +506,9 @@ class NativeHumanLabelsTest(unittest.TestCase):
                     self.pair('/api/undo', {'id': value}, expected=400 if rejected else 200)
 
     def test_write_lock_contention_preserves_exact_error_and_all_data(self):
-        with closing(sqlite3.connect(self.left.db)) as left, closing(sqlite3.connect(self.right.db)) as right:
-            left.execute('BEGIN IMMEDIATE'); right.execute('BEGIN IMMEDIATE')
-            self.pair('/api/tag', {'ids': ['a'], 'tag': '合成 标签'}, expected=500)
-            left.rollback(); right.rollback()
-        self.pair('/api/tag', {'ids': ['a'], 'tag': '合成 标签'})
+        body = {'ids': ['a'], 'tag': '合成 标签'}
+        assert_write_wait_exhausted(self, '/api/tag', body)
+        self.pair('/api/tag', body)
         self.undo_latest()
 
     def test_inflight_old_token_cannot_write_after_library_switch(self):

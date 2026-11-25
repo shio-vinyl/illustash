@@ -191,6 +191,9 @@ fn failure(request: Request, err: Error, write: bool) {
             )
         }
     };
+    respond_failure(request, payload, status, diagnostic);
+}
+fn respond_failure(request: Request, payload: Json, status: u16, diagnostic: Option<crate::diagnostics::Receipt>) {
     match http::json_response(&request, &payload, status, "core") {
         Ok(mut response) => {
             if let Some(diagnostic) = diagnostic {

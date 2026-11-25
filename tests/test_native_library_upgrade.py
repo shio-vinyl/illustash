@@ -29,7 +29,7 @@ from unittest.mock import patch
 from PIL import Image
 
 from tests import test_native_lifecycle as lifecycle
-from tests.fixed_expectations import Library, Expectations, TERMS_VERSION, baseline_state, with_ambiguous_pool
+from tests.fixed_expectations import Library, Expectations, TERMS_VERSION, baseline_state, current_review_pools
 from tests.synthetic_source import synthetic_reference
 from tests.test_read_http import INTERRUPT, SPAWN, free_port, wait_until
 from tools.build_db import SCHEMA as SOURCE_SCHEMA
@@ -369,9 +369,8 @@ class NativeLibraryUpgradeTest(unittest.TestCase):
             reference = f'http://127.0.0.1:{server.server_port}' if server else None
             for url in lifecycle.CORE_READS:
                 with self.subTest(url=url):
-                    # 录制的参考回复早于「可能认错」池（#786）：只在 review-pools 末尾补上这一项再逐字节比，原有字节和响应头照旧
-                    # （同 test_native_lifecycle 的 pair、read_http_harness）。
-                    left = with_ambiguous_pool(url, self.rec.value('response'))
+                    # 对照录制的响应；整理队列按 #786、#836 的接口变更逐字段修正。
+                    left = current_review_pools(url, self.rec.value('response'))
                     right = fetch(origin, {'url': url}, origin)
                     self.assertIsNone(difference(left, right), (url, difference(left, right)))
                     self.assertEqual(right['route'], 'core')
@@ -468,6 +467,18 @@ class NativeLibraryUpgradeTest(unittest.TestCase):
 
     def test_desktop_upgrade_prompt_and_success_are_not_errors(self):
         lib, _ = self.package(6, 'desktop-upgrade')
+        with closing(sqlite3.connect(lib.db)) as c, c:
+            c.executescript("""
+                INSERT INTO assets VALUES ('manual','manual.png','manual.png',10,10,'2026-10-01','orig'),
+                    ('large','large.png','large.png',20,20,'2026-10-02','orig');
+                INSERT INTO duplicates VALUES ('manual','pair',2,1,'2026-10-02',0,0),
+                    ('large','pair',2,2,'2026-10-02',1,0);
+                INSERT INTO meta VALUES ('terms_writer','1');
+                INSERT INTO assertions SELECT 'manual',id,'confirmed','review' FROM entities ORDER BY id LIMIT 1;
+                DELETE FROM meta WHERE key='terms_writer';
+            """)
+            decisions = c.execute('SELECT * FROM assertions').fetchall()
+            self.assertEqual(len(decisions), 1)
         env = {**self.env, 'ILLUSTASH_DESKTOP_STDIN': '1'}
         before = tree(self.root)
         result = subprocess.run(self.args(lib, upgrade=False), env=env, input=b'\x01',
@@ -494,6 +505,10 @@ class NativeLibraryUpgradeTest(unittest.TestCase):
         with closing(sqlite3.connect(lib.db)) as c:
             self.assertEqual(c.execute("SELECT value FROM meta WHERE key='terms_schema'").fetchone()[0],
                              str(TERMS_VERSION))
+            self.assertEqual(c.execute("SELECT value FROM meta WHERE key='fold_projection'").fetchone(), ('3',))
+            self.assertEqual(c.execute('SELECT uuid,rep,hidden FROM duplicates ORDER BY pos').fetchall(),
+                             [('manual', 1, 0), ('large', 0, 1)])
+            self.assertEqual(c.execute('SELECT * FROM assertions').fetchall(), decisions)
         self.assertFalse(list((self.support / 'diagnostics').glob('D-*.json')))
         self.assertFalse((self.root / LOG_DIRECTORY / 'runtime.log').exists())
 

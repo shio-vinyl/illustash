@@ -3,7 +3,7 @@
 import {t, tb, I18N} from './i18n.js';
 import {post} from './session.js';
 import {listeners} from './events.js';
-// latest：撤销会还原的那一步的 {id, label}，或 null。busy：正在进行一项改动或撤销。
+// latest：撤销会还原的那一步的 {id, label, removal?}，或 null。busy：正在进行一项改动或撤销。
 export const edits = {latest: null, busy: false};
 const changed = listeners();
 // 每次改动后调用 fn(edits)；返回一个再把这个监听去掉的函数。
@@ -21,11 +21,18 @@ export async function exclusive(fn) {
   edits.busy = true; changed.emit(edits);
   try { return await fn(); } finally { edits.busy = false; setLatest(edits.latest); }
 }
-// 还原最近一步；解析为它的 label（照发送时的样子），下一步已经设好。
+// 双角色的「都不是」带独立的名字，保留名字本身的标点。
+export const editLabel = ({label, removal}) => removal
+  ? t('已将 {n} 张移出 {name}', {n: removal.count, name: removal.names.join(t('、'))})
+  : tb(label);
+// 还原最近一步，返回被撤销的步骤；下一步已经设好。
 export async function undoLatest() {
-  const {id, label} = edits.latest, result = await post('/api/undo', {id});
+  const step = edits.latest, result = await post('/api/undo', {id: step.id});
   setLatest(result.undo);
-  return label;
+  return step;
 }
-// 撤销带这个 label 的步骤后，toast 显示的文字。
-export const undoneText = label => t('已撤销 · {label}', {label: I18N.language === 'zh-CN' ? label.replace(/^已/, '') : tb(label)});
+// 撤销这一步之后，toast 显示的文字。
+export function undoneText(step) {
+  const label = editLabel(step);
+  return t('已撤销 · {label}', {label: I18N.language === 'zh-CN' ? label.replace(/^已/, '') : label});
+}

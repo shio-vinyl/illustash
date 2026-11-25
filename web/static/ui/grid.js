@@ -29,6 +29,7 @@ import {paintHearts, writeFavorite} from './favorites.js';
 import {key as frameKey, write as frameWrite} from './frame.js';
 import {dupHue, gridCard, gridContext, skeletonCard} from './grid_card.js';
 import {cardRect, fixedLayout, flowing, indexAt, layout, layoutKey, rowAt, rowCount, rowHeight, rowOf, rowReach, rowStart, rowTop, headResized, verticalStep} from './grid_rows.js';
+import {gridWindow, pagesBetween, visibleEnd, visibleOffsets} from './grid_window.js';
 import {enter} from './motion.js';
 import {app} from './scope.js';
 
@@ -42,13 +43,6 @@ export const zoomSlider = () => sizeToSlider(state.size);
 export function zoomFromSlider(v) { requestZoom(() => setSize(sliderToSize(v), undefined, undefined, true)); }
 // 进行中的分页读取，以及读取视口附近各页的防抖。查询参数和读取在 core/assets.js。
 let abortList, pageTimer;
-// 从第 first 张到第 last 张所在的几页（最多 4 页）。
-function pagesBetween(first, last) {
-  const offsets = []; for (let o = Math.floor(first / PAGE) * PAGE; o < Math.max(last, 1); o += PAGE) offsets.push(o);
-  return offsets.slice(0, 4);
-}
-const visibleEnd = v => rowStart(rowAt(v.scrollTop + v.clientHeight) + 2);
-function visibleOffsets() { const v = $('viewport'); return pagesBetween(rowStart(rowAt(v.scrollTop)), visibleEnd(v)); }
 // ---------- 回到原位置（#402） ----------
 // 离开网格页时按地址记下位置：第一张可见的图的序号、在它那一行里滚过的比例、这一屏到哪一张，以及详情栏里的图和键盘光标。
 // 回到同一地址（侧栏、后退、从角色页返回）时，reload 先读这几张所在的页，再一步定位到那里，不先读顶部再跳。
@@ -82,10 +76,13 @@ export async function reload(reset = false, place = null) {
   const epoch = state.readEpoch, route = state.route;
   const gen = ++state.generation; abortList?.abort(); abortList = new AbortController(); state.pending.clear();
   showArea('grid'); error('');
-  if (reset) { $('viewport').scrollTop = 0; $('resultCount').textContent = t('正在读取…'); state.totalReady = false; }
+  if (reset) {
+    windowRows.reset();
+    $('viewport').scrollTop = 0; $('resultCount').textContent = t('正在读取…'); state.totalReady = false;
+  }
   layout();
   try {
-    const offsets = place ? pagesBetween(place.anchor, place.end) : reset ? [0] : visibleOffsets();
+    const offsets = place ? pagesBetween(place.anchor, place.end) : reset ? [0] : visibleOffsets($('viewport'));
     const pages = await Promise.all(offsets.map((o, i) => readPage(o, {count: i === 0, signal: abortList.signal})));
     if (gen !== state.generation || route !== state.route) return;
     if (epoch !== state.readEpoch) return reload(reset, place);
@@ -180,13 +177,15 @@ const hueAt = i => dupHue(state.items, state.dataVersion, i);
 // 它的高度变了网格自己重新分行（ui/grid_rows.js 的 setHead），卡片都往下挪。
 export const gridHead = () => $('gridHead');
 // 挂着的卡片（ui/grid_card.js 的部件）：键是图的 uuid，还没读到的是「#序号」的骨架。按图找（#452）：写入后图合拢、
-// 重新排序时，内容没变的卡片只换位置，不重建。值是 {comp, item, i, box, ctx, hue}，记着上一次画的是什么，没变就不调 update。
+// 重新排序时，内容没变的卡片只换位置，不重建。值是 {comp, item, i, box, ctx, hue, preview}，记着上一次画的是什么，没变就不调 update。
 let mounted = new Map(), cards = null, ctx = null, ctxKey = '';
 // 滚出范围的卡片部件留着复用（park），不一直新建、丢弃：Chromium 里丢掉的卡片和它的 <img> 迟迟不释放（#708）。
 const spare = [], SPARE_MAX = 160;
+const windowRows = gridWindow(() => scheduleGrid());
 export function renderGrid(relayout = false) {
   if ($('grid').hidden) return;
   const v = $('viewport'), grid = $('grid');
+  windowRows.track(v.scrollTop);
   // 钉住第一张可见的图：它上方的行重新排布时（分页到达、新的估计值），视图保持不动。
   const anchorRow = rowAt(v.scrollTop), anchor = rowStart(anchorRow), within = v.scrollTop - rowTop(anchorRow);
   const oldLayout = layoutKey();
@@ -197,15 +196,12 @@ export function renderGrid(relayout = false) {
   }
   if (relayout || before[0] !== state.cols || before[1] !== state.rowH) state.gridKey = '';
   const rows = rowCount(); grid.style.height = `${rowTop(rows)}px`;
-  const first = Math.max(0, rowAt(v.scrollTop - rowReach()) - (flowing() ? 1 : 2)), last = Math.min(rows, rowAt(v.scrollTop + v.clientHeight) + 2);
+  const {first, last, ahead, behind, key: previewKey} = windowRows.measure(v, rows);
   // 屏幕倍率也算进键：窗口拖到倍率不同的屏幕后，下一次重画（滚动、改窗口大小）就按新倍率换缩略图档位（#452）。
-  const scale = screenScale(), key = `${first}:${last}:${state.dataVersion}:${layoutKey()}:${scale}`;
+  const scale = screenScale(), key = `${first}:${last}:${state.dataVersion}:${layoutKey()}:${scale}:${previewKey}`;
   if (key !== state.gridKey) { state.gridKey = key; placeCards(rowStart(first), rowStart(last), scale); }
   syncCards();
   clearTimeout(pageTimer); const gen = state.generation;
-  // 先是可见的几页，然后是上方和下方大约一屏，这样尺寸通常在各行滚进视野之前就到了，两端对齐的行不会在屏幕上重新
-  // 洗牌。
-  const ahead = rowStart(Math.min(rows, rowAt(v.scrollTop + 2 * v.clientHeight) + 1)), behind = rowStart(rowAt(v.scrollTop - v.clientHeight));
   pageTimer = setTimeout(() => {
     if (gen !== state.generation) return;
     for (let o = Math.floor(rowStart(first) / PAGE) * PAGE; o < rowStart(last); o += PAGE) loadPage(o);
@@ -229,9 +225,10 @@ function placeCards(from, to, scale) {
     mounted.delete(key);
     // 重复页的角标颜色看前一组：前面一页后读到时颜色可能变，变了的卡片要重画。
     const box = cardRect(i), hue = dup && item?.dup ? hueAt(i) : null;
-    if (m.item !== item || m.i !== i || m.ctx !== ctx || m.hue !== hue || !sameBox(m.box, box)) {
-      m.comp.update({item, index: i, box, ctx});
-      Object.assign(m, {item, i, box, ctx, hue});
+    const preview = windowRows.preview(box);
+    if (m.item !== item || m.i !== i || m.ctx !== ctx || m.hue !== hue || m.preview !== preview || !sameBox(m.box, box)) {
+      m.comp.update({item, index: i, box, ctx, preview});
+      Object.assign(m, {item, i, box, ctx, hue, preview});
     }
     keep.set(key, m); order.push(m.comp.el);
   }
@@ -297,7 +294,7 @@ export function toggleSelecting() { state.selecting = !state.selecting; if (!sta
 // 取消选择并退出选择模式（Esc、选择栏的 ×、写入之后、切换 NSFW）。
 export function quitSelecting() { state.selecting = false; clearSelection(); }
 // 换页时复位网格这一侧的状态：退出选择模式、清空选择、光标归位、张数等新读取（ui/shell.js applyRoute 调用）。
-export function resetForRoute() { quitSelecting(); state.cursor = -1; state.totalReady = false; }
+export function resetForRoute() { windowRows.reset(); quitSelecting(); state.cursor = -1; state.totalReady = false; }
 // 键盘光标移到第 i 张（详情栏和大图翻页时跟着走）。
 export function setCursor(i) { state.cursor = i; }
 // I 和大图底栏的「信息」：开关详情栏（#424 的 2-7）。大图里是关掉大图、在详情栏里看这张；网格里看光标那张（没有光标取
@@ -482,8 +479,8 @@ const syncUndone = () => t('已撤销，计数在同步结束后更新');
 export async function undo() {
   if (!edits.latest) return;
   const waiting = await exclusive(async () => {
-    let label;
-    try { label = await undoLatest(); } catch (e) {
+    let step;
+    try { step = await undoLatest(); } catch (e) {
       // 历史可能已经往前走了（另一个窗口，或服务端提交之后才失败）：显示它最新的一步。
       // 撤销一次人工结论导入被拒（后面有改动依赖它）时，说清楚为什么（core/human.js）。
       toast(undoRefusal(e, edits.latest)); refreshMeta().catch(err => error(readError(err)));
@@ -492,12 +489,12 @@ export async function undo() {
     const first = await learningNow();
     if (first?.state === 'pending') {
       const settled = learningSettled(first, {marking: true});
-      toast(undoneText(label)); renderHeading();
+      toast(undoneText(step)); renderHeading();
       return settled;
     }
     // 同步进行中：同步结束后接着等的那一段也显示「正在更新」。
     learningSettled(first, {marking: true});
-    toast(first?.state === 'sync' ? syncUndone() : undoneText(label)); await reread('undo');
+    toast(first?.state === 'sync' ? syncUndone() : undoneText(step)); await reread('undo');
     return null;
   });
   if (!waiting) return;
@@ -557,12 +554,11 @@ export async function favoriteSelection(payload) {
 
 // ---------- NSFW 筛选 ----------
 // 一次点击在 显示 → 隐藏 → 仅 NSFW 之间循环；H 切换隐藏。NSFW = WD 评级 questionable/explicit。
-// NSFW 标牌：空心 = 全部显示，划线 = 隐藏，实心 = 只看 NSFW。
+// NSFW 圆形按钮：中性色 = 全部显示，强调色描边 = 隐藏，实心警戒色 = 只看 NSFW。
 const NSFW_TIP = {'': t('NSFW：显示中 · 点击隐藏（H）'), hide: t('NSFW：已隐藏 · 点击只看 NSFW'), only: t('NSFW：只看 NSFW · 点击恢复全部')};
-const R18_ICON = '<svg class="r18" viewBox="0 0 44 20" aria-hidden="true"><rect class="plate" x="1.2" y="1.2" width="41.6" height="17.6" rx="5.5"/><text x="22" y="14.1" text-anchor="middle">NSFW</text><path class="cut" d="M6 17.5 38 2.5"/><path class="slash" d="M6 17.5 38 2.5"/></svg>';
 function renderNsfw() {
-  const b = $('nsfwButton'); if (!b.firstChild) b.innerHTML = R18_ICON;
-  b.className = 'nsfw-toggle s-' + (state.nsfw || 'all'); b.title = NSFW_TIP[state.nsfw]; b.setAttribute('aria-label', NSFW_TIP[state.nsfw]);
+  const b = $('nsfwButton');
+  b.className = 'icon nsfw-toggle s-' + (state.nsfw || 'all'); b.title = NSFW_TIP[state.nsfw]; b.setAttribute('aria-label', NSFW_TIP[state.nsfw]);
 }
 export function setNsfw(mode) {
   state.nsfw = mode; prefs.set('nsfw', mode); reRoute({}); renderNsfw(); quitSelecting();   // 新路由对象：切换前发出的读取晚回来不画
@@ -669,9 +665,9 @@ export function wireGrid() {
     if (back) { e.preventDefault(); stepHistory(e.key === '[' || e.key === 'ArrowLeft' ? -1 : 1); return; }
     // 活页条（#706）：⌘1–4 切一级，⌥↑↓ 在二级里移动，⌥⇧↑↓ 挪动钉住的项。
     if (railKey(e)) return;
-    // ⌘＋／⌘－：大图打开时缩放大图；否则只在有网格的页面改网格列数，别的页面什么也不做（也不交给浏览器缩放）。
-    if (mod && (key === '=' || key === '+' || key === '-')) {
-      e.preventDefault(); const bigger = key !== '-';
+    // ⌘＋／⌘－：大图打开时缩放大图；否则只在有网格的页面改网格列数，别的页面和换页读取中什么也不做（也不交给浏览器缩放）。
+    const zoom = mod && (key === '=' || key === '+' || key === '-'), frozen = $('viewport').inert; if (zoom || frozen) {
+      if (zoom) e.preventDefault(); if (frozen) return; const bigger = key !== '-';
       if (m.viewer) zoomView(bigger ? 1.4 : 1 / 1.4, innerWidth / 2, innerHeight / 2);
       else if (onGrid()) stepColumns(bigger ? -1 : 1);
       return;

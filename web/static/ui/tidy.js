@@ -10,7 +10,7 @@ import {make} from './el.js';
 import {gridFilters as filters} from '../core/assets.js';
 import {markOc} from './palette.js';
 
-// 同一个页签下的子页签（未识别：按组整理、全部、已跳过；重复：全部、角色不一致、相似的图；已排除：全部、各原因、待确认）。
+// 同一个页签下的子页签（未识别：按组整理、全部、已跳过；重复：全部、相似的图；已排除：全部、各原因、待确认）。
 // 张数和组数写在子页签上，标题下面不再写一遍（#426）。
 function subTabs(r) {
   // 字符串：网格页的工具栏把它和别的控件拼在一起（ui/shell.js renderChrome，改成节点见 #794）。文字都是译文和数字，标题经 esc。
@@ -26,8 +26,7 @@ function subTabs(r) {
       tab('#/unmatched', t('全部未识别'), '', all),
       tab('#/skipped', t('已跳过'), p.skipped ? number(p.skipped) : '', at === 'skipped')]);
     case 'duplicates': return row([
-      tab('#/duplicates', t('全部'), t('{n} 组', {n: number(state.dupInfo.groups)}), all && !r.dup),
-      tab('#/duplicates?dup=mixed', t('角色不一致'), t('{n} 组', {n: number(state.dupInfo.mixed)}), all && r.dup === 'mixed', t('几份副本标的角色不同')),
+      tab('#/duplicates', t('全部'), t('{n} 组', {n: number(state.dupInfo.groups)}), all),
       tab('#/similar', t('相似的图'), '', at === 'similar', t('同一幅画的不同文件'))]);
     case 'excluded': return row([
       tab('#/excluded', t('全部'), number(state.exclInfo.count), all && !r.reason),
@@ -63,7 +62,8 @@ implement({
       sub: [state.totalReady && !state.total ? '' : t('{n} 张长得像的未识别图', {n}), ...(state.groupTraits || [])].filter(Boolean).join(' · ')})},
   doubts: {head: tidy, help: () => [t('机器算给了某个角色、但和另一个角色分不太清的图。'), t('点一下缩略图把它点掉，长按或鼠标停在上面按 Space 看大图。'),
     t('回答只作用于卡上的图。')]},
-  duplicates: {head: tidy, subTabs, emptyNext: () => [{label: t('相似的图'), href: '#/similar'}], help: () => [t('同色角标是同一组。'), t('组里的角色不一致时不折叠，对齐以后折叠成一张。')]},
+  duplicates: {head: tidy, subTabs, emptyNext: () => [{label: t('相似的图'), href: '#/similar'}],
+    help: () => [t('同色角标是同一组。'), t('没有一份副本包含整组人工结论时，图库显示整组。')]},
   similar: {head: tidy, subTabs, help: () => [t('同一幅画的不同文件。'), t('点一组进去看。')]},
   sgroup: {subTabs, emptyNext: () => [{label: t('回到相似的图'), href: '#/similar'}], help: () => [t('选中两张以上可以判断它们的关系。')], helpHint: true},
   excluded: {head: tidy, subTabs, helpHint: true, emptyNext: () => [{label: t('去图库'), href: '#/library'}]},

@@ -2,10 +2,18 @@
 use crate::{http::LibraryContext, http_json::Json, http_read, store, Error, Result};
 use illustash_core::{error::invalid, schema::FAVORITE_KEY};
 use rusqlite::{
-    params, params_from_iter, types::Value as SqlValue, Connection, OpenFlags, OptionalExtension, TransactionBehavior,
+    params, params_from_iter, types::Value as SqlValue, Connection, OpenFlags, OptionalExtension, Transaction,
+    TransactionBehavior,
 };
 use serde_json::Value;
-use std::collections::{HashMap, HashSet};
+use std::{
+    collections::{HashMap, HashSet},
+    time::Duration,
+};
+
+/// 给页面操作多一次默认写等待的时间。SQLite 在连接内等待，宿主不会重放已经执行过的命令；
+/// 等待期间宿主只持会话读锁（`http_host_post` 的 `page_write`），其他请求照常应答。
+const PAGE_WRITE_WAIT: Duration = Duration::from_secs(10);
 
 pub(crate) fn request(context: &LibraryContext, path: &str, body: &Json) -> Result<Json> {
     request_prepared(context, path, body, None)
@@ -19,6 +27,7 @@ pub(crate) fn request_prepared(
     let mut c =
         crate::sqlite::open_with_flags(&context.db, OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_URI)?;
     crate::configure(&c)?;
+    c.busy_timeout(PAGE_WRITE_WAIT)?;
     http_read::register_names(&c)?;
     let result = match path {
         "/api/tag" => tag(&mut c, context, body),
@@ -83,11 +92,21 @@ pub(crate) fn last_action(c: &Connection) -> Result<Json> {
     let Some(row) = rows.into_iter().next() else {
         return Ok(None::<String>.into());
     };
-    Ok(Json::object([
-        ("id", row.get("id").expect("app_commands internal invariant").clone()),
-        ("label", crate::http_app::action_label(c, &row)?.into()),
-        ("ts", row.get("ts").expect("app_commands internal invariant").clone()),
-    ]))
+    crate::http_app::action_summary(c, &row)
+}
+/// 在应用事务中取得本次操作的撤销回执，提交后才交给调用方。
+pub(crate) fn commit_undo(tx: Transaction<'_>) -> Result<Json> {
+    let undo = last_action(&tx)?;
+    tx.commit()?;
+    Ok(undo)
+}
+
+/// 核心命令的回执需要读到同一事务刚更新的名称投影。
+pub(crate) fn commit_writing_reply<T>(tx: Transaction<'_>, reply: impl FnOnce(&Connection) -> Result<T>) -> Result<T> {
+    crate::schema::commit_writing_with(tx, |c| {
+        http_read::register_names(c)?;
+        reply(c)
+    })
 }
 fn string(value: Option<&Json>) -> Option<&str> {
     match value {
@@ -190,10 +209,7 @@ fn tag(c: &mut Connection, context: &LibraryContext, body: &Json) -> Result<Json
         .map_err(core_error)?
         .ok_or_else(|| Error::Invalid(format!("没有标签「{name}」")))?;
     judge_marks(&tx, &ids, term, add, &label)?;
-    tx.commit().map_err(core_error)?;
-    http_read::register_names(c)?;
-    let action = last_action(c)?;
-    Ok(Json::object([("undo", action)]))
+    Ok(Json::object([("undo", commit_undo(tx)?)]))
 }
 fn favorite(c: &mut Connection, context: &LibraryContext, body: &Json) -> Result<Json> {
     initialized(c)?;
@@ -208,10 +224,7 @@ fn favorite(c: &mut Connection, context: &LibraryContext, body: &Json) -> Result
     };
     let label = if add { format!("已收藏 {n} 张") } else { format!("已取消收藏 {n} 张") };
     judge_marks(&tx, &ids, term, add, &label)?;
-    // 在提交前读取本步，避免后台任务先写入另一条历史。
-    let action = last_action(&tx)?;
-    tx.commit().map_err(core_error)?;
-    Ok(Json::object([("undo", action)]))
+    Ok(Json::object([("undo", commit_undo(tx)?)]))
 }
 fn mark_selection(c: &Connection, context: &LibraryContext, body: &Json) -> Result<(Vec<String>, usize)> {
     let ids = selected(c, context, body)?;
@@ -287,9 +300,7 @@ fn artist(c: &mut Connection, body: &Json) -> Result<Json> {
         }
     }
     store::judge_in(&tx, &targets, verdict, "user", "", &label).map_err(core_error)?;
-    tx.commit().map_err(core_error)?;
-    http_read::register_names(c)?;
-    Ok(Json::object([("undo", last_action(c)?)]))
+    Ok(Json::object([("undo", commit_undo(tx)?)]))
 }
 fn sqlite_id(value: Option<&Json>) -> Result<SqlValue> {
     Ok(match value {
@@ -357,9 +368,13 @@ fn undo(c: &mut Connection, body: &Json) -> Result<Json> {
         tx.execute("INSERT INTO backend_effects(kind) VALUES ('verdict')", []).map_err(core_error)?;
     }
     crate::schema::commit_writing(tx).map_err(core_error)?;
-    http_read::register_names(c)?;
-    let action = last_action(c)?;
-    Ok(Json::object([("undo", action)]))
+    // 撤销已提交。继续读下一步可撤销的操作；读取失败时仍如实应答本次撤销成功。
+    let next = http_read::register_names(c).and_then(|()| last_action(c)).unwrap_or_else(|error| {
+        use crate::diagnostics::{self, Operation, Publication, Stage};
+        diagnostics::failure(Operation::Http, Stage::Read, &error, Publication::Committed);
+        Json::from(Value::Null)
+    });
+    Ok(Json::object([("undo", next)]))
 }
 fn restore_application(c: &Connection, bound: &SqlValue, before: &Value) -> Result<()> {
     let last: Option<i64> = c.query_row("SELECT max(id) FROM actions WHERE undone=0", [], |r| r.get(0))?;
@@ -459,7 +474,19 @@ mod tests {
             let db = root.join("library.sqlite");
             let mut c = crate::open(&db).unwrap();
             crate::migrate(&mut c).unwrap();
-            c.execute_batch("CREATE TABLE assets(uuid TEXT PRIMARY KEY,added_at TEXT); INSERT INTO assets VALUES ('a','2026-10-01'),('copy','2026-10-01'),('b','2026-09-30'); CREATE TABLE duplicates(uuid TEXT PRIMARY KEY,grp TEXT,pos INTEGER,hidden INTEGER); INSERT INTO duplicates VALUES ('a','g',0,0),('copy','g',1,1); CREATE TABLE excluded(uuid TEXT PRIMARY KEY,reason TEXT,origin TEXT); CREATE TABLE curation(uuid TEXT PRIMARY KEY,status TEXT,origin TEXT,created_at TEXT DEFAULT CURRENT_TIMESTAMP); CREATE TABLE auto_rules(uuid TEXT PRIMARY KEY,kind TEXT,reason TEXT); CREATE TABLE prefs(key TEXT PRIMARY KEY,value TEXT); CREATE TABLE asked(uuid TEXT,action_id INTEGER); CREATE TABLE reviews(entity TEXT,action_id INTEGER); CREATE TABLE backend_effects(id INTEGER PRIMARY KEY,kind TEXT,status TEXT NOT NULL DEFAULT 'pending',error TEXT NOT NULL DEFAULT '',created_at TEXT DEFAULT CURRENT_TIMESTAMP); INSERT INTO meta VALUES ('terms_artists','core'),('terms_labels','core'),('terms_characters','core'),('terms_names','core');").unwrap();
+            c.execute_batch("CREATE TABLE assets(uuid TEXT PRIMARY KEY,added_at TEXT,width INTEGER,height INTEGER);
+                INSERT INTO assets(uuid,added_at) VALUES ('a','2026-10-01'),('copy','2026-10-01'),('b','2026-09-30');
+                CREATE TABLE duplicates(uuid TEXT PRIMARY KEY,grp TEXT,pos INTEGER,rep INTEGER,hidden INTEGER);
+                INSERT INTO duplicates VALUES ('a','g',0,1,0),('copy','g',1,0,1);
+                CREATE TABLE assertions(uuid TEXT,entity TEXT,status TEXT,PRIMARY KEY(uuid,entity));
+                CREATE TABLE excluded(uuid TEXT PRIMARY KEY,reason TEXT,origin TEXT);
+                CREATE TABLE curation(uuid TEXT PRIMARY KEY,status TEXT,origin TEXT,created_at TEXT DEFAULT CURRENT_TIMESTAMP);
+                CREATE TABLE auto_rules(uuid TEXT PRIMARY KEY,kind TEXT,reason TEXT);
+                CREATE TABLE prefs(key TEXT PRIMARY KEY,value TEXT);
+                CREATE TABLE asked(uuid TEXT,action_id INTEGER);
+                CREATE TABLE reviews(entity TEXT,action_id INTEGER);
+                CREATE TABLE backend_effects(id INTEGER PRIMARY KEY,kind TEXT,status TEXT NOT NULL DEFAULT 'pending',error TEXT NOT NULL DEFAULT '',created_at TEXT DEFAULT CURRENT_TIMESTAMP);
+                INSERT INTO meta VALUES ('terms_artists','core'),('terms_labels','core'),('terms_characters','core'),('terms_names','core');").unwrap();
             c.execute_batch("CREATE TABLE entities(id TEXT PRIMARY KEY); CREATE TABLE links(entity_id TEXT); INSERT INTO meta VALUES ('names_version','0'),('names_projected','0');").unwrap();
             c.execute_batch(crate::legacy_labels::VIEWS).unwrap();
             let context = LibraryContext {
@@ -567,6 +594,29 @@ mod tests {
         assert_eq!(f.count("SELECT count(*) FROM backend_effects"), 0);
     }
     #[test]
+    fn receipt_precedes_another_connection_and_stale_undo_refuses_it() {
+        let f = Fixture::new();
+        let mut page = crate::sqlite::open(&f.context.db).unwrap();
+        let background = crate::sqlite::open(&f.context.db).unwrap();
+        background.busy_timeout(Duration::ZERO).unwrap();
+
+        let tx = page.transaction_with_behavior(TransactionBehavior::Immediate).unwrap();
+        crate::schema::begin_writing(&tx).unwrap();
+        tx.execute("INSERT INTO actions(label,before_json) VALUES ('页面操作','[]')", []).unwrap();
+        let receipt = commit_writing_reply(tx, |c| {
+            let busy = background.execute_batch("BEGIN IMMEDIATE; ROLLBACK;").unwrap_err();
+            assert_eq!(busy.sqlite_error_code(), Some(rusqlite::ErrorCode::DatabaseBusy));
+            last_action(c)
+        })
+        .unwrap();
+        background.execute("INSERT INTO actions(label,before_json) VALUES ('后台操作','[]')", []).unwrap();
+        assert_eq!(receipt.field("label").text(), "页面操作");
+        assert_eq!(last_action(&background).unwrap().field("label").text(), "后台操作");
+        let input = serde_json::json!({"id":receipt.field("id").integer()}).to_string();
+        assert!(matches!(f.call("/api/undo", &input), Err(Error::Invalid(m)) if m == store::HISTORY_CHANGED));
+        assert_eq!(f.count("SELECT count(*) FROM actions WHERE undone=0"), 2);
+    }
+    #[test]
     fn parameter_order_selection_and_confirmation_do_not_write() {
         let f = Fixture::new();
         for (text, message) in [
@@ -658,7 +708,7 @@ mod tests {
         let f = Fixture::new();
         let c = crate::sqlite::open(&f.context.db).unwrap();
         c.execute_batch(
-            "INSERT INTO assets VALUES ('c','2026-09-29'),('d','2026-09-28');
+            "INSERT INTO assets(uuid,added_at) VALUES ('c','2026-09-29'),('d','2026-09-28');
              CREATE TABLE similar_groups(uuid TEXT PRIMARY KEY,gid INTEGER);
              INSERT INTO similar_groups VALUES ('b',7),('c',7);
              CREATE TABLE relations(a TEXT,b TEXT,kind TEXT);

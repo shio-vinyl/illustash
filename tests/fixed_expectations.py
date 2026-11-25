@@ -53,13 +53,15 @@ def fixed_values(name):
     return values
 
 
-def with_ambiguous_pool(url, response):
-    """#786：这些合成图库没有可能认错的图，在旧响应末尾精确追加这一个池。"""
+def current_review_pools(url, response):
+    """只调整历史整理队列中的两处接口变更：#786 新增的池、#836 移除的计数。"""
     if url.split('?', 1)[0] != '/api/review-pools' or response['status'] != 200:
         return response
     pool = {'kind': 'ambiguous', 'name': '可能认错', 'count': 0, 'cover': None}
     body = response['body']
     assert body.endswith(b']')
+    body, removed = re.subn(rb'("kind": "duplicates", "name": "[^"]+", "count": \d+, "groups": \d+), "mixed": \d+', rb'\1', body)
+    assert removed == 1
     body = body[:-1] + b', ' + json.dumps(pool, ensure_ascii=False).encode() + b']'
     return {**response, 'body': body, 'headers': {**response['headers'], 'Content-Length': str(len(body))}}
 
@@ -570,6 +572,56 @@ def _baseline_additions():
     return additions
 
 
+def expected_folds(assets, assertions, duplicates, excluded):
+    """按当前规则构造测试期望；同组任一图片的人工记录均属本组须保留的记录。"""
+    area = {uuid: (width or 0) * (height or 0) for uuid, width, height in assets}
+    decisions = {}
+    for uuid, entity, status in assertions:
+        decisions.setdefault(uuid, set()).add((entity, status))
+    groups = {}
+    for uuid, grp, pos in duplicates:
+        groups.setdefault(grp, []).append((uuid, pos))
+    excluded = set(excluded)
+    for copies in groups.values():
+        judgments = {uuid: decisions.get(uuid, set()) for uuid, _ in copies}
+        all_decisions = set().union(*judgments.values())
+        best, _ = min(copies, key=lambda copy: (-len(judgments[copy[0]]), -area.get(copy[0], 0), copy[1], copy[0]))
+        foldable = judgments[best] == all_decisions and len({uuid in excluded for uuid, _ in copies}) == 1
+        for uuid, _ in copies:
+            yield uuid, int(uuid == best), int(uuid != best and foldable)
+
+
+def _refresh_reference_folds(frozen, state):
+    """历史基准提供分组和人工结论。用它推算两列派生值，其余原样严格比较。"""
+    app = frozen.get('app', {})
+    if not app.get('duplicates', {}).get('rows'):
+        return frozen
+    marker = next((cells[1] for row in state.get('app', {}).get('meta', {}).get('rows', [])
+                   if (cells := json.loads(row))[0] == 'fold_projection'), None)
+    if marker != '3':
+        return frozen
+
+    def rows(table, names):
+        table = app[table]
+        indices = [table['columns'].index(name) for name in names.split()]
+        return (tuple(json.loads(row)[i] for i in indices) for row in table['rows'])
+
+    expected = {
+        uuid: (rep, hidden) for uuid, rep, hidden in expected_folds(
+            rows('assets', 'uuid width height'), rows('assertions', 'uuid entity status'),
+            rows('duplicates', 'uuid grp pos'), (uuid for (uuid,) in rows('excluded', 'uuid')))
+    }
+    duplicates = app['duplicates']
+    columns = duplicates['columns']
+    uuid, rep, hidden = map(columns.index, ('uuid', 'rep', 'hidden'))
+    updated = []
+    for row in duplicates['rows']:
+        cells = json.loads(row)
+        cells[rep], cells[hidden] = expected[cells[uuid]]
+        updated.append(json.dumps(cells, ensure_ascii=False, separators=(',', ':')))
+    return {**frozen, 'app': {**app, 'duplicates': {**duplicates, 'rows': sorted(updated)}}}
+
+
 def _historical_projection(state, frozen):
     """仅从实时 app 库的 v7 历史投影中分离具名新状态，不改变 baseline_state 的完整读数。"""
     app = state.get('app', {})
@@ -640,6 +692,25 @@ def _baseline_file(module):
         return json.load(f)
 
 
+def _curation_selection_with_folding(frozen):
+    """同一批收录动作：d 被折叠后，在首轮可见选区之后随副本组补到快照里。"""
+    app = frozen['app']
+    actions = app['actions']
+    rows = []
+    for row in actions['rows']:
+        cells = json.loads(row)
+        if cells[0] != 6:
+            rows.append(row)
+            continue
+        assert cells[1] == '已收录 6 张'
+        before = json.loads(cells[2])
+        assert [image['uuid'] for image in before] == ['a', 'c', 'd', 'e', 'f', 'g', '图甲', 'b', 'h']
+        before.insert(7, before.pop(2))
+        cells[2] = json.dumps(before, ensure_ascii=False, sort_keys=True, separators=(',', ':'))
+        rows.append(json.dumps(cells, ensure_ascii=False, separators=(',', ':')))
+    return {**frozen, 'app': {**app, 'actions': {**actions, 'rows': sorted(rows)}}}
+
+
 def _check_baseline(slot, state, only=None):
     """录制时为 ``slot``（module、test、key）录下 ``state``；否则返回 True，除非为它录过对照基准且两者不同
     （差异会打印出来）。"""
@@ -650,6 +721,10 @@ def _check_baseline(slot, state, only=None):
     want = _baseline_file(module).get(test, {}).get(key)
     if want is not None:
         want = {db: {t: v for t, v in tables.items() if t not in RETIRED} for db, tables in want.items()}
+        want = _refresh_reference_folds(want, state)
+        if (test == 'tests.test_native_human_curation.NativeHumanCurationTest.test_parameter_validation_selection_confirmation_and_error_order'
+                and key in {'51:after', '53:after'}):
+            want = _curation_selection_with_folding(want)
         state = _historical_projection(state, want)
     if only is not None:
         pick = lambda s: {db: {t: s.get(db, {}).get(t) for t in tables} for db, tables in only.items()}

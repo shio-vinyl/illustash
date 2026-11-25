@@ -103,8 +103,7 @@ pub(crate) fn open_owned(
     } else {
         &[]
     };
-    owner.health.opened(checked)?;
-    Ok((library, owner))
+    finish_open(library, owner, checked)
 }
 /// 在打开 `path` 之前抢救它损坏的 source.sqlite（#228）：持有图库包（是会话自己的图库包时沿用会话的持有权），
 /// 建好新文件并放到位。只抢救记录在案的 source.sqlite 损坏；library.sqlite 损坏时仍按它自己的提示处理。
@@ -126,7 +125,30 @@ pub(crate) fn rescue_package(
 /// 经过完整检查打开的图库包（显式升级），为会话持有。
 pub(crate) fn own_checked(library: Library) -> Result<(Library, Arc<Owner>)> {
     let owner = Owner::claim(&library)?;
-    owner.health.opened(&crate::app_integrity::Database::BOTH)?;
+    finish_open(library, owner, &crate::app_integrity::Database::BOTH)
+}
+
+fn finish_open(
+    library: Library,
+    owner: Arc<Owner>,
+    checked: &[crate::app_integrity::Database],
+) -> Result<(Library, Arc<Owner>)> {
+    // 副本折叠是派生状态：刷新失败（数据库忙、只读、磁盘满）不挡住打开。版本标记随刷新一起回滚，下次打开再刷新。
+    // 数据库损坏照打开时的损坏处理（#212）：完整检查后记下损坏，不当成普通的打开失败。
+    if let Err(error) = crate::app_curation::refresh_fold_on_open(&library) {
+        if matches!(&error, Error::Sql(e) if crate::app_library::corruption(e).is_some()) {
+            return Err(match crate::app_integrity::check_both(&library, None)? {
+                Some(damage) => {
+                    owner.health.damaged(damage.clone())?;
+                    damage.error()
+                }
+                None => error,
+            });
+        }
+        use crate::diagnostics::{failure, Operation, Publication, Stage};
+        failure(Operation::Library, Stage::Write, &error, Publication::NotCommitted);
+    }
+    owner.health.opened(checked)?;
     Ok((library, owner))
 }
 fn claim_or_reuse(library: &Library, current: Option<(&Library, &Arc<Owner>)>) -> Result<Arc<Owner>> {

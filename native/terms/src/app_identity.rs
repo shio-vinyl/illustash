@@ -1,5 +1,5 @@
 //! HTTP 身份包装，共用现有的角色事务和撤销协议。
-use crate::{app_commands, character_json, http_json::Json, http_read, Error, Result};
+use crate::{app_commands, character_json, http_json::Json, Error, Result};
 use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
 use serde_json::{json, Value};
 
@@ -31,9 +31,8 @@ pub(crate) fn request(c: &mut Connection, path: &str, body: &Json) -> Result<Jso
     crate::schema::begin_writing(&tx).map_err(app_commands::core_error)?;
     crate::character_commands::command(&tx, &command).map_err(app_commands::core_error)?;
     tx.execute("INSERT INTO backend_effects(kind) VALUES ('verdict')", [])?;
-    crate::schema::commit_writing(tx).map_err(app_commands::core_error)?;
-    http_read::register_names(c)?;
-    Ok(Json::object([("undo", app_commands::last_action(c)?)]))
+    let undo = app_commands::commit_writing_reply(tx, app_commands::last_action).map_err(app_commands::core_error)?;
+    Ok(Json::object([("undo", undo)]))
 }
 
 fn skip(c: &mut Connection, body: &Json) -> Result<Json> {
@@ -61,6 +60,5 @@ fn skip(c: &mut Connection, body: &Json) -> Result<Json> {
         "INSERT INTO actions(label,before_json) VALUES (?,?)",
         params!["已暂不判断一对角色", json!([{"identity_skip":before}]).to_string()],
     )?;
-    tx.commit()?;
-    Ok(Json::object([("undo", app_commands::last_action(c)?)]))
+    Ok(Json::object([("undo", app_commands::commit_undo(tx)?)]))
 }

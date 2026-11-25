@@ -70,7 +70,7 @@ pub(crate) fn refresh_excluded(c: &Connection, ids: &[String]) -> Result<()> {
     }
     c.execute("DELETE FROM excluded WHERE uuid IN (SELECT uuid FROM touched)", [])?;
     c.execute("INSERT INTO excluded SELECT a.uuid,coalesce(r.reason,'manual'),CASE WHEN k.status='excluded' THEN 'review' ELSE 'rule' END FROM assets a LEFT JOIN curation k ON k.uuid=a.uuid LEFT JOIN auto_rules r ON r.uuid=a.uuid AND r.kind='exclude' WHERE (k.status='excluded' OR (r.uuid IS NOT NULL AND k.uuid IS NULL)) AND a.uuid IN (SELECT uuid FROM touched)", [])?;
-    Ok(())
+    crate::character_projection::fold_touched(c)
 }
 
 pub(crate) fn fold(c: &mut Connection, context: &LibraryContext, body: &Json) -> Result<Json> {
@@ -100,9 +100,37 @@ pub(crate) fn fold(c: &mut Connection, context: &LibraryContext, body: &Json) ->
         crate::character_json::dump(&Value::Array(kinds.iter().cloned().map(Value::String).collect()), true);
     tx.execute("INSERT OR REPLACE INTO prefs VALUES ('fold_kinds',?)", [persisted])?;
     refresh_duplicates(&tx, &src, &kinds)?;
-    crate::character_projection::fold(&tx)?;
+    rebuild_fold(&tx)?;
     tx.commit()?;
     Ok(Json::object([("kinds", Json::Array(kinds.into_iter().map(Json::from).collect()))]))
+}
+
+const FOLD_PROJECTION: &str = "3";
+
+/// 开库、发布会话前按新规则刷新曾存下的折叠结果。版本标记与派生表一起提交。
+pub(crate) fn refresh_fold_on_open(library: &crate::app_library::Library) -> Result<()> {
+    const NEEDS_REFRESH: &str = "SELECT EXISTS(SELECT 1 FROM duplicates)
+            AND NOT EXISTS(SELECT 1 FROM meta WHERE key='fold_projection' AND value=?)";
+    let needs_refresh =
+        |c: &Connection| -> Result<bool> { Ok(c.query_row(NEEDS_REFRESH, [FOLD_PROJECTION], |r| r.get(0))?) };
+    if library.frozen() || !needs_refresh(&crate::app_library::read_connection(&library.db())?)? {
+        return Ok(());
+    }
+    let mut c = crate::sqlite::open_with_flags(library.db(), OpenFlags::SQLITE_OPEN_READ_WRITE)?;
+    crate::configure(&c)?;
+    let tx = c.transaction_with_behavior(TransactionBehavior::Immediate)?;
+    if needs_refresh(&tx)? {
+        rebuild_fold(&tx)?;
+    }
+    tx.commit()?;
+    Ok(())
+}
+
+/// 写入既有事务；首次打开和改设置都发布同一版本的派生状态。
+fn rebuild_fold(c: &Connection) -> Result<()> {
+    crate::character_projection::fold(c)?;
+    c.execute("INSERT OR REPLACE INTO meta VALUES ('fold_projection',?)", [FOLD_PROJECTION])?;
+    Ok(())
 }
 
 // 分组的插入顺序会通过 duplicates 的 rowid 体现出来（沿用旧实现）。并集运算先求右侧。
@@ -247,7 +275,7 @@ mod tests {
             let db = root.join("library.sqlite");
             let source = root.join("source.sqlite");
             let mut c = crate::sqlite::open(&db).unwrap();
-            c.execute_batch("CREATE TABLE assets(uuid TEXT PRIMARY KEY,added_at TEXT,width INTEGER,height INTEGER); INSERT INTO assets VALUES ('a','2026-01',10,10),('b','2026-02',20,20),('c','2026-02',20,20),('d','2025-01',NULL,NULL); CREATE TABLE duplicates(uuid TEXT PRIMARY KEY,grp TEXT NOT NULL,size INTEGER NOT NULL,pos INTEGER NOT NULL,grp_added TEXT NOT NULL,rep INTEGER NOT NULL,hidden INTEGER NOT NULL DEFAULT 0); CREATE INDEX duplicates_grp ON duplicates(grp,pos); CREATE TABLE curation(uuid TEXT PRIMARY KEY,status TEXT NOT NULL,origin TEXT NOT NULL,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP); CREATE TABLE excluded(uuid TEXT PRIMARY KEY,reason TEXT,origin TEXT); CREATE TABLE auto_rules(uuid TEXT PRIMARY KEY,kind TEXT,reason TEXT); CREATE TABLE actions(id INTEGER PRIMARY KEY AUTOINCREMENT,label TEXT,before_json TEXT,ts TEXT DEFAULT CURRENT_TIMESTAMP,undone INTEGER DEFAULT 0,label_kind TEXT,label_count TEXT); CREATE TABLE prefs(key TEXT PRIMARY KEY,value TEXT NOT NULL); CREATE TABLE relations(a TEXT,b TEXT,kind TEXT); CREATE TABLE memberships(uuid TEXT,entity TEXT);").unwrap();
+            c.execute_batch("CREATE TABLE assets(uuid TEXT PRIMARY KEY,added_at TEXT,width INTEGER,height INTEGER); INSERT INTO assets VALUES ('a','2026-01',10,10),('b','2026-02',20,20),('c','2026-02',20,20),('d','2025-01',NULL,NULL); CREATE TABLE duplicates(uuid TEXT PRIMARY KEY,grp TEXT NOT NULL,size INTEGER NOT NULL,pos INTEGER NOT NULL,grp_added TEXT NOT NULL,rep INTEGER NOT NULL,hidden INTEGER NOT NULL DEFAULT 0); CREATE INDEX duplicates_grp ON duplicates(grp,pos); CREATE TABLE curation(uuid TEXT PRIMARY KEY,status TEXT NOT NULL,origin TEXT NOT NULL,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP); CREATE TABLE excluded(uuid TEXT PRIMARY KEY,reason TEXT,origin TEXT); CREATE TABLE auto_rules(uuid TEXT PRIMARY KEY,kind TEXT,reason TEXT); CREATE TABLE actions(id INTEGER PRIMARY KEY AUTOINCREMENT,label TEXT,before_json TEXT,ts TEXT DEFAULT CURRENT_TIMESTAMP,undone INTEGER DEFAULT 0,label_kind TEXT,label_count TEXT); CREATE TABLE prefs(key TEXT PRIMARY KEY,value TEXT NOT NULL); CREATE TABLE relations(a TEXT,b TEXT,kind TEXT); CREATE TABLE memberships(uuid TEXT,entity TEXT); CREATE TABLE assertions(uuid TEXT,entity TEXT,status TEXT,origin TEXT,PRIMARY KEY(uuid,entity));").unwrap();
             crate::migrate(&mut c).unwrap();
             let src = crate::sqlite::open(&source).unwrap();
             if hash {
@@ -340,22 +368,236 @@ mod tests {
         assert_eq!(
             rows,
             vec![
-                (1, "a".into(), "a".into(), 1, 0, 0),
+                (1, "a".into(), "a".into(), 1, 0, 1),
                 (2, "b".into(), "a".into(), 2, 1, 0),
-                (3, "c".into(), "a".into(), 3, 0, 0)
+                (3, "c".into(), "a".into(), 3, 0, 1)
             ]
         );
         assert_eq!(bytes, fs::read(f.context.source.as_ref().unwrap()).unwrap());
         fold(&mut f.c, &f.context, &Fixture::body(r#"{"kinds":[]}"#)).unwrap();
-        assert_eq!(f.count("duplicates"), 2); // 字节相同的副本仍然折叠，但成员关系不同的保持可见。
-        f.c.execute("DELETE FROM memberships", []).unwrap();
-        fold(&mut f.c, &f.context, &Fixture::body(r#"{"kinds":[]}"#)).unwrap();
+        assert_eq!(f.count("duplicates"), 2); // 字节相同、只有机器结果不同的副本也折叠。
         assert_eq!(
             f.c.query_row("SELECT uuid FROM duplicates WHERE hidden=1", [], |r| r.get::<_, String>(0)).unwrap(),
             "c"
         );
         assert_eq!(f.count("actions"), 0);
     }
+    /// 0.4.0 存下的副本折叠：两份图都显示，人工判断在较小的那份上，还没有版本标记。
+    fn old_fold_package(f: &Fixture, name: &str) -> (PathBuf, crate::app_library::Library) {
+        let package = f.root.join(name);
+        crate::app_create::create_folder(&package, &f.root, None, None, None).unwrap();
+        let library = crate::app_library::Library::open(&package).unwrap();
+        let mut c = crate::sqlite::open(library.db()).unwrap();
+        let tx = c.transaction().unwrap();
+        crate::schema::begin_writing(&tx).unwrap();
+        tx.execute_batch(
+            "INSERT INTO assets(uuid,filename,src_path,src_kind,added_at,width,height) VALUES
+                 ('manual','manual.png','manual.png','orig','2026-10-01',10,10),
+                 ('large','large.png','large.png','orig','2026-10-02',20,20);
+             INSERT INTO duplicates(uuid,grp,size,pos,grp_added,rep,hidden) VALUES
+                 ('manual','same',2,1,'2026-10-02',0,0), ('large','same',2,2,'2026-10-02',1,0);",
+        )
+        .unwrap();
+        crate::character_commands::command(&tx, &json!({"op":"create_entity","id":"a","name":"合成角色","lang":"zh"}))
+            .unwrap();
+        // 表示 0.4.0 时每份图各自的人工判断；旧缓存同时显示两份图。
+        tx.execute("INSERT INTO assertions VALUES ('manual','a','confirmed','review')", []).unwrap();
+        crate::schema::commit_writing(tx).unwrap();
+        (package, library)
+    }
+    fn fold_rows(c: &Connection) -> Vec<(String, i64, i64)> {
+        c.prepare("SELECT uuid,rep,hidden FROM duplicates ORDER BY uuid")
+            .unwrap()
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
+            .unwrap()
+            .collect::<rusqlite::Result<_>>()
+            .unwrap()
+    }
+    fn fold_marker(c: &Connection) -> Option<String> {
+        c.query_row("SELECT value FROM meta WHERE key='fold_projection'", [], |r| r.get(0)).optional().unwrap()
+    }
+
+    #[test]
+    fn reopens_old_folding_projection_once_without_touching_human_decisions() {
+        let f = Fixture::new(false);
+        let (package, library) = old_fold_package(&f, "old-fold.pilib");
+        let c = crate::sqlite::open(library.db()).unwrap();
+
+        let claims = || {
+            let mut rows = c.prepare("SELECT uuid,entity,status,origin FROM assertions ORDER BY uuid,entity").unwrap();
+            rows.query_map([], |r| {
+                Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?, r.get::<_, String>(3)?))
+            })
+            .unwrap()
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .unwrap()
+        };
+        let before = claims();
+        let (opened, owner) = crate::app_service::open_owned(&package, None, None).unwrap();
+        assert_eq!(claims(), before);
+        assert_eq!(crate::schema::version(&c).unwrap(), crate::SCHEMA_VERSION);
+        assert_eq!(
+            c.query_row("SELECT uuid FROM duplicates WHERE rep=1 AND hidden=0", [], |r| r.get::<_, String>(0)).unwrap(),
+            "manual"
+        );
+        assert_eq!(
+            c.query_row("SELECT uuid FROM duplicates WHERE hidden=1", [], |r| r.get::<_, String>(0)).unwrap(),
+            "large"
+        );
+        assert_eq!(
+            c.query_row("SELECT value FROM meta WHERE key='fold_projection'", [], |r| r.get::<_, String>(0)).unwrap(),
+            FOLD_PROJECTION
+        );
+        // 用触发器记下再开时有没有重写持久标记（刷新失败不挡住打开，所以只记录、不报错）。重复打开应继续得到同样的代表图。
+        c.execute_batch(
+            "CREATE TRIGGER refresh_twice AFTER INSERT ON meta WHEN new.key='fold_projection'
+            BEGIN INSERT OR REPLACE INTO prefs VALUES ('synthetic_refresh','again'); END;",
+        )
+        .unwrap();
+        drop((opened, owner));
+        let _reopened = crate::app_service::open_owned(&package, None, None).unwrap();
+        assert_eq!(claims(), before);
+        assert_eq!(fold_rows(&c), [("large".into(), 0, 1), ("manual".into(), 1, 0)]);
+        let refreshed: i64 =
+            c.query_row("SELECT count(*) FROM prefs WHERE key='synthetic_refresh'", [], |r| r.get(0)).unwrap();
+        assert_eq!(refreshed, 0);
+    }
+
+    #[test]
+    fn a_failed_fold_refresh_still_opens_the_library_and_retries_on_the_next_open() {
+        let f = Fixture::new(false);
+        let (package, library) = old_fold_package(&f, "refresh-fails.pilib");
+        let c = crate::sqlite::open(library.db()).unwrap();
+        let old = fold_rows(&c);
+        // 写版本标记时失败，整个刷新回滚；数据库忙、只读或磁盘满时也是这样的普通 SQL 错误。
+        c.execute_batch(
+            "CREATE TRIGGER refresh_fails BEFORE INSERT ON meta WHEN new.key='fold_projection'
+            BEGIN SELECT RAISE(ABORT, 'synthetic refresh failure'); END;",
+        )
+        .unwrap();
+        let (opened, owner) = crate::app_service::open_owned(&package, None, None).unwrap();
+        assert_eq!(fold_rows(&c), old);
+        assert_eq!(fold_marker(&c), None);
+        drop((opened, owner));
+        c.execute_batch("DROP TRIGGER refresh_fails").unwrap();
+        let _reopened = crate::app_service::open_owned(&package, None, None).unwrap();
+        assert_eq!(fold_rows(&c), [("large".into(), 0, 1), ("manual".into(), 1, 0)]);
+        assert_eq!(fold_marker(&c).as_deref(), Some(FOLD_PROJECTION));
+    }
+
+    #[test]
+    fn a_corrupt_library_found_by_the_fold_refresh_is_recorded_as_damaged() {
+        let f = Fixture::new(false);
+        let (package, library) = old_fold_package(&f, "refresh-damaged.pilib");
+        let c = crate::sqlite::open(library.db()).unwrap();
+        c.query_row("PRAGMA wal_checkpoint(TRUNCATE)", [], |_| Ok(())).unwrap();
+        let size: usize = c.query_row("PRAGMA page_size", [], |r| r.get(0)).unwrap();
+        let pages: Vec<usize> = c
+            .prepare("SELECT rootpage FROM sqlite_master WHERE tbl_name='duplicates' AND rootpage>0")
+            .unwrap()
+            .query_map([], |r| r.get(0))
+            .unwrap()
+            .collect::<rusqlite::Result<_>>()
+            .unwrap();
+        drop(c);
+        // 副本表和它的索引坏页：打开时的校验只读 meta，第一次读到它们的是折叠刷新。
+        let mut bytes = fs::read(library.db()).unwrap();
+        for page in pages {
+            bytes[(page - 1) * size] = 0;
+        }
+        fs::write(library.db(), bytes).unwrap();
+        let Err(error) = crate::app_service::open_owned(&package, None, None) else {
+            panic!("损坏的图库不应打开");
+        };
+        assert!(matches!(&error, Error::Conflict(m) if m == crate::app_integrity::LIBRARY_DAMAGED), "{error}");
+        let damage = crate::app_integrity::recorded_damage(library.instance_path()).unwrap();
+        assert!(matches!(damage.database, crate::app_integrity::Database::Library));
+    }
+
+    #[test]
+    fn mixed_exclusion_keeps_both_pages_visible_after_reopen_curation_undo_and_rules() {
+        let f = Fixture::new(false);
+        let package = f.root.join("mixed-fold.pilib");
+        crate::app_create::create_folder(&package, &f.root, None, None, None).unwrap();
+        let library = crate::app_library::Library::open(&package).unwrap();
+        let mut c = crate::sqlite::open(library.db()).unwrap();
+        let tx = c.transaction().unwrap();
+        crate::schema::begin_writing(&tx).unwrap();
+        crate::character_commands::command(&tx, &json!({"op":"create_entity","id":"a","name":"合成角色","lang":"zh"}))
+            .unwrap();
+        tx.execute_batch(
+            "INSERT INTO assets(uuid,filename,src_path,src_kind,added_at,width,height) VALUES
+                 ('manual','manual.png','manual.png','orig','2026-10-01',10,10),
+                 ('large','large.png','large.png','orig','2026-10-02',20,20);
+             INSERT INTO duplicates(uuid,grp,size,pos,grp_added,rep,hidden) VALUES
+                 ('manual','same',2,1,'2026-10-02',1,0), ('large','same',2,2,'2026-10-02',0,1);
+             INSERT INTO assertions VALUES ('manual','a','confirmed','review');
+             INSERT INTO auto_rules VALUES ('manual','exclude','photo');
+             INSERT INTO excluded VALUES ('manual','photo','rule');
+             INSERT INTO meta VALUES ('fold_projection','2');",
+        )
+        .unwrap();
+        crate::schema::commit_writing(tx).unwrap();
+        let (_library, _owner) = crate::app_service::open_owned(&package, None, None).unwrap();
+        let context = LibraryContext {
+            db: library.db(),
+            library: Some(package),
+            source: Some(library.source()),
+            tags: f.context.tags.clone(),
+            generation: "synthetic".into(),
+            token: None,
+            read_only: None,
+            examples: None,
+        };
+        let check = |c: &Connection, included: &[&str], excluded: &[&str]| {
+            for (query, expected) in
+                [(HashMap::new(), included), (HashMap::from([("pool".into(), "excluded".into())]), excluded)]
+            {
+                let (where_, args, _) = crate::http_browse::selection(c, &context, &query).unwrap();
+                let ids: Vec<String> = c
+                    .prepare(&format!("SELECT a.uuid FROM assets a WHERE {where_} ORDER BY a.uuid"))
+                    .unwrap()
+                    .query_map(params_from_iter(&args), |r| r.get(0))
+                    .unwrap()
+                    .collect::<rusqlite::Result<_>>()
+                    .unwrap();
+                assert_eq!(ids.iter().map(String::as_str).collect::<Vec<_>>(), expected);
+            }
+            assert_eq!(
+                c.query_row("SELECT uuid||':'||entity||':'||status||':'||origin FROM assertions", [], |r| r
+                    .get::<_, String>(0))
+                    .unwrap(),
+                "manual:a:confirmed:review"
+            );
+            assert_eq!(c.query_row("SELECT count(*) FROM assertions", [], |r| r.get::<_, i64>(0)).unwrap(), 1);
+        };
+        let post = |path: &str, body: Value| {
+            crate::app_commands::request(&context, path, &Fixture::body(&body.to_string())).unwrap()
+        };
+        check(&c, &["large"], &["manual"]);
+        let step =
+            post("/api/curate", json!({"ids":["manual"],"action":"include"})).field("undo").field("id").integer();
+        check(&c, &["manual"], &[]);
+        post("/api/undo", json!({"id":step}));
+        check(&c, &["large"], &["manual"]);
+        let step = post("/api/curate", json!({"ids":["large"],"action":"exclude"})).field("undo").field("id").integer();
+        check(&c, &[], &["manual"]);
+        post("/api/undo", json!({"id":step}));
+        check(&c, &["large"], &["manual"]);
+        for (realistic, excluded) in [(&[][..], &[][..]), (&["large"][..], &["large"][..])] {
+            let tx = c.transaction().unwrap();
+            crate::schema::begin_writing(&tx).unwrap();
+            crate::character_commands::command(
+                &tx,
+                &json!({"op":"rederive","realistic":realistic,
+                "rating_indexed":"synthetic","general_indexed":"synthetic"}),
+            )
+            .unwrap();
+            crate::schema::commit_writing(tx).unwrap();
+            check(&c, &["manual"], excluded);
+        }
+    }
+
     #[test]
     fn no_hash_relation_groups_preserve_python_rhs_insertion_order() {
         let mut f = Fixture::new(false);

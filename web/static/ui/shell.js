@@ -23,6 +23,7 @@ import {filterBar, wireFilterBar} from './filters.js';
 import {wireGalleries} from './gallery_actions.js';
 import {saveButton, wireSaveButton} from './gallery_save.js';
 import {enter} from './motion.js';
+import {lockInert, unlockInert} from './inert.js';
 import {railRoute, refresh as refreshRail} from './rail.js';
 import {page as pageScope, currentPage} from './scope.js';
 
@@ -35,33 +36,85 @@ function metaShown({error: e, directory}) {
   const view = viewOf(state.route, state.char);
   if (view.onMeta) view.onMeta({directory}); else renderChrome();
 }
+let routeLoad = null;
+function beginRouteLoad() {
+  const status = $('routeLoading'), viewport = $('viewport');
+  routeLoad?.finish(true);
+  const lock = {}, loading = {
+    freeze() { lockInert(viewport, lock); },
+    thaw() { unlockInert(viewport, lock); },
+    finish(continuing = false) {
+      clearTimeout(timer);
+      loading.thaw();
+      if (routeLoad !== loading) return;
+      routeLoad = null;
+      if (!continuing) show(status, false);
+    },
+  };
+  // 快切不闪提示，仍在读取时再切换则沿用已经显示的提示。提示浮在页面上，不占版面、不推动浏览区；
+  // 正在显示的操作提示（撤销等）优先，同一位置不叠两个。
+  const timer = currentPage() ? setTimeout(() => {
+    if (!$('toast').hidden) return;
+    text(status, t('正在读取…')); show(status, true);
+  }, 300) : null;
+  routeLoad = loading;
+  return loading;
+}
+// 读角色失败后退回的地址：到达时页面一直停在那里，只登记历史，不重画。
+let returning = null;
 export async function applyRoute() {
+  if (returning !== null) {
+    const back = returning, here = parseHash(); returning = null;
+    here.sort = here.sort || defaultSort(here); delete here.legacy;
+    if (hashFor(here) === back) { noteHistory(); $('backButton').hidden = !canGoBack(); return; }
+  }
+  const loading = beginRouteLoad();
+  let view;
+  try { view = await switchRoute(loading); }
+  finally {
+    if (view?.drawn) void Promise.resolve(view.drawn).finally(() => loading.finish());
+    else loading.finish();
+  }
+}
+async function switchRoute(loading) {
   const route = parseHash(); route.sort = route.sort || defaultSort(route);
   const legacy = route.legacy; delete route.legacy;
-  // 要离开的是自己渲染的页面（按天、资料库、设置……）：按历史记录的序号记下它滚到哪里，后退、前进回到这一条时恢复（#526）。
-  if (pageOf(state.route).render) panelScroll.set(historyEntry(), $('viewport').scrollTop);
-  const traversed = noteHistory(legacy ? hashFor(route) : undefined);   // 旧地址就地改成新的；这一条记下序号，后退不退出页面
+  // 路由已写进历史记录、角色页还在读页头时，屏幕上仍是上一条实际显示过的页面。
+  const previous = state.route;
+  if (pageOf(previous).render) panelScroll.set(viewEntry ?? historyEntry(), $('viewport').scrollTop);
+  const traversed = noteHistory(legacy ? hashFor(route) : undefined), entry = historyEntry();
   $('backButton').hidden = !canGoBack();
-  const samePage = state.route.page === route.page && state.route.id === route.id && state.route.char === route.char;   // 切换子视图仍是同一页
-  // 换页（含同一页换子视图、换参数）：大图关掉，因为它下面的列表要重读、序号不再对得上；选择和光标复位；
-  // 详情栏只在换了页面或角色时关。大图是被换页关掉的，不动焦点。
+  const samePage = previous.page === route.page && previous.id === route.id && previous.char === route.char;
+  // 换页（含同页换子视图和参数）先关大图，再记网格离开时的位置（#402）。
   closeViewer('silent');
-  // 再记下要离开的网格页停在哪里，回到这个地址时恢复（#402）。放在关大图之后：关大图让详情栏跟到大图里最后看的那张、
-  // 把光标那张滚进视野，记下的详情栏、光标和位置才是同一张。
   rememberPlace();
+  let character = null;
+  if (route.char) {
+    // 角色读完才换页，等待时保留上一页。旧回复不能换走后续选到的页面。
+    if (!samePage) loading.freeze();
+    try { character = await fetchChar(route.char); }
+    catch (e) {
+      if (routeLoad === loading && state.route === previous) {
+        error(readError(e));
+        // 页面停在原来那页。刚点出的新历史退回去，免得后退时多按一次；前进、后退到的那条（或启动时的第一条）就地改回原地址。
+        if (!traversed && canGoBack()) { returning = hashFor(previous); history.back(); }
+        else { noteHistory(hashFor(previous)); viewEntry = entry; }
+      }
+      return;
+    }
+    if (routeLoad !== loading || state.route !== previous) return;
+    character ||= {id: route.char, name: t('角色'), work: '', count: 0, unchecked: 0, variants: []};
+  }
+  loading.thaw();
   setRoute(route); resetForRoute();
   if (!samePage) closeInspector();
-  // 每个页面一个作用域（ui/scope.js）：换了页面就释放上一页登记的监听、计时器和部件；同一页换子视图沿用。
   const scope = !samePage || !currentPage() ? pageScope(route.page || 'library') : currentPage();
   const page = pageOf(route);
   railRoute(route);
-  setChar(null);
+  setChar(character);
   if (page.prepare && await page.prepare(route) === false) return;
-  if (route.char) {
-    let character; try { character = await fetchChar(route.char); } catch (e) { if (state.route === route) error(readError(e)); return; }
-    if (state.route !== route) return;
-    setChar(character || {id: route.char, name: t('角色'), work: '', count: 0, unchecked: 0, variants: []});
-  }
+  if (routeLoad !== loading || state.route !== route) return;
+  viewEntry = entry;
   showArea(page.area);
   // 换了页面：内容页淡入（#706，和活页条的切换一起）；同一页换子视图不动。
   if (!samePage) enter($('viewport'), {from: 'fade'});
@@ -70,7 +123,7 @@ export async function applyRoute() {
   // 自己渲染的页面（按天、资料库、设置、按组整理……）换到时从顶部开始，不沿用上一页的滚动位置；后退、前进回到记过
   // 位置的那一条时，画完再滚回去（restore 让按天视图按上次读到的天数读，见 ui/days.js）。同一页换子视图、刷新时由页面自己
   // 决定留在哪里。网格页由 reload 定位（回到记过的地址时恢复，否则回顶部）。
-  const saved = traversed ? panelScroll.get(historyEntry()) : undefined;
+  const saved = traversed ? panelScroll.get(entry) : undefined;
   if (page.render && !samePage) $('viewport').scrollTop = 0;
   // 网格页顶上跟着滚动的头部（角色页的横幅，#712）：进页和同一页又画一次时交给这一页（core/pages.js 的 gridHead）。
   viewOf(route, state.char).gridHead?.({samePage, scope});
@@ -78,12 +131,13 @@ export async function applyRoute() {
   // 面板页的底栏：选择栏藏起来，张数清空（要写的页面读到数据以后自己写），提示写注册表的 hint。网格页的由 reload 写。
   $('selectionBar').hidden = true; $('resultCount').textContent = ''; $('hint').textContent = page.hint?.(route) || '';
   const drawn = page.render({samePage, restore: saved !== undefined, scope});
-  if (saved === undefined) return;
+  if (saved === undefined) return {drawn};
   await drawn;
   if (state.route === route) $('viewport').scrollTop = saved;
 }
 // 自己渲染的页面在各条历史记录里停在哪里：{序号: scrollTop}。
 const panelScroll = new Map();
+let viewEntry = null;
 
 // ---------- 页头：标题、副标题、本页的按钮，切换（图库的三种视图、整理的四个页签），右侧的控件组 ----------
 // 各页用 head(r, ctx) 登记页头：返回 {title, sub?, alert?, actions?}，只收文字和节点（core/pages.js 的 implement 说明）：
@@ -152,7 +206,7 @@ export function renderHeading() {
   } else {
     const [title, sub, links = ''] = view.headingHTML?.(r, {n}) || ['', ''];
     const [helpButton, helpPop] = helpTip(help.map(esc));
-    h.innerHTML = `<hgroup class="heading-main"><h1 class="title-page">${title}${helpButton}</h1><p class="page-sub">${updating(sub)}</p>${helpPop}</hgroup>${links}`;
+    h.innerHTML = `<hgroup class="heading-main"><h1 class="title-page">${title ? `<span>${title}</span>` : ''}${helpButton}</h1><p class="page-sub">${updating(sub)}</p>${helpPop}</hgroup>${links}`;
   }
   const sw = drawSwitches(r, view); if (sw) h.append(sw);
   wireHelpTip();
@@ -183,9 +237,9 @@ export function renderChrome() {
     (r.char ? pill('charPill', t('角色 · {name}', {name: esc(short(state.char?.name || ''))}), t('清除角色筛选')) : '') +
     filterBar(r) + saveButton(r) + maybeChip + variants : tabs;
   bar.innerHTML = filtersOnly ? filtersHTML : filtersHTML +
-    `<div class="spacer"></div><select id="sort" aria-label="${t('排序')}">${sorts.map(([v, label]) => `<option value="${v}"${r.sort === v ? ' selected' : ''}>${label}</option>`).join('')}</select>` +
+    `<div class="page-actions"><select id="sort" aria-label="${t('排序')}">${sorts.map(([v, label]) => `<option value="${v}"${r.sort === v ? ' selected' : ''}>${label}</option>`).join('')}</select>` +
     `<button class="quiet" id="selectButton" title="${cleanup() ? t('选中全部符合条件的图片') : t('进入选择模式')}">${cleanup() ? `${t('全选')} <kbd>${shortcut('A')}</kbd>` : t('选择')}</button>` +
-    `<div class="icon-seg" id="fitToggle" role="group" aria-label="${t('显示方式')}"${fixedLayout(r) ? ' hidden' : ''}><button data-fit="0" class="${state.fit ? '' : 'on'}" title="${t('方格：裁成正方形（R）')}" aria-label="${t('方格')}">${FIT_ICONS.square}</button><button data-fit="1" class="${state.fit ? 'on' : ''}" title="${t('原始比例：完整显示整张图（R）')}" aria-label="${t('原始比例')}">${FIT_ICONS.fit}</button></div>`;
+    `<div class="icon-seg" id="fitToggle" role="group" aria-label="${t('显示方式')}"${fixedLayout(r) ? ' hidden' : ''}><button data-fit="0" class="${state.fit ? '' : 'on'}" title="${t('方格：裁成正方形（R）')}" aria-label="${t('方格')}">${FIT_ICONS.square}</button><button data-fit="1" class="${state.fit ? 'on' : ''}" title="${t('原始比例：完整显示整张图（R）')}" aria-label="${t('原始比例')}">${FIT_ICONS.fit}</button></div></div>`;
   if (filtersOnly) { wireSearch(r); wireFilterBar(r); wireSaveButton(r); return; }
   // 改了排序就记成这一类页面的默认值，离开再回来还是它（#386 的 2-26）；记在哪个键由 core/route.js 的 sortKey 定。
   $('sort').onchange = e => { prefs.set(sortKey(r), e.target.value); replaceRoute({sort: e.target.value}); reload(true); };

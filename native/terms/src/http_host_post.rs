@@ -13,6 +13,30 @@ const DAMAGED_ALLOWS: [&str; 7] = [
     "/api/backup",
     "/api/preferences",
 ];
+/// 页面命令（`app_commands::request`）：只持会话读锁执行，见 `page_write`。
+const PAGE_WRITES: [&str; 20] = [
+    "/api/tag",
+    "/api/favorite",
+    "/api/galleries",
+    "/api/similar/seen",
+    "/api/undo",
+    "/api/artist/verdict",
+    "/api/curate",
+    "/api/fold",
+    "/api/works",
+    "/api/character/mascot",
+    "/api/kind",
+    "/api/oc/shared",
+    "/api/change",
+    "/api/audit/answer",
+    "/api/ask/answer",
+    "/api/reassign",
+    "/api/sweep",
+    "/api/identity/decision",
+    "/api/identity/skip",
+    "/api/merge",
+    "/api/catalog/split",
+];
 type Translate<'a> = &'a dyn Fn(&str) -> String;
 
 pub(super) fn handle(request: Request, host: &Host, received: u64, text: &str, body: Json) {
@@ -61,6 +85,9 @@ pub(super) fn handle(request: Request, host: &Host, received: u64, text: &str, b
             Picked::Switched => return expired(request),
             Picked::Failed(e) => return failure(request, e, true),
         }
+    }
+    if PAGE_WRITES.contains(&request.url()) {
+        return page_write(request, host, received, &body);
     }
     let mut session = host.session.write().expect("http_host_post session lock poisoned");
     if !host.accepts(&session, received) || header(&request, "X-CSRF-Token") != Some(session.token.as_str()) {
@@ -549,7 +576,7 @@ fn cache(request: Request, host: &Host, session: RwLockWriteGuard<Session>, body
     drop(session);
     reply(request, host.images.clear(&library, &host.library_forced_off(&library)), true);
 }
-/// 角色资料的写入：先在不持会话锁时查询它们的作品，再在锁内写入。
+/// 角色资料的写入：先在不持会话锁时查询它们的作品，再持会话读锁写入（同 `page_write`）。
 fn profiles(request: Request, host: &Host, received: u64, session: RwLockWriteGuard<Session>, body: &Json) {
     let library = session.library.clone();
     let mut context = session.context(&host.tags);
@@ -561,12 +588,49 @@ fn profiles(request: Request, host: &Host, received: u64, session: RwLockWriteGu
         let c = crate::app_library::read_connection(&context.db)?;
         crate::app_profiles::prepare(&c, body, request.url(), &mut source)
     });
-    let session = host.session.write().expect("http_host_post session lock poisoned");
+    let session = host.session.read().expect("http_host_post session lock poisoned");
     if !host.accepts(&session, received) {
         return expired(request);
     }
     let result = prepared.and_then(|p| crate::app_commands::request_prepared(&context, request.url(), body, Some(&p)));
     drop(session);
+    page_write_reply(request, result);
+}
+
+/// 页面命令只持会话读锁。切换、关闭图库要拿写锁，会等命令做完，所以命令不会写进别的图库；
+/// 命令等应用库写锁的这段时间（最长 `app_commands::PAGE_WRITE_WAIT`）里，读取和缩略图照常应答，页面不会整个卡住。
+/// 命令之间靠各自的 IMMEDIATE 写事务排队。
+fn page_write(request: Request, host: &Host, received: u64, body: &Json) {
+    let session = host.session.read().expect("http_host_post session lock poisoned");
+    if !host.accepts(&session, received) || header(&request, "X-CSRF-Token") != Some(session.token.as_str()) {
+        return expired(request);
+    }
+    // 损坏的图库包不再接受写入（#212）。
+    if let Some(damage) = session.damage() {
+        drop(session);
+        return failure(request, damage.error(), true);
+    }
+    let result = crate::app_commands::request(&session.context(&host.tags), request.url(), body);
+    drop(session);
+    page_write_reply(request, result);
+}
+
+/// 这些页面命令返回的 SQLITE_BUSY 都在提交前出现，后台跟进和撤销完成后的读取各自报告错误。
+fn page_write_reply(request: Request, result: Result<Json>) {
+    use crate::diagnostics::{self, Cause, Publication, Retry, Stage};
+    if let Err(Error::Sql(rusqlite::Error::SqliteFailure(code, _))) = &result {
+        if code.code == rusqlite::ErrorCode::DatabaseBusy {
+            let diagnostic = diagnostics::record(
+                diagnostics::operation(request.url()),
+                Stage::Write,
+                Cause::Database,
+                Some(code.extended_code),
+                Publication::NotCommitted,
+                Retry::Retry,
+            );
+            return respond_failure(request, error("服务繁忙，请稍后重试"), 503, Some(diagnostic));
+        }
+    }
     reply(request, result, true);
 }
 fn relate(request: Request, host: &Host, received: u64, mut session: RwLockWriteGuard<Session>, body: &Json) {
@@ -709,30 +773,6 @@ fn route(
     language: Option<&str>,
 ) -> Option<Result<Json>> {
     Some(match url {
-        "/api/tag"
-        | "/api/favorite"
-        | "/api/galleries"
-        | "/api/similar/seen"
-        | "/api/undo"
-        | "/api/artist/verdict"
-        | "/api/curate"
-        | "/api/fold"
-        | "/api/entities"
-        | "/api/character/profile"
-        | "/api/local-links"
-        | "/api/works"
-        | "/api/character/mascot"
-        | "/api/kind"
-        | "/api/oc/shared"
-        | "/api/change"
-        | "/api/audit/answer"
-        | "/api/ask/answer"
-        | "/api/reassign"
-        | "/api/sweep"
-        | "/api/identity/decision"
-        | "/api/identity/skip"
-        | "/api/catalog/split"
-        | "/api/merge" => crate::app_commands::request(&session.context(&host.tags), url, body),
         "/api/provenance" => session.provenance.post(body),
         "/api/onboarding" => {
             let library = session.library.clone();

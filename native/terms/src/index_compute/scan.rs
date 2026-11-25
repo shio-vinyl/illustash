@@ -1,8 +1,30 @@
 use super::*;
 use crate::recognition_compute::anchors::{self, Metadata};
+use rusqlite::Connection;
 use std::collections::{HashMap, HashSet};
+
+/// 老清单可独立于 embeddings 表存在。以扫描输出使用的 UUID 查来源资产，分批避免构造整份 JSON。
+fn missing_from_manifest(db: &Connection, assets: &[String]) -> Result<HashSet<String>> {
+    let mut missing = HashSet::new();
+    if assets.is_empty() {
+        return Ok(missing);
+    }
+    let mut stmt = db.prepare(
+        "SELECT j.value FROM json_each(?) j LEFT JOIN assets a ON a.uuid=j.value COLLATE BINARY WHERE a.uuid IS NULL",
+    )?;
+    for batch in assets.chunks(4096) {
+        let ids: Vec<_> = batch.iter().map(|id| id.trim()).collect();
+        let encoded = serde_json::to_string(&ids).map_err(|e| Error::invalid(e.to_string()))?;
+        for uuid in stmt.query_map([encoded], |r| r.get(0))? {
+            missing.insert(uuid?);
+        }
+    }
+    Ok(missing)
+}
+
 pub(super) fn scan(
     review: &Path,
+    characters: &[Value],
     vectors: &[Vec<f32>],
     ids: &[String],
     meta: &HashMap<String, Metadata>,
@@ -38,11 +60,19 @@ pub(super) fn scan(
         db.query_row("SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='embeddings')", [], |r| {
             r.get(0)
         })?;
+    // 抢救后仍认识的旧图可能缺来源资产行。保持原矩阵形状，单独决定哪些认领可以发布。
+    let mut missing_assets = missing_from_manifest(&db, &assets)?;
     if exists {
-        let mut stmt = db.prepare("SELECT uuid,vec FROM embeddings WHERE model='ccip'")?;
-        let extra = stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, Vec<u8>>(1)?)))?;
+        let mut stmt = db.prepare(
+            "SELECT e.uuid,e.vec,a.uuid IS NULL FROM embeddings e LEFT JOIN assets a ON a.uuid=e.uuid WHERE e.model='ccip'",
+        )?;
+        let extra =
+            stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, Vec<u8>>(1)?, r.get::<_, bool>(2)?)))?;
         for row in extra {
-            let (id, blob) = row?;
+            let (id, blob, missing) = row?;
+            if missing {
+                missing_assets.insert(id.clone());
+            }
             if have.contains(&id.to_uppercase()) {
                 continue;
             }
@@ -64,9 +94,23 @@ pub(super) fn scan(
         .map_err(|e| Error::invalid(e.to_string()))?;
     csv.write_record(["uuid", "char_id", "entity", "dist", "thresh", "tier", "rank", "within"])
         .map_err(|e| Error::invalid(e.to_string()))?;
+    let known: HashSet<_> = characters.iter().filter_map(|c| c["char_id"].as_str()).collect();
+    let mut old = db.prepare(
+        "SELECT l.uuid,l.value,l.conf FROM labels l LEFT JOIN assets a ON a.uuid=l.uuid
+         WHERE l.dim='char_ext' AND a.uuid IS NULL ORDER BY l.uuid,l.value",
+    )?;
+    let mut preserved = Vec::new();
+    let mut rows = old.query([])?;
+    while let Some(row) = rows.next()? {
+        let uuid: String = row.get(0)?;
+        let entity: String = row.get(1)?;
+        if missing_assets.contains(&uuid) && known.contains(entity.as_str()) {
+            preserved.push((uuid, entity, row.get(2)?));
+        }
+    }
     if vectors.is_empty() || features.is_empty() {
         csv.flush()?;
-        return Ok(vec![]);
+        return Ok(preserved);
     }
     let index = anchors::anchor_index_for_scan(vectors, ids, meta)?;
     let limit = anchors::claim_thresholds(ids, &index, patched)?;
@@ -109,7 +153,7 @@ pub(super) fn scan(
                 ])
                 .map_err(|e| Error::invalid(e.to_string()))?;
                 rank += 1;
-                if ok {
+                if ok && !missing_assets.contains(asset) {
                     let confidence = 1. - rounded.parse::<f64>().map_err(|e| Error::invalid(e.to_string()))?;
                     let row = (asset.to_owned(), entity.clone(), confidence);
                     let key = (asset.to_owned(), entity.clone());
@@ -124,5 +168,6 @@ pub(super) fn scan(
         }
     }
     csv.flush()?;
+    labels.extend(preserved);
     Ok(labels)
 }

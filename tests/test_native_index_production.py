@@ -342,6 +342,56 @@ class InstalledIndexAppTest(CandidateIndexAdapter, unittest.TestCase):
         self.assertNotIn('carol_example', (self.shared/'char-anchors.txt').read_text().splitlines())
         self.assertFalse((self.lib.path/'index-job.json').exists()); self.assertFalse(self.sentinel.exists())
 
+    def test_rescued_orphan_keeps_saved_claim_during_index_rebuild(self):
+        # 抢救保留应用库认识的 b 的认领和向量，来源资产行已丢。相同向量的正常资产 c 应更新。
+        old = ('b', 'char_ext', 'alice', .42, 'char_index', 'old-model', 'old-run')
+        with contextlib.closing(sqlite3.connect(self.lib.source)) as source, source:
+            source.execute("DELETE FROM assets WHERE uuid='b'")
+            source.execute("DELETE FROM labels WHERE uuid='b' AND dim='char_ext'")
+            source.execute("INSERT INTO labels(uuid,dim,value,conf,source,model_ver,run_id) VALUES (?,?,?,?,?,?,?)", old)
+            source.execute("INSERT INTO embeddings VALUES ('b','ccip',?)", (self.reference_rows[1].tobytes(),))
+        self.check()
+        self.seed_reference()
+        self.index({'action': 'apply', 'tags': ['carol_example']})
+        result = self.finish()
+        self.assertEqual(result['state']['status'], 'done', result['state'])
+        with contextlib.closing(sqlite3.connect(self.lib.source)) as source:
+            rows = source.execute("SELECT uuid,dim,value,conf,source,model_ver,run_id FROM labels WHERE uuid='b' AND dim='char_ext'").fetchall()
+            self.assertEqual(rows, [old])
+            self.assertTrue(source.execute("SELECT 1 FROM labels WHERE uuid='c' AND dim='char_ext' AND value='carol_example'").fetchone())
+        # 显式移除角色时清掉该角色的旧孤立认领，保留同图上仍有效的原行。
+        with contextlib.closing(sqlite3.connect(self.lib.source)) as source, source:
+            source.execute("INSERT INTO labels(uuid,dim,value,conf) VALUES ('b','char_ext','carol_example',0.25)")
+            source.execute("DELETE FROM embeddings WHERE uuid='b'")  # 其余特征仍在独立的扫描清单里。
+        self.index({'action': 'drop', 'char': 'carol_example', 'reason': '合成撤回'})
+        result = self.finish()
+        self.assertEqual(result['state']['status'], 'done', result['state'])
+        with contextlib.closing(sqlite3.connect(self.lib.source)) as source:
+            rows = source.execute("SELECT uuid,dim,value,conf,source,model_ver,run_id FROM labels WHERE uuid='b' AND dim='char_ext'").fetchall()
+            self.assertEqual(rows, [old])
+        self.assertEqual(snapshot(self.lib.db)['actions'], self.human)
+        self.assertEqual(snapshot(self.lib.db)['assertions'], self.human_assertions)
+
+    def test_manifest_only_orphan_without_claim_does_not_block_valid_assets(self):
+        # 旧图库的向量可只存在于清单。抢救没有找回 b 的来源资产或认领，c 仍应正常更新。
+        with contextlib.closing(sqlite3.connect(self.lib.source)) as source, source:
+            source.execute("DELETE FROM assets WHERE uuid='b'")
+            source.execute("DELETE FROM labels WHERE uuid='b' AND dim='char_ext'")
+            source.execute("DROP TABLE embeddings")
+            # 旧 B 与清单 b 大小写不同，且 B 没有扫描输入，因此撤下其认领。
+            source.execute("INSERT INTO labels(uuid,dim,value,conf) VALUES ('B','char_ext','alice',0.42)")
+        (self.features/'full-manifest.csv').write_text('uuid\na\n b \nc\n')
+        self.check(); self.seed_reference()
+        self.index({'action': 'apply', 'tags': ['carol_example']})
+        result = self.finish()
+        self.assertEqual(result['state']['status'], 'done', result['state'])
+        with contextlib.closing(sqlite3.connect(self.lib.source)) as source, source:
+            self.assertIsNone(source.execute("SELECT 1 FROM labels WHERE uuid IN ('b','B') AND dim='char_ext'").fetchone())
+            self.assertIsNotNone(source.execute("SELECT 1 FROM labels WHERE uuid='c' AND dim='char_ext' AND value='carol_example'").fetchone())
+        self.assertEqual(snapshot(self.lib.db)['actions'], self.human)
+        self.assertEqual(snapshot(self.lib.db)['assertions'], self.human_assertions)
+        self.assertFalse((self.lib.path/'index-job.json').exists())
+
     def test_source_failure_rollback_retry_with_actual_adapter(self):
         self.check(); self.seed_reference(); expected = self.expected()
         with contextlib.closing(sqlite3.connect(self.lib.source)) as c, c:

@@ -211,13 +211,14 @@ impl Session {
         reference: &Path,
         startup: &SessionStartup,
     ) -> Result<Self> {
-        let names = crate::app_names::Updater::new(
+        let mut names = crate::app_names::Updater::new(
             &library,
             startup.names_enabled,
             startup.names_network_authorized,
             generation,
             &token,
         )?;
+        names.wait_for_catalog();
         let provenance = crate::app_provenance::Runner::new(
             &library,
             generation,
@@ -440,14 +441,6 @@ impl Application {
     }
     pub(crate) fn start_reporting(&self, before_recovery: impl FnOnce()) -> Result<()> {
         {
-            let mut session = self.session.write().expect("app_http session lock poisoned");
-            self.check_open()?;
-            let library = session.library.clone();
-            if self.startup.names_enabled {
-                let _ = session.names.start(&library, None, false);
-            }
-        }
-        {
             let session = self.session.read().expect("app_http session lock poisoned");
             self.check_open()?;
             let lib = session.library.clone();
@@ -502,6 +495,11 @@ impl Application {
         let library = session.library.clone();
         session.provenance.recover();
         let busy = session.syncer.running() || session.wd_extension.running();
+        if !busy && self.wd_busy(&session).is_none() {
+            if let Err(error) = apply_catalog(&mut session) {
+                eprintln!("角色目录未能补到图库里：{error}");
+            }
+        }
         session.index.recover(&library, busy);
         let base_busy = busy
             || self.imports.busy()
@@ -524,10 +522,8 @@ impl Application {
         if let Err(error) = self.start_pack_default(&mut session) {
             eprintln!("角色资料包未能默认启用：{error}");
         }
-        if !busy && self.wd_busy(&session).is_none() {
-            if let Err(error) = apply_catalog(&mut session) {
-                eprintln!("角色目录未能补到图库里：{error}");
-            }
+        if session.catalog_checked {
+            session.names.catalog_ready();
         }
         session.names.recover(&library);
         if let Err(error) = session.research.recover(&library, busy) {
@@ -686,10 +682,8 @@ impl Application {
         if let Err(e) = crate::app_research::dispatch(&library, "imported") {
             eprintln!("研究启动调度失败：{e}");
         }
-        if self.startup.names_enabled {
-            let _ = session.names.start(&library, None, false);
-        }
         self.generation.store(session.generation, Ordering::SeqCst);
+        self.recover_soon();
         if self.startup.auto_sync {
             let lib = session.library.clone();
             let token = session.token.clone();
@@ -811,7 +805,11 @@ pub(crate) fn character_request_with(
 /// 前后各建了一个的角色、补挂造型。每次打开先读修订号，同一会话处理成功后直接跳过。
 fn apply_catalog(session: &mut Session) -> Result<()> {
     use rusqlite::OptionalExtension;
-    if session.catalog_checked || session.library.frozen() {
+    if session.catalog_checked {
+        return Ok(());
+    }
+    if session.library.frozen() {
+        session.catalog_checked = true;
         return Ok(());
     }
     let revision = i64::from(crate::character_catalog::current().revision);
@@ -844,6 +842,91 @@ fn apply_catalog(session: &mut Session) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn catalog_precedes_initial_names_on_open_switch_and_retry() {
+        let root = std::env::temp_dir().join(format!("illustash-catalog-session-{}", crate::store::new_key().unwrap()));
+        std::fs::create_dir_all(root.join("source")).unwrap();
+        let status = std::process::Command::new(std::env::current_exe().unwrap())
+            .args(["--ignored", "--exact", "app_service::tests::catalog_names_fixture"])
+            .env("ILLUSTASH_SERVICE_FIXTURE", &root)
+            .env("ILLUSTASH_APP_SUPPORT", root.join("support"))
+            .env("ILLUSTASH_SHARED", root.join("absent-reference"))
+            .env("ILLUSTASH_NO_KEYCHAIN", "1")
+            .status()
+            .unwrap();
+        std::fs::remove_dir_all(root).unwrap();
+        assert!(status.success());
+    }
+
+    #[test]
+    #[ignore = "isolated in-process fixture, invoked with synthetic support by parent test"]
+    fn catalog_names_fixture() {
+        use serde_json::{json, Value};
+        const GUARD: &str = "CREATE TRIGGER names_need_catalog BEFORE INSERT ON backend_effects
+            WHEN NEW.kind LIKE 'names:%' AND NOT EXISTS(
+                SELECT 1 FROM term_links l JOIN terms t ON t.id=l.term_id
+                JOIN term_tree r ON r.parent_id=t.key WHERE l.system='danbooru' AND l.key='fixture_parent')
+            BEGIN SELECT RAISE(ABORT,'names saw the old catalog'); END";
+        let root = PathBuf::from(std::env::var_os("ILLUSTASH_SERVICE_FIXTURE").expect("isolated fixture only"));
+        let catalog = |roles: Value| {
+            let doc = json!({"format":crate::character_catalog::FORMAT,"revision":2,
+                "columns":["id","tag","tags","parent","relation","action","variant","bangumi","pick","wikidata"],
+                "characters":roles,"works":[]});
+            let catalog = crate::character_catalog::Catalog::parse(&doc.to_string()).unwrap();
+            crate::character_catalog::override_for_thread(Some(Box::leak(Box::new(catalog))));
+        };
+        catalog(json!([]));
+        let create = |name: &str| {
+            let path = root.join(format!("{name}.pilib"));
+            crate::app_create::create_folder(&path, &root.join("source"), None, None, None).unwrap();
+            let db = path.join("library.sqlite");
+            character_request(
+                &db,
+                &json!({"op":"refresh","assets":[["coat","coat.png","coat.png",8,8,"2026-11-23","folder"]],
+                    "indexed":"2026-11-23","index":{},"labels":[["coat","fixture_costume",0.99,"character"]]}),
+            )
+            .unwrap();
+            crate::sqlite::open(&db).unwrap().execute_batch(GUARD).unwrap();
+            path
+        };
+        let (first, second) = (create("first"), create("second"));
+        catalog(json!([
+            [1, "fixture_parent", [], null, null, null, null, null, "", null],
+            [2, "fixture_costume", [], 1, "appearance", "auto", "coat", null, "", null]
+        ]));
+        let mut options = Options::new(root);
+        options.startup.provenance_enabled = false;
+        options.startup.index_auto_check = false;
+        options.startup.auto_sync = false;
+        options.startup.sync_disabled = true;
+        let service = Application::open(&first, options).unwrap();
+        let name_runs = |db: &Path| {
+            crate::sqlite::open(db)
+                .unwrap()
+                .query_row("SELECT count(*) FROM backend_effects WHERE kind LIKE 'names:%'", [], |r| r.get::<_, i64>(0))
+                .unwrap()
+        };
+        service.start().unwrap();
+        assert_eq!(name_runs(&first.join("library.sqlite")), 1);
+
+        let db = crate::sqlite::open(&second.join("library.sqlite")).unwrap();
+        db.execute_batch(
+            "CREATE TRIGGER delay_catalog BEFORE INSERT ON meta WHEN NEW.key='character_catalog'
+            BEGIN SELECT RAISE(ABORT,'temporary catalog write failure'); END;",
+        )
+        .unwrap();
+        service.switch(service.generation(), &second).unwrap();
+        service.recover();
+        assert_eq!(name_runs(&second.join("library.sqlite")), 0);
+        assert_eq!(name_runs(&first.join("library.sqlite")), 1);
+        db.execute_batch("DROP TRIGGER delay_catalog").unwrap();
+        service.recover();
+        assert_eq!(name_runs(&second.join("library.sqlite")), 1);
+        service.recover();
+        assert_eq!(name_runs(&second.join("library.sqlite")), 1);
+        service.shutdown();
+    }
+
     #[test]
     fn lock_wait_rechecks_accepted_generation() {
         let root = std::env::temp_dir().join(format!(

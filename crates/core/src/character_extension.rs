@@ -46,7 +46,14 @@ fn current(c: &Connection, extension: Extension, scope: Option<&[String]>) -> Re
     Ok(found)
 }
 
-fn replace(c: &Connection, extension: Extension, producer: &str, old: &Active, new: &Active) -> Result<usize> {
+fn replace(
+    c: &Connection,
+    extension: Extension,
+    producer: &str,
+    old: &Active,
+    new: &Active,
+    refresh_exclusions: bool,
+) -> Result<usize> {
     let changed: BTreeMap<i64, &String> = old
         .iter()
         .filter(|(id, rows)| new.get(id) != Some(*rows))
@@ -61,7 +68,12 @@ fn replace(c: &Connection, extension: Extension, producer: &str, old: &Active, n
     store::publish_asset_batch(c, producer, extension.evidence(), &cover, &rows, None)?;
     let uuids = changed.into_values().cloned().collect::<Vec<_>>();
     character_projection::refresh_candidates(c, &uuids)?;
-    character_projection::memberships(c, Some(&uuids))?;
+    if refresh_exclusions {
+        character_projection::memberships_before_excluded(c, Some(&uuids))?;
+        crate::character_import::refresh_exclusions_and_fold(c)?;
+    } else {
+        character_projection::memberships(c, Some(&uuids))?;
+    }
     Ok(uuids.len())
 }
 
@@ -154,11 +166,11 @@ pub(crate) fn apply<'a>(
         crate::character_graph::register_catalog(c, &changed)?;
         crate::character_graph::baseline(c)?;
     }
-    replace(c, extension, &format!("extension:{package}"), &before, &after)
+    replace(c, extension, &format!("extension:{package}"), &before, &after, true)
 }
 
 pub(crate) fn withdraw(c: &Connection, extension: Extension) -> Result<usize> {
-    replace(c, extension, "extension:withdraw", &current(c, extension, None)?, &Active::new())
+    replace(c, extension, "extension:withdraw", &current(c, extension, None)?, &Active::new(), true)
 }
 
 pub(crate) fn invalidate(c: &Connection, extension: Extension, uuids: &[String]) -> Result<()> {
@@ -168,7 +180,7 @@ pub(crate) fn invalidate(c: &Connection, extension: Extension, uuids: &[String])
             Extension::Wd => "extension:stale_wd",
             Extension::Ccip => "extension:stale_ccip",
         };
-        replace(c, extension, producer, &old, &Active::new())?;
+        replace(c, extension, producer, &old, &Active::new(), false)?;
     }
     Ok(())
 }

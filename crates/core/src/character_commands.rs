@@ -908,9 +908,17 @@ fn shape(item: &Value) -> Option<&'static str> {
 
 /// v2 信封新增的快照形状，裸列表不认。
 fn edit_shape(item: &Value) -> Option<&'static str> {
-    ["character_kind", "character_mascot", "ask_history", "identity_form", "catalog_change", "catalog_split"]
-        .into_iter()
-        .find(|key| has_keys(item, &[*key]))
+    [
+        "character_kind",
+        "character_mascot",
+        "ask_history",
+        "identity_form",
+        "identity_pair",
+        "catalog_change",
+        "catalog_split",
+    ]
+    .into_iter()
+    .find(|key| has_keys(item, &[*key]))
 }
 
 /// 撤销一步角色步骤（`args["action"]`），在调用方的事务里执行。它必须是最近一个没撤销的步骤，否则是冲突；
@@ -956,6 +964,7 @@ pub fn undo(c: &Connection, args: &Value) -> Result<Value> {
             }
             Some("merge") => crate::character_merge::undo(c, id, &item["merge"])?,
             Some("identity_relation") => crate::character_identity::undo_relation(c, &item["identity_relation"])?,
+            Some("identity_pair") => crate::character_identity::undo_pair_relation(c, &item["identity_pair"])?,
             Some("catalog_change") => crate::character_import::undo_catalog_change(c, &item["catalog_change"])?,
             Some("catalog_split") => crate::character_import::undo_catalog_split(c, &item["catalog_split"])?,
             Some("identity_form") => crate::character_identity::undo_form(c, &item["identity_form"])?,

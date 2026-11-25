@@ -545,25 +545,29 @@ fn has(tags: &[&str]) -> String {
 /// `Store._refresh_rules`。
 pub fn rules(c: &Connection, realistic: &Value) -> Result<()> {
     c.prepare_cached("DELETE FROM auto_rules")?.execute([])?;
-    let nochar = "NOT EXISTS(SELECT 1 FROM memberships m WHERE m.uuid=a.uuid)";
     let mut photo =
         c.prepare_cached("INSERT OR IGNORE INTO auto_rules SELECT uuid,'exclude','photo' FROM assets WHERE uuid=?")?;
     for u in realistic.as_array().into_iter().flatten() {
         photo.execute([u.as_str().unwrap_or("")])?;
     }
+    content_rules(c, "")
+}
+
+fn content_rules(c: &Connection, scope: &str) -> Result<()> {
+    let nochar = "NOT EXISTS(SELECT 1 FROM memberships m WHERE m.uuid=a.uuid)";
     let (shot, people, text) = (has(&SHOT_TAGS), has(&PEOPLE_TAGS), has(&TEXT_TAGS));
     fn join(parts: &[&[&'static str]]) -> Vec<&'static str> {
         parts.concat()
     }
-    c.prepare_cached(&format!("INSERT OR IGNORE INTO auto_rules SELECT a.uuid,'exclude','screenshot' FROM assets a WHERE {shot} AND NOT {people} AND {nochar}"))?.execute(
+    c.prepare_cached(&format!("INSERT OR IGNORE INTO auto_rules SELECT a.uuid,'exclude','screenshot' FROM assets a WHERE {shot} AND NOT {people} AND {nochar}{scope}"))?.execute(
         params_from_iter(join(&[&SHOT_TAGS, &PEOPLE_TAGS])),
     )?;
     c.prepare_cached(&format!(
         "INSERT OR IGNORE INTO auto_rules SELECT a.uuid,'exclude','text' FROM assets a
-            WHERE {text} AND NOT {shot} AND NOT {people} AND {nochar}"
+            WHERE {text} AND NOT {shot} AND NOT {people} AND {nochar}{scope}"
     ))?
     .execute(params_from_iter(join(&[&TEXT_TAGS, &SHOT_TAGS, &PEOPLE_TAGS])))?;
-    c.prepare_cached(&format!("INSERT OR IGNORE INTO auto_rules SELECT a.uuid,'pending','screenshot' FROM assets a WHERE {shot} AND {people} AND {nochar}"))?.execute(
+    c.prepare_cached(&format!("INSERT OR IGNORE INTO auto_rules SELECT a.uuid,'pending','screenshot' FROM assets a WHERE {shot} AND {people} AND {nochar}{scope}"))?.execute(
         params_from_iter(join(&[&SHOT_TAGS, &PEOPLE_TAGS])),
     )?;
     Ok(())
@@ -578,6 +582,18 @@ pub fn excluded(c: &Connection) -> Result<()> {
     c.prepare_cached("DELETE FROM excluded")?.execute([])?;
     c.prepare_cached(EXCLUDED)?.execute([])?;
     character_projection::fold(c)
+}
+
+/// 重算受归属变更影响的自动排除及其所在副本组。照片结论由识别决定，保留已有结果。
+pub(crate) fn refresh_exclusions_and_fold(c: &Connection) -> Result<()> {
+    c.prepare_cached(
+        "DELETE FROM auto_rules WHERE reason IN ('screenshot','text') AND uuid IN (SELECT uuid FROM touched)",
+    )?
+    .execute([])?;
+    content_rules(c, " AND a.uuid IN (SELECT uuid FROM touched)")?;
+    c.prepare_cached("DELETE FROM excluded WHERE uuid IN (SELECT uuid FROM touched)")?.execute([])?;
+    c.prepare_cached(&format!("{EXCLUDED} AND a.uuid IN (SELECT uuid FROM touched)"))?.execute([])?;
+    character_projection::fold_touched(c)
 }
 
 fn touch(c: &Connection, uuids: &[String]) -> Result<()> {

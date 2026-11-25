@@ -101,7 +101,8 @@ fn refresh_forms(c: &Connection, nodes: &[FormNode]) -> Result<()> {
     let images: Vec<_> = character_graph::affected_images(c, &ids)?.into_iter().collect();
     if !images.is_empty() {
         crate::character_projection::evidence(c, Some(&images))?;
-        crate::character_projection::memberships(c, Some(&images))?;
+        crate::character_projection::memberships_before_excluded(c, Some(&images))?;
+        crate::character_import::refresh_exclusions_and_fold(c)?;
     }
     Ok(())
 }
@@ -363,7 +364,8 @@ pub fn command(c: &Connection, args: &Value) -> Result<Value> {
             )?;
             Ok(json!({"relation_id":id}))
         }
-        "decide" => {
+        "decide" | "decide_pair" => {
+            let pair = op == "decide_pair";
             // 与 Store.decide_identity 的检查顺序一致（去掉预演后，同时有几处不对时报哪一条也要相同）：
             // 关系 id 的类型（宿主在调用前查，见 app_identity）→ 策略（上面）→ 没给 id 时先提议（端点）→ 状态与理由 → 关系存在。
             let id = match args.get("relation_id").filter(|v| !v.is_null()) {
@@ -393,9 +395,9 @@ pub fn command(c: &Connection, args: &Value) -> Result<Value> {
             c.execute("INSERT INTO actions(label,before_json) VALUES (?,'[]')", ["已保存身份关系决议"])?;
             let action = c.last_insert_rowid();
             let result = decide(c, id, status, reason.trim(), Some(action), "migration")?;
-            character_graph::rebuild(c)?;
-            let before = json!([{"terms":{"v":2,"type":"identity_relation","before":[{"identity_relation":result}]}}]);
-            c.execute("UPDATE actions SET before_json=? WHERE id=?", params![before.to_string(), action])?;
+            rebuild_decision(c, pair)?;
+            let kind = if pair { "identity_pair" } else { "identity_relation" };
+            crate::character_commands::finish_action(c, action, kind, vec![json!({(kind):result})])?;
             Ok(json!({"action":action,"decision":result}))
         }
         "accept-many" => {
@@ -437,6 +439,23 @@ pub fn command(c: &Connection, args: &Value) -> Result<Value> {
 /// 撤销一条人工关系决议（旧形状 `identity_relation`）：追加回到 previous_status 的撤销审计决议，
 /// 记下当时关系上的全部证据，再重建图（= 旧版 `decide(previous)`）。调用方已把这一步标为撤销。
 pub fn undo_relation(c: &Connection, r: &Value) -> Result<()> {
+    undo_relation_with(c, r, false)
+}
+
+pub(crate) fn undo_pair_relation(c: &Connection, r: &Value) -> Result<()> {
+    undo_relation_with(c, r, true)
+}
+
+fn rebuild_decision(c: &Connection, pair: bool) -> Result<()> {
+    if pair {
+        character_graph::rebuild_pair(c)?;
+    } else {
+        character_graph::rebuild(c)?;
+    }
+    Ok(())
+}
+
+fn undo_relation_with(c: &Connection, r: &Value, pair: bool) -> Result<()> {
     if !keys(r, &["relation_id", "previous_status", "decision_id", "status"])
         || r["decision_id"].as_i64().is_none_or(|i| i <= 0)
         || !matches!(r["status"].as_str(), Some("accepted" | "rejected" | "proposed"))
@@ -446,8 +465,7 @@ pub fn undo_relation(c: &Connection, r: &Value) -> Result<()> {
     }
     let relation = r["relation_id"].as_i64().ok_or_else(|| Error::invalid("身份撤销快照不完整"))?;
     decide(c, relation, text(&r["previous_status"], "身份撤销快照不完整")?, "撤销人工关系决议", None, "undo_audit")?;
-    character_graph::rebuild(c)?;
-    Ok(())
+    rebuild_decision(c, pair)
 }
 
 /// hybrid 下撤销激活前留下的破坏式合并：对应的 `duplicate_of` 退回 proposed（撤销审计），搬走的结论不回来。

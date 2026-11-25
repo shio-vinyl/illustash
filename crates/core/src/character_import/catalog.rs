@@ -385,6 +385,11 @@ fn refresh(c: &Connection, roles: &BTreeSet<String>) -> Result<()> {
         return Ok(());
     }
     let mut affected = BTreeSet::new();
+    if hybrid(c)? {
+        let changed = character_graph::rebuild(c)?;
+        affected
+            .extend(changed["affected"].as_array().into_iter().flatten().filter_map(Value::as_str).map(str::to_owned));
+    }
     let mut stmt = c.prepare_cached(
         "SELECT a.key FROM terms t JOIN term_current_evidence e ON e.term_id=t.id
          JOIN term_assets a ON a.id=e.asset_id AND a.namespace='library' WHERE t.key=?
@@ -401,7 +406,8 @@ fn refresh(c: &Connection, roles: &BTreeSet<String>) -> Result<()> {
         character_projection::refresh_candidates(c, &images)?;
         character_projection::evidence(c, Some(&images))?;
         character_projection::single(c, Some(&images))?;
-        character_projection::memberships(c, Some(&images))?;
+        character_projection::memberships_before_excluded(c, Some(&images))?;
+        super::refresh_exclusions_and_fold(c)?;
     }
     Ok(())
 }
@@ -618,9 +624,6 @@ pub fn catalog_apply(c: &Connection) -> Result<Value> {
             }
         }
     }
-    if identity && !touched.is_empty() {
-        character_graph::rebuild(c)?;
-    }
     refresh(c, &touched)?;
     state.revision = catalog.revision;
     state.write(c)?;
@@ -640,16 +643,14 @@ fn split(c: &Connection, kind: &str, entity: &str, manual: bool) -> Result<()> {
     remove(c, kind, &change)?;
     state.declined.insert((change.0.clone(), change.1.clone()));
     state.write(c)?;
-    if hybrid(c)? {
-        character_graph::rebuild(c)?;
-    }
+    refresh(c, &BTreeSet::from([change.0.clone(), change.1.clone()]))?;
     if manual && change.2.is_some() {
         let mut shown = crate::character_labels::Shown::new();
         let label = format!("已拆开角色词表的 {} 和 {}", shown.name(c, &change.0)?, shown.name(c, &change.1)?);
         let step = begin_action(c, &label)?;
         finish_action(c, step, "catalog_split", vec![json!({"catalog_split":{"kind":kind,"change":change}})])?;
     }
-    refresh(c, &BTreeSet::from([change.0, change.1]))
+    Ok(())
 }
 
 /// 逐条拆开词表的合并或造型，并保留用户的拆开决定。
@@ -749,9 +750,6 @@ pub(crate) fn suppress_catalog_change(c: &Connection, a: &str, b: &str) -> Resul
         }
         remove(c, kind, &change)?;
         state.write(c)?;
-        if hybrid(c)? {
-            character_graph::rebuild(c)?;
-        }
         refresh(c, &BTreeSet::from([a.to_owned(), b.to_owned()]))?;
         return Ok(Some(SuppressedCatalogChange { kind: kind.into(), change }));
     }
@@ -795,8 +793,5 @@ pub(crate) fn restore_catalog_change(c: &Connection, suppressed: &SuppressedCata
     let mut state = State::read(c)?;
     state.list_mut(kind).push(suppressed.change.clone());
     state.write(c)?;
-    if identity {
-        character_graph::rebuild(c)?;
-    }
     refresh(c, &BTreeSet::from([id.clone(), other.clone()]))
 }

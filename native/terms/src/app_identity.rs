@@ -76,10 +76,10 @@ fn pair(c: &mut Connection, body: &Json) -> Result<Json> {
             }
             if crate::character_projection::policy(&tx)? {
                 let kind = if answer == "form" { "form_of" } else { "duplicate_of" };
-                crate::character_commands::command(
+                crate::character_identity::command(
                     &tx,
                     &json!({
-                        "op":"decide", "a":a, "b":b, "kind":kind, "status":"accepted", "reason":"身份整理"
+                        "op":"decide_pair", "a":a, "b":b, "kind":kind, "status":"accepted", "reason":"身份整理"
                     }),
                 )
                 .map_err(app_commands::core_error)?;

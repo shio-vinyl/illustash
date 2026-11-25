@@ -219,6 +219,10 @@ fn entity_state(c: &Connection) -> Result<EntityState> {
 }
 
 pub fn project(c: &Connection, g: &Graph) -> Result<Value> {
+    project_with(c, g, false)
+}
+
+fn project_with(c: &Connection, g: &Graph, refresh_exclusions: bool) -> Result<Value> {
     let before = entity_state(c)?;
     let mapping: HashMap<&str, &str> =
         g.nodes.iter().enumerate().map(|(i, n)| (n.id.as_str(), g.nodes[g.mapping[i]].id.as_str())).collect();
@@ -310,17 +314,30 @@ pub fn project(c: &Connection, g: &Graph) -> Result<Value> {
         affected.extend(suspended);
         let uuids: Vec<String> = affected.iter().cloned().collect();
         character_projection::evidence(c, Some(&uuids))?;
-        character_projection::memberships(c, Some(&uuids))?;
+        if refresh_exclusions {
+            character_projection::memberships_before_excluded(c, Some(&uuids))?;
+            crate::character_import::refresh_exclusions_and_fold(c)?;
+        } else {
+            character_projection::memberships(c, Some(&uuids))?;
+        }
     }
     c.prepare_cached("INSERT OR REPLACE INTO meta VALUES ('identity_graph_version',?)")?.execute([&version])?;
     Ok(json!({"version":version,"changed":changed,"affected":affected}))
 }
 
 pub fn rebuild(c: &Connection) -> Result<Value> {
+    rebuild_with(c, false)
+}
+
+pub(crate) fn rebuild_pair(c: &Connection) -> Result<Value> {
+    rebuild_with(c, true)
+}
+
+fn rebuild_with(c: &Connection, refresh_exclusions: bool) -> Result<Value> {
     if !character_projection::policy(c)? {
         return Err(Error::invalid("请先完成两级身份迁移"));
     }
     baseline(c)?;
     let g = graph(c)?;
-    project(c, &g)
+    project_with(c, &g, refresh_exclusions)
 }

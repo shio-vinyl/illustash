@@ -1139,6 +1139,8 @@ pub(crate) struct Updater {
     generation: u64,
     session: String,
     enabled: bool,
+    catalog_pending: bool,
+    initial_pending: bool,
     /// 只为本进程授权（`--names-network`）。
     cli: bool,
     /// 图库的长期同意，与每个 Source 共享，所以撤销立即生效。
@@ -1166,6 +1168,8 @@ impl Updater {
             generation,
             session: session.into(),
             enabled,
+            catalog_pending: false,
+            initial_pending: false,
             cli: authorized,
             grant: Arc::new(AtomicBool::new(granted)),
             retry: Instant::now(),
@@ -1174,6 +1178,16 @@ impl Updater {
             processed_import: Arc::default(),
         })
     }
+    /// 开库会补词表关系，等事务提交后再读取完整的取名对象。
+    pub(crate) fn wait_for_catalog(&mut self) {
+        self.catalog_pending = true;
+        self.initial_pending = self.enabled;
+    }
+
+    pub(crate) fn catalog_ready(&mut self) {
+        self.catalog_pending = false;
+    }
+
     pub fn stop(&mut self) {
         self.cancel.store(true, Ordering::SeqCst);
         if let Some(mut t) = self.thread.take() {
@@ -1262,7 +1276,7 @@ impl Updater {
         }
     }
     pub fn recover(&mut self, library: &Library) {
-        if !self.enabled || self.thread.as_ref().is_some_and(crate::app_tasks::Task::running) {
+        if !self.enabled || self.catalog_pending || self.thread.as_ref().is_some_and(crate::app_tasks::Task::running) {
             return;
         }
         self.settle();
@@ -1275,8 +1289,9 @@ impl Updater {
                 )?
                 .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?
                 .collect::<rusqlite::Result<_>>()?;
-            if (self.cli || self.grant.load(Ordering::SeqCst))
-                && latest_import(&c)? > self.processed_import.load(Ordering::SeqCst)
+            let after_import = (self.cli || self.grant.load(Ordering::SeqCst))
+                && latest_import(&c)? > self.processed_import.load(Ordering::SeqCst);
+            if (self.initial_pending || after_import)
                 && !v.iter().any(|(_, kind)| {
                     kind.strip_prefix("names:")
                         .and_then(|raw| serde_json::from_str::<Value>(raw).ok())
@@ -1287,10 +1302,11 @@ impl Updater {
             }
             Ok(v)
         })();
-        let mut pending = match pending {
-            Ok(p) if !p.is_empty() => p,
-            _ => return,
-        };
+        let Ok(mut pending) = pending else { return };
+        self.initial_pending = false;
+        if pending.is_empty() {
+            return;
+        }
         // 等待同意的请求在同意给出后再运行，而不是每次重试计时都运行。
         let waiting = self.state.lock().expect("app_names mutex poisoned")["status"] == "unauthorized"
             && !(self.cli || self.grant.load(Ordering::SeqCst));

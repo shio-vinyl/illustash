@@ -1454,6 +1454,219 @@ mod tests {
         illustash_core::character_catalog::override_for_thread(None);
     }
 
+    fn seed_screenshot_labels(tx: &Connection, uuids: &[&str]) -> Result<()> {
+        tx.execute_batch(
+            "INSERT INTO terms(key,kind,origin) VALUES ('fixture_screenshot','topic','fixture');
+            INSERT INTO term_links(system,key,term_id,source)
+                SELECT 'wd','chat_log',id,'fixture' FROM terms WHERE key='fixture_screenshot';",
+        )?;
+        let ids = json!(uuids).to_string();
+        tx.execute(
+            "INSERT OR IGNORE INTO term_assets(namespace,key) SELECT 'library',value FROM json_each(?1)",
+            [&ids],
+        )?;
+        tx.execute(
+            "INSERT INTO term_projection(asset_id,term_id,state,score,sources)
+             SELECT a.id,t.id,'machine',0.99,'wd' FROM term_assets a,terms t
+             WHERE a.key IN (SELECT value FROM json_each(?1)) AND t.key='fixture_screenshot'",
+            [&ids],
+        )?;
+        Ok(())
+    }
+
+    #[test]
+    fn catalog_apply_split_and_undo_keep_affected_copies_in_the_right_pool() {
+        illustash_core::character_catalog::override_for_thread(Some(catalog_with("")));
+        let f = Fixture::new();
+        f.write(|tx| {
+            let assets = ["screen", "clean", "manual", "base", "outside1", "outside2"];
+            let rows: Vec<_> =
+                assets.iter().map(|u| json!([u, "t.png", "t.png", 8, 8, "2026-11-23", "folder"])).collect();
+            crate::character_commands::command(
+                tx,
+                &json!({"op":"refresh","assets":rows,"indexed":"2026-11-23",
+                "index":{},"labels":[["screen","coat",0.99,"character"],["manual","coat",0.99,"character"],
+                                    ["base","mascot_base",0.99,"character"]]}),
+            )?;
+            seed_screenshot_labels(tx, &["screen", "manual"])?;
+            tx.execute_batch(
+                "UPDATE term_tree SET mascot=1,mascot_origin='default'
+                WHERE term_id=(SELECT term_id FROM term_links WHERE key='mascot_base');
+                INSERT INTO curation(uuid,status,origin) VALUES ('manual','included','review');
+                INSERT INTO duplicates VALUES ('screen','pair',2,1,'2026-11-23',1,0),
+                    ('clean','pair',2,2,'2026-11-23',0,1),('outside1','outside',2,1,'2026-11-23',0,1),
+                    ('outside2','outside',2,2,'2026-11-23',1,0);",
+            )?;
+            let excluded = || snapshot(tx, "SELECT uuid,reason,origin FROM excluded ORDER BY uuid");
+            let hidden = || snapshot(tx, "SELECT uuid,hidden FROM duplicates WHERE grp='pair' ORDER BY uuid");
+            let untouched = || snapshot(tx, "SELECT uuid,rep,hidden FROM duplicates WHERE grp='outside' ORDER BY uuid");
+            let outside = untouched();
+            let coat: String = tx.query_row(
+                "SELECT t.key FROM term_links l JOIN terms t ON t.id=l.term_id WHERE l.key='coat'",
+                [],
+                |r| r.get(0),
+            )?;
+            let latest = || tx.query_row("SELECT max(id) FROM actions WHERE undone=0", [], |r| r.get::<_, i64>(0));
+            illustash_core::character_catalog::override_for_thread(Some(catalog_with(
+                r#"[1,"mascot_base",[],null,null,null,null,null,"",null],
+                   [2,"coat",[],1,"appearance","auto","coat",null,"",null]"#,
+            )));
+            crate::character_commands::command(tx, &json!({"op":"catalog_apply"}))?;
+            let attached = latest()?;
+            assert_eq!(excluded(), vec![json!(["screen", "screenshot", "rule"])]);
+            assert_eq!(hidden(), vec![json!(["clean", 0]), json!(["screen", 0])]);
+
+            crate::character_commands::command(tx, &json!({"op":"catalog_split","entity":coat}))?;
+            assert!(excluded().is_empty());
+            assert_eq!(hidden(), vec![json!(["clean", 1]), json!(["screen", 0])]);
+            crate::character_commands::command(tx, &json!({"op":"undo","action":latest()?}))?;
+            assert_eq!(excluded(), vec![json!(["screen", "screenshot", "rule"])]);
+            assert_eq!(hidden(), vec![json!(["clean", 0]), json!(["screen", 0])]);
+
+            crate::character_commands::command(tx, &json!({"op":"undo","action":attached}))?;
+            assert!(excluded().is_empty());
+            assert_eq!(hidden(), vec![json!(["clean", 1]), json!(["screen", 0])]);
+            assert_eq!(untouched(), outside);
+            Ok(())
+        })
+        .unwrap();
+        illustash_core::character_catalog::override_for_thread(None);
+    }
+
+    #[test]
+    fn identity_pair_and_undo_recompute_exclusions_for_direct_and_hybrid() {
+        for hybrid in [false, true] {
+            let f = Fixture::new();
+            let mut ids = Vec::new();
+            f.write(|tx| {
+                if hybrid {
+                    tx.execute("INSERT INTO meta VALUES ('identity_policy','hybrid')", [])?;
+                    tx.execute_batch(
+                        &include_str!("app_migration_sql/hybrid.sql")
+                            .replace("entities", illustash_core::character_entities::ENTITIES),
+                    )?;
+                }
+                crate::character_commands::command(
+                    tx,
+                    &json!({"op":"refresh","assets":[
+                    ["screen","screen.png","screen.png",8,8,"2026-11-23","folder"],
+                    ["copy","copy.png","copy.png",8,8,"2026-11-23","folder"],
+                    ["parent","parent.png","parent.png",8,8,"2026-11-23","folder"]
+                ],"indexed":"2026-11-23","index":{},"labels":[["screen","fixture_role_a",0.99,"character"],
+                                                           ["parent","fixture_role_b",0.99,"character"]]}),
+                )?;
+                seed_screenshot_labels(tx, &["screen"])?;
+                tx.execute_batch(
+                    "INSERT INTO duplicates VALUES ('screen','pair',2,1,'2026-11-23',1,0),
+                    ('copy','pair',2,2,'2026-11-23',0,1);",
+                )?;
+                ids = tx
+                    .prepare(
+                        "SELECT t.key FROM term_links l JOIN terms t ON t.id=l.term_id
+                                 WHERE l.key IN ('fixture_role_a','fixture_role_b') ORDER BY l.key",
+                    )?
+                    .query_map([], |r| r.get::<_, String>(0))?
+                    .collect::<rusqlite::Result<_>>()?;
+                crate::character_commands::command(
+                    tx,
+                    &json!({"op":"change","entity":ids[1],"asked":["screen"],"action":"rejected"}),
+                )?;
+                Ok(())
+            })
+            .unwrap();
+            let mut app = writer(&f.library.db()).unwrap();
+            let excluded = |c| snapshot(c, "SELECT uuid FROM excluded ORDER BY uuid");
+            let hidden = |c| snapshot(c, "SELECT uuid FROM duplicates WHERE hidden=1 ORDER BY uuid");
+            assert!(excluded(&app).is_empty());
+            assert_eq!(hidden(&app), vec![json!(["copy"])]);
+            crate::app_identity::request(
+                &mut app,
+                "/api/identity/pair",
+                &json!({"a":ids[0],"b":ids[1],"answer":"form"}).into(),
+            )
+            .unwrap();
+            assert_eq!(excluded(&app), vec![json!(["screen"])], "hybrid={hybrid}");
+            assert!(hidden(&app).is_empty());
+            f.write(|tx| {
+                let latest: i64 = tx.query_row("SELECT max(id) FROM actions WHERE undone=0", [], |r| r.get(0))?;
+                crate::character_commands::command(tx, &json!({"op":"undo","action":latest}))?;
+                Ok(())
+            })
+            .unwrap();
+            assert!(excluded(&app).is_empty());
+            assert_eq!(hidden(&app), vec![json!(["copy"])]);
+        }
+    }
+
+    #[test]
+    fn catalog_extension_apply_and_withdraw_refold_affected_copies() {
+        illustash_core::character_catalog::override_for_thread(Some(catalog_with(
+            r#"[1,"fixture_parent",[],null,null,null,null,null,"",null],
+            [2,"fixture_coat",[],1,"appearance","auto","coat",null,"",null]"#,
+        )));
+        let f = Fixture::new();
+        f.write(|tx| {
+            crate::character_commands::command(
+                tx,
+                &json!({"op":"refresh","assets":[
+                ["screen","screen.png","screen.png",8,8,"2026-11-23","folder"],
+                ["copy","copy.png","copy.png",8,8,"2026-11-23","folder"]
+            ],"indexed":"2026-11-23","index":{},"labels":[]}),
+            )?;
+            seed_screenshot_labels(tx, &["screen"])?;
+            tx.execute_batch(
+                "INSERT INTO duplicates VALUES ('screen','pair',2,1,'2026-11-23',1,0),
+                ('copy','pair',2,2,'2026-11-23',0,1);",
+            )?;
+            crate::character_commands::command(
+                tx,
+                &json!({"op":"rederive",
+                "rating_indexed":"2026-11-23","general_indexed":"2026-11-23","realistic":[]}),
+            )?;
+            let excluded = || snapshot(tx, "SELECT uuid FROM excluded ORDER BY uuid");
+            let hidden = || snapshot(tx, "SELECT uuid FROM duplicates WHERE hidden=1 ORDER BY uuid");
+            for longtail in [false, true] {
+                assert_eq!(excluded(), vec![json!(["screen"])]);
+                assert!(hidden().is_empty());
+                if longtail {
+                    illustash_core::ccip_longtail::apply(
+                        tx,
+                        "fixture-longtail",
+                        &[illustash_core::ccip_longtail::Hit {
+                            uuid: "screen".into(),
+                            tag: "fixture_coat".into(),
+                            score: 0.99,
+                        }],
+                    )?;
+                } else {
+                    wd_extension::apply_scoped(
+                        tx,
+                        "fixture-extension",
+                        &["screen".into()],
+                        &[Hit {
+                            uuid: "screen".into(),
+                            tag: "fixture_coat".into(),
+                            probability: 0.99,
+                            candidate_only: false,
+                        }],
+                    )?;
+                }
+                assert!(excluded().is_empty());
+                assert_eq!(hidden(), vec![json!(["copy"])]);
+                if longtail {
+                    illustash_core::ccip_longtail::withdraw(tx)?;
+                } else {
+                    wd_extension::withdraw(tx)?;
+                }
+                assert_eq!(excluded(), vec![json!(["screen"])]);
+                assert!(hidden().is_empty());
+            }
+            Ok(())
+        })
+        .unwrap();
+        illustash_core::character_catalog::override_for_thread(None);
+    }
+
     #[test]
     fn catalog_incremental_hybrid_import_registers_only_changed_structure() {
         illustash_core::character_catalog::override_for_thread(Some(catalog_with(

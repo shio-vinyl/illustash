@@ -82,6 +82,8 @@ struct History {
     names: Vec<names::Edit>,
     links: Vec<links::Added>,
     skip_before: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    catalog_splits: Vec<crate::character_import::SuppressedCatalogChange>,
     graph: bool,
 }
 
@@ -617,6 +619,17 @@ pub fn apply_in(
                 };
                 *pair = if a < b { format!("{a}|{b}") } else { format!("{b}|{a}") };
             }
+            Record::IdentityKeepApart { a, b, .. } => {
+                *a = terms[a].clone();
+                *b = terms[b].clone();
+                if a == b {
+                    report.record(source, "conflict");
+                    continue;
+                }
+                if a > b {
+                    std::mem::swap(a, b);
+                }
+            }
             Record::AnchorDecision { .. } => {
                 report.record_reason(source, "unsupported_dependency", Some("reference_version_unverified"));
                 continue;
@@ -748,10 +761,16 @@ pub fn apply_in(
     }
     definitions::refresh_signatures(c, &mut created)?;
     let mut touched = BTreeSet::new();
+    let mut catalog_splits = Vec::new();
     for record in &planned {
         check()?;
         if !matches!(record, Record::RelationVerdict { .. }) {
             write(c, action, &snapshot.header.snapshot_id, record)?;
+        }
+        if let Record::IdentityKeepApart { a, b, .. } = record {
+            if let Some(split) = crate::character_import::suppress_catalog_change(c, a, b)? {
+                catalog_splits.push(split);
+            }
         }
         touched.extend(record.assets().into_iter().map(str::to_owned));
     }
@@ -782,6 +801,7 @@ pub fn apply_in(
         names: name_edits,
         links: link_edits,
         skip_before,
+        catalog_splits,
         graph,
     };
     c.execute(
@@ -879,6 +899,9 @@ fn write(c: &Connection, action: i64, snapshot: &str, record: &Record) -> Result
             )?;
         }
         Record::IdentitySkip { pair, .. } => skips::add(c, pair)?,
+        Record::IdentityKeepApart { a, b, .. } => {
+            crate::character_identity::set_kept_apart(c, a, b, true)?;
+        }
         Record::IdentityContext { asset, term, scope, suspended, .. } => {
             if let Some(scope) = scope {
                 c.execute(
@@ -979,6 +1002,7 @@ pub fn undo_in(c: &Connection, action: i64) -> Result<Vec<String>> {
             | Record::Review { .. }
             | Record::RelationVerdict { .. }
             | Record::IdentitySkip { .. }
+            | Record::IdentityKeepApart { .. }
             | Record::IdentityContext { .. } => None,
             Record::Curation { .. } => Some("curation"),
             Record::Deferred { .. } => Some("deferred"),
@@ -1004,6 +1028,14 @@ pub fn undo_in(c: &Connection, action: i64) -> Result<Vec<String>> {
         })
         .collect();
     skips::undo(c, &skipped, history.skip_before.as_deref())?;
+    for record in &history.after {
+        if let Record::IdentityKeepApart { a, b, .. } = record {
+            crate::character_identity::set_kept_apart(c, a, b, false)?;
+        }
+    }
+    for split in &history.catalog_splits {
+        crate::character_import::restore_catalog_change(c, split)?;
+    }
     definitions::check_undo(c, action, &history.created)?;
     relations::check_undo(c, action, &history.relations)?;
     definitions::remove(c, &history.created)?;

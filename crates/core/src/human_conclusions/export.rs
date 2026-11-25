@@ -33,6 +33,7 @@ pub fn capture(c: &Connection, header: Header) -> Result<Snapshot> {
     simple_states(c, &mut records)?;
     contexts(c, &mut records)?;
     reviews_and_skips(c, &mut records)?;
+    kept_apart(c, &mut records)?;
     anchors(c, &mut records)?;
     let mut terms: BTreeSet<String> = records.iter().flat_map(|r| r.terms().into_iter().map(str::to_owned)).collect();
     for record in &records {
@@ -58,13 +59,14 @@ pub fn capture(c: &Connection, header: Header) -> Result<Snapshot> {
         terms.insert(key?);
     }
     let aliases = merge_aliases(c)?;
+    let portable = crate::character_import::portable_trees(c)?;
     terms.extend(aliases.keys().cloned());
     let mut visited = BTreeSet::new();
     while let Some(key) = terms.pop_first() {
         if !visited.insert(key.clone()) {
             continue;
         }
-        let definition = entity(c, &key, policy, aliases.get(&key))?;
+        let definition = entity(c, &key, policy, aliases.get(&key), portable.get(&key))?;
         let record = Record::Entity { key, definition: Box::new(definition) };
         terms.extend(record.terms().into_iter().filter(|key| !visited.contains(*key)).map(str::to_owned));
         records.push(record);
@@ -305,6 +307,22 @@ fn reviews_and_skips(c: &Connection, out: &mut Vec<Record>) -> Result<()> {
     }
     Ok(())
 }
+fn kept_apart(c: &Connection, out: &mut Vec<Record>) -> Result<()> {
+    let mut pairs = crate::character_identity::kept_apart_pairs(c)?;
+    for (a, b) in crate::character_import::declined_pairs(c)? {
+        if a != b {
+            pairs.insert(if a < b { (a, b) } else { (b, a) });
+        }
+    }
+    let mut exists = c.prepare_cached("SELECT count(*)=2 FROM terms WHERE key IN (?1,?2)")?;
+    for (a, b) in pairs {
+        if exists.query_row([&a, &b], |r| r.get::<_, bool>(0))? {
+            out.push(Record::IdentityKeepApart { key: key(&[&a, &b]), a, b });
+        }
+    }
+    Ok(())
+}
+
 fn anchors(c: &Connection, out: &mut Vec<Record>) -> Result<()> {
     // 旧库只保存 reference，没有当时参考库的版本证明。保留原决定，但不得伪造可自动恢复的参考版本。
     for row in c.prepare("SELECT entity,reference,decision,reason,created_at FROM identity_anchor_decisions ORDER BY entity,reference")?
@@ -450,13 +468,19 @@ fn merge_aliases(c: &Connection) -> Result<Aliases> {
     }
     Ok(result)
 }
-fn entity(c: &Connection, key: &str, policy: Policy, aliases: Option<&AliasNames>) -> Result<Entity> {
-    let (id, kind, origin): (i64, String, String) =
+fn entity(
+    c: &Connection,
+    key: &str,
+    policy: Policy,
+    aliases: Option<&AliasNames>,
+    portable: Option<&crate::character_import::PortableTree>,
+) -> Result<Entity> {
+    let (id, mut kind, origin): (i64, String, String) =
         c.query_row("SELECT id,kind,origin FROM terms WHERE key=?1", [key], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?;
-    let tree=c.query_row("SELECT parent_id,merged_into,work_id,work_text,variant,artist,label_only,mascot,mascot_origin,original,parent_locked,review_status,review_note,seq FROM term_tree WHERE term_id=?1",[id],|r|Ok(Tree {
+    let mut tree=c.query_row("SELECT parent_id,merged_into,work_id,work_text,variant,artist,label_only,mascot,mascot_origin,original,parent_locked,review_status,review_note,seq FROM term_tree WHERE term_id=?1",[id],|r|Ok(Tree {
         parent:r.get(0)?,merged_into:r.get(1)?,work:r.get(2)?,work_text:r.get(3)?,variant:r.get(4)?,artist:r.get(5)?,label_only:r.get(6)?,mascot:r.get(7)?,mascot_origin:r.get(8)?,original:r.get(9)?,parent_locked:r.get(10)?,review_status:r.get(11)?,review_note:r.get(12)?,order:r.get(13)?,
     })).optional()?;
-    let baseline = if policy == Policy::Hybrid {
+    let mut baseline = if policy == Policy::Hybrid {
         c.query_row(
             "SELECT parent_id,variant,kind,merged_into,seq FROM term_identity_baseline WHERE id=?1",
             [key],
@@ -474,6 +498,32 @@ fn entity(c: &Connection, key: &str, policy: Policy, aliases: Option<&AliasNames
     } else {
         None
     };
+    if let Some(portable) = portable {
+        if let Some(tree) = &mut tree {
+            if portable.merged {
+                tree.merged_into = None;
+            }
+            if portable.attached {
+                kind = portable.kind.clone().unwrap_or_else(|| "character".into());
+                tree.variant = portable.variant.clone().unwrap_or_default();
+                tree.work = portable.work.clone();
+                tree.parent = None;
+            }
+            if portable.group {
+                tree.label_only = false;
+            }
+        }
+        if let Some(baseline) = &mut baseline {
+            if portable.merged {
+                baseline.merged_into = None;
+            }
+            if portable.attached {
+                baseline.parent = None;
+                baseline.variant = portable.variant.clone();
+                baseline.kind = Some(kind.clone());
+            }
+        }
+    }
     let mut names = Vec::new();
     let mut description = None;
     for row in c.prepare("SELECT lang,value,role,preferred,position,source FROM term_names WHERE term_id=?1 ORDER BY seq,lang,role,source,value")?

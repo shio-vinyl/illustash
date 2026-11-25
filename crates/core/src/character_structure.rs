@@ -86,7 +86,7 @@ pub const SHARED_OC: &str = "原创角色（未细分）";
 fn shared_oc(c: &Connection, args: &Value) -> Result<Value> {
     let row: Option<String> = c
         .query_row(
-            &format!("SELECT id FROM {ENTITIES} WHERE label_only=1 AND merged_into IS NULL ORDER BY seq LIMIT 1"),
+            &format!("SELECT id FROM {ENTITIES} WHERE label_only=1 AND original=1 AND merged_into IS NULL ORDER BY seq LIMIT 1"),
             [],
             |r| r.get(0),
         )

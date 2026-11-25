@@ -234,6 +234,12 @@ pub(crate) enum Record {
         key: String,
         pair: String,
     },
+    IdentityKeepApart {
+        #[serde(rename = "record_key")]
+        key: String,
+        a: String,
+        b: String,
+    },
     AnchorDecision {
         #[serde(rename = "record_key")]
         key: String,
@@ -259,6 +265,7 @@ impl Record {
             Self::Uncertain { key, .. } => ("uncertain", key),
             Self::Review { key, .. } => ("review", key),
             Self::IdentitySkip { key, .. } => ("identity_skip", key),
+            Self::IdentityKeepApart { key, .. } => ("identity_keep_apart", key),
             Self::AnchorDecision { key, .. } => ("anchor_decision", key),
         }
     }
@@ -293,7 +300,7 @@ impl Record {
             Self::ImageVerdict { term, .. } | Self::Review { term, .. } | Self::AnchorDecision { term, .. } => {
                 vec![term]
             }
-            Self::RelationVerdict { a, b, .. } => vec![a, b],
+            Self::RelationVerdict { a, b, .. } | Self::IdentityKeepApart { a, b, .. } => vec![a, b],
             Self::IdentityContext { term, scope, suspended, .. } => {
                 let mut out = vec![term.as_str()];
                 out.extend(scope.iter().flatten().map(String::as_str));
@@ -319,6 +326,7 @@ impl Record {
             }
             Self::RelationVerdict { a, b, kind: relation, .. } => vec![kind, a, b, relation],
             Self::IdentitySkip { pair, .. } => vec![kind, pair],
+            Self::IdentityKeepApart { a, b, .. } => vec![kind, a, b],
             Self::Curation { asset, .. } | Self::Deferred { asset, .. } | Self::Uncertain { asset, .. } => {
                 vec![kind, asset]
             }
@@ -445,6 +453,9 @@ impl Record {
             if reviewed.iter().any(|v| !seen.contains(v)) {
                 return invalid("已审证据必须属于所见证据");
             }
+        }
+        if matches!(self, Self::IdentityKeepApart { a, b, .. } if a >= b) {
+            return invalid("保持分开需要两个不同的身份");
         }
         if let Self::IdentitySkip { pair, .. } = self {
             // 现行入口允许任意键，且以竖线拼接。保持原串，不把无法唯一解析的旧键捏造成两个身份。

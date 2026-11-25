@@ -1247,10 +1247,12 @@ mod tests {
                 )
             };
             let base = owner("base_old")?;
-            // 改名后的新 tag 并到旧 tag 已有的角色上。
-            assert_eq!(owner("base_(w)")?, base);
+            // 各标签保留原始证据端点，但界面归到同一角色。
+            let canonical = owner("base_(w)")?;
+            assert_ne!(canonical, base);
+            assert_eq!(crate::character_commands::resolve(tx, &base)?, canonical);
             // 泳装自动挂到本体下；形态照旧是顶层角色。
-            assert_eq!(tree(&owner("base_(swimsuit)_(w)")?)?, (Some(base.clone()), Some("swimsuit".into())));
+            assert_eq!(tree(&owner("base_(swimsuit)_(w)")?)?, (Some(canonical), Some("swimsuit".into())));
             assert_eq!(tree(&owner("base_(alt)_(w)")?)?.0, None);
             // 本体还没有时，先建一个本体再挂上去。
             let lonely = owner("lonely_(w)")?;
@@ -1335,8 +1337,8 @@ mod tests {
             assert_ne!(old, new);
             let done = crate::character_commands::command(tx, &json!({"op":"catalog_apply"}))?;
             assert_eq!(done, json!({"merged": 1, "attached": 1}));
-            // 两个一样多图时按 id 排第一个当合并目标；另一个合进去。
-            let (survivor, gone) = if tree(tx, &old)?.2.is_some() { (new, old) } else { (old, new) };
+            // 由规范标签决定合并目标，输入顺序或随机 ID 不改变结果。
+            let (survivor, gone) = (new, old);
             assert_eq!(tree(tx, &gone)?.2, Some(survivor.clone()));
             assert_eq!(tree(tx, &swim)?.0, Some(survivor));
             let label: String = tx.query_row("SELECT label FROM actions ORDER BY id DESC LIMIT 1", [], |r| r.get(0))?;
@@ -1373,6 +1375,106 @@ mod tests {
             Ok(())
         })
         .unwrap();
+        illustash_core::character_catalog::override_for_thread(None);
+    }
+
+    #[test]
+    fn catalog_base_and_longtail_keep_raw_evidence_when_directory_withdraws_a_relation() {
+        illustash_core::character_catalog::override_for_thread(Some(catalog_with(
+            r#"[1,"hero_(w)",["old_hero"],null,null,null,null,null,"",null],
+            [2,"hero_(swimsuit)_(w)",[],1,"appearance","auto","swimsuit",null,"",null],
+            [3,"hero_(alt)_(w)",[],1,"form","ask",null,null,"",null]"#,
+        )));
+        let f = Fixture::new();
+        f.write(|tx| {
+            let assets = ["ccip_new", "ccip_old", "raw_old", "ccip_swim", "ccip_alt", "outside", "longtail"];
+            let rows: Vec<_> =
+                assets.iter().map(|u| json!([u,"test.png","test.png",8,8,"2026-11-23","folder"])).collect();
+            let characters = json!([
+                {"char_id":"old","danbooru_tag":"old_hero","copyright":"w"},
+                {"char_id":"new","danbooru_tag":"hero_(w)","copyright":"w"},
+                {"char_id":"swim","danbooru_tag":"hero_(swimsuit)_(w)","copyright":"w","skin":"old label"},
+                {"char_id":"alt","danbooru_tag":"hero_(alt)_(w)","copyright":"w","skin":"unreviewed"},
+                {"char_id":"outside","danbooru_tag":"hero_(guild)_(w)","copyright":"w","skin":"guild"}
+            ]);
+            crate::character_commands::command(tx,&json!({"op":"refresh","assets":rows,"indexed":"2026-11-23",
+                "index":{"characters":characters},"labels":[
+                    ["ccip_new","new",0.99,"char_ext"],["ccip_old","old",0.99,"char_ext"],["raw_old","old_hero",0.99,"character"],
+                    ["ccip_swim","swim",0.99,"char_ext"],["ccip_alt","alt",0.99,"char_ext"],["outside","outside",0.99,"char_ext"]
+                ]}))?;
+            illustash_core::ccip_longtail::apply(tx,"catalog-longtail",&[
+                illustash_core::ccip_longtail::Hit{uuid:"longtail".into(),tag:"old_hero".into(),score:0.92}
+            ])?;
+            let id = |key: &str| tx.query_row(
+                "SELECT t.key FROM term_links l JOIN terms t ON t.id=l.term_id WHERE l.system='ccip' AND l.key=?",
+                [key], |r| r.get::<_, String>(0),
+            );
+            let owner = |uuid: &str| tx.query_row("SELECT entity FROM memberships WHERE uuid=?", [uuid], |r| r.get::<_, String>(0));
+            let (old, new, swim, alt, outside) = (id("old")?, id("new")?, id("swim")?, id("alt")?, id("outside")?);
+            assert_ne!(old,new);
+            for image in ["ccip_new","ccip_old","raw_old","ccip_swim","longtail"] {
+                assert_eq!(owner(image)?,new);
+            }
+            assert_eq!(owner("ccip_alt")?,alt);
+            assert_eq!(owner("outside")?,outside);
+            assert_eq!(
+                tx.query_row(
+                    "SELECT r.variant FROM term_tree r JOIN terms t ON t.id=r.term_id WHERE t.key=?",
+                    [&swim], |r| r.get::<_, String>(0)
+                )?, "swimsuit"
+            );
+            let raw = snapshot(tx,"SELECT a.key,t.key FROM term_current_evidence e JOIN term_assets a ON a.id=e.asset_id JOIN terms t ON t.id=e.term_id WHERE a.key IN ('ccip_old','raw_old','longtail') ORDER BY a.key");
+            assert_eq!(raw, vec![json!(["ccip_old",old]),json!(["longtail",old]),json!(["raw_old",old])]);
+            illustash_core::character_catalog::override_for_thread(Some(catalog_revision("",2)));
+            crate::character_commands::command(tx,&json!({"op":"catalog_apply"}))?;
+            assert_eq!(owner("ccip_new")?,new);
+            for image in ["ccip_old","raw_old","longtail"] {
+                assert_eq!(owner(image)?,old);
+            }
+            assert_eq!(owner("ccip_swim")?,swim);
+            Ok(())
+        }).unwrap();
+        illustash_core::character_catalog::override_for_thread(None);
+    }
+
+    #[test]
+    fn catalog_existing_hybrid_roles_stay_unmodified_and_groups_remain_searchable_as_tags() {
+        illustash_core::character_catalog::override_for_thread(Some(catalog_with("")));
+        let f = Fixture::new();
+        f.write(|tx| {
+            tx.execute("INSERT OR REPLACE INTO meta VALUES ('identity_policy','hybrid')", [])?;
+            tx.execute_batch(&include_str!("app_migration_sql/hybrid.sql")
+                .replace("entities", illustash_core::character_entities::ENTITIES))?;
+            let assets = ["base","old","costume","group"];
+            let rows: Vec<_> = assets.iter().map(|u| json!([u,"t.png","t.png",8,8,"2026-11-23","folder"])).collect();
+            crate::character_commands::command(tx,&json!({"op":"refresh","assets":rows,"indexed":"2026-11-23","index":{},
+                "labels":[["base","hero",0.99,"character"],["old","old_hero",0.99,"character"],["costume","costume",0.99,"character"]]}))?;
+            let group_catalog = json!({
+                "format": illustash_core::character_catalog::FORMAT,
+                "revision": 1,
+                "columns": ["id","tag","tags","parent","relation","action","variant","bangumi","pick","wikidata","group"],
+                "characters": [
+                    [1,"hero",["old_hero"],null,null,null,null,null,"",null,false],
+                    [2,"costume",[],1,"appearance","auto","costume",null,"",null,false],
+                    [3,"group",[],null,null,null,null,null,"",null,true],
+                ],
+                "works": [],
+            });
+            let group_catalog = illustash_core::character_catalog::Catalog::parse(&group_catalog.to_string()).unwrap();
+            illustash_core::character_catalog::override_for_thread(Some(Box::leak(Box::new(group_catalog))));
+            let before = snapshot(tx, "SELECT id,parent_id,merged_into FROM term_identity_baseline ORDER BY id");
+            crate::character_commands::command(tx,&json!({"op":"catalog_apply"}))?;
+            assert_eq!(snapshot(tx, "SELECT id,parent_id,merged_into FROM term_identity_baseline ORDER BY id"), before);
+            assert_eq!(snapshot(tx,"SELECT count(*) FROM term_verdicts"),vec![json!([0])]);
+            let hits = [illustash_core::ccip_longtail::Hit{uuid:"group".into(),tag:"group".into(),score:0.95}];
+            illustash_core::ccip_longtail::apply(tx,"catalog-group",&hits)?;
+            assert_eq!(snapshot(tx,"SELECT count(*) FROM memberships WHERE uuid='group'"),vec![json!([0])]);
+            assert_eq!(snapshot(tx,"SELECT l.key FROM tag_memberships m JOIN terms t ON t.key=m.entity JOIN term_links l ON l.term_id=t.id WHERE m.uuid='group'"),vec![json!(["group"])]);
+            illustash_core::character_catalog::override_for_thread(Some(catalog_revision("",2)));
+            crate::character_commands::command(tx,&json!({"op":"catalog_apply"}))?;
+            assert_eq!(snapshot(tx,"SELECT count(*) FROM memberships WHERE uuid='group'"),vec![json!([1])]);
+            Ok(())
+        }).unwrap();
         illustash_core::character_catalog::override_for_thread(None);
     }
 

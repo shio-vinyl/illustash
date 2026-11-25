@@ -314,7 +314,7 @@ fn shared_oc(c: &Connection) -> Result<Reply> {
     let sql = format!(
         "SELECT e.id,entity_name(e.id) AS name,e.kind,e.artist
          FROM {ENTITIES} e
-         WHERE label_only=1 AND merged_into IS NULL
+         WHERE label_only=1 AND original=1 AND merged_into IS NULL
          ORDER BY seq
          LIMIT 1",
         ENTITIES = crate::character_entities::ENTITIES

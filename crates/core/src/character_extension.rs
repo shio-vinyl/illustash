@@ -146,8 +146,8 @@ pub(crate) fn apply<'a>(
     if registered {
         store::rebuild_active_evidence(c)?;
     }
-    if !terms.is_empty() && character_projection::policy(c)? {
-        crate::character_graph::baseline(c)?;
+    if !terms.is_empty() {
+        crate::character_import::finish_hybrid_import(c)?;
     }
     replace(c, extension, &format!("extension:{package}"), &before, &after)
 }
@@ -210,12 +210,15 @@ pub(crate) fn fill_unassigned(c: &Connection, scoped: bool) -> Result<()> {
         )
     };
     let scope = if scoped { "AND v.uuid IN (SELECT uuid FROM touched)" } else { "" };
-    // 二级头（#602）的候选不补归属：只有一级证据支持的 WD 扩展候选才能补。
+    let has_groups: bool =
+        c.query_row("SELECT EXISTS(SELECT 1 FROM term_tree WHERE label_only=1 AND original=0)", [], |r| r.get(0))?;
+    // 二级头（#602）的候选不补归属。团体可与人物共现，单独保留一级头的标签命中。
+    let available = if has_groups { "" } else { "AND NOT EXISTS(SELECT 1 FROM memberships m WHERE m.uuid=v.uuid)" };
     character_projection::assignable_extension(
         c,
         &format!(
             "SELECT DISTINCT v.uuid FROM candidates v WHERE v.source='WD_EXT' {scope}
-               AND NOT EXISTS(SELECT 1 FROM memberships m WHERE m.uuid=v.uuid)"
+               {available}"
         ),
     )?;
     // 基础候选与人工结论已投影完成。已有扩展来源优先，余下的按固定来源顺序取候选。
@@ -228,6 +231,7 @@ pub(crate) fn fill_unassigned(c: &Connection, scoped: bool) -> Result<()> {
                         ORDER BY p.source IS v.source DESC,v.source='WD_EXT' DESC,v.score DESC,{family},v.entity) AS n
                FROM candidates v JOIN assets a ON a.uuid=v.uuid JOIN {entities}
                JOIN terms f ON f.key={family} JOIN term_tree r ON r.term_id=f.id AND r.mascot=0
+                AND NOT (r.label_only=1 AND r.original=0)
                LEFT JOIN previous_extension_sources p ON p.uuid=v.uuid
                WHERE v.source IN ('WD_EXT','CCIP_LONGTAIL') {scope} AND {restrictions}
                  AND (v.source<>'WD_EXT' OR EXISTS(SELECT 1 FROM temp.assignable_extension x
@@ -240,6 +244,25 @@ pub(crate) fn fill_unassigned(c: &Connection, scoped: bool) -> Result<()> {
         ),
         [],
     )?;
+    if has_groups {
+        c.execute(
+            &format!(
+                "WITH hits AS (
+                  SELECT v.uuid,{family} AS entity,v.score,v.source,
+                         row_number() OVER(PARTITION BY v.uuid,{family}
+                             ORDER BY v.source='WD_EXT' DESC,v.score DESC,v.entity) AS n
+                  FROM candidates v JOIN assets a ON a.uuid=v.uuid JOIN {entities}
+                  JOIN terms f ON f.key={family} JOIN term_tree r ON r.term_id=f.id AND r.label_only=1 AND r.original=0
+                  WHERE v.source IN ('WD_EXT','CCIP_LONGTAIL') {scope} AND {restrictions}
+                    AND (v.source<>'WD_EXT' OR EXISTS(SELECT 1 FROM temp.assignable_extension x
+                          WHERE x.uuid=v.uuid AND x.entity=v.entity)))
+                INSERT OR IGNORE INTO tag_memberships
+                SELECT uuid,entity,'machine','machine',source,score,1,0,printf('001%020.12f1',score)
+                FROM hits WHERE n=1"
+            ),
+            [],
+        )?;
+    }
     Ok(())
 }
 

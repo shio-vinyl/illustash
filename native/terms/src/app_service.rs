@@ -813,8 +813,8 @@ fn apply_catalog(session: &mut Session) -> Result<()> {
         .optional()?
         .flatten();
     drop(app);
-    session.catalog_checked = true;
     if applied.is_some_and(|a| a >= revision) {
+        session.catalog_checked = true;
         return Ok(());
     }
     let mut app = crate::sqlite::open_with_flags(session.library.db(), rusqlite::OpenFlags::SQLITE_OPEN_READ_WRITE)?;
@@ -825,6 +825,7 @@ fn apply_catalog(session: &mut Session) -> Result<()> {
     crate::schema::begin_writing(&tx)?;
     crate::character_commands::command(&tx, &serde_json::json!({"op": "catalog_apply"}))?;
     crate::schema::commit_writing(tx)?;
+    session.catalog_checked = true;
     Ok(())
 }
 

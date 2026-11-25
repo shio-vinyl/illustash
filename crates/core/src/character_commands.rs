@@ -908,7 +908,7 @@ fn shape(item: &Value) -> Option<&'static str> {
 
 /// v2 信封新增的快照形状，裸列表不认。
 fn edit_shape(item: &Value) -> Option<&'static str> {
-    ["character_kind", "character_mascot", "ask_history", "identity_form"]
+    ["character_kind", "character_mascot", "ask_history", "identity_form", "catalog_change"]
         .into_iter()
         .find(|key| has_keys(item, &[*key]))
 }
@@ -956,6 +956,7 @@ pub fn undo(c: &Connection, args: &Value) -> Result<Value> {
             }
             Some("merge") => crate::character_merge::undo(c, id, &item["merge"])?,
             Some("identity_relation") => crate::character_identity::undo_relation(c, &item["identity_relation"])?,
+            Some("catalog_change") => crate::character_import::undo_catalog_change(c, &item["catalog_change"])?,
             Some("identity_form") => crate::character_identity::undo_form(c, &item["identity_form"])?,
             Some("identity_anchor") => undo_anchor(c, &item["identity_anchor"])?,
             Some("profile") => {

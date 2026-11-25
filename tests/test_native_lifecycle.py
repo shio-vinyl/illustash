@@ -27,7 +27,7 @@ from urllib.parse import urlencode
 
 from tests.fixed_expectations import Library, Expectations, RECORDED_TODAY, TERMS_VERSION, unclocked, current_review_pools
 from tests.synthetic_source import source_fixture as fixture, synthetic_reference
-from tests.test_read_http import INTERRUPT, SPAWN, free_port, wait_until, wait_open_tasks, wait_human_backup
+from tests.test_read_http import INTERRUPT, SPAWN, free_port, wait_until, wait_human_backup
 from tools import verify_read_http
 from tools.verify_read_http import cookie, enter, fetch
 from tools.wait_limit import WAIT
@@ -219,7 +219,7 @@ class NativeLifecycleTest(unittest.TestCase):
         except AssertionError:
             log.seek(0)
             self.fail(f'native startup failed ({process.poll()}): {log.read().decode(errors="replace")}')
-        wait_open_tasks(self, origin, path)
+        wait_human_backup(self, origin)
         return process, log
 
     def clone_closed_library(self, target):
@@ -309,7 +309,6 @@ class NativeLifecycleTest(unittest.TestCase):
         self.assertEqual(json.loads(response['body']), [])
 
     def test_settings_startup_values_errors_and_database_state(self):
-        self.rec.expect_empty_character_catalog()
         self.assertEqual(self.pair('/api/settings')['status'], 200)
         self.assertEqual(self.pair('/api/libraries')['status'], 200)
         changes = {'sync': False, 'similar': False}
@@ -443,7 +442,7 @@ class NativeLifecycleTest(unittest.TestCase):
         self.assertEqual(json.loads(self.request('/api/settings')['body'])['package']['path'], str(self.lib.path))
         self.assertEqual(self.request('/api/startup', {'sync': True}, token=token)['status'], 200)
         self.assertEqual(self.request('/api/libraries/open', {'path': str(dest)}, token=token)['status'], 200)
-        wait_open_tasks(self, self.origin, dest)
+        wait_human_backup(self, self.origin)
         new_token = json.loads(self.request('/api/bootstrap')['body'])['token']
         self.assertNotEqual(new_token, token)
         before = dump(dest / 'library.sqlite')
@@ -637,7 +636,7 @@ class NativeLifecycleTest(unittest.TestCase):
             self.assertEqual(self.pair(url)['route'], 'core')
         blocked.rmdir()
         self.assertEqual(self.request('/api/libraries/open', {'path': str(dest)})['status'], 200)
-        wait_open_tasks(self, self.origin, dest)
+        wait_human_backup(self, self.origin)
         new_token = json.loads(self.request('/api/bootstrap')['body'])['token']
         self.assertNotEqual(new_token, self.token)
         before = dump(dest / 'library.sqlite')
@@ -667,7 +666,7 @@ class NativeLifecycleTest(unittest.TestCase):
         old_token = self.token
         response = self.request('/api/libraries/open', {'path': str(target.path)})
         self.assertEqual(response['status'], 200)
-        wait_open_tasks(self, self.origin, target.path)
+        wait_human_backup(self, self.origin)
         value = json.loads(response['body'])
         self.assertEqual((value['path'], value['name']), (str(target.path), 'second'))
         new_token = json.loads(self.request('/api/bootstrap')['body'])['token']
@@ -722,7 +721,7 @@ class NativeLifecycleTest(unittest.TestCase):
         conn.endheaders(); conn.send(body[:8])
         # 旧请求还在途中，请求体不完整；第二个连接可以切换。
         self.assertEqual(self.request('/api/libraries/open', {'path': str(target.path)})['status'], 200)
-        wait_open_tasks(self, self.origin, target.path)
+        wait_human_backup(self, self.origin)
         before = dump(target.db)
         conn.send(body[8:]); response = conn.getresponse(); response.read()
         self.assertEqual(response.status, 403)
@@ -756,7 +755,7 @@ class NativeLifecycleTest(unittest.TestCase):
         # 再次打开这个别名是有意的切换：在另一个图库包上开新会话。
         old_token = self.token
         self.assertEqual(self.request('/api/libraries/open', {'path': str(alias)})['status'], 200)
-        wait_open_tasks(self, self.origin, alias)
+        wait_human_backup(self, self.origin)
         self.token = json.loads(self.request('/api/bootstrap')['body'])['token']
         self.assertNotEqual(self.token, old_token)
         self.assertEqual(self.request('/api/startup', {'similar': True}, token=old_token)['status'], 403)

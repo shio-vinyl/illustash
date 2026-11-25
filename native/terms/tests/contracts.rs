@@ -387,20 +387,6 @@ fn migrate_fixture_terms(package: &Path, category: &str) {
     assert!(done.status.success(), "{category}: upgrade: {}", String::from_utf8_lossy(&done.stderr));
 }
 
-/// 宿主报告就绪后继续恢复后台任务；等角色目录事务提交再取固定启动快照。
-fn wait_for_catalog(package: &Path, category: &str) {
-    let c = Connection::open_with_flags(package.join("library.sqlite"), rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
-        .unwrap();
-    let start = Instant::now();
-    while !c
-        .query_row("SELECT EXISTS(SELECT 1 FROM meta WHERE key='character_catalog')", [], |r| r.get::<_, bool>(0))
-        .unwrap()
-    {
-        assert!(start.elapsed() < wait::limit(), "{category}: startup character catalog timeout");
-        thread::sleep(Duration::from_millis(10));
-    }
-}
-
 fn replay(category: &str) {
     let fixture = load(category);
     let (_scratch, root, package) = materialize(&fixture, category);
@@ -422,7 +408,6 @@ fn replay(category: &str) {
     }
     let (_host, origin, token) =
         launch(&root, &package, category, upgrade, Path::new(env!("CARGO_BIN_EXE_illustash-terms")));
-    wait_for_catalog(&package, category);
     let mut want = apply(&before, fixture.get("startup")).unwrap();
     compare(&want, &states(&package, &root), &format!("{category}/startup"), Some(recorded));
     if upgrade {

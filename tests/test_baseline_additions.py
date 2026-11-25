@@ -1,16 +1,13 @@
 """v7 历史参考投影的边界：当前全状态、旧行值和未登记对象仍严格保留。"""
-from contextlib import redirect_stderr
 import copy
-import io
 import json
 from pathlib import Path
 import re
 import sqlite3
 import tempfile
 import unittest
-from unittest.mock import patch
 
-from tests.fixed_expectations import _baseline_additions, _check_baseline, _historical_projection, baseline_state
+from tests.fixed_expectations import _baseline_additions, _historical_projection, baseline_state
 
 
 class HistoricalAdditions(unittest.TestCase):
@@ -46,28 +43,6 @@ class HistoricalAdditions(unittest.TestCase):
         with sqlite3.connect(self.root / 'library.sqlite') as c:
             c.execute("UPDATE human_state_marks SET value='changed'")
         self.assertNotEqual(baseline_state(self.root), original)
-
-    def test_only_started_empty_catalog_fixture_expects_the_complete_revision_row(self):
-        slot = ('synthetic', 'test', 'after startup')
-        recorded = copy.deepcopy(self.frozen)
-        with patch('tests.fixed_expectations._baseline_file', return_value={'test': {'after startup': self.frozen}}), \
-                redirect_stderr(io.StringIO()):
-            self.assertTrue(_check_baseline(slot, self.live))
-            self.assertFalse(_check_baseline(slot, self.live, empty_character_catalog=True))
-            with sqlite3.connect(self.root / 'library.sqlite') as c:
-                c.execute("INSERT INTO meta VALUES ('character_catalog', ?)",
-                          ('{"attached": [], "declined": [], "groups": [], "merged": [], "revision": 1}',))
-            started = baseline_state(self.root)
-            self.assertTrue(_check_baseline(slot, started, empty_character_catalog=True))
-            self.assertFalse(_check_baseline(slot, started))
-            for key, value in (('character_catalog', '{"revision": 1}'), ('preserved', 'changed')):
-                with self.subTest(key=key), sqlite3.connect(self.root / 'library.sqlite') as c:
-                    value_before, = c.execute('SELECT value FROM meta WHERE key=?', (key,)).fetchone()
-                    c.execute('UPDATE meta SET value=? WHERE key=?', (value, key))
-                    c.commit()
-                    self.assertFalse(_check_baseline(slot, baseline_state(self.root), empty_character_catalog=True))
-                    c.execute('UPDATE meta SET value=? WHERE key=?', (value_before, key))
-        self.assertEqual(self.frozen, recorded)
 
     def test_unlisted_tables_old_cells_types_and_multiplicity_remain_visible(self):
         for altered in (

@@ -11,7 +11,6 @@ import tempfile
 import threading
 import time
 import unittest
-from contextlib import closing
 from unittest.mock import patch
 
 from tests.fixed_expectations import Expectations
@@ -57,26 +56,6 @@ def stop_process(process):
             stream.close()
 
 
-def wait_character_catalog(package):
-    """可写的合成图库首次启动后，等词表事务提交再取数据库快照。"""
-    config = json.loads((Path(package) / 'library.json').read_text(encoding='utf-8'))
-    if config.get('test') or config.get('frozen'):
-        return None
-
-    def applied():
-        with closing(sqlite3.connect(Path(package) / 'library.sqlite')) as db:
-            row = db.execute("SELECT value FROM meta WHERE key='character_catalog'").fetchone()
-        return json.loads(row[0]) if row else None
-
-    return wait_until(applied)
-
-
-def wait_open_tasks(test, origin, package):
-    """在要逐表比较的图库上等两项开库工作完成。"""
-    wait_human_backup(test, origin)
-    wait_character_catalog(package)
-
-
 def wait_human_backup(test, origin):
     """先完成开库的首次快照及摘要补算，再采集受测操作的完整状态；不排除任何表或 WAL。"""
     last = None
@@ -108,7 +87,7 @@ def prepare_human_backup(test, package):
              '--no-index-check', '--no-provenance'], env=test.env, stdout=log, stderr=log, **SPAWN)
         try:
             verify.enter(origin, log, process)
-            wait_open_tasks(test, origin, package)
+            wait_human_backup(test, origin)
         finally:
             stop_process(process)
 

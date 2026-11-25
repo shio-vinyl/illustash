@@ -146,8 +146,7 @@ class Expectations:
         self.test = 'tests.' + test_id.removeprefix('tests.')
         self.aliases = []      # (actual, placeholder)
         self.position = 0
-        self.states = 0
-        self.empty_character_catalog = False        # 到目前为止的 state() 调用次数：#201 对照基准按这个序号给状态编键
+        self.states = 0        # 到目前为止的 state() 调用次数：#201 对照基准按这个序号给状态编键
         try:
             data = _load(self.module)
         except AssertionError:
@@ -267,24 +266,19 @@ class Expectations:
         """读取一个已冻结的历史返回值。"""
         return self._decode(self._next(label)['value'])
 
-    def expect_empty_character_catalog(self):
-        """后续比对的是已启动、没有目录关系变动的合成夹具。"""
-        self.empty_character_catalog = True
-
     def state(self, label):
         """参考图库的一个状态，以摘要形式保存；与实时的 ``library_digests`` 比较相等。
         与实时状态比较时，它还带着为这个状态录制的 #201 对照基准（见 ``Live``）。"""
         value = self._next(label)['value']
         slot = (self.module, self.test, f'{self.states}:{label}')
         self.states += 1
-        return Digests(value, slot, self.empty_character_catalog)
+        return Digests(value, slot)
 
     def baseline(self, label, package, rename=None, only=None):
         """图库包在某个命名时刻的 #201 对照基准（测试整体比较的新图库）：录制时录下，否则与录过的内容比较
         （如果录过）。``rename`` 先把随机生成的值（生成的键）映射成稳定的名字；``only``（{db: [tables]}）
         只比较录制状态里的这些表。"""
-        return _check_baseline((self.module, self.test, f'@{label}'), baseline_state(Path(package), rename), only,
-                               empty_character_catalog=self.empty_character_catalog)
+        return _check_baseline((self.module, self.test, f'@{label}'), baseline_state(Path(package), rename), only)
 
     def package(self, label, path, library=True):
         """恢复冻结的合成输入包，数据库文本中的临时路径按本轮根目录还原。"""
@@ -324,10 +318,9 @@ class Expectations:
 
 class Digests:
     """参考图库某个状态的逐表摘要；与摘要相同的实时状态相等。"""
-    def __init__(self, tree, slot=None, empty_character_catalog=False):
+    def __init__(self, tree, slot=None):
         self.tree = tree
         self.slot = slot
-        self.empty_character_catalog = empty_character_catalog
 
     def __getitem__(self, key):
         value = self.tree[key]
@@ -345,7 +338,7 @@ class Digests:
             if self.slot is None:
                 return self.tree == dict(other)
             # core v8 改了 schema，并退役了这些摘要覆盖的表：以 #201 对照基准为参考。
-            return _check_baseline(self.slot, other.baseline, empty_character_catalog=self.empty_character_catalog)
+            return _check_baseline(self.slot, other.baseline)
         if isinstance(other, dict):
             return self.tree == other
         return NotImplemented
@@ -472,19 +465,6 @@ STAMP = re.compile(r'learning-v1:[0-9a-f]{64}')
 TERMS_VERSION = int(re.search(r'pub const SCHEMA_VERSION: i64 = (\d+);',
                               (Path(__file__).resolve().parents[1] / 'crates/core/src/schema.rs').read_text()).group(1))
 RECORDING = bool(os.environ.get('ILLUSTASH_RECORD_BASELINE'))
-
-
-EMPTY_CHARACTER_CATALOG = {'attached': [], 'declined': [], 'groups': [], 'merged': [], 'revision': 1}
-
-
-def with_empty_character_catalog(app):
-    """启动过的合成图库未命中目录条目时，只会增加这条完整的 meta 行。"""
-    meta = app['meta']
-    assert meta['columns'] == ['key', 'value']
-    assert all(json.loads(row)[0] != 'character_catalog' for row in meta['rows'])
-    value = json.dumps(EMPTY_CHARACTER_CATALOG, ensure_ascii=False, sort_keys=True)
-    row = json.dumps(['character_catalog', value], ensure_ascii=False, separators=(',', ':'))
-    return {**app, 'meta': {**meta, 'rows': sorted([*meta['rows'], row])}}
 
 
 class Live(dict):
@@ -731,7 +711,7 @@ def _curation_selection_with_folding(frozen):
     return {**frozen, 'app': {**app, 'actions': {**actions, 'rows': sorted(rows)}}}
 
 
-def _check_baseline(slot, state, only=None, *, empty_character_catalog=False):
+def _check_baseline(slot, state, only=None):
     """录制时为 ``slot``（module、test、key）录下 ``state``；否则返回 True，除非为它录过对照基准且两者不同
     （差异会打印出来）。"""
     module, test, key = slot
@@ -746,8 +726,6 @@ def _check_baseline(slot, state, only=None, *, empty_character_catalog=False):
                 and key in {'51:after', '53:after'}):
             want = _curation_selection_with_folding(want)
         state = _historical_projection(state, want)
-        if empty_character_catalog:
-            want['app'] = with_empty_character_catalog(want['app'])
     if only is not None:
         pick = lambda s: {db: {t: s.get(db, {}).get(t) for t in tables} for db, tables in only.items()}
         state, want = pick(state), want if want is None else pick(want)

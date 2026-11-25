@@ -241,7 +241,7 @@
 
  "native/terms/src/app_colors/palette.rs":"db2645476768766de99d58ee7fbb4ade268a75cbf2d0fb55cfe1dd65511e1412",
 
- "native/terms/src/app_commands.rs":"7c45661da6d3e750d99eb6d418a5e045202f7919f9f6e3f795620ab5b0930ef9",
+ "native/terms/src/app_commands.rs":"e10aa3b10f8c17de9062a9ec1412233399d1891f7996b3a6d1399c5e0f9bf2b0",
 
  "native/terms/src/app_create.rs":"74dc4ec028291674afb1751f84094df67ee6216b1225c9f855da90c32371783a",
 
@@ -377,7 +377,7 @@
 
  "native/terms/src/app_upgrade.rs":"6e4ad40e954505cfc85eb6abf2c4394ca35d4b2429ccc06dec2df9914153d82f",
 
- "native/terms/src/app_wd_extension.rs":"70e42fc5e1d941cc2df79e255cbaaa3c6c8e2a64e4a355645f6785ad0d3b61a9",
+ "native/terms/src/app_wd_extension.rs":"b7cbf510c5003d4f4abe22ca4bf566d4e53ec034b1a32ce57b0c805cb05f49f9",
 
  "native/terms/src/app_wd_extension/scoring.rs":"c486e27eae74356b12c836caee045adb61e164c5ffb433171327df47e55b1221",
 
@@ -413,7 +413,7 @@
 
  "native/terms/src/http_browse.rs":"de54fbe86ae7288f3f6fba74ed983166fd20aa67d361856afb1d34d561909eaf",
 
- "native/terms/src/http_characters.rs":"59db20fcd59dc09e225b6a6df4422604fc9babf9b7b9dc62792853badd1bc216",
+ "native/terms/src/http_characters.rs":"8518fbe3bb0784b5dc20c67fe624b77578be310d3c287db3cb938ac6703606e2",
 
  "native/terms/src/http_example_search.rs":"1b479b900eac347f73924504558a886153a06eaeb74c0b2d5e5cb28a1a758994",
 

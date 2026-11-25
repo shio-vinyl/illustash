@@ -795,8 +795,8 @@ pub(crate) fn character_request(db: &Path, input: &serde_json::Value) -> crate::
     Ok(result)
 }
 
-/// 编进应用的角色目录比图库里记的修订新时，按目录补一遍（#837，`character_import::catalog_apply`）：合并 D 站改名
-/// 前后各建了一个的角色、补挂造型。每秒都会走到这里：先只读修订号，大多数时候到这里就结束；每次打开最多写一次。
+/// 本次启动选定的角色目录比图库里记的修订新时，按目录补一遍（#837，`character_import::catalog_apply`）：合并 D 站改名
+/// 前后各建了一个的角色、补挂造型。每次打开先读修订号，同一会话处理成功后直接跳过。
 fn apply_catalog(session: &mut Session) -> Result<()> {
     use rusqlite::OptionalExtension;
     if session.catalog_checked || session.library.frozen() {

@@ -909,7 +909,7 @@ mod tests {
         service.start().unwrap();
         assert_eq!(name_runs(&first.join("library.sqlite")), 1);
 
-        let db = crate::sqlite::open(&second.join("library.sqlite")).unwrap();
+        let db = crate::sqlite::open(second.join("library.sqlite")).unwrap();
         db.execute_batch(
             "CREATE TRIGGER delay_catalog BEFORE INSERT ON meta WHEN NEW.key='character_catalog'
             BEGIN SELECT RAISE(ABORT,'temporary catalog write failure'); END;",

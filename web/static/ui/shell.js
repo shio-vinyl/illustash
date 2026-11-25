@@ -223,18 +223,20 @@ export function renderChrome() {
   if (view.toolbar === 'index') { bar.replaceChildren(view.tools?.(r) || ''); return; }
   // 按天、日历（'filters'）：只有搜索框和筛选条（三种视图共用筛选，#703 第 2 问），没有排序、选择和显示方式。
   const filtersOnly = view.toolbar === 'filters';
-  const tagPage = !!(r.char && state.char?.mascot);
+  const tagPage = r.char && (state.char?.mascot || state.char?.group_tag);
   const SORT_LABELS = {suspicious: t('可疑优先'), newest: t('最新加入'), oldest: t('最早加入'), hinted: t('有线索优先'), similar: t('最相似'), color: t('按颜色')};
   // 排序的选项可以随地址变（画廊的色彩只按颜色排，#710）。
   const sorts = ((typeof view.sorts === 'function' ? view.sorts(r) : view.sorts) || []).filter(v => !(tagPage && v === 'suspicious')).map(v => [v, SORT_LABELS[v]]);
-  const skins = r.char && !r.maybe ? (state.char?.variants || []).filter(v => v.count) : [];
+  const skins = r.char && !tagPage && !r.maybe ? (state.char?.variants || []).filter(v => v.count) : [];
   const variants = skins.length ? `<div class="chips-row">${[{id: '', name: t('全部'), count: state.char.count}, ...skins].map(v => `<button class="chip-filter${(r.variant || '') === v.id ? ' on' : ''}" data-variant="${esc(v.id)}">${esc(v.name)} <span>${number(v.count)}</span></button>`).join('')}</div>` : '';
   const maybeChip = r.char && !tagPage && (state.maybeCount || r.maybe || state.doubtCount || r.doubt) ? `<div class="chips-row">${state.maybeCount || r.maybe ? `<button class="chip-filter${r.maybe ? ' on' : ''}" id="maybeChip" title="${t('机器觉得像 TA，但算给了别人或没算的图')}">${t('可能也是 TA')} <span>${number(state.maybeCount)}</span></button>` : ''}${state.doubtCount || r.doubt ? `<button class="chip-filter${r.doubt ? ' on' : ''}" id="doubtChip" title="${t('单人图里，另一个角色的证据几乎一样强的图')}">${t('可能认错')} <span>${number(state.doubtCount)}</span></button>` : ''}</div>` : '';
   // 生效的筛选各是一个胶囊，点 × 只清它自己（#386 的 2-30）。角色页的角色胶囊在这里；其余条件是筛选条（ui/filters.js，#445），
   // 旧的单值参数（tag、utag、work、artist、day）也显示在那里。
   const pill = (id, label, title) => `<button class="quiet on" id="${id}" title="${title}">${label} ×</button>`;
+  const name = esc(short(state.char?.name || ''));
+  const who = tagPage ? t('标签 · {name}', {name}) : t('角色 · {name}', {name});
   const filtersHTML = filtersOnly ? searchBox(r) + filterBar(r) + saveButton(r) : view.toolbar === 'library' ? searchBox(r) +
-    (r.char ? pill('charPill', t('角色 · {name}', {name: esc(short(state.char?.name || ''))}), t('清除角色筛选')) : '') +
+    (r.char ? pill('charPill', who, tagPage ? t('清除标签筛选') : t('清除角色筛选')) : '') +
     filterBar(r) + saveButton(r) + maybeChip + variants : tabs;
   bar.innerHTML = filtersOnly ? filtersHTML : filtersHTML +
     `<div class="page-actions"><select id="sort" aria-label="${t('排序')}">${sorts.map(([v, label]) => `<option value="${v}"${r.sort === v ? ' selected' : ''}>${label}</option>`).join('')}</select>` +

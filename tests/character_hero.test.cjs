@@ -10,7 +10,11 @@ const pending = [];   // 横幅自己那一次 /api/assets（limit=24）：测�
 const reply = body => ({ok: true, status: 200, json: async () => body});
 function route(path) {
   const url = new URL(path, 'http://x'), q = url.searchParams;
-  if (url.pathname === '/api/characters') return reply([{id: q.get('id'), name: '合成甲', count: 5, unchecked: 0, variants: [{id: 'v1', name: '合成造型', count: 2}]}]);
+  if (url.pathname === '/api/characters') {
+    const id = q.get('id'), opts = id === 'group' ? {group_tag: true, label_only: true, unchecked: 3}
+      : id === 'original' ? {kind: 'oc', label_only: true, unchecked: 3} : {};
+    return reply([{id, name: '合成甲', count: 5, unchecked: 0, variants: [{id: 'v1', name: '合成造型', count: 2}], ...opts}]);
+  }
   if (url.pathname === '/api/assets' && q.get('limit') === '24') return new Promise(resolve => pending.push({nsfw: q.get('nsfw') || '', resolve: uuid => resolve(reply({items: [{uuid, width: 1600, height: 900, color: '#336699'}]}))}));
   if (url.pathname === '/api/assets') return reply({items: [], total: 0});
   if (url.pathname === '/api/assets/count') return reply({total: 0});
@@ -69,6 +73,18 @@ test('换造型途中（state.char 暂时是 null）回来的读取照样画上'
   state.char = null;   // applyRoute 换造型时先 setChar(null)，再读角色
   mine.resolve('kept'); await tick(); await tick();
   assert.match(art(), /id=kept/);
+});
+
+test('团体页只当标签，共用原创角色保留角色操作', async () => {
+  await enter('#/library?char=group');
+  const head = page.el('gridHead'), ref = key => head.querySelector(`[data-ref="${key}"]`);
+  assert.equal(hidden(ref('badge')), false);
+  assert.equal(hidden(ref('sweep')), true);
+  assert.equal(hidden(ref('checkBox')), true);
+  await enter('#/library?char=original');
+  assert.equal(hidden(ref('badge')), true);
+  assert.equal(hidden(ref('sweep')), false);
+  assert.equal(hidden(ref('checkBox')), false);
 });
 
 test('离开角色页：网格头部清空并藏起来，页头的标题不再藏着', async () => {

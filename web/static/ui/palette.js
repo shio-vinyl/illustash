@@ -1,6 +1,7 @@
 // 对角色的操作（桌面布局，#199）：命令面板（换成 / 也是 / 设为角色 / 跳到角色）、原创角色、编辑角色资料、合并，以及
 // 选中图片之间的关系。
 import {forgetLocalLinks, workName} from '../core/catalog.js';
+import {readProfile} from '../core/character.js';
 import {exclusive} from '../core/edits.js';
 import {esc, number} from '../core/format.js';
 import {t, tb} from '../core/i18n.js';
@@ -9,7 +10,7 @@ import {workLabel} from '../core/labels.js';
 import {refreshMeta} from '../core/meta.js';
 import {poolIs} from '../core/pages.js';
 import {libraryPrefs, prefs} from '../core/prefs.js';
-import {charRoute, go} from '../core/route.js';
+import {charRoute, go, replaceRoute} from '../core/route.js';
 import {api, post, readError} from '../core/session.js';
 import {currentLibraryId, remoteNames, remoteNote} from '../core/settings.js';
 import {state} from '../core/state.js';
@@ -18,7 +19,8 @@ import {$, charOption, namesAllowButton, toast, written} from './dom.js';
 import {closeModal, openDialog, openStatic} from './dialog.js';
 import {combo, listNav} from './combo.js';
 import {mutate, reload} from './grid.js';
-import {renderHeading} from './shell.js';
+import {profileDecisions} from './profile_decisions.js';
+import {renderChrome, renderHeading} from './shell.js';
 
 // 命令面板搜索的防抖。
 let pickerTimer = 0;
@@ -72,7 +74,8 @@ async function paletteSearch() {
     if (!p.jump) {
       // 还不在图库里：Danbooru 角色（只用输入的文字）稍后就到；只在本地新建的一项留在最后。
       // 原创角色不按名字新建，只给共用的「原创角色（未细分）」（ocShared，选中时才建；#694）。它已在本地结果里时不重复。
-      const shared = list.some(e => e.label_only) ? [] : [{ocShared: true, name: t('原创角色（未细分）'), hint: t('画师的原创角色，不属于任何作品')}];
+      const shared = list.some(e => e.label_only && e.kind === 'oc') ? []
+        : [{ocShared: true, name: t('原创角色（未细分）'), hint: t('画师的原创角色，不属于任何作品')}];
       const create = list.some(e => e.name.toLowerCase() === q.toLowerCase()) ? [] : [{create: q, name: q, hint: t('只在本地新建，不关联 Danbooru')}, ...shared];
       const remote = {label: t('Danbooru 角色 · 选中即新建并关联'), items: [], note: t('正在查 Danbooru…')};
       sections.push(remote, {label: '', items: create});
@@ -240,16 +243,8 @@ export function twoStage(local, remote, extra = () => []) {
     }).catch(e => show([{label: t('本地资料'), items: [], note: readError(e)}]));
   };
 }
-// 角色词表（#837）合并进这个角色、挂到它下面当造型的角色，每条可以拆开；拆开后词表不再合并、不再挂这一对。
-function catalogRows(items) {
-  if (!items?.length) return '';
-  const note = x => x.kind === 'merged' ? t('D 站改名前后的 tag，已合成一个角色') : t('已挂成这个角色的造型');
-  const row = x => `<div class="link-row"><span><b>${esc(x.name)}</b><small>${note(x)}</small></span>`
-    + `<button type="button" class="quiet" data-split="${esc(x.id)}" title="${t('拆开后角色词表不会再合并这一对')}">${t('拆开')}</button></div>`;
-  return `<div class="field"><span>${t('角色词表')}</span><div class="link-list">${items.map(row).join('')}</div></div>`;
-}
 export async function editProfile(c) {
-  let p; try { p = await api('/api/character/profile?' + new URLSearchParams({entity: c.id})); } catch (e) { toast(e.message); return; }
+  let p; try { p = await readProfile(c.id); } catch (e) { toast(e.message); return; }
   const draft = {aliases: [...p.aliases], work: p.work_id ? {id: p.work_id, label: p.work_name} : null, tag: p.tag};
   const autoName = p.tag && !p.user_name ? p.name : '';
   const body = `${p.label_only ? '' : `<label class="field"><span>${t('Danbooru 角色')}</span><div class="combo"><input id="pfTag" autocomplete="off" spellcheck="false" placeholder="${t('搜索角色名或 tag，如 karen blue、カレン')}"><div class="combo-menu" id="pfTagMenu" hidden></div></div>
@@ -259,7 +254,7 @@ export async function editProfile(c) {
     <div class="field"><span>${t('别名')}</span><div class="alias-box" id="pfAliases"></div><input id="pfAlias" maxlength="120" placeholder="${t('输入别名后按回车')}">
       <small>${p.other_aliases ? t('另有 {n} 个来自 Danbooru 等来源的别名，会自动更新', {n: number(p.other_aliases)}) : ''}</small></div>
     <label class="field"><span>${t('所属作品')}</span>${p.oc ? `<small>${t('原创角色不属于任何作品')}</small>` : `<div class="combo"><input id="pfWork" autocomplete="off" placeholder="${t('搜索作品，找不到可以新建')}"><div class="combo-menu" id="pfWorkMenu" hidden></div></div><small id="pfWorkNote"></small>`}</label>
-    ${catalogRows(p.catalog)}`;
+    <div id="pfDecisions" hidden></div>`;
   // 填了内容（和打开时不一样，或输入框里还有没按回车、没选中的字）时 Esc 先确认（#422 的 2-20）。
   const typed = () => !!q('#pfAlias').value.trim() || !!q('#pfTag') && q('#pfTag').value !== (draft.tag ? draft.tag.replaceAll('_', ' ') : '')
     || !!q('#pfWork') && q('#pfWork').value !== (draft.work?.label || '');
@@ -271,16 +266,14 @@ export async function editProfile(c) {
   q('#pfAliases').onclick = e => { const b = e.target.closest('[data-a]'); if (b) { draft.aliases.splice(Number(b.dataset.a), 1); aliases(); } };
   q('#pfAlias').onkeydown = e => { if (composing(e)) return; const v = e.target.value.trim(); if (e.key === 'Enter') { e.preventDefault(); if (v && !draft.aliases.includes(v)) draft.aliases.push(v); e.target.value = ''; aliases(); } };
   aliases();
-  for (const b of d.querySelectorAll('[data-split]')) b.onclick = async () => {
-    b.disabled = true;
-    try {
-      const r = await post('/api/catalog/split', {entity: b.dataset.split}); written(r.undo);
-      const list = b.closest('.link-list'); b.closest('.link-row').remove();
-      if (!list.children.length) list.closest('.field').remove();
-      await refreshMeta(); renderHeading();
-    }
-    catch (e) { b.disabled = false; toast(e.message); }
-  };
+  profileDecisions(q('#pfDecisions'), p, async () => {
+    await refreshMeta();
+    const {char, variant} = state.route;
+    if (char !== p.id) return;
+    if (variant && !state.char?.variants?.some(v => v.id === variant)) replaceRoute({variant: ''});
+    renderChrome();
+    await reload();
+  });
   const tagNote = () => { if (!q('#pfTagNote')) return; q('#pfTag').value = draft.tag ? draft.tag.replaceAll('_', ' ') : ''; q('#pfTagNote').innerHTML = draft.tag ? `${t('已关联 {tag}', {tag: `<code>${esc(draft.tag)}</code>`})} · <button type="button" class="link-button" id="pfUnlink">${t('取消关联')}</button>` : t('补上中文名、别名和所属作品'); q('#pfUnlink')?.addEventListener('click', () => { draft.tag = ''; tagNote(); }); };
   const workNote = () => { if (!q('#pfWork')) return; q('#pfWork').value = draft.work?.label || ''; q('#pfWorkNote').innerHTML = draft.work ? `${draft.work.create ? t('保存时新建这个作品') + ' · ' : draft.work.tag ? t('保存时从 Danbooru 建立这个作品') + ' · ' : ''}<button type="button" class="link-button" id="pfNoWork">${t('不归属任何作品')}</button>` : (draft.tag && draft.tag !== p.tag && !p.work_id ? (draft.tagWork ? t('留空：按 Danbooru 自动设置（{work}）', {work: draft.tagWork}) : t('留空：按 Danbooru 自动设置')) : t('未归类')); q('#pfNoWork')?.addEventListener('click', () => { draft.work = null; workNote(); }); };
   tagNote(); workNote();

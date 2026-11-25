@@ -16,7 +16,11 @@ pub fn kept_apart_pairs(c: &Connection) -> Result<BTreeSet<(String, String)>> {
     let value: Option<String> =
         c.query_row("SELECT value FROM prefs WHERE key=?", [KEPT_APART_PREF], |r| r.get(0)).optional()?;
     match value {
-        Some(value) => serde_json::from_str(&value).map_err(|e| Error::invalid(e.to_string())),
+        Some(value) => {
+            let pairs: Vec<(String, String)> =
+                serde_json::from_str(&value).map_err(|e| Error::invalid(e.to_string()))?;
+            Ok(pairs.into_iter().map(|(a, b)| if a <= b { (a, b) } else { (b, a) }).collect())
+        }
         None => Ok(BTreeSet::new()),
     }
 }
@@ -56,7 +60,8 @@ pub fn set_kept_apart(c: &Connection, a: &str, b: &str, on: bool) -> Result<bool
 pub fn asks_about(a: &str, b: &str) -> String {
     format!(
         "NOT EXISTS(SELECT 1 FROM json_each((SELECT value FROM prefs WHERE key='{KEPT_APART_PREF}')) p
-         WHERE json_extract(p.value,'$[0]')=min({a},{b}) AND json_extract(p.value,'$[1]')=max({a},{b}))"
+         WHERE (json_extract(p.value,'$[0]')={a} AND json_extract(p.value,'$[1]')={b})
+            OR (json_extract(p.value,'$[0]')={b} AND json_extract(p.value,'$[1]')={a}))"
     )
 }
 

@@ -230,6 +230,44 @@ class NativeAmbiguousClaimsTest(unittest.TestCase):
         self.assert_queue([self.group(['future', 'front']), self.group(['back'], reverse=True)])
         self.assertEqual(self.read('/api/detail?id=future')['question']['kind'], 'ambiguous')
 
+    def test_saved_pair_can_resume_after_other_edits_in_direct_and_hybrid(self):
+        with self.connect() as c, c:
+            self.seed(c, 'front', '2026-01-01')
+            self.seed(c, 'back', '2026-01-02', reverse=True)
+        unrelated = ['other-a', 'other-b']
+        pair = sorted([self.alice, self.bob])
+        order = [self.group(['front']), self.group(['back'], reverse=True)]
+        order.sort(key=lambda g: g['a']['id'])
+        query = lambda e: self.read('/api/character/profile?' + urlencode({'entity': e}))
+        for hybrid in (False, True):
+            with self.subTest(hybrid=hybrid):
+                with self.connect() as c, c:
+                    if hybrid:
+                        c.execute("INSERT INTO meta(key,value) VALUES ('identity_policy','hybrid')")
+                    c.execute("INSERT OR REPLACE INTO prefs VALUES ('identity_kept_apart',?)",
+                              (json.dumps([pair[::-1], unrelated]),))
+                self.assert_queue([])
+                for entity in pair:
+                    [saved] = query(entity)['kept_apart']
+                    self.assertEqual([saved['a']['id'], saved['b']['id']], pair)
+                    self.assertEqual({saved['a']['name'], saved['b']['name']}, {'Alice', 'Bob'})
+                self.read('/api/favorite', {'ids': ['front'], 'add': not hybrid})
+                before = self.history_snapshot()
+                body = {'a': pair[1], 'b': pair[0], 'answer': 'resume'}
+                undo = self.read('/api/identity/pair', body)['undo']
+                self.assertEqual(undo['label'], '已允许再次询问这对角色')
+                self.read('/api/identity/pair', body, status=400)
+                self.assert_queue(order)
+                self.assertEqual(self.history_snapshot(), before)
+                self.assertNotIn('kept_apart', query(self.bob))
+                with self.connect() as c:
+                    prefs = c.execute("SELECT value FROM prefs WHERE key='identity_kept_apart'").fetchone()[0]
+                    self.assertEqual(json.loads(prefs), [unrelated])
+                self.read('/api/undo', {'id': undo['id']})
+                self.assert_queue([])
+                self.assertIn('kept_apart', query(self.alice))
+                self.assertEqual(self.history_snapshot(), before)
+
     def test_catalog_group_cannot_enter_or_answer_a_person_pair(self):
         with self.connect() as c, c:
             self.seed(c, 'front', '2026-01-01')
@@ -247,6 +285,16 @@ class NativeAmbiguousClaimsTest(unittest.TestCase):
         refusal = self.read('/api/ask/answer', {'kind': 'ambiguous', 'entity': self.alice,
                                                'also_no': self.bob, 'no': ['front']}, status=400)
         self.assertEqual(refusal['error'], '图片的备选归属已变更，请刷新')
+        [group] = self.read('/api/characters?' + urlencode({'id': self.bob}))
+        self.assertIs(group['group_tag'], True)
+        self.assertTrue(any(x['id'] == self.bob and x['group_tag'] for x in self.read('/api/tagged')))
+        with self.connect() as c, c:
+            c.execute("INSERT INTO meta(key,value) VALUES ('terms_writer','1')")
+            c.execute("UPDATE term_tree SET original=1 WHERE term_id=(SELECT id FROM terms WHERE key=?)", (self.bob,))
+            c.execute("DELETE FROM meta WHERE key='terms_writer'")
+        [original] = self.read('/api/characters?' + urlencode({'id': self.bob}))
+        self.assertNotIn('group_tag', original)
+        self.assertFalse(any(x['id'] == self.bob for x in self.read('/api/tagged')))
 
     def test_make_form_keeps_pictures_filterable_and_undo_restores_two_characters(self):
         with self.connect() as c, c:
@@ -301,8 +349,40 @@ class NativeAmbiguousClaimsTest(unittest.TestCase):
         self.assertEqual({item['a']['id'], item['b']['id']}, {self.alice, self.bob})
         self.assertEqual(item['catalog_kind'], 'form')
 
+    def test_profile_only_lists_live_catalog_edges_and_displays_original_tags(self):
+        owner, child = self.alice, self.bob
+        source_tag, owner_tag = 'hiyori_(swimsuit)_(blue_archive)', 'hiyori_(blue_archive)'
+        with self.connect() as c, c:
+            c.executemany("INSERT INTO term_links(system,key,term_id,source) "
+                          "SELECT 'danbooru',?,id,'fixture' FROM terms WHERE key=?",
+                          [(source_tag, child), (owner_tag, owner)])
+            c.execute("INSERT INTO meta(key,value) VALUES ('terms_writer','1')")
+            c.execute("UPDATE term_tree SET parent_id=?, variant='swimsuit' WHERE term_id=(SELECT id FROM terms WHERE key=?)",
+                      (owner, child))
+            c.execute("UPDATE terms SET kind='skin' WHERE key=?", (child,))
+            c.execute("DELETE FROM meta WHERE key='terms_writer'")
+            saved = {'action': None, 'before': {'kind': 'character', 'work': None, 'variant': ''}, 'variant': 'swimsuit'}
+            c.execute("INSERT OR REPLACE INTO meta VALUES ('character_catalog',?)", (json.dumps({
+                'revision': 1, 'attached': [[child, owner, saved], ['stale-child', owner]],
+            }),))
+        url = '/api/character/profile?' + urlencode({'entity': owner})
+        [edge] = self.read(url)['catalog']
+        self.assertEqual((edge['id'], edge['kind']), (child, 'attached'))
+        self.assertIn(source_tag, edge['tags'])
+        self.assertIn(owner_tag, edge['owner_tags'])
+        request = {'entity': child, 'owner': owner, 'kind': 'attached'}
+        self.read('/api/catalog/split', {**request, 'owner': 'unrelated'}, status=400)
+        undo = self.read('/api/catalog/split', request)['undo']
+        self.assertNotIn('catalog', self.read(url))
+        self.read('/api/undo', {'id': undo['id']})
+        self.assertEqual(self.read(url)['catalog'], [edge])
+
     def ask(self):
         return self.read('/api/ask')['batch']
+
+    def history_snapshot(self):
+        with self.connect() as c:
+            return self.history(c)
 
     def history(self, c):
         return {table: c.execute(f'SELECT * FROM {table} ORDER BY 1,2').fetchall()

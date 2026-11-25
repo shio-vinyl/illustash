@@ -25,7 +25,10 @@ pub(crate) fn request(c: &mut Connection, path: &str, body: &Json) -> Result<Jso
                 "evidence":argument(body,"evidence")?})
         }
         "/api/merge" => json!({"op":"merge", "source":argument(body,"source")?, "target":argument(body,"target")?}),
-        "/api/catalog/split" => json!({"op":"catalog_split", "entity":argument(body,"entity")?}),
+        "/api/catalog/split" => json!({
+            "op":"catalog_split", "entity":argument(body,"entity")?,
+            "owner":argument(body,"owner")?, "kind":argument(body,"kind")?
+        }),
         _ => return Err(Error::Invalid("接口不存在".into())),
     };
     let tx = c.transaction_with_behavior(TransactionBehavior::Immediate).map_err(app_commands::core_error)?;
@@ -39,15 +42,26 @@ pub(crate) fn request(c: &mut Connection, path: &str, body: &Json) -> Result<Jso
 fn pair(c: &mut Connection, body: &Json) -> Result<Json> {
     let a = argument(body, "a")?;
     let b = argument(body, "b")?;
-    let (Some(a), Some(b)) = (a.as_str(), b.as_str()) else {
-        return Err(Error::Invalid("请选择两个角色".into()));
+    let (a, b) = match (a.as_str(), b.as_str()) {
+        (Some(a), Some(b)) if !a.is_empty() && !b.is_empty() && a != b => (a, b),
+        _ => return Err(Error::invalid("请选择两个角色")),
     };
     let answer = argument(body, "answer")?;
     let tx = c.transaction_with_behavior(TransactionBehavior::Immediate)?;
     crate::schema::begin_writing(&tx).map_err(app_commands::core_error)?;
-    crate::character_identity::require_pair(&tx, a, b).map_err(app_commands::core_error)?;
     match answer.as_str() {
+        Some("resume") => {
+            // 使用偏好原先保存的端点。角色可能已被改名、合并或挂作造型，解除仍然只碰这一对偏好。
+            if !crate::character_identity::set_kept_apart(&tx, a, b, false)? {
+                return Err(Error::invalid("这对角色没有设置不再追问"));
+            }
+            tx.execute(
+                "INSERT INTO actions(label,before_json) VALUES (?,?)",
+                params!["已允许再次询问这对角色", json!([{"identity_resumed":[a,b]}]).to_string()],
+            )?;
+        }
         Some("apart") => {
+            crate::character_identity::require_pair(&tx, a, b).map_err(app_commands::core_error)?;
             if crate::character_identity::set_kept_apart(&tx, a, b, true)? {
                 tx.execute(
                     "INSERT INTO actions(label,before_json) VALUES (?,?)",
@@ -56,6 +70,7 @@ fn pair(c: &mut Connection, body: &Json) -> Result<Json> {
             }
         }
         Some(answer @ ("form" | "duplicate")) => {
+            crate::character_identity::require_pair(&tx, a, b).map_err(app_commands::core_error)?;
             if crate::character_identity::kept_apart(&tx, a, b)? {
                 return Err(Error::Invalid("这对角色已有整理决定，请刷新".into()));
             }

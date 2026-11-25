@@ -72,6 +72,16 @@ test('角色选择器：共用原创角色已在本地结果里时不再多列�
   assert.equal(html.split('原创角色（未细分）').length - 1, 1);
 });
 
+test('角色选择器：搜索结果里的团体标签不会隐藏共用原创角色', async () => {
+  const palette = await web.load('ui/palette.js');
+  palette.wirePalette();
+  await palette.openPicker({pick() {}});
+  entities = [{id: 'group', name: '合成团体', label_only: true, kind: '', count: 1}];
+  const html = await search(palette, '合成');
+  assert.match(html, /合成团体/);
+  assert.match(html, /原创角色（未细分）/);
+});
+
 test('markOc：整组标为原创角色设为共用的那一个，不新建独立原创角色', async () => {
   const palette = await web.load('ui/palette.js');
   await palette.markOc({ids: ['u1', 'u2']}, false);

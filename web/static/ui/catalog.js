@@ -13,7 +13,7 @@ import {catalogChanged, loadTagged, loadWorkTree, loadLocalLinks, castWorks, PSE
 import {$, toast, toastMore, error, namesAllowButton} from './dom.js';
 import {icon, searchHTML} from './icons.js';
 import {chooseWork, openDialog, openStatic} from './dialog.js';
-import {attr, make, prop, tpl} from './el.js';
+import {attr, make, prop, show, text, tpl} from './el.js';
 import {createLayer} from './overlay.js';
 import {openPicker, toggleMascot} from './palette.js';
 import {combo} from './combo.js';
@@ -66,8 +66,10 @@ export function castPop(works) {
 }
 
 
-// 只当标签（#293）：吉祥物和玩家替身（包括默认的那些）是标签，不是角色。在一处看到全部，把一个角色变成标签，或把它
-// 变回来。
+// 只当标签（#293、#834）：在一处查看吉祥物、玩家替身和词表里的团体标签。
+const TAGGED = tpl`<div class="tagged-row"><a data-ref="link" data-close></a><small data-ref="count"></small><div class="spacer"></div>
+  <button type="button" class="quiet small" data-ref="restore" data-t>改回角色</button></div>`;
+
 export async function openTagged() {
   const d = openDialog({title: t('只当标签的角色'), cls: 'tagged-dialog', backdropClose: true,
     body: `<p class="muted-note">${t('吉祥物、玩家化身（老师、博士、训练员这类）可以只当标签：不算角色，不出现在角色列表里，同框也不算多人图；图上仍挂着这个标签，可以按它筛选。')}</p>
@@ -75,8 +77,14 @@ export async function openTagged() {
     actions: `<button type="button" class="quiet" id="taggedAdd">${t('把一个角色设为只当标签…')}</button><div class="spacer"></div><button value="ok" class="primary">${t('完成')}</button>`});
   const list = () => {
     const rows = state.tagged || [];
-    d.querySelector('#taggedList').innerHTML = rows.length ? rows.map(x => `<div class="tagged-row"><a href="${charHash(x.id)}" data-close>${esc(x.name)}</a><small>${t('{n} 张', {n: number(x.count)})}</small><div class="spacer"></div><button type="button" class="quiet small" data-untag="${esc(x.id)}">${t('改回角色')}</button></div>`).join('')
-      : `<p class="muted-note">${t('现在没有只当标签的角色。')}</p>`;
+    const elements = rows.map(x => {
+      const {el, refs} = TAGGED();
+      attr(refs.link, 'href', charHash(x.id)); text(refs.link, x.name);
+      text(refs.count, t('{n} 张', {n: number(x.count)}));
+      show(refs.restore, !x.group_tag); attr(refs.restore, 'data-untag', x.group_tag ? null : x.id);
+      return el;
+    });
+    d.querySelector('#taggedList').replaceChildren(...(elements.length ? elements : [make('p', 'muted-note', t('现在没有只当标签的角色。'))]));
   };
   const refresh = async () => { await loadTagged().catch(e => error(readError(e))); if (d.open) list(); catalogChanged.emit('tagged'); };
   d.addEventListener('click', async e => {

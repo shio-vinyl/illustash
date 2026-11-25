@@ -54,7 +54,11 @@ fn truth(v: &Json) -> bool {
     }
 }
 fn shown(c: &Connection, mut r: Json, skin: bool, identity: bool) -> Result<Json> {
+    let group = truth(&remove(&mut r, "is_group"));
     r = display(c, r)?;
+    if group {
+        r.set("group_tag", true.into());
+    }
     if skin {
         let s: String = c.query_row("SELECT entity_info(?,1)", [text(&r, "id")], |r| r.get(0))?;
         r.extend(parse_python(&s)?);
@@ -116,6 +120,7 @@ fn character_rows(c: &Connection, q: &HashMap<String, String>, minimum: i64) -> 
     args.push(minimum.to_string());
     let sql = format!(
         "SELECT e.id,entity_name(e.id) AS name,e.work,e.kind,e.artist,e.label_only,e.mascot,e.mascot_origin,
+           (e.label_only=1 AND e.original=0) AS is_group,
            count(m.uuid) AS count,coalesce(sum(m.status='machine'),0) AS unchecked,
            min(CASE WHEN ?<>'hide'
                       OR NOT coalesce({nsfw},0)
@@ -258,7 +263,7 @@ fn choose_covers(c: &Connection, result: &mut [Json], ids: &str, nsfw: &str) -> 
 }
 /// 摘要列表里显示的角色。
 fn summarized(r: Json) -> Json {
-    const FIELDS: [&str; 12] = [
+    const FIELDS: [&str; 13] = [
         "id",
         "name",
         "tag",
@@ -271,6 +276,7 @@ fn summarized(r: Json) -> Json {
         "unchecked",
         "cover",
         "summary",
+        "group_tag",
     ];
     let mut s = Json::Object(Vec::new());
     for k in FIELDS {
@@ -367,27 +373,48 @@ fn profile(c: &Connection, e: &str) -> Result<Json> {
     if !matches!(&catalog, Json::Array(items) if items.is_empty()) {
         profile.set("catalog", catalog);
     }
+    let apart = kept_apart_of(c, &id)?;
+    if !apart.is_empty() {
+        profile.set("kept_apart", Json::Array(apart));
+    }
     Ok(profile)
 }
 
 /// 角色目录合并进这个角色、挂到它下面的角色（#837），给「编辑资料」里的「拆开」用：[{id, kind, name}]，
 /// kind 是 `merged` 或 `attached`。
 fn catalog_changes(c: &Connection, id: &str) -> Result<Json> {
-    let state = strings(c, "SELECT value FROM meta WHERE key=?", &[illustash_core::character_import::CATALOG_META])?;
-    let state: serde_json::Value =
-        state.first().and_then(|s| serde_json::from_str(s).ok()).unwrap_or(serde_json::Value::Null);
     let mut out = Vec::new();
-    for kind in ["merged", "attached"] {
-        for pair in state[kind].as_array().into_iter().flatten() {
-            let (Some(other), Some(owner)) = (pair[0].as_str(), pair[1].as_str()) else { continue };
-            if owner != id {
-                continue;
-            }
-            let name: String = c.query_row("SELECT entity_name(?)", [other], |r| r.get(0))?;
-            out.push(Json::object([("id", other.into()), ("kind", kind.into()), ("name", name.into())]));
-        }
+    for data in crate::character_import::catalog_children(c, id)? {
+        let mut row = parse_python(&data.to_string())?;
+        let name: String = c.query_row("SELECT entity_name(?)", [row.field("id").text()], |r| r.get(0))?;
+        row.set("name", name.into());
+        out.push(row);
     }
     Ok(Json::Array(out))
+}
+
+fn kept_apart_of(c: &Connection, id: &str) -> Result<Vec<Json>> {
+    use rusqlite::OptionalExtension;
+    let family = c.prepare_cached(&format!("SELECT coalesce(parent_id,id) FROM {ENTITIES} WHERE id=?"))?;
+    let name = c.prepare_cached("SELECT entity_name(?)")?;
+    let root_of = |raw: &str| -> Result<Option<String>> {
+        let root = crate::character_commands::resolve(c, raw)?;
+        Ok(family.query_row([root], |r| r.get(0)).optional()?)
+    };
+    let endpoint = |raw: &str, family: Option<String>| -> Result<Json> {
+        let shown: String = name.query_row([raw], |r| r.get(0))?;
+        let shown = if shown.is_empty() { raw } else { &shown };
+        Ok(Json::object([("id", raw.into()), ("family", family.into()), ("name", shown.into())]))
+    };
+    let mut out = Vec::new();
+    for (a, b) in crate::character_identity::kept_apart_pairs(c)? {
+        let a_family = root_of(&a)?;
+        let b_family = root_of(&b)?;
+        if a_family.as_deref() == Some(id) || b_family.as_deref() == Some(id) {
+            out.push(Json::object([("a", endpoint(&a, a_family)?), ("b", endpoint(&b, b_family)?)]));
+        }
+    }
+    Ok(out)
 }
 fn activity(c: &Connection, nsfw: &str) -> Result<Json> {
     let t = crate::platform_time::local_date(30 * 86400);
@@ -771,14 +798,21 @@ pub fn read(c: &Connection, _context: &LibraryContext, path: &str, q: &HashMap<S
         "/api/tagged" => {
             let sql = format!(
                 "SELECT e.id,entity_name(e.id) AS name,
+                   (e.label_only=1 AND e.original=0) AS is_group,
                    (SELECT count(*) FROM tag_memberships m WHERE m.entity=e.id AND {visible}{rating}) AS count
                  FROM {ENTITIES} e
-                 WHERE e.mascot=1 AND e.merged_into IS NULL
+                 WHERE (e.mascot=1 OR (e.label_only=1 AND e.original=0)) AND e.merged_into IS NULL
                  ORDER BY count DESC,name,e.seq",
                 visible = visible("m"),
                 rating = rating("m", get("nsfw"))?,
             );
-            Json::Array(rows(c, &sql, &[])?)
+            let mut tagged = rows(c, &sql, &[])?;
+            for item in &mut tagged {
+                if truth(&remove(item, "is_group")) {
+                    item.set("group_tag", true.into());
+                }
+            }
+            Json::Array(tagged)
         }
         "/api/character/profile" => profile(c, get("entity"))?,
         "/api/character/activity" => activity(c, get("nsfw"))?,

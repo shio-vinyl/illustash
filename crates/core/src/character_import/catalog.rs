@@ -347,8 +347,12 @@ fn still_published(c: &Connection, catalog: &Catalog, kind: &str, change: &Chang
 }
 
 fn live(c: &Connection, kind: &str, change: &Change) -> Result<bool> {
-    let column = if kind == "merged" { "merged_into" } else { "parent_id" };
     let table = if hybrid(c)? { "term_identity_baseline" } else { ENTITIES };
+    edge_on(c, table, kind, change)
+}
+
+fn edge_on(c: &Connection, table: &str, kind: &str, change: &Change) -> Result<bool> {
+    let column = if kind == "merged" { "merged_into" } else { "parent_id" };
     let current: Option<(Option<String>, Option<String>, Option<String>)> = c
         .prepare_cached(&format!("SELECT {column},variant,kind FROM {table} WHERE id=?"))?
         .query_row([&change.0], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
@@ -358,6 +362,22 @@ fn live(c: &Connection, kind: &str, change: &Change) -> Result<bool> {
         point.as_deref() == Some(&change.1)
             && variant.is_none_or(|variant| name.as_deref() == Some(variant) && kind.as_deref() == Some("skin"))
     }))
+}
+
+/// 还在生效并且当前仍投影到该角色页的词表改动，附上两个原始词条的识别标签。
+pub fn catalog_children(c: &Connection, owner: &str) -> Result<Vec<Value>> {
+    let state = State::read(c)?;
+    let mut result = Vec::new();
+    let unique_links = |id| -> Result<BTreeSet<_>> { Ok(links(c, id)?.into_iter().collect()) };
+    for (kind, changes) in [("merged", state.merged), ("attached", state.attached)] {
+        for change in changes {
+            if change.1 == owner && live(c, kind, &change)? && edge_on(c, ENTITIES, kind, &change)? {
+                result.push(json!({"id":change.0,"kind":kind,
+                    "tags":unique_links(&change.0)?,"owner_tags":unique_links(owner)?}));
+            }
+        }
+    }
+    Ok(result)
 }
 
 fn refresh(c: &Connection, roles: &BTreeSet<String>) -> Result<()> {
@@ -637,6 +657,18 @@ pub fn catalog_split(c: &Connection, args: &Value) -> Result<Value> {
     let Some(entity) = args["entity"].as_str() else { return Err(Error::invalid("请选择角色")) };
     let state = State::read(c)?;
     let kind = if state.merged.iter().any(|p| p.0 == entity) { "merged" } else { "attached" };
+    let owner = args.get("owner").filter(|v| !v.is_null());
+    let asked_kind = args.get("kind").filter(|v| !v.is_null());
+    if owner.is_some() || asked_kind.is_some() {
+        let Some(owner) = owner.and_then(Value::as_str) else {
+            return Err(Error::invalid("这处关系已经被改过，不能再拆开"));
+        };
+        if asked_kind.and_then(Value::as_str) != Some(kind)
+            || !catalog_children(c, owner)?.iter().any(|child| child["id"] == entity && child["kind"] == kind)
+        {
+            return Err(Error::invalid("这处关系已经被改过，不能再拆开"));
+        }
+    }
     split(c, kind, entity, true)?;
     Ok(json!({"split":kind}))
 }

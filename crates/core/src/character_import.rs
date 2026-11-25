@@ -15,7 +15,9 @@ use serde_json::{json, Value};
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 mod catalog;
-pub use catalog::{catalog_apply, catalog_declined, catalog_split, declined_pairs, user_touched, CATALOG_META};
+pub use catalog::{
+    catalog_apply, catalog_children, catalog_declined, catalog_split, declined_pairs, user_touched, CATALOG_META,
+};
 pub(crate) use catalog::{
     portable_trees, restore_catalog_change, suppress_catalog_change, undo_catalog_change, undo_catalog_split,
     PortableTree, SuppressedCatalogChange,

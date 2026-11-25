@@ -83,6 +83,7 @@ class NativeAccountsTest(unittest.TestCase):
     def setUp(self):
         self.service=AccountService();self.addCleanup(self.service.close)
         life.NativeLifecycleTest.setUp(self)
+        self.rec.expect_empty_character_catalog()
         # 一份合成的溯源 schema，带冻结的夹具默认值（已录制）。
         self.rec.package('provenance', self.lib.path)
     def pair(self,action,body=None,expected=200):

@@ -309,6 +309,7 @@ class NativeLifecycleTest(unittest.TestCase):
         self.assertEqual(json.loads(response['body']), [])
 
     def test_settings_startup_values_errors_and_database_state(self):
+        self.rec.expect_empty_character_catalog()
         self.assertEqual(self.pair('/api/settings')['status'], 200)
         self.assertEqual(self.pair('/api/libraries')['status'], 200)
         changes = {'sync': False, 'similar': False}

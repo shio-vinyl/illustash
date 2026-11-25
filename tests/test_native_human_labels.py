@@ -26,7 +26,7 @@ import unittest
 from unittest.mock import patch
 
 from tests.fixed_expectations import Library, Expectations, library_digests, unclocked
-from tests.test_read_http import INTERRUPT, SPAWN, free_port, wait_until, wait_human_backup, prepare_human_backup
+from tests.test_read_http import (INTERRUPT, SPAWN, free_port, wait_until, wait_open_tasks, prepare_human_backup)
 from tests.synthetic_source import source_fixture as fixture
 from tools import verify_read_http
 from tools.verify_read_http import cookie, enter, fetch, temporary_path
@@ -264,6 +264,7 @@ class NativeHumanLabelsTest(unittest.TestCase):
         self.process = self.start(self.right)
         self.token = json.loads(fetch(self.origin, {'url': '/api/bootstrap'}, self.origin)['body'])['token']
         self.rec.alias(self.token, '@TOKEN@')
+        self.rec.expect_empty_character_catalog()
         self.assertEqual(self.rec.state('start'), states(self.right))
         self.latency = []
 
@@ -299,7 +300,7 @@ class NativeHumanLabelsTest(unittest.TestCase):
             enter(self.origin, log, process)
         except AssertionError:
             log.seek(0); self.fail(f'native startup failed: {log.read().decode(errors="replace")}')
-        wait_human_backup(self, self.origin)
+        wait_open_tasks(self, self.origin, lib.path)
         return process
 
     def reference_response(self, label, item):

@@ -29,9 +29,10 @@ from unittest.mock import patch
 from PIL import Image
 
 from tests import test_native_lifecycle as lifecycle
-from tests.fixed_expectations import Library, Expectations, TERMS_VERSION, baseline_state, current_review_pools
+from tests.fixed_expectations import (Library, Expectations, TERMS_VERSION, baseline_state, current_review_pools,
+                                      EMPTY_CHARACTER_CATALOG, with_empty_character_catalog)
 from tests.synthetic_source import synthetic_reference
-from tests.test_read_http import INTERRUPT, SPAWN, free_port, wait_until
+from tests.test_read_http import INTERRUPT, SPAWN, free_port, wait_character_catalog, wait_until
 from tools.build_db import SCHEMA as SOURCE_SCHEMA
 from tools.verify_read_http import enter, fetch
 from tools.wait_limit import WAIT
@@ -405,7 +406,8 @@ class NativeLibraryUpgradeTest(unittest.TestCase):
                 process, origin = self.start(lib, backup_gate=backup_gate)
                 # 按 #201 的规则：录制的已排空图库包处于 core 第 7 版，恢复时做过升级，所以它的物理行所在的 rowid
                 # 可能与直接升级一次后的不同。
-                self.assertEqual(baseline_state(lib.path)['app'], baseline_state(baseline)['app'])
+                self.assertEqual(wait_character_catalog(lib.path), EMPTY_CHARACTER_CATALOG)
+                self.assertEqual(baseline_state(lib.path)['app'], with_empty_character_catalog(baseline_state(baseline)['app']))
                 upgraded = database(lib.db)
                 self.assertEqual(lib.source.read_bytes(), source)
                 backups = self.backups(lib, existing)
@@ -426,7 +428,7 @@ class NativeLibraryUpgradeTest(unittest.TestCase):
                 self.assertEqual(*results)
                 # 按 #201 的规则：录制的已排空图库包处于 core 第 7 版，恢复时做过升级，所以它的物理行所在的 rowid
                 # 可能与直接升级一次后的不同。
-                self.assertEqual(baseline_state(lib.path)['app'], baseline_state(baseline)['app'])
+                self.assertEqual(baseline_state(lib.path)['app'], with_empty_character_catalog(baseline_state(baseline)['app']))
                 process, origin = self.start(lib, upgrade=False, backup_gate=backup_gate)
                 self.reads(lib, origin)
                 self.stop(process)
@@ -446,6 +448,7 @@ class NativeLibraryUpgradeTest(unittest.TestCase):
                     self.assertEqual(c.execute('SELECT undone FROM actions WHERE id=?', (action,)).fetchone()[0], 0)
                 recovered = Library(restored)
                 process, origin = self.start(recovered, backup_gate=backup_gate)
+                self.assertEqual(wait_character_catalog(recovered.path), EMPTY_CHARACTER_CATALOG)
                 self.assertEqual(database(recovered.db), upgraded)
                 self.assertEqual(recovered.source.read_bytes(), source)
                 self.reads(recovered, origin)

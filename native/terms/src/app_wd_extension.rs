@@ -1560,6 +1560,11 @@ mod tests {
                 assert_eq!(edge_count()?, 2);
                 assert!(!illustash_core::character_identity::kept_apart(tx, &ids[0], &ids[1])?);
                 assert!(!illustash_core::character_identity::kept_apart(tx, &ids[0], &ids[2])?);
+                let restored = import::apply_in(tx, &snapshot, "other-library", &[], &mut || Ok(()))?;
+                illustash_core::character_catalog::override_for_thread(Some(catalog_revision("", 2)));
+                crate::character_commands::command(tx, &json!({"op":"catalog_apply"}))?;
+                import::undo_in(tx, restored.action_id.unwrap())?;
+                assert_eq!(edge_count()?, 0);
                 Ok(())
             })
             .unwrap();

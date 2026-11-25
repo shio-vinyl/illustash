@@ -572,6 +572,19 @@ pub(crate) fn wiki_base(name: &str) -> String {
         .unwrap_or_else(|| name.into())
 }
 
+fn simplified_wiki_chars(s: &str) -> bool {
+    s.chars().all(|c| {
+        codec_char(c, crate::name_codecs::GB2312)
+            || c == '·'
+            || (han_char(c) && !codec_char(c, crate::name_codecs::CP932))
+    })
+}
+
+/// 日文同形可证明一部分中文姓名。日文新字体和繁体不能仅凭同形当成简体，明确沿用的生僻字除外。
+pub(super) fn wiki_ja_han(s: &str) -> bool {
+    simplified_wiki_chars(&s.nfkc().filter(|c| !matches!(c, '咲' | '澪')).collect::<String>())
+}
+
 /// 同一作品共享的无旁证别名和常见合称只用于搜索。多个候选中优先取有旁证的。
 pub(crate) fn wiki_zh(
     names: &[String],
@@ -609,13 +622,8 @@ pub(crate) fn wiki_zh(
         if shaped && confirmed(&key) {
             return Some((base, true));
         }
-        // 生僻汉字允许超出 GB2312。CP932 中的专用字仍需有旁证才可用。
         let usable = shaped
-            && base.chars().all(|c| {
-                codec_char(c, crate::name_codecs::GB2312)
-                    || c == '·'
-                    || (han_char(c) && !codec_char(c, crate::name_codecs::CP932))
-            })
+            && simplified_wiki_chars(&base)
             && !group_name
             && !shared(&key)
             && !works.iter().any(|w| key.contains(w));
@@ -836,7 +844,7 @@ mod tests {
     fn wiki_corroboration_accepts_rare_han_and_prefers_a_personal_name() {
         for name in ["十六夜咲夜", "秋山澪"] {
             assert_eq!(
-                wiki_zh(&["小绰号".into(), name.into()], &[], |key| key == name, |_| false),
+                wiki_zh(&["小绰号".into(), name.into()], &[], |key| key == name && wiki_ja_han(key), |_| false),
                 Some((name.into(), true))
             );
         }

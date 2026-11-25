@@ -2349,10 +2349,10 @@ mod sources_tests {
         assert_eq!(net::normalize("Ａ ・ リ ス"), net::normalize("A･リス"));
     }
 
-    fn use_catalog(bangumi: u64, pick: &str) {
+    fn use_catalog(tag: &str, bangumi: u64, pick: &str) {
         let columns = r#"["id","tag","tags","parent","relation","action","variant","bangumi","pick","wikidata"]"#;
         let doc = format!(
-            r#"{{"format":"{}","revision":1,"columns":{columns},"characters":[[1,"alice",[],null,null,null,null,{bangumi},"{pick}",null]],"works":[]}}"#,
+            r#"{{"format":"{}","revision":1,"columns":{columns},"characters":[[1,"{tag}",[],null,null,null,null,{bangumi},"{pick}",null]],"works":[]}}"#,
             crate::character_catalog::FORMAT
         );
         let catalog = Box::leak(Box::new(crate::character_catalog::Catalog::parse(&doc).unwrap()));
@@ -2362,7 +2362,7 @@ mod sources_tests {
     #[test]
     fn catalog_bangumi_id_is_fetched_directly_instead_of_searching() {
         let (p, lib) = (Providers::start(), Library::load());
-        use_catalog(77, "");
+        use_catalog("alice", 77, "");
         lib.run(&p, None, false).unwrap();
         TEST_CATALOG.with(|c| c.set(None));
         assert_eq!(named(lib.char("alice")), pair("目录爱丽丝", "bangumi"));
@@ -2382,7 +2382,7 @@ mod sources_tests {
         assert_eq!(named(lib.char("alice")), pair("爱丽丝", "bangumi"));
         lib.put("character", "alice", "ja", "user", "自己起的名字");
         lib.run(&p, None, false).unwrap(); // 手动名字已经进入旧版指纹
-        use_catalog(77, "");
+        use_catalog("alice", 77, "");
         p.set(|a| a.down = true);
         let error = lib.run(&p, None, false).unwrap_err();
         assert!(matches!(error, Error::Network(_)), "{error:?}");
@@ -2408,7 +2408,7 @@ mod sources_tests {
             a.wikis.insert("bob".into(), vec!["同班_同学（示例）".into(), "合成双子".into(), "姐妹红".into()]);
         });
         lib.run(&p, None, false).unwrap();
-        assert_eq!(named(lib.char("alice")), pair("艾莉丝", "wiki"));
+        assert_eq!(lib.char("alice").names[0].as_deref(), Some("艾莉丝"));
         assert_eq!(named(lib.char("bob")), pair("姐妹红", "wiki"));
         assert_eq!(lib.hits("合成双子"), BTreeSet::from(["alice".into(), "bob".into()]));
 
@@ -2416,11 +2416,11 @@ mod sources_tests {
         c.execute("DELETE FROM name_cache WHERE key=?", [WIKI_POLICY]).unwrap();
         let old = |tag| replace("character", tag, "wiki", vec![json!(["zh", "同班同学"])]);
         command(&mut c, vec![old("alice"), old("bob")]).unwrap();
-        assert_eq!(named(lib.char("alice")), pair("同班同学", "wiki"));
+        assert_eq!(lib.char("alice").names[0].as_deref(), Some("同班同学"));
         let calls = p.calls();
         lib.run(&p, None, false).unwrap();
         assert_eq!(p.calls(), calls);
-        assert_eq!(named(lib.char("alice")), pair("艾莉丝", "wiki"));
+        assert_eq!(lib.char("alice").names[0].as_deref(), Some("艾莉丝"));
         assert_eq!(named(lib.char("bob")), pair("姐妹红", "wiki"));
     }
 
@@ -2429,21 +2429,21 @@ mod sources_tests {
         let (p, lib) = (Providers::start(), Library::load());
         p.set(|a| {
             a.characters.clear();
-            a.wikis.insert("alice".into(), vec!["小叶子".into(), "槐".into()]);
+            a.wikis.insert("bob".into(), vec!["小叶子".into(), "槐".into()]);
         });
         lib.run(&p, None, false).unwrap();
-        assert_eq!(named(lib.char("alice")), pair("小叶子", "wiki"));
-        use_catalog(80, "name");
+        assert_eq!(named(lib.char("bob")), pair("小叶子", "wiki"));
+        use_catalog("bob", 80, "name");
         lib.run(&p, None, false).unwrap();
-        assert_eq!(named(lib.char("alice")), pair("槐", "bangumi"));
-        assert_eq!(lib.hits("小叶子"), BTreeSet::from(["alice".into()]));
+        assert_eq!(named(lib.char("bob")), pair("槐", "bangumi"));
+        assert_eq!(lib.hits("小叶子"), BTreeSet::from(["bob".into()]));
         TEST_CATALOG.with(|c| c.set(None));
     }
 
     #[test]
     fn catalog_original_name_survives_a_search_hit_for_the_wrong_identity() {
         let (p, lib) = (Providers::start(), Library::load());
-        use_catalog(79, "");
+        use_catalog("alice", 79, "");
         lib.run(&p, None, false).unwrap();
         let name = lib.char("alice");
         assert_eq!(named(name.clone()), pair("アリス", "bangumi"));
@@ -2461,7 +2461,7 @@ mod sources_tests {
     #[test]
     fn catalog_bangumi_id_that_cannot_be_fetched_falls_back_to_search() {
         let (p, lib) = (Providers::start(), Library::load());
-        use_catalog(78, "");
+        use_catalog("alice", 78, "");
         lib.run(&p, None, false).unwrap();
         TEST_CATALOG.with(|c| c.set(None));
         assert_eq!(named(lib.char("alice")), pair("爱丽丝", "bangumi"));

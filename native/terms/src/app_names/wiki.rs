@@ -47,9 +47,13 @@ pub(super) fn refresh(c: &Connection, scope: Option<(&str, &[&str])>) -> Result<
             "danbooru" => names.aliases.push(value),
             "wiki" => names.wiki.push((value, row.get::<_, i64>(4)? != 0)),
             _ => {
-                names.evidence.insert(net::normalize(&value));
+                let lang: String = row.get(5)?;
+                let key = net::normalize(&value);
+                if lang == "zh" || net::wiki_ja_han(&key) {
+                    names.evidence.insert(key);
+                }
                 names.higher_chinese |= matches!(source.as_str(), "bangumi" | "index")
-                    && row.get::<_, String>(5)? == "zh"
+                    && lang == "zh"
                     && row.get::<_, String>(6)? == "display";
             }
         }

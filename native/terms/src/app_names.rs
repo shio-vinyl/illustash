@@ -368,9 +368,19 @@ fn catalog() -> &'static crate::character_catalog::Catalog {
     crate::character_catalog::current()
 }
 
-/// 角色目录里有 Bangumi 角色 ID 的，按 ID 取这个角色，按目录的取名提示挑中文名（#837）。
-/// 目录里没有、条目取不到或者挑不出名字时返回 None，交给按名字搜索。
-fn catalog_values(source: &mut Source, tag: &str) -> Result<Option<(Vec<Value>, Option<String>)>> {
+struct CatalogName {
+    id: u64,
+    pick: &'static str,
+    values: Vec<Value>,
+    alias: Option<String>,
+}
+
+fn has_chinese_name(values: &[Value]) -> bool {
+    values.iter().any(|pair| pair[0] == "zh" && pair[1].as_str().is_some_and(|s| !s.is_empty()))
+}
+
+/// 按目录 ID 直接取角色。有效条目的原名可以兜底；临时网络失败留待重试。
+fn catalog_values(source: &mut Source, tag: &str) -> Result<Option<CatalogName>> {
     let Some((id, pick)) = catalog().character(tag).and_then(|entry| Some((entry.bangumi?, entry.pick.as_str())))
     else {
         return Ok(None);
@@ -380,7 +390,7 @@ fn catalog_values(source: &mut Source, tag: &str) -> Result<Option<(Vec<Value>, 
         return Ok(None);
     }
     let (values, alias) = net::picked_values(&v, pick);
-    Ok(values.iter().any(|x| x[0] == "zh").then_some((values, alias)))
+    Ok(Some(CatalogName { id, pick, values, alias }))
 }
 fn enrich(source: &mut Source, kind: &str, key: &str, work: &str, targets: &[&str]) -> Result<Vec<Value>> {
     let mut c = net::db(&source.path)?;
@@ -482,15 +492,22 @@ fn enrich(source: &mut Source, kind: &str, key: &str, work: &str, targets: &[&st
         let listed = catalog_values(source, key)?;
         let mut chosen = None;
         let mut related = HashMap::<String, Vec<Value>>::new();
-        let keywords = if listed.is_some() { vec![] } else { net::keywords(&query, true) };
+        let keywords = if listed.as_ref().is_some_and(|entry| has_chinese_name(&entry.values)) {
+            vec![]
+        } else {
+            net::keywords(&query, true)
+        };
         for keyword in keywords {
             let data = source.bg("/search/characters?limit=10", Some(json!({"keyword":keyword})))?;
             let mut matches: Vec<Value> = data["data"]
                 .as_array()
                 .into_iter()
                 .flatten()
-                .filter(|r| {
-                    candidates.iter().any(|n| net::normalize(n) == net::normalize(r["name"].as_str().unwrap_or("")))
+                .filter(|r| match &listed {
+                    Some(entry) => r["id"].as_u64() == Some(entry.id),
+                    None => {
+                        candidates.iter().any(|n| net::normalize(n) == net::normalize(r["name"].as_str().unwrap_or("")))
+                    }
                 })
                 .cloned()
                 .collect();
@@ -546,19 +563,19 @@ fn enrich(source: &mut Source, kind: &str, key: &str, work: &str, targets: &[&st
             chosen = matches.into_iter().next();
             break;
         }
-        let mut values = vec![];
-        if let Some((v, alias)) = listed {
-            values = v;
-            if let Some(alias) = alias {
-                ops.push(json!({"op":"bangumi_alias","tag":key,"value":alias}));
+        let (values, alias) = match (listed, chosen) {
+            (Some(entry), candidate) => {
+                let alternate = candidate.as_ref().map(|r| net::picked_values(r, entry.pick));
+                alternate.filter(|(names, _)| has_chinese_name(names)).unwrap_or((entry.values, entry.alias))
             }
-        } else if let Some(r) = chosen {
-            let sub = related.remove(&dump(&r["id"])).filter(|s| !s.is_empty()).unwrap_or(matched(&c, work)?);
-            let (v, alias) = net::character_values(&r, work, &sub, &wiki);
-            values = v;
-            if let Some(alias) = alias {
-                ops.push(json!({"op":"bangumi_alias","tag":key,"value":alias}));
+            (None, Some(r)) => {
+                let sub = related.remove(&dump(&r["id"])).filter(|s| !s.is_empty()).unwrap_or(matched(&c, work)?);
+                net::character_values(&r, work, &sub, &wiki)
             }
+            (None, None) => (Vec::new(), None),
+        };
+        if let Some(alias) = alias {
+            ops.push(json!({"op":"bangumi_alias","tag":key,"value":alias}));
         }
         ops.push(replace(kind, key, "bangumi", values));
     }
@@ -2123,6 +2140,8 @@ mod sources_tests {
                     json!({"id":77,"name":"アリス","infobox":[{"key":"简体中文名","value":"目录爱丽丝"}]})
                 } else if path == "/characters/78" {
                     Value::Null
+                } else if path == "/characters/79" {
+                    result(79, "アリス", None)
                 } else if path.starts_with("/characters/") && path.ends_with("/subjects") {
                     json!([{"name":"エグザンプル","name_cn":"示例作品"}])
                 } else if path == "/chat/completions" {
@@ -2401,6 +2420,24 @@ mod sources_tests {
         assert_eq!(p.calls(), calls);
         assert_eq!(named(lib.char("alice")), pair("艾莉丝", "wiki"));
         assert_eq!(named(lib.char("bob")), pair("姐妹红", "wiki"));
+    }
+
+    #[test]
+    fn catalog_original_name_survives_a_search_hit_for_the_wrong_identity() {
+        let (p, lib) = (Providers::start(), Library::load());
+        use_catalog(79);
+        lib.run(&p, None, false).unwrap();
+        let name = lib.char("alice");
+        assert_eq!(named(name.clone()), pair("アリス", "bangumi"));
+        assert_eq!(name.names[0], None);
+
+        p.set(|a| {
+            a.characters.push(json!({"id":79,"name":"アリス"}));
+            a.fields.insert(79, result(79, "アリス", Some("目录爱丽丝")));
+        });
+        lib.run(&p, None, true).unwrap();
+        assert_eq!(named(lib.char("alice")), pair("目录爱丽丝", "bangumi"));
+        TEST_CATALOG.with(|c| c.set(None));
     }
 
     #[test]

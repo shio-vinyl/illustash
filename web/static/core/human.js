@@ -139,7 +139,7 @@ export const resultText = (result, group = 'counts') =>
 const KINDS = {
   asset: t('图片'), entity: t('角色或作品'), image_verdict: t('图里是谁'), relation_verdict: t('角色之间的关系'),
   identity_context: t('身份的适用范围'), curation: t('收录或排除'), deferred: t('暂不判断'), uncertain: t('不确定'),
-  review: t('已检查'), identity_skip: t('跳过的配对'), anchor_decision: t('参考图'),
+  review: t('已检查'), identity_skip: t('跳过的配对'), identity_keep_apart: t('分成两个，不再问'), anchor_decision: t('参考图'),
 };
 export const kindText = kind => KINDS[kind] || kind;
 const REASONS = {

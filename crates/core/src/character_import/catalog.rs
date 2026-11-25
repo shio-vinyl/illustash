@@ -94,7 +94,8 @@ pub fn catalog_declined(c: &Connection, a: &str, b: &str) -> Result<bool> {
     Ok(State::read(c)?.declined(a, b))
 }
 
-pub(crate) fn declined_pairs(c: &Connection) -> Result<BTreeSet<Pair>> {
+/// 一次读取图库里由用户明确拆开的角色对。
+pub fn declined_pairs(c: &Connection) -> Result<BTreeSet<(String, String)>> {
     Ok(State::read(c)?.declined)
 }
 
@@ -152,7 +153,9 @@ pub fn user_touched(c: &Connection, id: &str) -> Result<bool> {
         AND (json_extract(item.value,'$.merge.source')=?1 OR json_extract(item.value,'$.merge.target')=?1
             OR json_extract(item.value,'$.profile.entity')=?1 OR json_extract(item.value,'$.character_kind.entity')=?1
             OR json_extract(item.value,'$.character_mascot.entity')=?1
-            OR json_extract(item.value,'$.identity_pose.child')=?1 OR json_extract(item.value,'$.identity_pose.parent')=?1
+            OR json_extract(item.value,'$.identity_form.parent')=?1
+            OR EXISTS(SELECT 1 FROM json_each(item.value,'$.identity_form.nodes') n
+                      WHERE json_extract(n.value,'$.id')=?1)
             OR json_extract(item.value,'$.identity_relation.a')=?1 OR json_extract(item.value,'$.identity_relation.b')=?1)
     )")?;
     if changed || !hybrid(c)? {
@@ -326,20 +329,17 @@ fn still_published(c: &Connection, catalog: &Catalog, kind: &str, change: &Chang
 }
 
 fn live(c: &Connection, kind: &str, change: &Change) -> Result<bool> {
-    let parent = if kind == "merged" { "merged_into" } else { "parent_id" };
-    let point: Option<String> = c
-        .prepare_cached(&format!("SELECT {parent} FROM {ENTITIES} WHERE id=?"))?
-        .query_row([&change.0], |r| r.get(0))
-        .optional()?
-        .flatten();
+    let column = if kind == "merged" { "merged_into" } else { "parent_id" };
+    let table = if hybrid(c)? { "term_identity_baseline" } else { ENTITIES };
+    let current: Option<(Option<String>, Option<String>, Option<String>)> = c
+        .prepare_cached(&format!("SELECT {column},variant,kind FROM {table} WHERE id=?"))?
+        .query_row([&change.0], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
+        .optional()?;
     let variant = change.2.as_ref().and_then(|s| s.variant.as_deref());
-    Ok(point.as_deref() == Some(&change.1)
-        && match variant {
-            Some(variant) => {
-                tree(c, &change.0)?.is_some_and(|current| current.variant == variant && current.kind == "skin")
-            }
-            None => true,
-        })
+    Ok(current.is_some_and(|(point, name, kind)| {
+        point.as_deref() == Some(&change.1)
+            && variant.is_none_or(|variant| name.as_deref() == Some(variant) && kind.as_deref() == Some("skin"))
+    }))
 }
 
 fn refresh(c: &Connection, roles: &BTreeSet<String>) -> Result<()> {
@@ -374,26 +374,30 @@ fn remove(c: &Connection, kind: &str, change: &Change) -> Result<()> {
     if kind == "merged" {
         if details.is_none() {
             undo_old_merge(c, id, other)?;
+        } else if identity {
+            c.prepare_cached("UPDATE term_identity_baseline SET merged_into=NULL WHERE id=? AND merged_into=?")?
+                .execute([id, other])?;
         } else {
             c.prepare_cached(&format!("UPDATE term_tree SET merged_into=NULL WHERE {OF}"))?.execute([id])?;
-            if identity {
-                c.prepare_cached("UPDATE term_identity_baseline SET merged_into=NULL WHERE id=? AND merged_into=?")?
-                    .execute([id, other])?;
-            }
         }
     } else {
         let prior = details.as_ref().and_then(|s| s.before.as_ref());
         let (kind, work, variant) = prior
             .map(|tree| (tree.kind.as_str(), tree.work.as_deref(), tree.variant.as_str()))
             .unwrap_or(("character", None, ""));
-        c.prepare_cached(&format!("UPDATE term_tree SET parent_id=NULL,work_id=?2,variant=?3 WHERE {OF}"))?
-            .execute(params![id, work, variant])?;
-        c.prepare_cached("UPDATE terms SET kind=?2 WHERE key=?1")?.execute([id, kind])?;
         if identity {
             c.prepare_cached(
                 "UPDATE term_identity_baseline SET parent_id=NULL,variant=?3,kind=?4 WHERE id=?1 AND parent_id=?2",
             )?
             .execute(params![id, other, variant, kind])?;
+            c.prepare_cached(&format!("UPDATE term_tree SET work_id=?2 WHERE {OF} AND work_id IS NULL"))?
+                .execute(params![id, work])?;
+        } else {
+            c.prepare_cached(&format!(
+                "UPDATE term_tree SET parent_id=NULL,work_id=coalesce(work_id,?2),variant=?3 WHERE {OF}"
+            ))?
+            .execute(params![id, work, variant])?;
+            c.prepare_cached("UPDATE terms SET kind=?2 WHERE key=?1")?.execute([id, kind])?;
         }
     }
     if let Some(action) = details.as_ref().and_then(|s| s.action) {
@@ -418,6 +422,53 @@ fn undo_old_merge(c: &Connection, entity: &str, other: &str) -> Result<()> {
     Err(Error::invalid("找不到这次合并的记录"))
 }
 
+struct LibraryRole {
+    kind: String,
+    parent: Option<String>,
+    merged: Option<String>,
+}
+
+struct LibraryRoles {
+    tags: BTreeMap<String, Vec<String>>,
+    roles: BTreeMap<String, LibraryRole>,
+}
+
+impl LibraryRoles {
+    fn read(c: &Connection) -> Result<Self> {
+        let mut tags = BTreeMap::<String, Vec<String>>::new();
+        let links = format!(
+            "SELECT l.key,l.entity_id FROM {} l WHERE l.core_system IN ('danbooru','wd_character')
+             ORDER BY l.key,l.core_system",
+            crate::character_links::LINKS
+        );
+        for row in c.prepare(&links)?.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))? {
+            let (tag, id) = row?;
+            tags.entry(tag).or_default().push(id);
+        }
+        let roles = c
+            .prepare(&format!("SELECT id,kind,parent_id,merged_into FROM {ENTITIES}"))?
+            .query_map([], |r| Ok((r.get(0)?, LibraryRole { kind: r.get(1)?, parent: r.get(2)?, merged: r.get(3)? })))?
+            .collect::<rusqlite::Result<_>>()?;
+        Ok(Self { tags, roles })
+    }
+
+    fn linked<'a>(&'a self, entry: &Character) -> impl Iterator<Item = &'a String> {
+        std::iter::once(&entry.tag).chain(&entry.tags).flat_map(|tag| self.tags.get(tag).into_iter().flatten())
+    }
+
+    fn resolved<'a>(&'a self, mut id: &'a str) -> Option<(&'a str, &'a LibraryRole)> {
+        for _ in 0..16 {
+            let row = self.roles.get(id)?;
+            if let Some(next) = &row.merged {
+                id = next;
+            } else {
+                return Some((id, row));
+            }
+        }
+        None
+    }
+}
+
 /// 对既有图库应用当前目录。旧目录撤回时，只撤仍由目录拥有的边；hybrid 的既有角色等待用户判断。
 pub fn catalog_apply(c: &Connection) -> Result<Value> {
     let catalog = character_catalog::current();
@@ -433,10 +484,8 @@ pub fn catalog_apply(c: &Connection) -> Result<Value> {
             if !live(c, kind, &change)? {
                 continue;
             }
-            if still_published(c, &catalog, kind, &change)?
-                || user_touched(c, &change.0)?
-                || user_touched(c, &change.1)?
-            {
+            let edited_legacy = change.2.is_none() && (user_touched(c, &change.0)? || user_touched(c, &change.1)?);
+            if still_published(c, &catalog, kind, &change)? || edited_legacy {
                 state.list_mut(kind).push(change);
                 continue;
             }
@@ -446,7 +495,7 @@ pub fn catalog_apply(c: &Connection) -> Result<Value> {
     }
     for id in std::mem::take(&mut state.groups) {
         let still_group = links(c, &id)?.iter().any(|tag| catalog.character(tag).is_some_and(|entry| entry.group));
-        if still_group || user_touched(c, &id)? {
+        if still_group {
             state.groups.insert(id);
         } else if c
             .prepare_cached(&format!("UPDATE term_tree SET label_only=0 WHERE {OF} AND original=0"))?
@@ -456,12 +505,12 @@ pub fn catalog_apply(c: &Connection) -> Result<Value> {
             touched.insert(id);
         }
     }
+    let mut library = LibraryRoles::read(c)?;
     for entry in catalog.characters().iter().filter(|entry| entry.group) {
-        for tag in std::iter::once(&entry.tag).chain(&entry.tags) {
-            if let Some(id) = exact(c, tag)? {
-                let id = resolve(c, &id)?;
-                if label_group(c, &mut state, &id)? {
-                    touched.insert(id);
+        for raw in library.linked(entry) {
+            if let Some((id, _)) = library.resolved(raw) {
+                if label_group(c, &mut state, id)? {
+                    touched.insert(id.to_owned());
                 }
             }
         }
@@ -471,19 +520,18 @@ pub fn catalog_apply(c: &Connection) -> Result<Value> {
         let mut roles = BTreeMap::new();
         for entry in catalog.characters() {
             let mut found = Vec::new();
-            for tag in std::iter::once(&entry.tag).chain(&entry.tags) {
-                for system in ["danbooru", "wd"] {
-                    let Some(id) = linked(c, system, tag)? else { continue };
-                    let id = resolve(c, &id)?;
-                    if root(c, &id)? && !found.contains(&id) {
-                        found.push(id);
-                    }
+            for raw in library.linked(entry) {
+                let Some((id, role)) = library.resolved(raw) else { continue };
+                if (role.kind == "character" || role.kind == "skin") && !found.iter().any(|s| s == id) {
+                    found.push(id.to_owned());
                 }
             }
             let Some((target, sources)) = found.split_first() else { continue };
             let mut combined = vec![target];
+            let parent = library.roles[target].parent.clone();
             for source in sources {
-                if !no_children(c, source)? {
+                let origin = &library.roles[source].parent;
+                if (origin.is_some() && *origin != parent) || !no_children(c, source)? {
                     continue;
                 }
                 let permitted = combined
@@ -493,6 +541,7 @@ pub fn catalog_apply(c: &Connection) -> Result<Value> {
                     continue;
                 }
                 merge(c, source, target)?;
+                library.roles.get_mut(source).expect("来自已读取的图库角色").merged = Some(target.clone());
                 record(
                     c,
                     &mut state,
@@ -504,16 +553,30 @@ pub fn catalog_apply(c: &Connection) -> Result<Value> {
                 touched.extend([source.clone(), target.clone()]);
                 merged += 1;
             }
-            if sources.iter().try_fold(true, |ok, id| Ok::<_, Error>(ok && resolve(c, id)? == *target))? {
+            if combined.len() == found.len() {
                 roles.insert(entry.id, target.clone());
             }
         }
+
+        let ids = Ids(&Value::Null);
         for entry in catalog.characters().iter().filter(|entry| approved(entry)) {
-            if let (Some(child), Some(parent)) = (roles.get(&entry.id), entry.parent.and_then(|p| roles.get(&p))) {
-                if appearance(c, &mut state, entry, child, parent, true)? {
-                    touched.extend([child.clone(), parent.clone()]);
-                    attached += 1;
-                }
+            let (Some(child), Some(parent)) = (roles.get(&entry.id).cloned(), catalog.parent(entry)) else { continue };
+            let parent_id = if let Some(id) = roles.get(&parent.id) {
+                id.clone()
+            } else if library.linked(parent).next().is_none()
+                && root(c, &child)?
+                && no_children(c, &child)?
+                && !user_touched(c, &child)?
+            {
+                let id = new_current(c, &ids, &parent.tag)?;
+                roles.insert(parent.id, id.clone());
+                id
+            } else {
+                continue;
+            };
+            if appearance(c, &mut state, entry, &child, &parent_id, true)? {
+                touched.extend([child, parent_id]);
+                attached += 1;
             }
         }
     }
@@ -598,7 +661,9 @@ pub(crate) fn portable_trees(c: &Connection) -> Result<BTreeMap<String, Portable
         }
     }
     for id in &state.groups {
-        result.entry(id.clone()).or_default().group = true;
+        if passes(c, id, "e.label_only=1 AND e.original=0")? {
+            result.entry(id.clone()).or_default().group = true;
+        }
     }
     Ok(result)
 }
@@ -641,19 +706,22 @@ pub(crate) fn restore_catalog_change(c: &Connection, suppressed: &SuppressedCata
     }
     let identity = hybrid(c)?;
     if kind == "merged" {
-        merge(c, id, other)?;
         if identity {
             c.prepare_cached("UPDATE term_identity_baseline SET merged_into=?2 WHERE id=?1")?.execute([id, other])?;
+        } else {
+            merge(c, id, other)?;
         }
     } else {
         let Some(name) = detail.variant.as_deref() else { return Err(Error::invalid("造型名快照缺失")) };
         if detail.before != tree(c, id)? || !root(c, other)? {
             return Err(Error::Conflict("词表造型端点已变化，无法撤销".into()));
         }
-        attach(c, id, other, name)?;
         if identity {
             c.prepare_cached("UPDATE term_identity_baseline SET parent_id=?2,variant=?3,kind='skin' WHERE id=?1")?
                 .execute(params![id, other, name])?;
+            c.prepare_cached(&format!("UPDATE term_tree SET work_id=NULL WHERE {OF}"))?.execute([id])?;
+        } else {
+            attach(c, id, other, name)?;
         }
     }
     if let Some(action) = detail.action {

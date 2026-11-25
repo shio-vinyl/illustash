@@ -1425,9 +1425,13 @@ mod tests {
             );
             let raw = snapshot(tx,"SELECT a.key,t.key FROM term_current_evidence e JOIN term_assets a ON a.id=e.asset_id JOIN terms t ON t.id=e.term_id WHERE a.key IN ('ccip_old','raw_old','longtail') ORDER BY a.key");
             assert_eq!(raw, vec![json!(["ccip_old",old]),json!(["longtail",old]),json!(["raw_old",old])]);
+            illustash_core::character_names::put_name(tx,&new,"zh","user","用户保留的名字","display",0,1)?;
+            crate::character_commands::command(tx,&json!({"op":"change","entity":new,"asked":["ccip_new"],"action":"confirmed"}))?;
             illustash_core::character_catalog::override_for_thread(Some(catalog_revision("",2)));
             crate::character_commands::command(tx,&json!({"op":"catalog_apply"}))?;
             assert_eq!(owner("ccip_new")?,new);
+            assert_eq!(snapshot(tx,"SELECT value FROM term_names WHERE source='user'"),vec![json!(["用户保留的名字"])]);
+            assert_eq!(snapshot(tx,"SELECT status FROM assertions WHERE uuid='ccip_new'"),vec![json!(["confirmed"])]);
             for image in ["ccip_old","raw_old","longtail"] {
                 assert_eq!(owner(image)?,old);
             }
@@ -1551,6 +1555,40 @@ mod tests {
                 Ok(())
             })
             .unwrap();
+        illustash_core::character_catalog::override_for_thread(None);
+    }
+
+    #[test]
+    fn catalog_protects_manual_form_endpoints_until_the_action_is_undone() {
+        illustash_core::character_catalog::override_for_thread(Some(catalog_with("")));
+        let f = Fixture::new();
+        f.write(|tx| {
+            let index = json!({"characters":[
+                {"char_id":"a","danbooru_tag":"role_a"},
+                {"char_id":"b","danbooru_tag":"role_b"}
+            ]});
+            crate::character_commands::command(
+                tx,
+                &json!({"op":"refresh","assets":[],"indexed":"2026-11-23","index":index}),
+            )?;
+            let by_tag = |tag: &str| {
+                tx.query_row(
+                    "SELECT t.key FROM terms t JOIN term_links l ON l.term_id=t.id WHERE l.key=?1 AND l.system='ccip'",
+                    [tag],
+                    |r| r.get::<_, String>(0),
+                )
+            };
+            let (a, b) = (by_tag("a")?, by_tag("b")?);
+            illustash_core::character_identity::attach_form(tx, &a, &b)?;
+            assert!(illustash_core::character_import::user_touched(tx, &a)?);
+            assert!(illustash_core::character_import::user_touched(tx, &b)?);
+            let action = tx.query_row("SELECT max(id) FROM actions", [], |r| r.get::<_, i64>(0))?;
+            crate::character_commands::command(tx, &json!({"op":"undo","action":action}))?;
+            assert!(!illustash_core::character_import::user_touched(tx, &a)?);
+            assert!(!illustash_core::character_import::user_touched(tx, &b)?);
+            Ok(())
+        })
+        .unwrap();
         illustash_core::character_catalog::override_for_thread(None);
     }
 

@@ -841,6 +841,18 @@ mod tests {
         }
     }
     #[test]
+    fn wiki_japanese_corroboration_requires_simplified_han() {
+        let with_japanese_evidence = |name: &str| {
+            wiki_zh(&["小绰号".into(), name.into()], &[], |key| key == name && wiki_ja_han(key), |_| false)
+        };
+        for name in ["十六夜咲夜", "犬走椛", "秋山澪", "琴吹紬"] {
+            assert!(!wiki_ja_han(name), "{name}");
+            assert_eq!(with_japanese_evidence(name), Some(("小绰号".into(), false)), "{name}");
+        }
+        assert!(wiki_ja_han("山田太郎"));
+        assert_eq!(with_japanese_evidence("山田太郎"), Some(("山田太郎".into(), true)));
+    }
+    #[test]
     fn wiki_corroboration_accepts_rare_han_and_prefers_a_personal_name() {
         for name in ["十六夜咲夜", "秋山澪", "犬走椛", "琴吹紬", "和泉凪"] {
             assert_eq!(

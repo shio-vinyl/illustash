@@ -43,6 +43,9 @@ RELEASE_PREFIX = 'https://github.com/shio-vinyl/illustash/releases/download/'
 CATALOG_NAME = 'packs.json'
 SIGNATURE_NAME = 'packs.json.sig'
 PACK_KIND = 'character-pack'
+CHARACTER_KIND = 'character-catalog'
+CHARACTER_FORMAT = 'illustash-character-catalog/1'
+CHARACTER_LIMIT = 16 << 20
 # 目录条目的 `stage`：不写或 release 是正式版，preview 是测试版。
 STAGES = ('preview', 'release')
 # 两个组成部分各自认的包格式。
@@ -249,6 +252,21 @@ def check_component(key, c, version):
         raise CatalogError(f'条目 {version} 缺少 CCIP 模型的 SHA-256')
 
 
+def character_entry(path, min_app, license_text):
+    """为独立的角色词表生成签名清单条目，修订号取自文件。"""
+    data = Path(path).read_bytes()
+    catalog = json.loads(data)
+    revision = catalog['revision']
+    version = f'catalog-{revision}'
+    name = Path(path).name
+    entry = {'kind': CHARACTER_KIND, 'version': version, 'revision': revision, 'min_app': min_app,
+             'license': license_text, 'format': catalog['format'],
+             'file': {'name': name, 'size': len(data), 'sha256': sha256(data),
+                      'url': f'{RELEASE_PREFIX}character-{version}/{name}'}}
+    check_entry(entry)
+    return entry
+
+
 def check_entry(e, strict=True):
     """结构的规则和应用一致（不合法时应用整份目录不用）。`strict` 另外拒绝应用会跳过的条目（不认识的种类或格式、
     旧格式带二级头）：发布时不该写进去，测试夹具才用。"""
@@ -266,6 +284,13 @@ def check_entry(e, strict=True):
             raise CatalogError(f'条目 {e["version"]} 缺少组成部分')
         for key in ('wd', 'ccip'):
             check_component(key, parts[key], e['version'])
+    if e['kind'] == CHARACTER_KIND:
+        file = e.get('file')
+        if ('components' in e or not e['version'].startswith('catalog-') or not isinstance(file, dict)
+                or not valid_file(file) or file['size'] > CHARACTER_LIMIT
+                or (strict and (e.get('format') != CHARACTER_FORMAT or e.get('stage', 'release') not in STAGES))):
+            raise CatalogError(f'条目 {e["version"]} 的角色词表字段不合法')
+        return
     if not strict:
         return
     if e['kind'] != PACK_KIND:
@@ -304,10 +329,12 @@ def build(entries, previous=None, strict=True):
         known = next((p for p in packs if p['version'] == e['version']), None)
         if known:
             def files(pack):
+                if pack['kind'] == CHARACTER_KIND:
+                    return [pack['file']['sha256']]
                 return [(part['file']['sha256'], tuple(f['sha256'] for f in shard_files(part.get('shards'))))
                         for _, part in sorted((pack.get('components') or {}).items())]
 
-            if files(known) != files(e) or known['revision'] != e['revision']:
+            if known['kind'] != e['kind'] or files(known) != files(e) or known['revision'] != e['revision']:
                 raise CatalogError(f'已发布的版本 {e["version"]} 不能替换文件或修订号')
         packs = [p for p in packs if p['version'] != e['version']] + [e]
     packs.sort(key=lambda p: (p['kind'], p['revision']))
@@ -440,6 +467,11 @@ def main(argv=None):
     make.add_argument('--wd-name')
     make.add_argument('--ccip-name')
     make.add_argument('--output', type=Path, required=True)
+    character = sub.add_parser('character-entry', help='从角色词表文件生成独立条目')
+    character.add_argument('file', type=Path)
+    character.add_argument('--min-app', default='0.4.2')
+    character.add_argument('--license', required=True)
+    character.add_argument('--output', type=Path, required=True)
     put = sub.add_parser('build', help='把条目并进目录，序号加一')
     put.add_argument('--previous', type=Path, help='上一份目录（第一次发布时省略）')
     put.add_argument('--entry', type=Path, action='append', required=True)
@@ -475,6 +507,9 @@ def main(argv=None):
             args.output.write_text(json.dumps(result, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
             parts = result['components']
             print(f'已写出 {args.output}：{result["version"]}，WD {parts["wd"]["heads"]} 个头、CCIP {parts["ccip"]["heads"]} 个角色')
+        elif args.command == 'character-entry':
+            result = character_entry(args.file, args.min_app, args.license)
+            args.output.write_bytes(dumps(result))
         elif args.command == 'build':
             previous = json.loads(args.previous.read_bytes()) if args.previous else None
             entries = [json.loads(path.read_bytes()) for path in args.entry]

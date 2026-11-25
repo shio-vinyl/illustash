@@ -18,6 +18,18 @@ PLACEHOLDER = ('# 专签数据包目录的公钥（#602），Tauri 格式：`car
 
 
 class PackCatalogToolTest(unittest.TestCase):
+    def test_character_index_version_has_its_own_signed_file(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / 'character_catalog.json'
+            path.write_text(json.dumps({'format': pack_catalog.CHARACTER_FORMAT, 'revision': 2}))
+            item = pack_catalog.character_entry(path, '0.4.2', 'fixture')
+            manifest = pack_catalog.build([item])
+            self.assertEqual(item['version'], 'catalog-2')
+            self.assertNotIn('components', item)
+            path.write_text(path.read_text() + '\n')
+            with self.assertRaisesRegex(pack_catalog.CatalogError, '不能替换'):
+                pack_catalog.build([pack_catalog.character_entry(path, '0.4.2', 'fixture')], manifest)
+
     def test_entry_reads_both_components_from_their_packages(self):
         e = pack_catalog.entry(version='1.0', revision=3, wd=FIXTURES / 'wd-extension-v3.bin', ccip=FIXTURES / 'ccip-longtail-v2.zip',
                                min_app='0.3.0')

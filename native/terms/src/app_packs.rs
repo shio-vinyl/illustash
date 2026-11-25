@@ -12,6 +12,8 @@
 //!   别的条目原样留在目录里，但不提供。
 //! - 组成部分的文件按 SHA-256 放：和内置文件相同的就用内置的文件夹，其余放 `extensions/<种类>-<SHA-256 前 12 位>/`。
 //!   所以下一个版本只换了一个组成部分时，另一个不用重新下载。
+pub(crate) mod character_catalog;
+
 use crate::app_updates::Version;
 use crate::{Error, Result};
 use base64::{engine::general_purpose::STANDARD, Engine};
@@ -209,6 +211,8 @@ struct RawEntry {
     note: Option<RawNote>,
     #[serde(default)]
     components: Option<RawComponents>,
+    file: Option<RawFile>,
+    format: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -299,6 +303,7 @@ struct RawNote {
 pub(crate) struct Entry {
     kind: String,
     pack: Option<CharacterPack>,
+    character_file: Option<File>,
     version: String,
     revision: u32,
     min_app: Version,
@@ -378,6 +383,19 @@ impl Catalog {
         let stage = raw.stage.as_deref().unwrap_or(STAGE_RELEASE);
         let known_stage = matches!(stage, STAGE_PREVIEW | STAGE_RELEASE);
         let min_app = Version::parse(&raw.min_app).ok_or_else(|| bad("最低应用版本不是 X.Y.Z"))?;
+        let character_file = if raw.kind == character_catalog::KIND {
+            let file = raw.file.ok_or_else(|| bad("角色词表缺少文件"))?;
+            if raw.components.is_some()
+                || !raw.version.starts_with("catalog-")
+                || !file.valid()
+                || file.size > character_catalog::LIMIT
+            {
+                return Err(bad("角色词表的版本或文件不合法"));
+            }
+            (known_stage && raw.format.as_deref() == Some(crate::character_catalog::FORMAT)).then(|| file.into_file())
+        } else {
+            None
+        };
         let pack = match (raw.kind.as_str(), raw.components) {
             (PACK_KIND, None) => return Err(bad(&format!("条目 {version} 缺少组成部分"))),
             // 不认识的标记：结构照查，本版本不提供。
@@ -399,7 +417,7 @@ impl Catalog {
             // 以后的种类：上面的通用字段照查，本版本不提供。
             _ => None,
         };
-        Ok(Entry { kind: raw.kind, pack, version: raw.version, revision: raw.revision, min_app })
+        Ok(Entry { kind: raw.kind, pack, character_file, version: raw.version, revision: raw.revision, min_app })
     }
 
     fn component(kind: Kind, raw: RawComponent, revision: u32, version: &str) -> Result<Pack> {
@@ -449,6 +467,18 @@ impl Catalog {
         };
         for entry in &self.entries {
             let earlier = previous.entries.iter().find(|old| old.version == entry.version);
+            if let Some(old) = earlier {
+                if old.kind != entry.kind
+                    || old.revision != entry.revision
+                    || entry
+                        .character_file
+                        .as_ref()
+                        .zip(old.character_file.as_ref())
+                        .is_some_and(|(a, b)| a.sha256 != b.sha256)
+                {
+                    return Err(bad(&format!("已发布的版本 {} 不能替换文件或修订号", entry.version)));
+                }
+            }
             if let (Some(new), Some(old)) = (entry.pack.as_ref(), earlier.and_then(|e| e.pack.as_ref())) {
                 if new.revision != old.revision || !same_parts(&new.wd, &old.wd) || !same_parts(&new.ccip, &old.ccip) {
                     return Err(bad(&format!("已发布的版本 {} 不能替换文件或修订号", entry.version)));
@@ -728,7 +758,9 @@ pub(crate) fn refresh(resources: &Path) -> Option<std::result::Result<Adopted, S
         let agent = crate::app_models::download_agent(Duration::from_secs(15), &prefix);
         let bytes = get(&agent, &format!("{prefix}{CATALOG_NAME}"), CATALOG_LIMIT)?;
         let signature = get(&agent, &format!("{prefix}{SIGNATURE_NAME}"), SIGNATURE_LIMIT)?;
-        adopt(resources, &bytes, &signature).map_err(|e| e.reason())
+        let adopted = adopt(resources, &bytes, &signature).map_err(|e| e.reason())?;
+        character_catalog::fetch(resources, &agent).map_err(|e| e.reason())?;
+        Ok(adopted)
     })())
 }
 

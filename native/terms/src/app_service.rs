@@ -408,6 +408,7 @@ impl Application {
         unlisted_note: impl FnOnce(Error) -> String,
     ) -> Result<Self> {
         let Options { root, startup } = options;
+        crate::app_packs::character_catalog::load(&root);
         let reference = crate::app_resources::reference_path(&root)?;
         let mut session = Session::new(opened, 1, token, &root, &reference, &startup)?;
         if let Err(error) = crate::app_libraries::remember(&session.library) {

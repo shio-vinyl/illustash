@@ -12,11 +12,14 @@
 use crate::error::invalid;
 use crate::Result;
 use serde_json::Value;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::OnceLock;
 
 /// 这个版本认识的目录格式。
 pub const FORMAT: &str = "illustash-character-catalog/1";
+/// 随应用分发的修订号，用于在启动时选择适用的签名更新。
+pub const BUNDLED_REVISION: u32 = 1;
+static INSTALLED: OnceLock<Catalog> = OnceLock::new();
 const BUNDLED: &str = include_str!("../../../tags/character_catalog.json");
 
 /// 和上级的关系。
@@ -45,6 +48,8 @@ pub struct Character {
     pub id: u32,
     pub tag: String,
     pub tags: Vec<String>,
+    /// 已审核的团体条目，只作检索标签。
+    pub group: bool,
     pub parent: Option<u32>,
     pub relation: Option<Relation>,
     pub action: Option<Action>,
@@ -77,8 +82,12 @@ impl Catalog {
         }
         let revision = doc["revision"].as_u64().and_then(|r| u32::try_from(r).ok()).filter(|r| *r > 0);
         let Some(revision) = revision else { return invalid("角色目录的修订号不正确") };
-        let columns: Vec<&str> = doc["columns"].as_array().into_iter().flatten().filter_map(Value::as_str).collect();
-        let col = |name: &str| columns.iter().position(|c| *c == name);
+        let columns: Vec<String> = serde_json::from_value(doc["columns"].clone())
+            .map_err(|_| crate::Error::invalid("角色目录的列名不合法"))?;
+        if columns.iter().collect::<HashSet<_>>().len() != columns.len() {
+            return invalid("角色目录的列名重复");
+        }
+        let col = |name: &str| columns.iter().position(|c| c == name);
         let need = ["id", "tag", "tags", "parent", "relation", "action", "variant", "bangumi", "pick", "wikidata"];
         let mut at = HashMap::new();
         for name in need {
@@ -86,12 +95,31 @@ impl Catalog {
             at.insert(name, i);
         }
         let mut characters = Vec::new();
-        for row in doc["characters"].as_array().into_iter().flatten() {
+        let rows = doc["characters"].as_array().ok_or_else(|| crate::Error::invalid("角色目录缺少角色列表"))?;
+        for row in rows {
+            if row.as_array().is_none_or(|values| values.len() != columns.len()) {
+                return invalid("角色目录的行与列不匹配");
+            }
             let get = |name: &str| row.get(at[name]).unwrap_or(&Value::Null);
             let id = get("id").as_u64().and_then(|v| u32::try_from(v).ok()).filter(|v| *v > 0);
             let (Some(id), Some(tag)) = (id, text(get("tag"))) else {
                 return invalid("角色目录里有一行缺少 ID 或 tag");
             };
+            let group = match col("group").map(|index| &row[index]) {
+                None | Some(Value::Null) => false,
+                Some(Value::Bool(group)) => *group,
+                _ => return invalid("角色目录的团体标记不合法"),
+            };
+            let tags: Vec<String> = serde_json::from_value(get("tags").clone())
+                .map_err(|_| crate::Error::invalid("角色目录的别名列表不合法"))?;
+            if tags.iter().any(|t| t.trim().is_empty()) || tag.trim().is_empty() {
+                return invalid("角色目录的 tag 为空");
+            }
+            for field in ["relation", "action", "variant", "pick", "wikidata"] {
+                if !get(field).is_null() && !get(field).is_string() {
+                    return invalid(format!("角色目录：{tag} 的 {field} 字段不合法"));
+                }
+            }
             let relation = match get("relation").as_str() {
                 None => None,
                 Some("appearance") => Some(Relation::Appearance),
@@ -106,18 +134,27 @@ impl Catalog {
                 Some(other) => return invalid(format!("角色目录：不认识的处理方式 {other}")),
             };
             let parent = get("parent").as_u64().and_then(|v| u32::try_from(v).ok());
+            let bangumi = get("bangumi").as_u64().filter(|id| *id > 0);
+            if (!get("parent").is_null() && parent.is_none())
+                || (!get("bangumi").is_null() && bangumi.is_none())
+                || (group && (parent.is_some() || bangumi.is_some()))
+                || (action == Some(Action::Auto) && relation != Some(Relation::Appearance))
+            {
+                return invalid(format!("角色目录：{tag} 的身份关系或外部编号不合法"));
+            }
             if parent.is_some() != relation.is_some() || relation.is_some() != action.is_some() {
                 return invalid(format!("角色目录：{tag} 的上级、关系和处理方式要一起给"));
             }
             characters.push(Character {
                 id,
                 tag,
-                tags: get("tags").as_array().into_iter().flatten().filter_map(text).collect(),
+                tags,
+                group,
                 parent,
                 relation,
                 action,
                 variant: text(get("variant")),
-                bangumi: get("bangumi").as_u64(),
+                bangumi,
                 pick: get("pick").as_str().unwrap_or("").to_owned(),
                 wikidata: text(get("wikidata")),
             });
@@ -139,6 +176,9 @@ impl Catalog {
             let Some(&pi) = by_id.get(&p) else {
                 return invalid(format!("角色目录：{} 的上级不存在", c.tag));
             };
+            if characters[pi].group {
+                return invalid(format!("角色目录：{} 的上级是团体", c.tag));
+            }
             if p == c.id {
                 return invalid(format!("角色目录：{} 的上级是自己", c.tag));
             }
@@ -147,9 +187,11 @@ impl Catalog {
             }
         }
         let mut works = HashMap::new();
-        for w in doc["works"].as_array().into_iter().flatten() {
-            if let (Some(tag), Some(id)) = (w.get(0).and_then(text), w.get(1).and_then(Value::as_u64)) {
-                works.insert(tag, id);
+        let pairs: Vec<(String, u64)> = serde_json::from_value(doc["works"].clone())
+            .map_err(|_| crate::Error::invalid("角色目录的作品列表不合法"))?;
+        for (tag, id) in pairs {
+            if tag.is_empty() || id == 0 || works.insert(tag, id).is_some() {
+                return invalid("角色目录有重复作品或作品编号不合法");
             }
         }
         Ok(Self { revision, characters, by_id, by_tag, works })
@@ -191,9 +233,16 @@ thread_local! {
     static OVERRIDE: std::cell::Cell<Option<&'static Catalog>> = const { std::cell::Cell::new(None) };
 }
 
-/// 导入时用的目录：平时是编进应用的那份；测试可以用 [`override_for_thread`] 在当前线程换一份。
+/// 选定进程使用的已安装目录。调用方在启动时校验签名清单和文件，后续修订在下次启动时生效。
+pub fn use_installed(catalog: Catalog) {
+    if catalog.revision > BUNDLED_REVISION {
+        let _ = INSTALLED.set(catalog);
+    }
+}
+
+/// 导入和取名共用的目录；测试可以用 [`override_for_thread`] 在当前线程换一份。
 pub fn current() -> &'static Catalog {
-    OVERRIDE.with(std::cell::Cell::get).unwrap_or_else(bundled)
+    OVERRIDE.with(std::cell::Cell::get).or_else(|| INSTALLED.get()).unwrap_or_else(bundled)
 }
 
 /// 只给测试用：在当前线程换用另一份目录，`None` 换回编进应用的那份。
@@ -209,6 +258,7 @@ mod tests {
     #[test]
     fn bundled_catalog_parses_and_keeps_its_invariants() {
         let c = Catalog::parse(BUNDLED).unwrap();
+        assert_eq!(c.revision, BUNDLED_REVISION);
         assert!(c.characters().len() > 10_000);
         // 改名前的旧 tag 指向同一个角色。
         let old = c.character("kousaka_honoka").unwrap();

@@ -240,6 +240,32 @@ class NativePackCatalogTest(unittest.TestCase):
         state = wait_until(finished)
         self.assertEqual((state['status'], state['total']), ('needs_recognition', count), state)
 
+    def test_character_catalog_retries_and_only_activates_on_next_start(self):
+        files = {}
+
+        def applied():
+            with closing(sqlite3.connect(self.lib.db)) as db:
+                row = db.execute("SELECT json_extract(value,'$.revision') FROM meta WHERE key='character_catalog'").fetchone()
+            return row[0] if row else None
+
+        with github(files) as (origin, seen):
+            files.update(self.serve(origin))
+            for suffix in ('', '.sig'):
+                files[DOWNLOAD + 'packs/packs.json' + suffix] = (FIXTURES / ('packs-roles.json' + suffix)).read_bytes()
+            route = DOWNLOAD + 'character-catalog-2/roles.json'
+            files[route] = b'partial'
+            self.restart()
+            wait_until(lambda: applied() == 1)
+            self.post('/api/updates', {'action': 'check'})
+            self.assertTrue(self.packs()['catalog']['error'])
+            files[route] = (FIXTURES / 'roles.json').read_bytes()
+            self.post('/api/updates', {'action': 'check'})
+            self.assertIsNone(self.packs()['catalog']['error'])
+            self.assertEqual(seen.count(route), 2)
+            self.assertEqual(applied(), 1)
+            self.restart()
+            wait_until(lambda: applied() == 2)
+
     def test_shell_receives_pack_download_enable_and_withdraw(self):
         files, activity = {}, []
         release = Event()

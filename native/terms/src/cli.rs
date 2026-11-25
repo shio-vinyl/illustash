@@ -85,6 +85,27 @@ pub fn run(args: &[String]) -> u8 {
         return code;
     }
     let args: Vec<&str> = args.iter().map(String::as_str).collect();
+    if matches!(
+        args.first().copied(),
+        Some(
+            "serve"
+                | "character-command"
+                | "identity-command"
+                | "recognition-import"
+                | "wd-extension"
+                | "ccip-longtail"
+                | "wd-pending"
+                | "import"
+                | "library-scan"
+        )
+    ) {
+        let root = args
+            .windows(2)
+            .find(|arg| arg[0] == "--root")
+            .map(|arg| Path::new(arg[1]).to_owned())
+            .unwrap_or_else(crate::app_resources::default_root);
+        crate::app_packs::character_catalog::load(&root);
+    }
     let result = match args.as_slice() {
         ["recognition-import", "--library", _library, "--root", root, "--model-specs"] => crate::app_recognition::model_specs(Path::new(root)),
         ["recognition-import", "--library", library, "--root", root, "--resume"] => crate::app_library::Library::open(Path::new(library)).and_then(|lib| crate::app_recognition::resume_at(&lib,Path::new(root),&std::sync::atomic::AtomicBool::new(false),&|_,_| Ok(()))),

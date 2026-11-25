@@ -1,0 +1,20 @@
+{
+  "format": "illustash-packs/1",
+  "serial": 1,
+  "packs": [
+    {
+      "kind": "character-catalog",
+      "version": "catalog-2",
+      "revision": 2,
+      "min_app": "0.4.0",
+      "license": "fixture",
+      "format": "illustash-character-catalog/1",
+      "file": {
+        "name": "roles.json",
+        "size": 395,
+        "sha256": "351a4a7eaf00989cbc7d8578762b84dd010e2e7108a13c3bebc94e634f076a77",
+        "url": "https://github.com/shio-vinyl/illustash/releases/download/character-catalog-2/roles.json"
+      }
+    }
+  ]
+}

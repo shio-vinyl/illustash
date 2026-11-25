@@ -543,8 +543,12 @@ fn identity_filter(c: &Connection, f: &HashMap<String, String>, filter: &mut Fil
             );
             filter.add(maybe, vec![entity.clone(); 3]);
         } else {
-            let mascot = exists(c, &format!("SELECT 1 FROM {ENTITIES} WHERE id=? AND mascot<>0"), &[&entity])?;
-            let members = if mascot { "tag_memberships" } else { "memberships" };
+            let tag_only = exists(
+                c,
+                &format!("SELECT 1 FROM {ENTITIES} WHERE id=? AND (mascot<>0 OR (label_only=1 AND original=0))"),
+                &[&entity],
+            )?;
+            let members = if tag_only { "tag_memberships" } else { "memberships" };
             filter
                 .add(format!("EXISTS(SELECT 1 FROM {members} m WHERE m.uuid=a.uuid AND m.entity=?)"), [entity.clone()]);
         }

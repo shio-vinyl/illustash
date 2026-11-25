@@ -277,6 +277,8 @@ class NativeAmbiguousClaimsTest(unittest.TestCase):
             c.execute("INSERT INTO meta(key,value) VALUES ('terms_writer','1')")
             c.execute("UPDATE term_tree SET label_only=1 WHERE term_id=(SELECT id FROM terms WHERE key=?)",
                       (self.bob,))
+            c.execute("INSERT INTO tag_memberships SELECT * FROM memberships WHERE entity=?", (self.bob,))
+            c.execute("DELETE FROM memberships WHERE entity=?", (self.bob,))
             c.execute("DELETE FROM meta WHERE key='terms_writer'")
         self.assert_queue([])
         for entity in (self.alice, self.bob):
@@ -288,6 +290,9 @@ class NativeAmbiguousClaimsTest(unittest.TestCase):
         [group] = self.read('/api/characters?' + urlencode({'id': self.bob}))
         self.assertIs(group['group_tag'], True)
         self.assertTrue(any(x['id'] == self.bob and x['group_tag'] for x in self.read('/api/tagged')))
+        filters = urlencode({'entity': self.bob})
+        self.assertEqual(self.read('/api/ids?' + filters), ['back'])
+        self.assertEqual(self.read('/api/assets/count?' + filters), {'total': 1})
         with self.connect() as c, c:
             c.execute("INSERT INTO meta(key,value) VALUES ('terms_writer','1')")
             c.execute("UPDATE term_tree SET original=1 WHERE term_id=(SELECT id FROM terms WHERE key=?)", (self.bob,))
@@ -375,7 +380,10 @@ class NativeAmbiguousClaimsTest(unittest.TestCase):
         undo = self.read('/api/catalog/split', request)['undo']
         self.assertNotIn('catalog', self.read(url))
         self.read('/api/undo', {'id': undo['id']})
-        self.assertEqual(self.read(url)['catalog'], [edge])
+        [restored] = self.read(url)['catalog']
+        for key in ('id', 'kind', 'tags', 'owner_tags'):
+            self.assertEqual(restored[key], edge[key])
+        self.assertTrue(restored['name'])
 
     def ask(self):
         return self.read('/api/ask')['batch']

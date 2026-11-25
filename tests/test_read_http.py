@@ -58,7 +58,11 @@ def stop_process(process):
 
 
 def wait_character_catalog(package):
-    """合成图库首次启动后，等词表事务提交再取数据库快照。"""
+    """可写的合成图库首次启动后，等词表事务提交再取数据库快照。"""
+    config = json.loads((Path(package) / 'library.json').read_text(encoding='utf-8'))
+    if config.get('test') or config.get('frozen'):
+        return None
+
     def applied():
         with closing(sqlite3.connect(Path(package) / 'library.sqlite')) as db:
             row = db.execute("SELECT value FROM meta WHERE key='character_catalog'").fetchone()

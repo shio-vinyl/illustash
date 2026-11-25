@@ -583,8 +583,7 @@ pub(crate) fn wiki_zh(
     let mut fallback = None;
     let mut previous = false;
     for name in names {
-        let name = name.nfkc().collect::<String>();
-        let base = wiki_base(&name);
+        let base = wiki_base(name);
         let key = normalize(&base);
         let h = base.chars().filter(|&c| han_char(c)).collect::<String>();
         let group_name = group(&base)
@@ -606,7 +605,7 @@ pub(crate) fn wiki_zh(
             ]
             .iter()
             .any(|suffix| key.ends_with(suffix));
-        let shaped = !kana(&name) && !hangul(&name) && !h.is_empty() && base.chars().count() <= 20;
+        let shaped = !kana(&base) && !hangul(&base) && !h.is_empty() && base.chars().count() <= 20;
         if shaped && confirmed(&key) {
             return Some((base, true));
         }
@@ -818,6 +817,7 @@ mod tests {
             (vec!["綾", "杉山清美"], vec![], None),
             (vec!["杉山清美"], vec![], Some("杉山清美")),
             (vec!["左衛門佐", "爱丽丝（示例）"], vec![], Some("爱丽丝")),
+            (vec!["摩根・勒・菲（モルガン）"], vec![], Some("摩根·勒·菲")),
             (vec!["兄妹", "合成队", "示例角色"], vec!["示例"], None),
             (vec!["한글", "桜", "螢", "爱丽丝"], vec![], Some("爱丽丝")),
         ] {

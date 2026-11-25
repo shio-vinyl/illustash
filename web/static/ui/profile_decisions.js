@@ -18,10 +18,11 @@ export function profileDecisions(container, initial, refresh) {
   const action = (button, write) => async () => {
     button.disabled = true;
     try {
-      const saved = await exclusive(write);
-      if (!saved) return;
-      written(saved.undo);
-      await Promise.all([readProfile(id).then(p => { if (container.isConnected) render(p); }), refresh()]);
+      await exclusive(async () => {
+        const saved = await write();
+        written(saved.undo);
+        await Promise.all([readProfile(id).then(p => { if (container.isConnected) render(p); }), refresh()]);
+      });
     } catch (e) { toast(e.message); }
     finally { button.disabled = false; }
   };

@@ -23,7 +23,7 @@
 
  "crates/core/src/character_import.rs":"1dfba1fb2a593f7d80b2569d08459b0f76156063d550b5ad56dd08852ad3d321",
 
- "crates/core/src/character_import/catalog.rs":"3a5d03cd870a847778f280a70f8b1f650b51cbc548d8633a7db51cdd7c9081e6",
+ "crates/core/src/character_import/catalog.rs":"37d8257d9230d838ee3418b79824250c0d6e8b5d3eb2eaf96cd1bb8fe1419ea9",
 
  "crates/core/src/character_json.rs":"9a60f525976d786c9edfcd8420c100481ba117bbaa78e839f02e7002ff328046",
 
@@ -317,7 +317,7 @@
 
  "native/terms/src/app_models/shards.rs":"2bec6706281233ea03287af7030a277707672631895ad5d97aa861a1a773e174",
 
- "native/terms/src/app_name_sources.rs":"06da7e2e22b1b25f7a08e185299ec108ba42cce57f80806ac0604a234508aea5",
+ "native/terms/src/app_name_sources.rs":"934b63ff8bffd034e2cfbf1344617239da1ee99bf204e79d84d8e937781b637a",
 
  "native/terms/src/app_names.rs":"0fe7edcf2d76ae8e166f2eb16e4373eeeac844ee5648538adbea4b261a68f1a2",
 
@@ -411,7 +411,7 @@
 
  "native/terms/src/http_artists.rs":"2fec7a75db8c4448c9d442d256d5dc52ab19eab1c19be4f54a6b71ad94092577",
 
- "native/terms/src/http_browse.rs":"de54fbe86ae7288f3f6fba74ed983166fd20aa67d361856afb1d34d561909eaf",
+ "native/terms/src/http_browse.rs":"7d82da716a069b009ebe2736924c6e4d64f9b92550c60a4214540ccaf639ce21",
 
  "native/terms/src/http_characters.rs":"8518fbe3bb0784b5dc20c67fe624b77578be310d3c287db3cb938ac6703606e2",
 

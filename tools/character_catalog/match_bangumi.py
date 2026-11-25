@@ -7,7 +7,7 @@
   （同一作品的游戏、动画、漫画各是一个条目）；
 - 作品里认人：D 站 wiki 的 `other_names` 和可读名，跟 Bangumi 角色的原名、日文名、英文名、罗马字、中文名比，
   同作品共用的未核实别名及明显合称不参与匹配；对上几个时，用非拉丁字母的名字再筛一次；
-- 全库：只用非拉丁字母、至少两个字的名字，全库唯一，并且 Bangumi 的中文名和 zh-tags、Wikidata、
+- 全库：只用非拉丁字母、至少两个字的名字，全库唯一、没有已知作品冲突，并且 Bangumi 的中文名和 zh-tags、Wikidata、
   D 站别名里的中文至少一处一致。
 
 每条结果记下对法（`work`、`work-strict`、`global`）和用来对上的名字，供审核和抽查。
@@ -41,12 +41,16 @@ def latin_only(text):
 class Matcher:
     def __init__(self, characters, subjects, links, wiki, alias, copyrights, scope, zh_tags, wikidata):
         self.characters, self.subjects, self.wiki, self.alias = characters, subjects, wiki, alias
+        self.links = links
         self.copyrights, self.scope, self.zh_tags, self.wikidata = copyrights, scope, zh_tags, wikidata
         self.subj_by_name = collections.defaultdict(set)
         for sid, s in subjects.items():
             for n in (s['name'], s['name_cn']):
                 if n:
                     self.subj_by_name[bangumi.norm(n)].add(sid)
+        self.known_subjects = set()
+        for work in copyrights:
+            self.known_subjects.update(self.subjects_of(work))
         self.chars_of = collections.defaultdict(set)
         chinese_subjects = {sid for sid, s in subjects.items()
                             if zhtext.han(s['name']) and not zhtext.kana(s['name']) and not zhtext.hangul(s['name'])
@@ -91,26 +95,35 @@ class Matcher:
     def work_of(self, tags):
         for tag in tags:
             _, qs = tagparse.split(tag)
-            if qs and self.copyright(qs[-1]):
-                return self.copyright(qs[-1])
+            if qs and (work := self.copyright(qs[-1])):
+                return work
+        return next(self.work_clues(tags), None)
+
+    def work_clues(self, tags):
         for tag in tags:
             entry = self.scope.get(tag)
             for c in (entry.copyrights if entry else []):
-                if self.copyright(c):
-                    return self.copyright(c)
+                if (work := self.copyright(c)):
+                    yield work
         for tag in tags:
             body = (self.wiki.get(tag) or {}).get('body') or ''
             for m in LINK.finditer(body.replace('\r', '').split('\n\n', 1)[0]):
                 c = self.copyright(m.group(1).strip().lower().replace(' ', '_'))
                 if c:
-                    return c
-        return None
+                    yield c
+
+    def qualified_works(self, tag):
+        _, qualifiers = tagparse.split(tag)
+        return {work for qualifier in qualifiers if (work := self.copyright(qualifier))}
+
+    def work_names(self, work):
+        names = [tagparse.readable(work), *((self.wiki.get(work) or {}).get('other_names') or [])]
+        return {bangumi.norm(name) for name in names}
 
     def subjects_of(self, work):
-        names = [tagparse.readable(work)] + list((self.wiki.get(work) or {}).get('other_names') or [])
         out = set()
-        for n in names:
-            out |= self.subj_by_name.get(bangumi.norm(n), set())
+        for name in self.work_names(work):
+            out |= self.subj_by_name.get(name, set())
         return out
 
     def wiki_names(self, tags):
@@ -152,8 +165,22 @@ class Matcher:
         return out
 
     # ---- 对上 ----
-    def match(self, tags):
-        """tags 的第一个是规范名。返回 dict 或 None：{'id', 'how', 'via', 'work', 'subjects'}。"""
+    def linked_subjects(self, cid):
+        return {sid for sid, _ in self.links.get(cid, ())}
+
+    def work_conflicts(self, tags, work, expected, linked):
+        # 两侧都要有已知作品。用角色页和索引里的具体子作交叉核对，系列总标签的
+        # 精确标题未收齐时也可以沿用已有旁证；这里不建立新的对应关系。
+        if work == 'original' or not expected or not linked or not linked <= self.known_subjects or linked & expected:
+            return False
+        if any(self.subjects_of(other) & linked for other in self.work_clues(tags)):
+            return False
+        names = {name for name in self.work_names(work) if len(name) >= 4}
+        return not any(name in bangumi.norm(self.subjects[sid][field])
+                       for sid in linked for field in ('name', 'name_cn') for name in names)
+
+    def match(self, tags, review=None):
+        """tags 的第一个是规范名。返回 dict 或 None：{'id', 'how', 'via', 'work'}。"""
         work = self.work_of(tags)
         mine = self.names_of(tags, work)
         sids = self.subjects_of(work) if work else set()
@@ -177,6 +204,11 @@ class Matcher:
             c = self.characters[cid]
             zh = {bangumi.norm(x) for x in SPLIT.split(c['zh']) if x} if c['zh'] else set()
             if personal(c['name']) and zh & self.chinese_evidence(tags):
+                linked = self.linked_subjects(cid)
+                if self.work_conflicts(tags, work, sids, linked):
+                    if review is not None:
+                        review.add(('全库命中与已知作品冲突', tags[0], str(cid)))
+                    return None
                 return {'id': cid, 'how': 'global', 'work': work,
                         'via': sorted(k for k, _ in self.keys[cid] & mine)[:3]}
         return None

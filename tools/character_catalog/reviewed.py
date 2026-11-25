@@ -8,9 +8,14 @@ GROUPS = frozenset({'adepta_sororitas', 'adeptus_astartes', 'cerberus_(helltaker
 # 这只具名宝可梦是物种的一个具体个体。蕴含用于搜图，没有需要用户裁决的身份关系。
 INSTANCES = frozenset({('peakychu', 'pikachu')})
 
-# 逐条核对的单字原名。作品限定词沿用系列 tag，作品条目与本人 ID 由公开资料确认。
-# 核对来源：https://endfield.hypergryph.com/news/6094 及 https://bgm.tv/character/208373
-BANGUMI = {'si_(arknights)': (208373, 374638, 'name')}
+# 逐条核对的角色条目。作品条目与本人 ID 由公开资料确认。
+BANGUMI = {
+    # https://endfield.hypergryph.com/news/6094 及 https://bgm.tv/character/208373
+    'si_(arknights)': (208373, 374638, 'name'),
+    # 17449 以《死或生》本体为主；另有《碧蓝航线》联动。参见 71967 和原作角色页。
+    # https://teamninja-studio.com/doa6/lastround/tch/characters/kasumi.html
+    'kasumi_(doa)': (17449, 71967, ''),
+}
 
 LINK = re.compile(r'\[\[([^\]|]+)(?:\|([^\]]*))?\]\]')
 COSTUME = re.compile(r'\b(costumes?|outfits?|attire|dress|swimsuit|bikini|kimono|yukata|uniform|skin|clothes|clothing|mystic code)\b', re.I)

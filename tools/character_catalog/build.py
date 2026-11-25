@@ -25,6 +25,7 @@ D 站数据（tag、别名、蕴含）是事实数据；wiki 正文、Bangumi �
 import argparse
 import collections
 import hashlib
+import itertools
 import json
 from pathlib import Path
 import sys
@@ -89,6 +90,56 @@ def assign_ids(objects, previous):
     return ids, high_water
 
 
+def clear_work_conflicts(rows, matcher, parent_of, review):
+    """同一个角色 ID 下，互不关联又写明不同作品的规范 tag 只能保留有唯一作品证据的一方。"""
+    tag_col = COLUMNS.index('tag')
+    id_col = COLUMNS.index('bangumi')
+    pick_col = COLUMNS.index('pick')
+    by_id = collections.defaultdict(list)
+    for row in rows:
+        tag, bid = row[tag_col], row[id_col]
+        if bid is not None and (works := matcher.qualified_works(tag)):
+            by_id[bid].append((row, works))
+
+    def ancestry(tag):
+        chain = {tag}
+        while tag in parent_of:
+            tag = parent_of[tag][0]
+            if tag in chain:
+                break
+            chain.add(tag)
+        return chain
+
+    removed = 0
+    for bid, group in by_id.items():
+        if len(group) < 2:
+            continue
+        linked = matcher.linked_subjects(bid)
+
+        def evidence(row, works):
+            confirmed = reviewed.BANGUMI.get(row[tag_col])
+            if confirmed and confirmed[0] == bid:
+                return 2
+            return int(any(matcher.subjects_of(work) & linked for work in works))
+
+        strengths = [evidence(row, works) for row, works in group]
+        ancestors = [ancestry(row[tag_col]) for row, _ in group]
+        conflicts = set()
+        for a, b in itertools.combinations(range(len(group)), 2):
+            if group[a][1] & group[b][1] or ancestors[a] & ancestors[b]:
+                continue
+            if strengths[a] <= strengths[b]:
+                conflicts.add(a)
+            if strengths[b] <= strengths[a]:
+                conflicts.add(b)
+        for i in sorted(conflicts):
+            row, _ = group[i]
+            review.add(('跨作品共用角色 ID', row[tag_col], str(bid)))
+            row[id_col] = row[pick_col] = None
+        removed += len(conflicts)
+    return removed
+
+
 def build(work, dump, previous=None):
     g, wiki = load(work)
     scope = work.scope
@@ -123,7 +174,8 @@ def build(work, dump, previous=None):
             continue
         kind = result['kind']
         paragraph = relations.first_paragraph(wiki.get(canon, {}).get('body', ''))
-        if kind == 'appearance' and not reviewed.appearance(canon, parent, paragraph):
+        added_works = matcher.qualified_works(canon) - matcher.qualified_works(parent)
+        if kind == 'appearance' and (added_works or not reviewed.appearance(canon, parent, paragraph)):
             kind = 'unknown'
         if kind != 'appearance':
             review.add((kind, canon, parent))
@@ -149,7 +201,7 @@ def build(work, dump, previous=None):
     for canon in sorted(objects, key=lambda c: ids[c]):
         tags = objects[canon]
         names = [canon, *[t for t in tags if t != canon]]
-        m = matcher.match(names)
+        m = matcher.match(names, review)
         if m and canon not in reviewed.GROUPS:
             matches[canon] = m
     for canon in sorted(objects, key=lambda c: ids[c]):
@@ -194,6 +246,7 @@ def build(work, dump, previous=None):
         stats['objects'] += 1
         stats['with_bangumi'] += bid is not None
         stats[f'relation:{relation}'] += relation is not None
+    stats['with_bangumi'] -= clear_work_conflicts(rows, matcher, parent_of, review)
     works = []
     for work_tag, counter in sorted(work_hits.items()):
         sid, n = counter.most_common(1)[0]

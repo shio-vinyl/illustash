@@ -163,6 +163,8 @@ const retryVersion = task => enableTarget && task?.id === enableTarget.task ? en
 const RESULT = {accepted: () => t('已接收'), mismatch: () => t('SHA-256 不符，已拒绝'), already: () => t('已经有了'),
   unknown: () => t('不是角色资料包'),
   // 离线包里的包目录和签名（#602）。
+  catalog_file_installed: () => t('角色词表已导入，重启后生效'),
+  catalog_file_invalid: () => t('无法导入角色词表'), catalog_file_unsupported: () => t('当前应用不采用此角色词表修订'),
   catalog: () => t('包目录，已读取'), catalog_old: () => t('包目录比本机的旧，没有采用'), catalog_invalid: () => t('包目录签名不对，已拒绝')};
 // 包信息（设置卡片的折叠区，#714 改成数据）：存放位置（所有图库共用）、两个组成部分的文件、版本和许可，每项
 // {key, text, hint}；没有包信息时为空。

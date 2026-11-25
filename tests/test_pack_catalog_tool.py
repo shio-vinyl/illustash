@@ -140,6 +140,28 @@ class PackCatalogToolTest(unittest.TestCase):
             with self.assertRaises(pack_catalog.CatalogError):
                 pack_catalog.offline(FIXTURES / 'packs.json', notice, output)
 
+    def test_offline_bundle_keeps_same_named_character_revisions_separate(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            old = FIXTURES / 'roles.json'
+            document = json.loads(old.read_bytes())
+            document['revision'] += 1
+            new = root / old.name
+            new.write_bytes(pack_catalog.dumps(document))
+            catalog = pack_catalog.build([
+                pack_catalog.character_entry(old, '0.4.0', 'fixture'),
+                pack_catalog.character_entry(new, '0.4.0', 'fixture'),
+            ])
+            descriptor = root / 'packs.json'
+            descriptor.write_bytes(pack_catalog.dumps(catalog))
+            output = root / 'catalog-offline.zip'
+            pack_catalog.offline(descriptor, [old, new], output, signature_path=FIXTURES / 'packs-roles.json.sig')
+            with zipfile.ZipFile(output) as archive:
+                self.assertEqual(archive.namelist(),
+                                 ['packs.json', 'packs.json.sig', 'catalog-2/roles.json', 'catalog-3/roles.json'])
+                self.assertEqual(archive.read('catalog-2/roles.json'), old.read_bytes())
+                self.assertEqual(archive.read('catalog-3/roles.json'), new.read_bytes())
+
     def test_pubkey_file_placeholder_and_write(self):
         with tempfile.TemporaryDirectory() as temp:
             path = Path(temp) / 'pack-key.pub'

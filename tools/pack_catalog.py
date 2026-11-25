@@ -414,26 +414,29 @@ def check_signed(catalog_path, signature_path=None, pubkey=None):
 
 
 def offline(catalog_path, package_paths, output, signature_path=None, extra=()):
-    """离线包：根上是 packs.json、packs.json.sig 和包文件（名字照目录里的），再加 `extra` 里的许可文本等。应用导入时
-    把认不出的成员列为不认识，不影响包文件。"""
+    """离线包含签名目录、包文件和可选说明。角色词表放进各自的版本目录，允许多个修订使用同一个文件名。"""
     catalog_path = Path(catalog_path)
     signature_path = Path(signature_path or str(catalog_path) + '.sig')
     catalog = json.loads(catalog_path.read_bytes())
     files = {}
     for p in catalog['packs']:
+        if p['kind'] == CHARACTER_KIND:
+            file = p['file']
+            files[file['sha256']] = f"{p['version']}/{file['name']}"
         for c in (p.get('components') or {}).values():
             files[c['file']['sha256']] = c['file']['name']
     packages = []
     for path in map(Path, [package_paths] if isinstance(package_paths, (str, Path)) else package_paths):
         data = path.read_bytes()
-        if sha256(data) not in files:
+        digest = sha256(data)
+        if digest not in files:
             raise CatalogError(f'{path.name} 不在这份目录里')
-        packages.append((files[sha256(data)], data))
+        packages.append((files[digest], data))
+    members = [(CATALOG_NAME, catalog_path.read_bytes()), (SIGNATURE_NAME, signature_path.read_bytes())] + packages \
+        + [(Path(path).name, Path(path).read_bytes()) for path in extra]
+    if len({name for name, _ in members}) != len(members):
+        raise CatalogError('离线包里的文件重名')
     with zipfile.ZipFile(output, 'w', zipfile.ZIP_DEFLATED) as archive:
-        members = [(CATALOG_NAME, catalog_path.read_bytes()), (SIGNATURE_NAME, signature_path.read_bytes())] + packages \
-            + [(Path(path).name, Path(path).read_bytes()) for path in extra]
-        if len({name for name, _ in members}) != len(members):
-            raise CatalogError('离线包里的文件重名')
         for name, body in members:
             archive.writestr(zipfile.ZipInfo(name, date_time=(2026, 1, 1, 0, 0, 0)), body)
 

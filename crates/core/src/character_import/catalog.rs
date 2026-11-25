@@ -500,7 +500,7 @@ pub fn catalog_apply(c: &Connection) -> Result<Value> {
                 continue;
             }
             let edited_legacy = change.2.is_none() && (user_touched(c, &change.0)? || user_touched(c, &change.1)?);
-            if still_published(c, &catalog, kind, &change)? || edited_legacy {
+            if still_published(c, catalog, kind, &change)? || edited_legacy {
                 state.list_mut(kind).push(change);
                 continue;
             }
@@ -728,7 +728,7 @@ pub(crate) fn restore_catalog_change(c: &Connection, suppressed: &SuppressedCata
     let SuppressedCatalogChange { kind, change: Change(id, other, detail) } = suppressed;
     let Some(detail) = detail else { return Err(Error::invalid("角色词表快照缺失")) };
     let catalog = character_catalog::current();
-    if !still_published(c, &catalog, kind, &suppressed.change)? {
+    if !still_published(c, catalog, kind, &suppressed.change)? {
         return Ok(());
     }
     if !root(c, id)? || !no_children(c, id)? || !passes(c, other, "e.merged_into IS NULL")? {

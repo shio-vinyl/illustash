@@ -266,6 +266,55 @@ class NativePackCatalogTest(unittest.TestCase):
             self.restart()
             wait_until(lambda: applied() == 2)
 
+    def test_offline_character_catalog_verifies_each_member_and_activates_after_restart(self):
+        files = {}
+        roles = (FIXTURES / 'roles.json').read_bytes()
+        descriptor = FIXTURES / 'packs-roles.json'
+
+        def applied():
+            with closing(sqlite3.connect(self.lib.db)) as db:
+                row = db.execute("SELECT json_extract(value,'$.revision') FROM meta WHERE key='character_catalog'").fetchone()
+            return row[0] if row else None
+
+        with github(files) as (origin, seen):
+            files.update(self.serve(origin))
+            self.restart()
+            wait_until(lambda: applied() == 1)
+            installed = self.root / 'shared/extensions' / f'character-catalog-{sha(roles)}.json'
+            bad = self.root / 'untrusted.zip'
+            with zipfile.ZipFile(bad, 'w') as archive:
+                archive.writestr('packs.json', descriptor.read_bytes())
+                archive.writestr('packs.json.sig', (FIXTURES / 'packs.json.sig-b').read_bytes())
+                archive.writestr('catalog-2/roles.json', roles)
+            self.packs({'action': 'import', 'paths': [str(bad)]})
+            results = self.settle('download')['download']['results']
+            self.assertEqual({r['name']: r['result'] for r in results}, {
+                'untrusted.zip/packs.json': 'catalog_invalid',
+                'untrusted.zip/packs.json.sig': 'catalog_invalid',
+                'untrusted.zip/catalog-2/roles.json': 'unknown',
+            })
+            self.assertFalse(installed.exists())
+
+            partial = self.root / 'damaged.zip'
+            with zipfile.ZipFile(partial, 'w') as archive:
+                archive.writestr('packs.json', descriptor.read_bytes())
+                archive.writestr('packs.json.sig', (FIXTURES / 'packs-roles.json.sig').read_bytes())
+                # 正确签名、同样文件大小，但内容与 SHA-256 不符；兼容放在 ZIP 根上的词表文件。
+                archive.writestr('roles.json', b'x' + roles[1:])
+            good = self.root / 'verified.zip'
+            pack_catalog.offline(descriptor, [FIXTURES / 'roles.json'], good)
+            self.packs({'action': 'import', 'paths': [str(partial), str(good)]})
+            download = self.settle('download')['download']
+            self.assertEqual(download['status'], 'done')
+            results = {r['name']: r['result'] for r in download['results']}
+            self.assertEqual(results['damaged.zip/roles.json'], 'mismatch')
+            self.assertEqual(results['verified.zip/catalog-2/roles.json'], 'catalog_file_installed')
+            self.assertEqual(installed.read_bytes(), roles)
+            self.assertEqual(applied(), 1)
+            self.restart()
+            wait_until(lambda: applied() == 2)
+            self.assertEqual(seen, [])
+
     def test_shell_receives_pack_download_enable_and_withdraw(self):
         files, activity = {}, []
         release = Event()

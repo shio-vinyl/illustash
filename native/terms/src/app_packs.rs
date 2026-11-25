@@ -304,6 +304,7 @@ pub(crate) struct Entry {
     kind: String,
     pack: Option<CharacterPack>,
     character_file: Option<File>,
+    character_supported: bool,
     version: String,
     revision: u32,
     min_app: Version,
@@ -392,7 +393,7 @@ impl Catalog {
             {
                 return Err(bad("角色词表的版本或文件不合法"));
             }
-            (known_stage && raw.format.as_deref() == Some(crate::character_catalog::FORMAT)).then(|| file.into_file())
+            Some(file.into_file())
         } else {
             None
         };
@@ -417,7 +418,17 @@ impl Catalog {
             // 以后的种类：上面的通用字段照查，本版本不提供。
             _ => None,
         };
-        Ok(Entry { kind: raw.kind, pack, character_file, version: raw.version, revision: raw.revision, min_app })
+        let character_supported =
+            character_file.is_some() && known_stage && raw.format.as_deref() == Some(crate::character_catalog::FORMAT);
+        Ok(Entry {
+            kind: raw.kind,
+            pack,
+            character_file,
+            character_supported,
+            version: raw.version,
+            revision: raw.revision,
+            min_app,
+        })
     }
 
     fn component(kind: Kind, raw: RawComponent, revision: u32, version: &str) -> Result<Pack> {
@@ -767,6 +778,7 @@ pub(crate) fn refresh(resources: &Path) -> Option<std::result::Result<Adopted, S
 // ---------- 离线导入 ----------
 
 /// 所选文件里的离线包（ZIP，根上有 `packs.json` 和 `packs.json.sig`）：先采用其中的目录，再按它认包文件。
+/// 角色词表在验签后独立校验和存放，其它组成部分由原来的包导入任务处理。
 /// 返回目录成员和附带文件的导入结果（「名字 → 结果」，名字的写法和导入结果列表一致：`包.zip/packs.json`）。
 pub(crate) fn adopt_archives(resources: &Path, paths: &[PathBuf]) -> Vec<(String, &'static str)> {
     let mut results = Vec::new();
@@ -804,15 +816,22 @@ pub(crate) fn adopt_archives(resources: &Path, paths: &[PathBuf]) -> Vec<(String
             continue;
         }
         let Ok(catalog) = Catalog::parse(&bytes) else { continue };
+        let latest = if result == "catalog_old" { cached(resources).ok().flatten() } else { None };
+        let active = if result == "catalog_old" { latest.as_ref() } else { Some(&catalog) };
         let listed = catalog.file_names();
         for i in 0..archive.len() {
-            let Ok(item) = archive.by_index(i) else { continue };
+            let Ok(mut item) = archive.by_index(i) else { continue };
             let Some(name) = item.is_file().then(|| item.name().ok().map(|n| n.into_owned())).flatten() else {
                 continue;
             };
+            if name == CATALOG_NAME || name == SIGNATURE_NAME {
+                continue;
+            }
+            let size = item.size();
+            let installed = character_catalog::import_member(resources, &catalog, active, &name, size, &mut item);
             let base = name.rsplit('/').next().unwrap_or(&name);
-            if name != CATALOG_NAME && name != SIGNATURE_NAME && !listed.contains(&base) {
-                results.push((format!("{zip}/{name}"), "extra"));
+            if let Some(result) = installed.or_else(|| (!listed.contains(&base)).then_some("extra")) {
+                results.push((format!("{zip}/{name}"), result));
             }
         }
     }

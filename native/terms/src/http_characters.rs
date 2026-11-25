@@ -641,25 +641,24 @@ fn catalog_pairs(c: &Connection, pairs: &mut Pairs) -> Result<()> {
     );
     for row in c.prepare_cached(&lookup)?.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))? {
         let (tag, id) = row?;
-        if pairs.counts.contains_key(&id) {
-            if let Some(entry) = catalog.character(&tag) {
-                linked.entry(entry.id).or_default().insert(id);
-            }
+        if let Some(entry) = catalog.character(&tag).filter(|_| pairs.counts.contains_key(&id)) {
+            linked.entry(entry.id).or_default().insert(id);
         }
     }
-    let mut add = |a: &str, b: &str, kind: &'static str| -> Result<()> {
-        if !crate::character_import::catalog_declined(c, a, b)? {
+    let declined: HashSet<_> =
+        crate::character_import::declined_pairs(c)?.iter().map(|(a, b)| pair_key(a, b)).collect();
+    let mut add = |a: &str, b: &str, kind: &'static str| {
+        if !declined.contains(&pair_key(a, b)) {
             let empty = Json::from(serde_json::Value::Null);
             pairs.add(a, b, empty.clone(), empty.clone(), empty, Some(kind));
         }
-        Ok(())
     };
     for entry in catalog.characters() {
         let Some(subjects) = linked.get(&entry.id) else { continue };
         if hybrid {
             for (i, a) in subjects.iter().enumerate() {
                 for b in subjects.iter().skip(i + 1) {
-                    add(a, b, "duplicate_of")?;
+                    add(a, b, "duplicate_of");
                 }
             }
         }
@@ -676,7 +675,7 @@ fn catalog_pairs(c: &Connection, pairs: &mut Pairs) -> Result<()> {
         };
         for a in subjects {
             for b in objects {
-                add(a, b, kind)?;
+                add(a, b, kind);
             }
         }
     }

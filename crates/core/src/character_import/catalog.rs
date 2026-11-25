@@ -629,7 +629,10 @@ pub fn catalog_apply(c: &Connection) -> Result<Value> {
     }
     refresh(c, &touched)?;
     // 没有词表操作的图库不写入空状态。同一次打开由宿主记住已检查。
-    if state.revision != 0 || !state.merged.is_empty() || !state.attached.is_empty() || !state.groups.is_empty()
+    if state.revision != 0
+        || !state.merged.is_empty()
+        || !state.attached.is_empty()
+        || !state.groups.is_empty()
         || !state.declined.is_empty()
     {
         state.revision = catalog.revision;

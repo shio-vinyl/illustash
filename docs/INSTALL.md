@@ -100,6 +100,8 @@ Hugging Face 的地址固定在上游的某个提交上，上游以后改动也�
 - **签名**：签名对不上的目录整份不用；应用只认内置的 0.1 和最近一份验过签的目录里列出、这个版本能用的版本。
 - **离线**：从 [Releases](https://github.com/shio-vinyl/illustash/releases) 里最新的 `character-pack-<版本>`（如 `character-pack-0.5`）下载 `character-pack-<版本>-offline.zip`，在卡片上「从文件导入…」选它，不用解压。离线包里有两个组成部分的文件、签过名的包目录，以及许可和模型说明；应用先核对目录的签名，再按目录认包文件，许可和说明不导入，也不列在导入结果里。只有包文件、没有目录时，只能导入内置的 0.1：它的两个文件在 [`wd-extension-v1`](https://github.com/shio-vinyl/illustash/releases/tag/wd-extension-v1) 和 [`ccip-longtail-v1`](https://github.com/shio-vinyl/illustash/releases/tag/ccip-longtail-v1) 这两个 Release 里，大小和 SHA-256 见[第三方组件与许可](THIRD_PARTY.md#模型与数据)。
 
+「从文件导入…」也支持带有签名清单的角色词表 ZIP。导入成功后，重启应用即可启用新词表。
+
 也可以离线使用命令行启用 WD 部分。先在桌面应用里完成图库升级并退出，再从 ZIP 中解出模型文件。
 
 macOS 在终端用下面的命令启用。把路径换成自己的图库和解出的文件。应用装在其他目录时，相应修改程序路径。

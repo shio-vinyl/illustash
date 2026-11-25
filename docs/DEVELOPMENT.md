@@ -274,6 +274,7 @@ illustash/
 | `ui_perf/` | 界面性能测量（#683）：合成大图库夹具，Chromium（DevTools 性能记录）和 WebKit（WKWebView 小程序）跑同一组场景，`python3 -m tools.ui_perf run`，见 [本地验收](LOCAL_CHECKS.md#界面性能测量683) |
 | `version.py` | 版本号的唯一来源是 `native/terms/application.json`（#189）：检查或改写 `tauri.conf.json`、各发布 crate 的 `Cargo.toml` 与 `Cargo.lock` |
 | `updater_release.py` | 应用内更新的发布文件（#279）：打 macOS 更新包、生成 `latest.json`，步骤见上文「发布」 |
+| `character_catalog/` | `build.py` 从公开识别资料和 Bangumi 归档生成角色词表。用 `--previous` 延续已发布的角色编号，用 `--review` 导出需要复核的条目。 |
 | `pack_catalog.py` | 角色资料包的签名目录（#602）：生成专签数据包的密钥、从两个组成部分的包文件写条目、组目录、签名、核对、打离线包，步骤见上文「发布角色资料包」；测试夹具由 `tests/fixtures/pack_catalog/make.py` 用测试密钥生成 |
 | `gen_rust_licenses.py` | 生成 `packaging/rust-licenses/` 的第三方 Rust crate 许可（#161），依赖或 `Cargo.lock` 变了要重跑 |
 | `build_wd_coreml.py` | 生成 `models.json` 固定的 WD Core ML 执行变体（#375），只在维护者构建模型 Release 时用 |

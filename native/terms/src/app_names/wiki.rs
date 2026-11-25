@@ -10,6 +10,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 struct Names {
     aliases: Vec<String>,
     evidence: HashSet<String>,
+    higher_chinese: bool,
     wiki: Vec<(String, bool)>,
 }
 
@@ -21,7 +22,7 @@ pub(super) fn refresh(c: &Connection, scope: Option<(&str, &[&str])>) -> Result<
         Some(_) => "AND r.work_text = ?",
     };
     let mut stmt = c.prepare_cached(&format!(
-        "SELECT r.work_text, t.key, n.source, n.value, n.preferred
+        "SELECT r.work_text, t.key, n.source, n.value, n.preferred, n.lang, n.role
          FROM term_tree r JOIN terms t ON t.id=r.term_id JOIN term_names n ON n.term_id=t.id
          WHERE r.parent_id IS NULL AND r.merged_into IS NULL AND coalesce(r.original,0)=0 AND t.kind NOT IN ('oc','work')
            AND ((n.source='danbooru' AND n.role='alias')
@@ -47,6 +48,9 @@ pub(super) fn refresh(c: &Connection, scope: Option<(&str, &[&str])>) -> Result<
             "wiki" => names.wiki.push((value, row.get::<_, i64>(4)? != 0)),
             _ => {
                 names.evidence.insert(net::normalize(&value));
+                names.higher_chinese |= matches!(source.as_str(), "bangumi" | "index")
+                    && row.get::<_, String>(5)? == "zh"
+                    && row.get::<_, String>(6)? == "display";
             }
         }
     }
@@ -67,11 +71,14 @@ pub(super) fn refresh(c: &Connection, scope: Option<(&str, &[&str])>) -> Result<
             }
         }
         let is_chinese = net::chinese_work(&work, &matched(c, &work)?);
-        let works = [choose(c, "work", &work)?.names[0].clone().unwrap_or_default()];
+        let works = [
+            choose(c, "work", &work)?.names[0].clone().unwrap_or_default(),
+            crate::names_view::work_name(&work).unwrap_or_default().to_owned(),
+        ];
         for (id, names) in &characters {
             let candidate =
                 net::wiki_zh(&names.aliases, &works, |n| names.evidence.contains(n), |n| shared.contains(n))
-                    .map(|(name, confirmed)| (name, confirmed || is_chinese));
+                    .map(|(name, confirmed)| (name, !names.higher_chinese && (confirmed || is_chinese)));
             if !names.wiki.iter().eq(candidate.iter()) {
                 crate::names_commands::set_wiki_display(c, id, candidate.as_ref().map(|(n, p)| (n.as_str(), *p)))?;
                 changed = true;

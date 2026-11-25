@@ -127,6 +127,7 @@ struct Replay<'a> {
     counter: PathBuf,
     verified: PathBuf,
     serve: Option<Serve>,
+    historical_index: bool,
     expected: HashMap<PathBuf, baseline::State>,
     stamps: Vec<String>,
     /// 升级改动了比较内容的检查点：后面的比较失败时会列出它们。
@@ -336,16 +337,10 @@ impl Replay<'_> {
             let input: Value = serde_json::from_str(&self.input(&call["input"].to_string())?).unwrap();
             let line = serde_json::json!({"db": db.as_ref().unwrap().to_string_lossy(), "input": input});
             let (bin, counter, verified) = (self.bin, &self.counter, &self.verified);
-            // 只有这两个录制的用例直接检验旧索引猜测的造型层级。其余调用照常走当前入口。
-            let historical_index = matches!(
-                self.name,
-                "tests.test_terms_character_import.Import.test_refresh_with_album_and_skin_hierarchy"
-                    | "tests.test_terms_character_import.HybridImport.test_refresh_with_album_and_skin_hierarchy"
-            );
             let s = self.serve.get_or_insert_with(|| {
                 let mut child = Command::new(bin)
                     .arg("serve")
-                    .args(historical_index.then_some("--historical-index"))
+                    .args(self.historical_index.then_some("--historical-index"))
                     .env("ILLUSTASH_TEST_KEY_COUNTER", counter)
                     .env(NO_IMPORT_WORKS, "1")
                     .env(VERIFY_INCREMENTAL, verified)
@@ -395,6 +390,17 @@ fn case(name: &str, data: &Value, blobs: &Value, recorded: i64, bin: &Path, veri
         data["roots"].as_array().unwrap().iter().map(|t| t.as_str().unwrap().to_owned()).collect();
     let counter = temp.join("key-counter");
     fs::write(&counter, "0").unwrap();
+    let calls = data["calls"].as_array().unwrap();
+    // 旧索引录有造型结构时，整个回放会话沿用录制时的解释，包括同一会话后续的索引更新。
+    let historical_index = calls.iter().any(|call| {
+        let input = &call["input"];
+        matches!(input["op"].as_str(), Some("refresh" | "reindex"))
+            && input["index"]["characters"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .any(|row| row["skin"].as_str().is_some_and(|variant| !variant.is_empty()))
+    });
     let mut replay = Replay {
         name,
         blobs,
@@ -404,12 +410,13 @@ fn case(name: &str, data: &Value, blobs: &Value, recorded: i64, bin: &Path, veri
         counter,
         verified: verified.to_path_buf(),
         serve: None,
+        historical_index,
         expected: HashMap::new(),
         stamps: Vec::new(),
         upgraded: Vec::new(),
     };
     let mut problem = None;
-    for (i, call) in data["calls"].as_array().unwrap().iter().enumerate() {
+    for (i, call) in calls.iter().enumerate() {
         let op = call.get("args").and_then(|a| a[0].as_str()).or_else(|| call["input"]["op"].as_str()).unwrap_or("");
         let at = format!("{} #{i} {op}", replay.name);
         if let Err(e) = replay.call(&at, call) {

@@ -174,14 +174,41 @@ fn danbooru_aliases(
     tag: &str,
     values: &[Value],
     targets: CharacterTargets<'_>,
+    preserve: bool,
 ) -> Result<()> {
-    let values: Vec<&str> = values.iter().map(|v| text(v, "别名不正确")).collect::<Result<_>>()?;
+    let values: Vec<String> = values.iter().map(|v| text(v, "别名不正确").map(str::to_owned)).collect::<Result<_>>()?;
     let write = |entity: &str| -> Result<()> {
+        let mut aliases = values.clone();
+        if preserve {
+            // 旧标签已有的自动显示名仍是搜索入口，不再用它们作为当前候选的取名证据。
+            let display = c
+                .prepare_cached(&format!(
+                    "SELECT lang,value FROM term_names WHERE term_id = {TERM_OF} AND role = 'display'
+                     AND source IN ('wiki','bangumi')"
+                ))?
+                .query_map([entity], |r| Ok((r.get(0)?, r.get(1)?)))?
+                .collect::<rusqlite::Result<Vec<(String, String)>>>()?;
+            for (lang, value) in display {
+                put_name(c, entity, &lang, "legacy", &value, "alias", 0, 0)?;
+            }
+            let previous = c
+                .prepare_cached(&format!(
+                    "SELECT value FROM term_names WHERE term_id = {TERM_OF} AND role = 'alias' AND source = 'danbooru'
+                 ORDER BY position, value"
+                ))?
+                .query_map([entity], |r| r.get(0))?
+                .collect::<rusqlite::Result<Vec<String>>>()?;
+            for value in previous {
+                if !aliases.contains(&value) {
+                    aliases.push(value);
+                }
+            }
+        }
         c.prepare_cached(&format!(
             "DELETE FROM term_names WHERE term_id = {TERM_OF} AND role = 'alias' AND source = 'danbooru'"
         ))?
         .execute([entity])?;
-        for (i, value) in values.iter().enumerate() {
+        for (i, value) in aliases.iter().enumerate() {
             put_name(c, entity, "", "danbooru", value, "alias", i as i64, 0)?;
         }
         Ok(())
@@ -248,6 +275,7 @@ fn one_with_targets(c: &Connection, op: &Value, targets: CharacterTargets<'_>) -
             s("tag")?,
             op["values"].as_array().map(Vec::as_slice).unwrap_or(&[]),
             targets,
+            op["preserve"] == true,
         ),
         // NameUpdater.character：Bangumi 信息框里的中文原名，作为排在最后的别名。
         "bangumi_alias" => targets.apply(c, s("tag")?, |entity| {

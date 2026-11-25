@@ -580,9 +580,9 @@ fn simplified_wiki_chars(s: &str) -> bool {
     })
 }
 
-/// 日文同形可证明一部分中文姓名。日文新字体和繁体不能仅凭同形当成简体，明确沿用的生僻字除外。
+/// 日文同形只能旁证已经符合简中文字形条件的名字。独立中文来源可旁证其他生僻字。
 pub(super) fn wiki_ja_han(s: &str) -> bool {
-    simplified_wiki_chars(&s.nfkc().filter(|c| !matches!(c, '咲' | '澪')).collect::<String>())
+    simplified_wiki_chars(s)
 }
 
 /// 同一作品共享的无旁证别名和常见合称只用于搜索。多个候选中优先取有旁证的。
@@ -842,9 +842,9 @@ mod tests {
     }
     #[test]
     fn wiki_corroboration_accepts_rare_han_and_prefers_a_personal_name() {
-        for name in ["十六夜咲夜", "秋山澪"] {
+        for name in ["十六夜咲夜", "秋山澪", "犬走椛", "琴吹紬", "和泉凪"] {
             assert_eq!(
-                wiki_zh(&["小绰号".into(), name.into()], &[], |key| key == name && wiki_ja_han(key), |_| false),
+                wiki_zh(&["小绰号".into(), name.into()], &[], |key| key == name, |_| false),
                 Some((name.into(), true))
             );
         }

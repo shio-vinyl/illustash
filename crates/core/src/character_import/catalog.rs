@@ -550,7 +550,10 @@ pub fn catalog_apply(c: &Connection) -> Result<Value> {
         }
     }
     let mut library = LibraryRoles::read(c)?;
-    for entry in catalog.characters().iter().filter(|entry| entry.group) {
+    // 从现有标签查目录，并按公共 ID 处理；无词表状态的图库再次打开时也只检查库里出现的角色。
+    let present: BTreeMap<_, _> =
+        library.tags.keys().filter_map(|tag| catalog.character(tag)).map(|e| (e.id, e)).collect();
+    for &entry in present.values().filter(|entry| entry.group) {
         for raw in library.linked(entry) {
             if let Some((id, _)) = library.resolved(raw) {
                 if label_group(c, &mut state, id)? {
@@ -562,7 +565,7 @@ pub fn catalog_apply(c: &Connection) -> Result<Value> {
     let (mut merged, mut attached) = (0, 0);
     if !identity {
         let mut roles = BTreeMap::new();
-        for entry in catalog.characters() {
+        for &entry in present.values() {
             let mut found = Vec::new();
             for raw in library.linked(entry) {
                 let Some((id, role)) = library.resolved(raw) else { continue };
@@ -603,7 +606,7 @@ pub fn catalog_apply(c: &Connection) -> Result<Value> {
         }
 
         let ids = Ids(&Value::Null);
-        for entry in catalog.characters().iter().filter(|entry| approved(entry)) {
+        for &entry in present.values().filter(|entry| approved(entry)) {
             let (Some(child), Some(parent)) = (roles.get(&entry.id).cloned(), catalog.parent(entry)) else { continue };
             let parent_id = if let Some(id) = roles.get(&parent.id) {
                 id.clone()

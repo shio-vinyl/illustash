@@ -1348,7 +1348,7 @@ mod tests {
             // 由规范标签决定合并目标，输入顺序或随机 ID 不改变结果。
             let (survivor, gone) = (new, old);
             assert_eq!(tree(tx, &gone)?.2, Some(survivor.clone()));
-            assert_eq!(tree(tx, &swim)?.0, Some(survivor));
+            assert_eq!(tree(tx, &swim)?.0.as_deref(), Some(survivor.as_str()));
             let label: String = tx.query_row("SELECT label FROM actions ORDER BY id DESC LIMIT 1", [], |r| r.get(0))?;
             assert!(label.starts_with("角色词表："), "{label}");
             // 用户起过名字的那一对照旧是两个角色。
@@ -1366,6 +1366,11 @@ mod tests {
             assert_eq!(split(&swim)?, json!({"split": "attached"}));
             assert_eq!(tree(tx, &swim)?.0, None);
             assert!(split(&swim).is_err());
+            let action = tx.query_row("SELECT max(id) FROM actions", [], |r| r.get::<_, i64>(0))?;
+            crate::character_commands::command(tx, &json!({"op":"undo","action":action}))?;
+            assert_eq!(tree(tx, &swim)?.0.as_deref(), Some(survivor.as_str()));
+            assert!(!illustash_core::character_import::catalog_declined(tx, &swim, &survivor)?);
+            split(&swim)?;
             Ok(())
         })
         .unwrap();

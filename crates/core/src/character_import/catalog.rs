@@ -620,9 +620,11 @@ fn split(c: &Connection, kind: &str, entity: &str, manual: bool) -> Result<()> {
     if hybrid(c)? {
         character_graph::rebuild(c)?;
     }
-    if manual {
+    if manual && change.2.is_some() {
         let mut shown = crate::character_labels::Shown::new();
-        begin_action(c, &format!("已拆开角色词表的 {} 和 {}", shown.name(c, &change.0)?, shown.name(c, &change.1)?))?;
+        let label = format!("已拆开角色词表的 {} 和 {}", shown.name(c, &change.0)?, shown.name(c, &change.1)?);
+        let step = begin_action(c, &label)?;
+        finish_action(c, step, "catalog_split", vec![json!({"catalog_split":{"kind":kind,"change":change}})])?;
     }
     refresh(c, &BTreeSet::from([change.0, change.1]))
 }
@@ -643,6 +645,15 @@ pub(crate) fn undo_catalog_change(c: &Connection, item: &Value) -> Result<()> {
         return Err(Error::invalid("角色词表步骤类型不正确"));
     }
     split(c, kind, entity, false)
+}
+
+pub(crate) fn undo_catalog_split(c: &Connection, item: &Value) -> Result<()> {
+    let saved: SuppressedCatalogChange =
+        serde_json::from_value(item.clone()).map_err(|e| Error::invalid(format!("拆开角色词表关系的快照损坏：{e}")))?;
+    let mut state = State::read(c)?;
+    state.declined.remove(&(saved.change.0.clone(), saved.change.1.clone()));
+    state.write(c)?;
+    restore_catalog_change(c, &saved)
 }
 
 #[derive(Default)]

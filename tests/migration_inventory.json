@@ -15,15 +15,15 @@
 
  "crates/core/src/character_evidence.rs":"71df2b0c558856a80b168db97bfff7cfcff5cd7f0ec84cf028b87b2af2e68b32",
 
- "crates/core/src/character_extension.rs":"13859b40385dbcb010b209e054159a1966a9559a02b35c0ed8ec1ccf24fbd27f",
+ "crates/core/src/character_extension.rs":"33a756462dfc3a93223debfd880b9ad77b3057c53c4ec008a170e003dd585678",
 
- "crates/core/src/character_graph.rs":"f40d8d5f789c72881ab5f1aac6847250b0a6ef6c1795ad951493e2288b4d0129",
+ "crates/core/src/character_graph.rs":"79d83c9c4c5df0096d2ea08d487f3961c54e74cbd2cd991818c8428197d6ece5",
 
  "crates/core/src/character_identity.rs":"b293f0982cf6f92ef2a14a935734d3ccc885e79dc22917418938f0f22f84fd31",
 
- "crates/core/src/character_import.rs":"1e728dd0e1af2886dc6330ab4f0f83c60c500efd59b0e84868d7de327cc906a0",
+ "crates/core/src/character_import.rs":"e377664bb54e7dec6e9eda352c99bdce524b30e8f401f91da04e71ad099f2305",
 
- "crates/core/src/character_import/catalog.rs":"92ba98b8a2e26693fc0b014f996d0a896ef2289596443742f17efa5556905f20",
+ "crates/core/src/character_import/catalog.rs":"cee640917ad986f9d72b72accb2998e50f97fa53601ed69e4317d83140db74f0",
 
  "crates/core/src/character_json.rs":"9a60f525976d786c9edfcd8420c100481ba117bbaa78e839f02e7002ff328046",
 
@@ -357,7 +357,7 @@
 
  "native/terms/src/app_resources.rs":"d691ec21499b906972a02d49a21790f2a301c34eb4dea0bd9c301675dd9e2c0a",
 
- "native/terms/src/app_service.rs":"716fdca7bd3e738782e67ff5843c2f9f26f7265c3dd258bb23d8e52d704811f4",
+ "native/terms/src/app_service.rs":"db686ca832aeaa4eb3acb807eb0a14b73cf83acd4cf598a9ee0481efd94ec2cf",
 
  "native/terms/src/app_settings.rs":"20f5eb9c25a3a14920b85b48e75186564c5e01f6129cca02b06b2f63d60b2c41",
 
@@ -377,7 +377,7 @@
 
  "native/terms/src/app_upgrade.rs":"6e4ad40e954505cfc85eb6abf2c4394ca35d4b2429ccc06dec2df9914153d82f",
 
- "native/terms/src/app_wd_extension.rs":"af868feb1fef9036c5123ee2703c6952896bee09cf27f7755c5b1cfb3d7c983d",
+ "native/terms/src/app_wd_extension.rs":"3795902d85b65d49416646c99ffb59f7ea18d137c4f0a9bb1761e1451191149d",
 
  "native/terms/src/app_wd_extension/scoring.rs":"c486e27eae74356b12c836caee045adb61e164c5ffb433171327df47e55b1221",
 
@@ -387,7 +387,7 @@
 
  "native/terms/src/character_index.rs":"651b7b073d4c5d3890af7b02991b1e5865c6b2da69de8d7c260f046716ae27fb",
 
- "native/terms/src/cli.rs":"df5fd07204e1a9bed5786e080b029bde22bf48c343c1cf9fbc7d10b6b84cc6f1",
+ "native/terms/src/cli.rs":"5ea234b9e3ea97d6492326f54842ee946b15498e92bf9f43ca61d8c135e9f774",
 
  "native/terms/src/desktop_shell.rs":"ca45e16a710be1bfef8ff4c269852fd69869a829fc22dec1c679155763953ca6",
 
@@ -495,7 +495,7 @@
 
  "native/terms/src/research_compute/snapshot.rs":"d2988f0e90aa5ee8f5db4eea1323331a29fe33e47fe07de3947f57829b420801",
 
- "native/terms/src/service.rs":"6752b797a7c721c3addf5ef7aa1aa72a537e8f71c26ce18517900595dd624064",
+ "native/terms/src/service.rs":"488d4352bb60b0ba640e34b4a06b0ca22d3c4d8bb4c603cc1464b93a6cbe0c17",
 
  "native/terms/src/sql_fragments.rs":"87f2b0157f4faa9eb5ec1a3fb29381b7d59bf6f266bdadfa03b6bd5a84c0b90e",
 
@@ -656,7 +656,7 @@
  "crates/core/src/character_sql/lead_assets.sql":{"database-write":["INSERT INTO:lead_assets"]},
  "native/terms/src/wd_pending.rs":{"database-write":[[0,2]]},
  "native/terms/src/http_characters.rs":{"http-branch":[[85,4],[240,2],[16,2],[82,2],[84,3],[91,3],[93,4],"/api/character/together"],"database-write":[187,202]},
- "crates/core/src/character_graph.rs":{"database-write":{"INSERT OR IGNORE INTO:term_identity_baseline":1,"dynamic-or-wrapper":7,"ATTACH":3,"DELETE FROM:reprojected":1,"INSERT INTO:reprojected":1,"INSERT OR REPLACE INTO:identity_suspended":1,"DELETE FROM:graph_projection":1,"INSERT INTO:graph_projection":1,"DELETE FROM:identity_canonical":1,"INSERT INTO:identity_canonical":1,"UPDATE:set":1,"UPDATE:term_tree":1,"UPDATE:terms":1,"INSERT OR REPLACE INTO:meta":1}},
+ "crates/core/src/character_graph.rs":{"database-write":[[387,2],[0,8],[7,3],189,204,219,"DELETE FROM:graph_projection","INSERT INTO:graph_projection",183,197,9,326,72,2]},
  "native/terms/src/app_source_empty.sql":{"database-write":["CREATE TABLE:assets","CREATE TABLE:labels","CREATE INDEX:idx_labels_dim_val","CREATE INDEX:idx_labels_uuid","CREATE TABLE:decisions","CREATE TABLE:runs","CREATE TABLE:embeddings","CREATE TABLE:characters","CREATE TABLE:character_aliases"]},
  "native/terms/src/app_settings.rs":{"database-write":[[0,3],27,5,[1,2],34]},
  "native/terms/src/http_read.rs":{"http-branch":[[77,3],[78,2],[248,2],[89,4],[246,3],[24,2],[99,2],[85,2],[240,2],[16,2],82,84,91,[93,2],[250,5],[251,2],[252,2],[253,2],[254,2],[255,3],[23,2],[44,2],75,26,86,256,258,331,"/api/artist-directory",[332,2],"/api/galleries|/api/galleries/covers",[382,3],[383,3]],"database-write":[[187,2],202,0,7,[1,2]]},
@@ -691,7 +691,7 @@
  "crates/core/src/character_sql/tag_memberships.sql":{"database-write":["INSERT INTO:tag_memberships"]},
  "crates/core/src/names_commands.rs":{"database-write":["INSERT OR IGNORE INTO:term_key_names",[0,10],[59,5],"DELETE FROM:term_key_names","UPDATE:term_names","DELETE FROM:term_key_aliases","INSERT INTO:term_key_aliases"]},
  "native/terms/src/app_profiles.rs":{"http-branch":[[23,8],[16,5],[17,7],[44,3],[83,3],[242,4],[98,3]],"database-write":[[3,3],0]},
- "crates/core/src/character_import.rs":{"database-write":["INSERT OR IGNORE INTO:term_links",[0,14],[326,3],72,63,"INSERT OR IGNORE INTO:assertions","INSERT INTO:imported","DELETE FROM:auto_rules",[385,4],195,181,60,69,29,57,61,[2,2],"DELETE FROM:assets",177,[249,3],"INSERT OR REPLACE INTO:sync_added"]},
+ "crates/core/src/character_import.rs":{"database-write":["INSERT OR IGNORE INTO:term_links",[0,14],[326,3],72,63,"INSERT OR IGNORE INTO:assertions","INSERT INTO:imported","DELETE FROM:auto_rules",[385,4],195,181,60,69,29,57,61,[2,2],"DELETE FROM:assets",177,[249,4],"INSERT OR REPLACE INTO:sync_added"]},
  "native/terms/src/http_host_post.rs":{"http-branch":[[303,2],[282,2],[275,2],[280,2],[279,2],[274,2],[294,2],247,360,331,361,231,74,88,24,44,83,242,98,80,79,76,269,100,37,95,"/api/identity/pair",40,384,264,295,345,346,305,347,380,348,349,[307,2],[308,2],[309,2],350,265,351,266,267,[41,2],268,352,353,270,292,354,355,356,357,358,359,42,293,[230,2],39,381,362,43,271,272,273,[277,2],[363,2],364,365,366,278,281,296,[26,2]]},
  "native/terms/src/app_provenance.rs":{"database-write":{"INSERT OR IGNORE INTO:pending_runs":3,"UPDATE:runs":3,"INSERT OR IGNORE INTO:native_meta":2,"dynamic-or-wrapper":4,"UPDATE:native_meta":1,"COMMIT":2,"INSERT INTO:runs":1,"DELETE FROM:pending_runs":1,"ATTACH":2,"PRAGMA:c.execute_batch(\"pragma defer_foreign_keys":1,"INSERT INTO:leads|UPDATE:set":1,"INSERT INTO:native_delivery":1},"entrypoint":{"process-start":1}},
  "crates/core/src/character_sql/evidence_default.sql":{"database-write":[196]},
@@ -1199,6 +1199,7 @@
  "/api/ambiguous",
  "/api/catalog/split",
  "INSERT OR IGNORE INTO:auto_rules",
- "UPDATE:term_identity_baseline"
+ "UPDATE:term_identity_baseline",
+ "INSERT OR IGNORE INTO:term_identity_baseline"
 ]
 }

@@ -561,7 +561,7 @@ mod tests {
         );
         assert_eq!(count(&c, "SELECT count(*) FROM term_links WHERE system='ccip'"), 4);
         // 新图库导入角色时按作品文字建作品（#296）：一个文字一个待核对的作品，挂 qualifier 链接，内置的中文名一并
-        // 写成作品的名字；皮肤跟随角色，自己不挂作品；不是作品的文字（vtuber）不建，角色未归类。
+        // 写成作品的名字。合成的 alice_swim 没有审核词表关系，保持独立并保留所属作品。vtuber 不建作品。
         let works = |sql: &str| -> Vec<String> {
             c.prepare(sql).unwrap().query_map([], |r| r.get(0)).unwrap().collect::<rusqlite::Result<_>>().unwrap()
         };
@@ -579,7 +579,7 @@ mod tests {
                  LEFT JOIN terms w ON w.key=r.work_id LEFT JOIN term_links q ON q.term_id=w.id AND q.system='qualifier'
                  WHERE l.system='ccip' ORDER BY l.key"
             ),
-            ["alice→Example", "alice_swim→-", "carol_(vtuber)→-", "doodle_sensei_(blue_archive)→blue_archive"]
+            ["alice→Example", "alice_swim→Example", "carol_(vtuber)→-", "doodle_sensei_(blue_archive)→blue_archive"]
         );
         assert_eq!(
             works(
@@ -588,7 +588,7 @@ mod tests {
             ),
             ["en:index:Blue Archive", "zh:builtin:蔚蓝档案"]
         );
-        assert_eq!(count(&c, "SELECT count(*) FROM term_tree WHERE parent_id IS NOT NULL AND variant='swimsuit'"), 1);
+        assert_eq!(count(&c, "SELECT count(*) FROM term_tree WHERE parent_id IS NOT NULL AND variant='swimsuit'"), 0);
         assert_eq!(count(&c, "SELECT count(*) FROM term_tree WHERE mascot=1 AND mascot_origin='default'"), 1);
         assert_eq!(count(&c, "SELECT count(*) FROM sqlite_master WHERE name='entities'"), 0);
         assert!(crate::legacy_characters::characters_in_core(&c).unwrap());

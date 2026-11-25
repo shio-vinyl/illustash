@@ -199,6 +199,14 @@ class NativeAmbiguousClaimsTest(unittest.TestCase):
         self.assertEqual(self.ask()['entity'], self.alice)
         self.read('/api/ask/answer', {'kind': 'ambiguous', 'entity': self.alice, 'later': ['one']})
         self.assert_queue([self.group(['four', 'three', 'two'])])
+        batch = self.ask()
+        self.assertIsNotNone(batch)
+        self.assertEqual((batch['kind'], batch['entity']), ('seed', self.alice))
+        # 问过的那一张不再出现在认一认里。
+        self.assertEqual(sorted(item['uuid'] for item in batch['items']), ['four', 'three', 'two'])
+        self.read('/api/ask/answer', {'kind': 'seed', 'entity': self.alice, 'later': ['two']})
+        self.assertIsNone(self.ask())
+        self.assert_queue([self.group(['four', 'three', 'two'])])
 
     def test_keep_apart_hides_both_directions_and_future_claims_until_undo(self):
         with self.connect() as c, c:
@@ -274,14 +282,6 @@ class NativeAmbiguousClaimsTest(unittest.TestCase):
         [item] = result['items']
         self.assertEqual({item['a']['id'], item['b']['id']}, {self.alice, self.bob})
         self.assertEqual(item['catalog_kind'], 'form')
-        batch = self.ask()
-        self.assertIsNotNone(batch)
-        self.assertEqual((batch['kind'], batch['entity']), ('seed', self.alice))
-        # 问过的那一张不再出现在认一认里。
-        self.assertEqual(sorted(item['uuid'] for item in batch['items']), ['four', 'three', 'two'])
-        self.read('/api/ask/answer', {'kind': 'seed', 'entity': self.alice, 'later': ['two']})
-        self.assertIsNone(self.ask())
-        self.assert_queue([self.group(['four', 'three', 'two'])])
 
     def ask(self):
         return self.read('/api/ask')['batch']

@@ -467,7 +467,7 @@ impl LibraryRoles {
         Ok(Self { tags, roles })
     }
 
-    fn linked<'a>(&'a self, entry: &Character) -> impl Iterator<Item = &'a String> {
+    fn linked<'a>(&'a self, entry: &'a Character) -> impl Iterator<Item = &'a String> {
         std::iter::once(&entry.tag).chain(&entry.tags).flat_map(|tag| self.tags.get(tag).into_iter().flatten())
     }
 

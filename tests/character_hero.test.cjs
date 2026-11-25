@@ -4,7 +4,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const web = require('./web.cjs');
 
-let state, pages, S, shell, page;
+let state, pages, routeCore, S, shell, page;
 const tick = () => new Promise(r => setTimeout(r, 0));
 const pending = [];   // 横幅自己那一次 /api/assets（limit=24）：测试决定什么时候、按什么顺序回来
 const reply = body => ({ok: true, status: 200, json: async () => body});
@@ -37,6 +37,7 @@ test.before(async () => {
   page.document.getElementById = id => id === 'gridHead' ? realHead : byId(id);
   ({state} = web.core());
   pages = await web.load('core/pages.js');
+  routeCore = await web.load('core/route.js');
   S = await web.load('ui/scope.js');
   shell = await web.load('ui/shell.js');
   await web.load('ui/character.js');
@@ -81,7 +82,11 @@ test('团体页只当标签，共用原创角色保留角色操作', async () =>
   assert.equal(hidden(ref('badge')), false);
   assert.equal(hidden(ref('sweep')), true);
   assert.equal(hidden(ref('checkBox')), true);
+  assert.equal(routeCore.browsing(), true);
+  assert.equal(routeCore.cleanup(), false);
   await enter('#/library?char=original');
+  assert.equal(routeCore.browsing(), false);
+  assert.equal(routeCore.cleanup(), true);
   assert.equal(hidden(ref('badge')), true);
   assert.equal(hidden(ref('sweep')), false);
   assert.equal(hidden(ref('checkBox')), false);

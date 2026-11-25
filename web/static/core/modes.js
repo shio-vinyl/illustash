@@ -59,7 +59,8 @@ export const detailAfterViewer = (s = state) => s.focused && s.viewerItem?.uuid 
 // 返回 {bar: 动作}（交给选择栏的同名按钮）、{single: 动作}（作用于当前图），或 null：这一页没有对应的动作。
 // 有选中时只返回本页选择栏上画着的按钮（ui/grid.js 的 renderSelection，docs/WEB_UI_MAP.md 第 4.1 节），选择栏上
 // 没有的键返回 null，由键盘处理提示「这一页没有对应的操作」（#422 的 2-21）。
-export function keyAction(key, {view, char = false, maybe = false, variants = false, n = 0, item = null}) {
+export function keyAction(key, {view, char = false, group = false, maybe = false, variants = false, n = 0, item = null}) {
+  if (group && n && ['remove', 'c', 'a', 't'].includes(key)) return null;
   // 选择栏里有「设为角色」的页：默认选择栏（图库、重复、相似组）和未识别一类。
   const assigns = ['default', 'unmatched', 'skipped'].includes(view.bar);
   switch (key) {
@@ -67,7 +68,7 @@ export function keyAction(key, {view, char = false, maybe = false, variants = fa
     // 别的选择栏没有这个按钮。
     case 'remove':
       if (n) return char ? {bar: 'remove'} : view.bar === 'default' ? {bar: 'notlib'} : null;
-      return char || item?.memberships?.length ? {single: 'remove'} : null;
+      return (char && !group) || item?.memberships?.length ? {single: 'remove'} : null;
     // C＝换成、A＝追加（用户 2026-11-14 定，#399）：图上已有角色时 C 换掉它，还没有角色时 C、A 都是设为角色。
     // 单图的「换成」在 singleAction 里看这张图有没有角色，没有就退成设为。有选中时：角色页换掉本页的角色；
     // 默认选择栏（图库、重复、相似组）换掉选中的图共同的角色（replace，没有角色时同样退成设为）；未识别一类的图

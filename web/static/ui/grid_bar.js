@@ -9,7 +9,7 @@ import {number, short} from '../core/format.js';
 import {wantsAdd} from '../core/favorites.js';
 import {t} from '../core/i18n.js';
 import {canLike, likeRoute} from '../core/like.js';
-import {viewOf} from '../core/pages.js';
+import {isGroupPage, viewOf} from '../core/pages.js';
 import {go} from '../core/route.js';
 import {gridFilters as filters, listIds} from '../core/assets.js';
 import {state} from '../core/state.js';
@@ -54,13 +54,13 @@ function render() {
 // 选择栏的按钮：先是这一页（注册表的 bar）自己的几个，后面是各页都有的。点了以后由 runBarAction 按 act 分发。
 // 默认选择栏的末尾是画廊的「放进画廊…」「从画廊拿出」（ui/gallery_bar.js，#710）。
 function barButtons(kind, n) {
-  const r = state.route, out = [], N = {n: number(n)};
+  const r = state.route, group = isGroupPage(), people = r.char && !group, out = [], N = {n: number(n)};
   const oc = button('oc', t('原创角色'), {tip: t('把画师自己的原创角色统一标为「原创角色（未细分）」')});
-  if (r.char && r.maybe) {
+  if (people && r.maybe) {
     const name = short(state.char?.name || t('该角色'));
     out.push(button('isme', armed('isme', t('再点一次：{n} 张设为 {name}', {...N, name}), t('是 {name}', {name})), {primary: true}),
       button('remove', armed('remove', t('再点一次：{n} 张不是', N), t('不是 TA')), {key: '⌫'}));
-  } else if (r.char) {
+  } else if (people) {
     const name = short(state.char?.name || t('该角色'));
     out.push(button('remove', armed('remove', t('再点一次：移出 {n} 张', N), t('不是 {name}', {name})), {primary: true, key: '⌫'}),
       button('swap', t('换成…'), {key: 'C'}), button('also', t('也是…'), {key: 'A'}));
@@ -78,7 +78,7 @@ function barButtons(kind, n) {
       button('include', armed('include', t('再点一次：保留 {n} 张', N), t('保留'))));
   } else if (kind === 'skipped') {
     out.push(button('resume', armed('resume', t('再点一次：恢复 {n} 张', N), t('恢复到未识别')), {primary: true, key: 'S'}), button('assign', t('设为角色…'), {key: 'C'}), oc);
-  } else {
+  } else if (!group) {
     // C＝换成、A＝追加（#399）：选中的图都还没有角色时只有「设为角色」，C、A 都是它。
     const chars = selectedChars(), why = !chars ? t('全选时请进入角色页换成') : !chars.common.length ? t('所选图片没有共同的角色') : '';
     if (chars && !chars.all.size) out.push(button('assign', t('设为角色…'), {primary: true, key: 'C'}));

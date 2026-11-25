@@ -2,7 +2,7 @@
 // location.hash 和 history。
 import {readLike} from './like.js';
 import {prefs} from './prefs.js';
-import {favoritesOnly, matchPath, onPage, pageOf, pathFor, viewOf} from './pages.js';
+import {favoritesOnly, isGroupPage, matchPath, onPage, pageOf, pathFor, viewOf} from './pages.js';
 import {state} from './state.js';
 import {parseList} from './filters.js';
 
@@ -115,6 +115,6 @@ export function stepHistory(dir) {
   if (n > 0) { entry -= n; history.go(-n); }
 }
 // 整理视图（按角色筛选，或复核池）：点击即选择。
-export const cleanup = () => viewOf(state.route).click === 'cleanup';
+export const cleanup = () => !isGroupPage() && viewOf(state.route).click === 'cleanup';
 // 浏览页：点击打开详情，选择要主动开启。
-export const browsing = () => viewOf(state.route).click === 'browse';
+export const browsing = () => isGroupPage() || viewOf(state.route).click === 'browse';

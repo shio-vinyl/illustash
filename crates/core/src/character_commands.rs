@@ -606,7 +606,10 @@ fn answer(c: &Connection, args: &Value) -> Result<Value> {
 
 /// 卡片可能在另一次裁决或识别刷新后过期，核对原选区上的有向角色对。
 fn require_ambiguous_pair(c: &Connection, ids: &[String], entity: &str, rival: &str) -> Result<()> {
-    let mut stmt = c.prepare_cached("SELECT 1 FROM ambiguous_claims WHERE uuid=? AND entity=? AND rival=?")?;
+    let mut stmt = c.prepare_cached(&format!(
+        "SELECT 1 FROM ambiguous_claims WHERE uuid=? AND entity=? AND rival=? AND {}",
+        crate::character_identity::asks_about("entity", "rival"),
+    ))?;
     for id in ids {
         if stmt.query_row(params![id, entity, rival], |_| Ok(())).optional()?.is_none() {
             return invalid("图片的备选归属已变更，请刷新");
@@ -905,7 +908,9 @@ fn shape(item: &Value) -> Option<&'static str> {
 
 /// v2 信封新增的快照形状，裸列表不认。
 fn edit_shape(item: &Value) -> Option<&'static str> {
-    ["character_kind", "character_mascot", "ask_history"].into_iter().find(|key| has_keys(item, &[*key]))
+    ["character_kind", "character_mascot", "ask_history", "identity_form"]
+        .into_iter()
+        .find(|key| has_keys(item, &[*key]))
 }
 
 /// 撤销一步角色步骤（`args["action"]`），在调用方的事务里执行。它必须是最近一个没撤销的步骤，否则是冲突；
@@ -951,6 +956,7 @@ pub fn undo(c: &Connection, args: &Value) -> Result<Value> {
             }
             Some("merge") => crate::character_merge::undo(c, id, &item["merge"])?,
             Some("identity_relation") => crate::character_identity::undo_relation(c, &item["identity_relation"])?,
+            Some("identity_form") => crate::character_identity::undo_form(c, &item["identity_form"])?,
             Some("identity_anchor") => undo_anchor(c, &item["identity_anchor"])?,
             Some("profile") => {
                 profile_links_changed |= crate::character_profile::undo(c, &item["profile"])?;

@@ -11,6 +11,8 @@ const FOLD: &str = include_str!("character_sql/fold.sql");
 const FOLD_LEGACY: &str = include_str!("character_sql/fold_legacy.sql");
 const SINGLE: &str = include_str!("character_sql/single_assets.sql");
 const LEAD: &str = include_str!("character_sql/lead_assets.sql");
+/// 按基础识别、人工结论和扩展主归属读取造型。库里原有的持久视图保持原样。
+pub const VARIANT_MEMBERSHIPS: &str = crate::character_extension::VARIANT_MEMBERSHIPS;
 const MULTI: &[&str] = &[
     "multiple_girls",
     "multiple_boys",
@@ -319,7 +321,7 @@ fn mirror(c: &Connection, touched: bool) -> Result<()> {
       SELECT a.id,t.id,m.status,m.score,m.sources FROM (
         SELECT uuid,entity,status,score,sources FROM memberships
         UNION ALL SELECT uuid,entity,status,score,sources FROM tag_memberships
-        UNION ALL SELECT v.uuid,v.entity,v.status,m.score,m.sources FROM variant_memberships v
+        UNION ALL SELECT v.uuid,v.entity,v.status,m.score,m.sources FROM {VARIANT_MEMBERSHIPS} v
           JOIN memberships m ON m.uuid=v.uuid AND m.entity=v.parent_id
       ) m JOIN terms t ON t.key=m.entity JOIN term_tree r ON r.term_id=t.id
       JOIN term_assets a ON a.namespace='library' AND a.key=m.uuid

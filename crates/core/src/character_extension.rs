@@ -242,3 +242,26 @@ pub(crate) fn fill_unassigned(c: &Connection, scoped: bool) -> Result<()> {
     )?;
     Ok(())
 }
+
+/// 带上仅由扩展识别补主归属的造型。基础识别和人工归属继续使用既有的造型规则。
+/// 查询和 `fill_unassigned` 用同一个已选来源、分数和并列顺序，且 WD 二级头不能补归属。
+pub(crate) const VARIANT_MEMBERSHIPS: &str = "(SELECT uuid,entity,parent_id,variant,status FROM variant_memberships
+    UNION ALL
+    SELECT m.uuid,t.key,r.parent_id,r.variant,'machine'
+    FROM memberships m
+    JOIN terms t ON t.key=(
+        SELECT v.entity FROM candidates v JOIN identity_nodes n ON n.id=v.entity
+        WHERE v.uuid=m.uuid AND v.source=m.sources AND v.score=m.score AND n.character_id=m.entity
+          AND (v.source<>'WD_EXT' OR EXISTS(
+            SELECT 1 FROM term_assets a JOIN term_current_evidence e ON e.asset_id=a.id
+            JOIN terms x ON x.id=e.term_id
+            WHERE a.namespace='library' AND a.key=v.uuid AND e.source='wd_extension' AND e.method='linear_head'
+              AND json_extract(e.data,'$.tier') IS NULL
+              AND (x.key=v.entity OR EXISTS(SELECT 1 FROM identity_nodes original
+                 WHERE original.id=x.key AND original.canonical_id=v.entity))))
+        ORDER BY v.entity LIMIT 1
+    )
+    JOIN term_tree r ON r.term_id=t.id AND r.parent_id=m.entity
+    WHERE m.sources IN ('WD_EXT','CCIP_LONGTAIL')
+      AND NOT EXISTS(SELECT 1 FROM variant_memberships v WHERE v.uuid=m.uuid AND v.entity=t.key)
+      AND NOT EXISTS(SELECT 1 FROM assertions s WHERE s.uuid=m.uuid AND s.entity=t.key AND s.status='rejected'))";

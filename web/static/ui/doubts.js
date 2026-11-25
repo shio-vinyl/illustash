@@ -13,7 +13,7 @@
 //   就不写。另一项修改还在写时，回答和「点掉的是…」都不发，提示一句。
 // - 换了 NSFW：旧卡先撤下再重读。
 import {CARD_MAX, doubtAnswer, doubtCards, doubtLater, loadDoubts, tally} from '../core/doubts.js';
-import {edits} from '../core/edits.js';
+import {edits, exclusive} from '../core/edits.js';
 import {coverUrl, number} from '../core/format.js';
 import {t} from '../core/i18n.js';
 import {avatarOf} from '../core/labels.js';
@@ -23,11 +23,12 @@ import {DOUBT_POOL} from '../core/rail.js';
 import {charHash} from '../core/route.js';
 import {readError} from '../core/session.js';
 import {state} from '../core/state.js';
-import {minus} from '../core/tidy.js';
+import {decidePair, minus} from '../core/tidy.js';
 import {pickFor, sendAnswer} from './answer.js';
-import {$, toast} from './dom.js';
+import {$, toast, written} from './dom.js';
 import {attr, make, refill, rich, show, text, tpl} from './el.js';
 import {drawEmpty, showFailure} from './empty.js';
+import {chooseIdentityPair} from './identity_pair.js';
 import {judgeCard} from './judge.js';
 import {keyed} from './keyed.js';
 import {openPicker} from './palette.js';
@@ -55,6 +56,7 @@ const CARD = tpl`<section class="group tidy-group doubt-card">
 // 角色的圆头像。
 const face = (img, c) => attr(img, 'src', coverUrl(avatarOf(c.id)));
 const nameLink = c => { const a = make('a', '', c.name); a.href = charHash(c.id); return a; };
+const samePair = (a, b) => (a.a.id === b.a.id && a.b.id === b.b.id) || (a.a.id === b.b.id && a.b.id === b.a.id);
 
 // 一张卡：卡头两个圆头像、「是 A 还是 B？」和张数；下面一排方图；最下面是回答。
 function doubtCard(page, c) {
@@ -72,6 +74,7 @@ function doubtCard(page, c) {
       {key: 'b', label: () => t('是 {name}', {name: current.b.name}), title: ({n}) => t('{n} 张都记成 {name}', {n: number(n), name: current.b.name}), run: act('b')},
       {key: 'none', label: t('都不是', {context: 'pair'}), title: () => t('{a}、{b} 都记成不是', {a: current.a.name, b: current.b.name}), run: act('none')},
       {key: 'other', label: t('点掉的是…'), when: ({k}) => k > 0, run: off => page.other(current, off)},
+      {key: 'pair', label: t('整对处理'), run: () => page.pair(current)},
       {key: 'later', label: t('以后再说'), quiet: true, run: () => page.later(current)},
     ]});
   refs.tiles.replaceWith(judge.el); refs.acts.append(judge.acts);
@@ -163,6 +166,31 @@ function doubtsView(scope) {
       still: () => onPage(state.route, 'doubts') && page.cards.some(x => x.key === c.key),
       pick: e => write(c, doubtAnswer(c, 'other', new Set(ids), e.id), ids)}, page.pick);
   };
+  page.pair = async c => {
+    if (page.busy.has(c.key) || waiting()) return;
+    lock(c, true);
+    const withCount = e => ({...e, count: state.charMap.get(e.id)?.count || 0});
+    try {
+      const choice = await chooseIdentityPair(scope, {a: withCount(c.a), b: withCount(c.b)});
+      if (!choice || !scope.alive || !page.cards.some(x => samePair(x, c)) || waiting()) return;
+      const saved = await exclusive(() => decidePair(c, choice));
+      if (!saved) return;
+      written(saved.result.undo, saved.message);
+      if (!scope.alive) return;
+      const removed = page.cards.filter(x => samePair(x, c));
+      for (const x of removed) { leaving(cardEl(x.key)); page.off.delete(x.key); }
+      page.cards = page.cards.filter(x => !samePair(x, c));
+      count('doubts', minus(state.pools[DOUBT_POOL], removed.reduce((n, x) => n + x.items.length, 0)));
+      draw();
+      await load(true);
+      refreshMeta().catch(() => {});
+    } catch (e) {
+      toast(readError(e));
+      if (scope.alive && e.status === 400) await load(true);
+    } finally {
+      lock(c, false);
+    }
+  };
   page.later = async c => {
     if (page.busy.has(c.key)) return;
     lock(c, true);
@@ -184,7 +212,7 @@ implement({
   doubts: {render: o => view.enter(o).load(), reveal: revealThumb,
     refresh: why => {
       const v = view.get();
-      if (why === 'undo' || why === 'learned' || why === 'edit' && state.viewer >= 0) return v?.load(true);
+      if (why === 'undo' || why === 'learned' || why === 'sync' || why === 'edit' && state.viewer >= 0) return v?.load(true);
       if (why === 'nsfw') { v?.clear(); return v?.load(); }
     }},
 });

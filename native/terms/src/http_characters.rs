@@ -1,5 +1,7 @@
 //! 角色与身份的 HTTP 读取。查询顺序、事后的稳定排序和 dict 插入顺序都与 Store 一致。
 use crate::character_entities::ENTITIES;
+use crate::character_links::LINKS;
+use crate::character_projection::VARIANT_MEMBERSHIPS;
 use crate::character_relations::{EVIDENCE, RELATIONS};
 use crate::error::invalid;
 use crate::{
@@ -168,7 +170,7 @@ fn skins(c: &Connection, ids: &str, nsfw: &str, summary: bool) -> Result<HashMap
         "NULL".to_owned()
     } else {
         format!(
-            "(SELECT count(*) FROM variant_memberships v WHERE v.entity=e.id AND {}{})",
+            "(SELECT count(*) FROM {VARIANT_MEMBERSHIPS} v WHERE v.entity=e.id AND {}{})",
             visible("v"),
             rating("v", nsfw)?
         )
@@ -489,6 +491,7 @@ struct Pairs {
     family: HashMap<String, String>,
     counts: HashMap<String, i64>,
     decided: HashSet<(String, String)>,
+    apart: BTreeSet<(String, String)>,
     skip: HashSet<String>,
     marks: HashSet<String>,
     found: Vec<Json>,
@@ -516,18 +519,20 @@ impl Pairs {
         };
         let marks =
             strings(c, &format!("SELECT id FROM {ENTITIES} WHERE label_only=1"), &[])?.iter().map(|e| fam(e)).collect();
-        Ok(Self { family, counts, decided, skip, marks, found: Vec::new(), keys: HashMap::new() })
+        let apart = crate::character_identity::kept_apart_pairs(c)?;
+        Ok(Self { family, counts, decided, apart, skip, marks, found: Vec::new(), keys: HashMap::new() })
     }
     fn family(&self, e: &str) -> String {
         self.family.get(e).cloned().unwrap_or_else(|| e.to_owned())
     }
-    fn add(&mut self, a: &str, b: &str, distance: Json, hint: Json, relation: Json) {
+    fn add(&mut self, a: &str, b: &str, distance: Json, hint: Json, relation: Json, catalog_kind: Option<&str>) {
         let (a, b) = (self.family(a), self.family(b));
         let key = pair_key(&a, &b);
         if a == b
             || self.marks.contains(&a)
             || self.marks.contains(&b)
             || self.decided.contains(&key)
+            || self.apart.contains(&key)
             || self.skip.contains(&format!("{}|{}", key.0, key.1))
             || self.counts.get(&a).copied().unwrap_or(0) == 0
             || self.counts.get(&b).copied().unwrap_or(0) == 0
@@ -555,6 +560,9 @@ impl Pairs {
             item.set("hint", hint);
             item.set("relation_id", relation);
         }
+        if let Some(kind) = catalog_kind.filter(|_| item.get("catalog_kind").is_none()) {
+            item.set("catalog_kind", kind.into());
+        }
     }
 }
 /// 识别器认为相近的身份对；以它们的 Danbooru 关系作为提示。
@@ -579,7 +587,7 @@ fn close_pairs(c: &Connection, pairs: &mut Pairs, count_only: bool) -> Result<()
                 r.field("original_distance").clone()
             }
         };
-        pairs.add(&text(&r, "a"), &text(&r, "b"), distance, hint, None::<String>.into());
+        pairs.add(&text(&r, "a"), &text(&r, "b"), distance, hint, None::<String>.into(), None);
     }
     Ok(())
 }
@@ -614,10 +622,67 @@ fn proposed_pairs(c: &Connection, pairs: &mut Pairs, count_only: bool) -> Result
                 ("source", text(&r, "source").into()),
             ])
         };
-        pairs.add(&a, &b, None::<String>.into(), hint, r.field("id").clone());
+        pairs.add(&a, &b, None::<String>.into(), hint, r.field("id").clone(), None);
     }
     Ok(())
 }
+
+/// 词表关系按当前图库和启用的目录生成，撤回词表或撤销判断后无需修复候选缓存。
+fn catalog_pairs(c: &Connection, pairs: &mut Pairs) -> Result<()> {
+    use crate::character_catalog::{Action, Relation};
+
+    let hybrid = hybrid(c)?;
+    let catalog = crate::character_catalog::current();
+    let mut linked: HashMap<u32, BTreeSet<String>> = HashMap::new();
+    let lookup = format!(
+        "SELECT l.key,l.entity_id FROM {LINKS} l JOIN {ENTITIES} e ON e.id=l.entity_id
+         WHERE l.core_system IN ('danbooru','wd_character') AND l.current=1
+           AND e.kind<>'work' AND e.parent_id IS NULL AND e.merged_into IS NULL AND e.mascot=0 AND e.label_only=0"
+    );
+    for row in c.prepare_cached(&lookup)?.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))? {
+        let (tag, id) = row?;
+        if pairs.counts.contains_key(&id) {
+            if let Some(entry) = catalog.character(&tag) {
+                linked.entry(entry.id).or_default().insert(id);
+            }
+        }
+    }
+    let mut add = |a: &str, b: &str, kind: &'static str| -> Result<()> {
+        if !crate::character_import::catalog_declined(c, a, b)? {
+            let empty = Json::from(serde_json::Value::Null);
+            pairs.add(a, b, empty.clone(), empty.clone(), empty, Some(kind));
+        }
+        Ok(())
+    };
+    for entry in catalog.characters() {
+        let Some(subjects) = linked.get(&entry.id) else { continue };
+        if hybrid {
+            for (i, a) in subjects.iter().enumerate() {
+                for b in subjects.iter().skip(i + 1) {
+                    add(a, b, "duplicate_of")?;
+                }
+            }
+        }
+        if !hybrid && entry.action != Some(Action::Ask) {
+            continue;
+        }
+        let (Some(objects), Some(relation)) = (entry.parent.and_then(|p| linked.get(&p)), entry.relation) else {
+            continue;
+        };
+        let kind = match relation {
+            Relation::Appearance => "appearance",
+            Relation::Form => "form",
+            Relation::Unknown => "unknown",
+        };
+        for a in subjects {
+            for b in objects {
+                add(a, b, kind)?;
+            }
+        }
+    }
+    Ok(())
+}
+
 fn queue(c: &Connection, limit: i64, offset: i64, nsfw: &str, count_only: bool) -> Result<Json> {
     if !(1..=100).contains(&limit) || offset < 0 {
         return invalid("分页参数不正确");
@@ -626,6 +691,7 @@ fn queue(c: &Connection, limit: i64, offset: i64, nsfw: &str, count_only: bool) 
     let mut pairs = Pairs::load(c, &shown)?;
     close_pairs(c, &mut pairs, count_only)?;
     proposed_pairs(c, &mut pairs, count_only)?;
+    catalog_pairs(c, &mut pairs)?;
     let Pairs { mut found, counts, .. } = pairs;
     let total = found.len();
     if count_only {
@@ -666,16 +732,18 @@ fn queue(c: &Connection, limit: i64, offset: i64, nsfw: &str, count_only: bool) 
 }
 pub(crate) fn assignments(c: &Connection, id: &str) -> Result<Json> {
     let (a, mut p) = if hybrid(c)? {
-        let assigned = "
+        let assigned = format!(
+            "
             SELECT m.uuid,m.entity AS character_id,v.entity AS variant_id,m.status,m.origin
             FROM memberships m
-            LEFT JOIN (SELECT entity,parent_id FROM variant_memberships WHERE uuid=?) v ON v.parent_id=m.entity
-            WHERE m.uuid=?";
+            LEFT JOIN (SELECT entity,parent_id FROM {VARIANT_MEMBERSHIPS} WHERE uuid=?) v ON v.parent_id=m.entity
+            WHERE m.uuid=?"
+        );
         let undetermined = "
             SELECT options_json,reason FROM identity_uncertain WHERE uuid=?
             UNION ALL
             SELECT options_json,reason FROM identity_suspended WHERE uuid=?";
-        (rows(c, assigned, &[id, id])?, rows(c, undetermined, &[id, id])?)
+        (rows(c, &assigned, &[id, id])?, rows(c, undetermined, &[id, id])?)
     } else {
         (Vec::new(), Vec::new())
     };

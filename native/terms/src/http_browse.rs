@@ -1,5 +1,6 @@
 //! 浏览读取保持 Store 的 SQL、字段覆盖顺序和只在本次请求内有效的快照。
 use crate::character_entities::ENTITIES;
+use crate::character_projection::VARIANT_MEMBERSHIPS;
 use crate::{
     http::LibraryContext,
     http_json::Json,
@@ -553,7 +554,10 @@ fn identity_filter(c: &Connection, f: &HashMap<String, String>, filter: &mut Fil
         if !p.flatten().is_some_and(|p| !p.is_empty() && (entity.is_empty() || p == entity)) {
             return Err(Error::Invalid("子标签不属于该角色".into()));
         }
-        filter.add("EXISTS(SELECT 1 FROM variant_memberships v WHERE v.uuid=a.uuid AND v.entity=?)", [variant]);
+        filter.add(
+            format!("EXISTS(SELECT 1 FROM {VARIANT_MEMBERSHIPS} v WHERE v.uuid=a.uuid AND v.entity=?)"),
+            [variant],
+        );
     }
     Ok(entity)
 }
@@ -607,7 +611,11 @@ fn status_filter(status: &str, entity: &str, filter: &mut Filter) -> Result<()> 
         }
         "ambiguous" => {
             let only = if entity.is_empty() { "" } else { " AND x.entity=?" };
-            filter.add(format!("EXISTS(SELECT 1 FROM ambiguous_claims x WHERE x.uuid=a.uuid{only})"), of_entity);
+            let asks = crate::character_identity::asks_about("x.entity", "x.rival");
+            filter.add(
+                format!("EXISTS(SELECT 1 FROM ambiguous_claims x WHERE x.uuid=a.uuid{only} AND {asks})"),
+                of_entity,
+            );
         }
         "unknown" => filter.add("EXISTS(SELECT 1 FROM deferred d WHERE d.uuid=a.uuid)", []),
         _ => return Err(Error::Invalid("未知筛选状态".into())),
@@ -755,10 +763,12 @@ fn memberships(c: &Connection, id: &str) -> Result<Vec<Json>> {
         item.set("evidence", evidence(&r, &[]));
         let variants = rows(
             c,
-            "SELECT entity AS id,variant AS name,status
-             FROM variant_memberships
+            &format!(
+                "SELECT entity AS id,variant AS name,status
+             FROM {VARIANT_MEMBERSHIPS}
              WHERE uuid=? AND parent_id=?
-             ORDER BY variant",
+             ORDER BY variant"
+            ),
             &[id, entity.text()],
         )?;
         item.set("variants", Json::Array(variants.into_iter().map(|v| shown(c, v, true)).collect::<Result<_>>()?));
@@ -967,7 +977,7 @@ fn decorate(c: &Connection, q: &HashMap<String, String>, page: &mut [Json]) -> R
     let (audit, answered) = page_audit(c, &ids)?;
     let variants = format!(
         "SELECT uuid,parent_id,entity AS id,variant AS name,status
-         FROM variant_memberships
+         FROM {VARIANT_MEMBERSHIPS}
          WHERE uuid {selected}
          ORDER BY variant"
     );
@@ -1048,11 +1058,12 @@ fn question(c: &Connection, id: &str) -> Result<Json> {
         let closest = format!(
             "SELECT m.entity,m.rival
              FROM ambiguous_claims m
-             WHERE m.uuid=? AND {} AND {}
+             WHERE m.uuid=? AND {} AND {} AND {}
              ORDER BY m.margin
              LIMIT 1",
             unasked("m"),
-            learnable("m")
+            learnable("m"),
+            crate::character_identity::asks_about("m.entity", "m.rival")
         );
         ambiguous = rows(c, &closest, &[id])?.into_iter().next();
         let hinted = format!("{} AND w.uuid=? ORDER BY w.score DESC LIMIT 1", proto_hints("w.entity"));
@@ -1271,7 +1282,8 @@ fn ambiguous_queue(seen: &str) -> String {
         "FROM ambiguous_claims m JOIN assets a ON a.uuid=m.uuid
          WHERE {seen} AND NOT EXISTS(
            SELECT 1 FROM asked k WHERE k.uuid=m.uuid AND k.entity=m.entity
-             AND k.kind='ambiguous' AND {ASK_DEFERRED})"
+             AND k.kind='ambiguous' AND {ASK_DEFERRED}) AND {}",
+        crate::character_identity::asks_about("m.entity", "m.rival")
     )
 }
 /// `/api/ambiguous`：按（A，B）分组的「可能认错」。组按张数从多到少，同张数按 A、B 的 ID；组内新加入的在前，

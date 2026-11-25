@@ -14,7 +14,7 @@ const DAMAGED_ALLOWS: [&str; 7] = [
     "/api/preferences",
 ];
 /// 页面命令（`app_commands::request`）：只持会话读锁执行，见 `page_write`。
-const PAGE_WRITES: [&str; 20] = [
+const PAGE_WRITES: [&str; 21] = [
     "/api/tag",
     "/api/favorite",
     "/api/galleries",
@@ -34,6 +34,7 @@ const PAGE_WRITES: [&str; 20] = [
     "/api/sweep",
     "/api/identity/decision",
     "/api/identity/skip",
+    "/api/identity/pair",
     "/api/merge",
     "/api/catalog/split",
 ];

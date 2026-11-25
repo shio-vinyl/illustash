@@ -53,10 +53,23 @@ export function identitySuggestion(x) {
 export function identityEvidence(x) {
   const h = x.hint, name = tag => tag === x.a.tag ? x.a.name : tag === x.b.tag ? x.b.name : tag.replaceAll('_', ' ');
   const parts = [];
-  if (h?.kind === 'duplicate_of') parts.push(t('{source}：同一个 tag 的别名', {source: h.source || t('外部资料')}));
+  if (x.catalog_kind === 'duplicate_of') parts.push(t('角色词表：同一个角色标签的新旧名称'));
+  else if (x.catalog_kind === 'appearance') parts.push(t('角色词表：可能是同一个角色的造型'));
+  else if (x.catalog_kind === 'form') parts.push(t('角色词表：可能是同一个角色的不同形态'));
+  else if (x.catalog_kind === 'unknown') parts.push(t('角色词表：两个角色标签有关联'));
+  else if (h?.kind === 'duplicate_of') parts.push(t('{source}：同一个 tag 的别名', {source: h.source || t('外部资料')}));
   else if (h?.kind === 'form_of') parts.push(t('{source}：「{subject}」是「{object}」的一个造型', {source: h.source || t('外部资料'), subject: name(h.subject), object: name(h.object)}));
   if (x.distance !== null && x.distance !== undefined) parts.push(t('参考图外观距离 {d}', {d: x.distance.toFixed(3)}) + (x.distance <= 0.01 ? t('（几乎分不开）') : ''));
   return parts.join(' · ') || t('参考图外观很接近');
+}
+/** 两种答法都写整对。合在一起时，第一个端点是要归到本体下的角色。 */
+export async function decidePair(x, {answer, parent}) {
+  const [child, base] = parent === 'a' ? [x.b, x.a] : [x.a, x.b];
+  const result = await post('/api/identity/pair', {a: child.id, b: base.id, answer});
+  const message = answer === 'apart' ? t('已分成两个角色，不再问这一对')
+    : answer === 'duplicate' ? t('已把 {a} 和 {b} 记为同一角色', {a: child.name, b: base.name})
+      : t('{left} 已作为 {right} 的一个造型', {left: child.name, right: base.name});
+  return {result, message};
 }
 /**
  * 判断一对：act 是 'same'、'b_of_a'、'a_of_b'、'different' 或 'skip'。返回写入的结果（带 undo）和提示条上的一句话。
@@ -68,8 +81,8 @@ export async function decideIdentity(x, act) {
   const rel = {same: {a: small.id, b: big.id, kind: 'duplicate_of'}, b_of_a: {a: x.b.id, b: x.a.id, kind: 'form_of'},
     a_of_b: {a: x.a.id, b: x.b.id, kind: 'form_of'}, different: {a: x.a.id, b: x.b.id, kind: 'different_from'}}[act];
   if (!rel) throw new Error('unknown identity act: ' + act);
-  const message = {same: t('已把 {a} 和 {b} 记为同一角色', {a: small.name, b: big.name}), b_of_a: t('{a} 已作为 {b} 的一个造型', {a: x.b.name, b: x.a.name}),
-    a_of_b: t('{a} 已作为 {b} 的一个造型', {a: x.a.name, b: x.b.name}), different: t('已记下 {a} 和 {b} 是不同角色', {a: x.a.name, b: x.b.name})}[act];
+  const message = {same: t('已把 {a} 和 {b} 记为同一角色', {a: small.name, b: big.name}), b_of_a: t('{left} 已作为 {right} 的一个造型', {left: x.b.name, right: x.a.name}),
+    a_of_b: t('{left} 已作为 {right} 的一个造型', {left: x.a.name, right: x.b.name}), different: t('已记下 {a} 和 {b} 是不同角色', {a: x.a.name, b: x.b.name})}[act];
   return {result: await post('/api/identity/decision', {status: 'accepted', reason: '身份整理', ...rel}), message};
 }
 

@@ -199,6 +199,81 @@ class NativeAmbiguousClaimsTest(unittest.TestCase):
         self.assertEqual(self.ask()['entity'], self.alice)
         self.read('/api/ask/answer', {'kind': 'ambiguous', 'entity': self.alice, 'later': ['one']})
         self.assert_queue([self.group(['four', 'three', 'two'])])
+
+    def test_keep_apart_hides_both_directions_and_future_claims_until_undo(self):
+        with self.connect() as c, c:
+            self.seed(c, 'front', '2026-01-01')
+            self.seed(c, 'back', '2026-01-02', reverse=True)
+            before = self.history(c)
+        groups = [self.group(['front']), self.group(['back'], reverse=True)]
+        self.assert_queue(sorted(groups, key=lambda group: group['a']['id']))
+        self.assertEqual(self.read('/api/detail?id=front')['question']['kind'], 'ambiguous')
+        undo = self.read('/api/identity/pair', {'a': self.bob, 'b': self.alice, 'answer': 'apart'})['undo']
+        self.assertEqual(self.read('/api/identity/pair', {'a': self.alice, 'b': self.bob, 'answer': 'apart'})['undo'],
+                         undo, '同一无向角色对只写一步')
+        with self.connect() as c, c:
+            self.seed(c, 'future', '2026-01-03')
+            self.assertEqual(self.history(c), before, '整理偏好不产生结论或训练样本')
+        self.assert_queue([])
+        for entity in (self.alice, self.bob):
+            self.assertEqual(self.read('/api/ids?' + urlencode({'entity': entity, 'status': 'ambiguous'})), [])
+        self.assertNotEqual(self.read('/api/detail?id=future')['question']['kind'], 'ambiguous')
+        self.read('/api/undo', {'id': undo['id']})
+        self.assert_queue([self.group(['future', 'front']), self.group(['back'], reverse=True)])
+        self.assertEqual(self.read('/api/detail?id=future')['question']['kind'], 'ambiguous')
+
+    def test_make_form_keeps_pictures_filterable_and_undo_restores_two_characters(self):
+        with self.connect() as c, c:
+            self.seed(c, 'front', '2026-01-01')
+            self.seed(c, 'back', '2026-01-02', reverse=True)
+            c.execute("INSERT INTO meta(key,value) VALUES ('terms_writer','1')")
+            c.execute("INSERT INTO candidates SELECT uuid,entity,'WD',wd FROM family_evidence")
+            c.execute("INSERT INTO assets(uuid,added_at) VALUES ('longtail','2026-01-03')")
+            c.execute("INSERT INTO candidates VALUES ('longtail',?,'CCIP_LONGTAIL',.90)", (self.alice,))
+            c.execute("DELETE FROM meta WHERE key='terms_writer'")
+        undo = self.read('/api/identity/pair', {'a': self.alice, 'b': self.bob, 'answer': 'form'})['undo']
+        self.assert_queue([])
+        self.assertEqual(self.read('/api/ids?' + urlencode({'entity': self.bob})), ['longtail', 'back', 'front'])
+        self.assertEqual(self.read('/api/ids?' + urlencode({'entity': self.bob, 'variant': self.alice})), ['longtail', 'back', 'front'])
+        self.read('/api/undo', {'id': undo['id']})
+        self.assertEqual(self.read('/api/ids?' + urlencode({'entity': self.bob})), ['back'])
+        self.assertEqual(self.read('/api/ids?' + urlencode({'entity': self.alice})), ['longtail', 'front'])
+
+    def test_catalog_pair_is_asked_in_direct_and_hybrid_modes(self):
+        # 公共目录中的一对形态，角色和图片归属使用同一组合成夹具。
+        with self.connect() as c, c:
+            self.seed(c, 'front', '2026-01-01')
+            self.seed(c, 'back', '2026-01-02', reverse=True)
+            c.executemany("INSERT INTO term_links(system,key,term_id,source) "
+                          "SELECT 'danbooru',?,id,'fixture' FROM terms WHERE key=?",
+                          [('aemeath_(student)_(wuthering_waves)', self.alice),
+                           ('aemeath_(wuthering_waves)', self.bob)])
+            c.execute("INSERT INTO meta(key,value) VALUES ('terms_writer','1')")
+            c.execute("INSERT INTO candidates SELECT uuid,entity,'WD',wd FROM family_evidence")
+            c.execute("DELETE FROM meta WHERE key='terms_writer'")
+        self.assert_catalog_pair()
+        undo = self.read('/api/identity/pair', {'a': self.bob, 'b': self.alice, 'answer': 'apart'})['undo']
+        self.assertEqual(self.read('/api/identity/count')['total'], 0)
+        self.read('/api/undo', {'id': undo['id']})
+        self.assert_catalog_pair()
+
+        with self.connect() as c, c:
+            c.execute("INSERT INTO meta(key,value) VALUES ('identity_policy','hybrid')")
+        self.assert_catalog_pair()
+        undo = self.read('/api/identity/pair', {'a': self.bob, 'b': self.alice, 'answer': 'form'})['undo']
+        self.assertEqual(self.read('/api/identity/count')['total'], 0)
+        with self.connect() as c:
+            self.assertEqual(c.execute("SELECT character_id FROM identity_nodes WHERE id=?", (self.bob,)).fetchone(),
+                             (self.alice,))
+        self.read('/api/undo', {'id': undo['id']})
+        self.assert_catalog_pair()
+
+    def assert_catalog_pair(self):
+        result = self.read('/api/identity/queue')
+        self.assertEqual(result['total'], 1)
+        [item] = result['items']
+        self.assertEqual({item['a']['id'], item['b']['id']}, {self.alice, self.bob})
+        self.assertEqual(item['catalog_kind'], 'form')
         batch = self.ask()
         self.assertIsNotNone(batch)
         self.assertEqual((batch['kind'], batch['entity']), ('seed', self.alice))

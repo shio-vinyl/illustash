@@ -14,7 +14,7 @@ function page() {
   const handlers = {};
   globalThis.document = {body: {append(d) { dialogs.push(d); }}, addEventListener(type, fn) { (handlers[type] ||= []).push(fn); },
     dispatch(type, e) { for (const fn of handlers[type] || []) fn(e); }, createElement() {
-    const nodes = {'#name': field};
+    const nodes = {'#name': field, select: {addEventListener(type, fn) { this[type] = fn; }}};
     return {returnValue: '', attributes: {}, setAttribute(k, v) { this.attributes[k] = v; }, querySelector(selector) { return nodes[selector] ||= {}; },
       showModal() { this.open = true; }, addEventListener(type, fn) { if (type === 'close') this.afterClose = fn; else (this.on ||= {})[type] = fn; },
       close(value = '') { this.returnValue = value; this.open = false; this.onclose(); this.afterClose?.(); },
@@ -75,6 +75,24 @@ test('focus hands the focus to the named control', () => {
   const {focused} = page();
   dialog.openDialog({title: 'x'}); assert.deepEqual(focused, []);
   dialog.openDialog({title: 'x', focus: '#name'}); assert.deepEqual(focused, ['field']);
+});
+test('整对处理：两个答法同权，默认按张数选本体，改方向后按选择提交', async () => {
+  const {dialogs} = page();
+  const {chooseIdentityPair} = await web.load('ui/identity_pair.js');
+  const {scope} = await web.load('ui/scope.js');
+  const s = scope('identity pair');
+  const pair = {a: {name: '合成甲', count: 1}, b: {name: '合成乙', count: 2}};
+  const choice = chooseIdentityPair(s, pair), d = dialogs[0], select = d.querySelector('select');
+  assert.match(d.innerHTML, /<button value="together" class="btn"><\/button><button value="apart" class="btn">/);
+  assert.equal(select.value, 'b');
+  assert.match(d.querySelector('.dialog-message').textContent, /合成甲 是 合成乙/);
+  select.value = 'a'; select.change();
+  assert.match(d.querySelector('.dialog-message').textContent, /合成乙 是 合成甲/);
+  d.on.submit({defaultPrevented: false, submitter: {value: 'together'}, preventDefault() {}});
+  assert.deepEqual(await choice, {answer: 'form', parent: 'a'});
+  const cancelled = chooseIdentityPair(s, pair);
+  s.dispose();
+  assert.equal(await cancelled, null);
 });
 test('isBackdropClick is true only for the dialog itself outside its box', () => {
   const d = {getBoundingClientRect: () => ({left: 10, right: 100, top: 10, bottom: 100})};

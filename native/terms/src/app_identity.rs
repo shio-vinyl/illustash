@@ -12,6 +12,7 @@ fn argument(body: &Json, key: &str) -> Result<Value> {
 pub(crate) fn request(c: &mut Connection, path: &str, body: &Json) -> Result<Json> {
     let command = match path {
         "/api/identity/skip" => return skip(c, body),
+        "/api/identity/pair" => return pair(c, body),
         "/api/identity/decision" => {
             // 先检查关系 id 是不是正整数（旧实现 Store 的顺序），核心再检查策略和端点。
             let relation = argument(body, "relation_id")?;
@@ -31,6 +32,51 @@ pub(crate) fn request(c: &mut Connection, path: &str, body: &Json) -> Result<Jso
     crate::schema::begin_writing(&tx).map_err(app_commands::core_error)?;
     crate::character_commands::command(&tx, &command).map_err(app_commands::core_error)?;
     tx.execute("INSERT INTO backend_effects(kind) VALUES ('verdict')", [])?;
+    let undo = app_commands::commit_writing_reply(tx, app_commands::last_action).map_err(app_commands::core_error)?;
+    Ok(Json::object([("undo", undo)]))
+}
+
+fn pair(c: &mut Connection, body: &Json) -> Result<Json> {
+    let a = argument(body, "a")?;
+    let b = argument(body, "b")?;
+    let (Some(a), Some(b)) = (a.as_str(), b.as_str()) else {
+        return Err(Error::Invalid("请选择两个角色".into()));
+    };
+    let answer = argument(body, "answer")?;
+    let tx = c.transaction_with_behavior(TransactionBehavior::Immediate)?;
+    crate::schema::begin_writing(&tx).map_err(app_commands::core_error)?;
+    crate::character_identity::require_pair(&tx, a, b).map_err(app_commands::core_error)?;
+    match answer.as_str() {
+        Some("apart") => {
+            if crate::character_identity::set_kept_apart(&tx, a, b, true)? {
+                tx.execute(
+                    "INSERT INTO actions(label,before_json) VALUES (?,?)",
+                    params!["已分成两个角色，不再问这一对", json!([{"identity_kept_apart":[a,b]}]).to_string()],
+                )?;
+            }
+        }
+        Some(answer @ ("form" | "duplicate")) => {
+            if crate::character_identity::kept_apart(&tx, a, b)? {
+                return Err(Error::Invalid("这对角色已有整理决定，请刷新".into()));
+            }
+            if crate::character_projection::policy(&tx)? {
+                let kind = if answer == "form" { "form_of" } else { "duplicate_of" };
+                crate::character_commands::command(
+                    &tx,
+                    &json!({
+                        "op":"decide", "a":a, "b":b, "kind":kind, "status":"accepted", "reason":"身份整理"
+                    }),
+                )
+                .map_err(app_commands::core_error)?;
+            } else if answer == "form" {
+                crate::character_identity::attach_form(&tx, a, b).map_err(app_commands::core_error)?;
+            } else {
+                return Err(Error::Invalid("不支持此角色对的回答".into()));
+            }
+            tx.execute("INSERT INTO backend_effects(kind) VALUES ('verdict')", [])?;
+        }
+        _ => return Err(Error::Invalid("不支持此角色对的回答".into())),
+    }
     let undo = app_commands::commit_writing_reply(tx, app_commands::last_action).map_err(app_commands::core_error)?;
     Ok(Json::object([("undo", undo)]))
 }

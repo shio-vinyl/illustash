@@ -1,10 +1,164 @@
 //! S3 关系命令：只追加的核心决定，按旧版形状（`character_relations`）读回；完整的图校验和撤销审计。
 //! 事务归调用方。
-use crate::character_entities::ENTITIES;
+use crate::character_entities::{ENTITIES, OF};
 use crate::character_relations::RELATIONS;
 use crate::{character_graph, character_json, legacy_characters, Error, Result};
 use rusqlite::{params, Connection, OptionalExtension};
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use std::collections::BTreeSet;
+
+/// 对两个独立角色不再问归属的偏好；值为无向角色对的 JSON 数组。
+pub const KEPT_APART_PREF: &str = "identity_kept_apart";
+
+/// 按两个角色的稳定 ID 读取「分成两个，不再问」。
+pub fn kept_apart_pairs(c: &Connection) -> Result<BTreeSet<(String, String)>> {
+    let value: Option<String> =
+        c.query_row("SELECT value FROM prefs WHERE key=?", [KEPT_APART_PREF], |r| r.get(0)).optional()?;
+    match value {
+        Some(value) => serde_json::from_str(&value).map_err(|e| Error::invalid(e.to_string())),
+        None => Ok(BTreeSet::new()),
+    }
+}
+
+fn ordered(a: &str, b: &str) -> (String, String) {
+    if a <= b {
+        (a.into(), b.into())
+    } else {
+        (b.into(), a.into())
+    }
+}
+
+/// 查询指定角色对的整理偏好，不读取或写入身份裁决。
+pub fn kept_apart(c: &Connection, a: &str, b: &str) -> Result<bool> {
+    Ok(c.query_row(&format!("SELECT NOT ({})", asks_about("?1", "?2")), [a, b], |r| r.get(0))?)
+}
+
+/// 只改这一个角色对。撤销时保留其他途径后来写入的偏好。
+pub fn set_kept_apart(c: &Connection, a: &str, b: &str, on: bool) -> Result<bool> {
+    let key = ordered(a, b);
+    let mut pairs = kept_apart_pairs(c)?;
+    let changed = if on { pairs.insert(key) } else { pairs.remove(&key) };
+    if changed {
+        if pairs.is_empty() {
+            c.execute("DELETE FROM prefs WHERE key=?", [KEPT_APART_PREF])?;
+        } else {
+            c.execute(
+                "INSERT OR REPLACE INTO prefs(key,value) VALUES (?,?)",
+                params![KEPT_APART_PREF, json!(pairs).to_string()],
+            )?;
+        }
+    }
+    Ok(changed)
+}
+
+/// SQL 条件：对这两个身份仍可出题。调用方传入固定的 SQL 列名或参数。
+pub fn asks_about(a: &str, b: &str) -> String {
+    format!(
+        "NOT EXISTS(SELECT 1 FROM json_each((SELECT value FROM prefs WHERE key='{KEPT_APART_PREF}')) p
+         WHERE json_extract(p.value,'$[0]')=min({a},{b}) AND json_extract(p.value,'$[1]')=max({a},{b}))"
+    )
+}
+
+/// 卡片提交时必须仍然是两个独立角色。过期端点不能重定向到别的人物。
+pub fn require_pair(c: &Connection, a: &str, b: &str) -> Result<()> {
+    let count: i64 = c
+        .prepare_cached(&format!(
+            "SELECT count(*) FROM {ENTITIES} WHERE id IN (?,?) AND kind<>'work'
+         AND parent_id IS NULL AND merged_into IS NULL AND mascot=0 AND label_only=0"
+        ))?
+        .query_row([a, b], |r| r.get(0))?;
+    if count != 2 {
+        return Err(Error::invalid("请选择两个不同的角色（不能是子标签）"));
+    }
+    Ok(())
+}
+
+#[derive(Serialize, Deserialize)]
+struct FormNode {
+    id: String,
+    parent: Option<String>,
+    kind: String,
+    variant: String,
+    work_id: Option<String>,
+    work: String,
+}
+
+fn refresh_forms(c: &Connection, nodes: &[FormNode]) -> Result<()> {
+    let ids = nodes.iter().map(|node| node.id.clone()).collect();
+    let images: Vec<_> = character_graph::affected_images(c, &ids)?.into_iter().collect();
+    if !images.is_empty() {
+        crate::character_projection::evidence(c, Some(&images))?;
+        crate::character_projection::memberships(c, Some(&images))?;
+    }
+    Ok(())
+}
+
+/// 用户把 `child` 挂作 `parent` 的造型。直接模式保留独立的身份和原始结论，只改层级。
+pub fn attach_form(c: &Connection, child: &str, parent: &str) -> Result<()> {
+    require_pair(c, child, parent)?;
+    if crate::character_projection::policy(c)? {
+        return Err(Error::invalid("请通过身份关系保存造型"));
+    }
+    let mut shown = crate::character_labels::Shown::new();
+    let variant = shown.name(c, child)?;
+    let name = shown.name(c, parent)?;
+    let work: String = c.query_row(&format!("SELECT work FROM {ENTITIES} WHERE id=?"), [parent], |r| r.get(0))?;
+    let nodes = c
+        .prepare_cached(&format!(
+            "SELECT id,parent_id,kind,variant,work_id,work FROM {ENTITIES}
+         WHERE id=?1 OR (parent_id=?1 AND kind<>'work') ORDER BY id"
+        ))?
+        .query_map([child], |r| {
+            Ok(FormNode {
+                id: r.get(0)?,
+                parent: r.get(1)?,
+                kind: r.get(2)?,
+                variant: r.get(3)?,
+                work_id: r.get(4)?,
+                work: r.get(5)?,
+            })
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    for node in &nodes {
+        let label = if node.id == child { &variant } else { &node.variant };
+        c.prepare_cached(&format!(
+            "UPDATE term_tree SET parent_id=?2,variant=?3,work_id=NULL,work_text=?4 WHERE {OF}"
+        ))?
+        .execute(params![node.id, parent, label, work])?;
+        c.prepare_cached("UPDATE terms SET kind='skin' WHERE key=? AND kind<>'skin'")?.execute([&node.id])?;
+    }
+    refresh_forms(c, &nodes)?;
+    let action = crate::character_commands::begin_action(
+        c,
+        &format!("{left} 已作为 {right} 的一个造型", left = variant, right = name),
+    )?;
+    crate::character_commands::finish_action(
+        c,
+        action,
+        "identity_form",
+        vec![json!({"identity_form":{"parent":parent,"nodes":nodes}})],
+    )
+}
+
+pub(crate) fn undo_form(c: &Connection, before: &Value) -> Result<()> {
+    let parent = text(&before["parent"], "造型快照不完整")?;
+    let nodes: Vec<FormNode> =
+        serde_json::from_value(before["nodes"].clone()).map_err(|_| Error::invalid("造型快照不完整"))?;
+    for node in &nodes {
+        let changed = c
+            .prepare_cached(&format!(
+                "UPDATE term_tree SET parent_id=?2,variant=?3,work_id=?4,work_text=?5 WHERE {OF} AND parent_id=?6"
+            ))?
+            .execute(params![node.id, node.parent, node.variant, node.work_id, node.work, parent])?;
+        if changed != 1 {
+            return Err(Error::Conflict("造型关系已变更，不能撤销".into()));
+        }
+        c.prepare_cached("UPDATE terms SET kind=?2 WHERE key=?1 AND kind IS NOT ?2")?
+            .execute([&node.id, &node.kind])?;
+    }
+    refresh_forms(c, &nodes)
+}
 
 fn text<'a>(v: &'a Value, message: &str) -> Result<&'a str> {
     v.as_str().ok_or_else(|| Error::invalid(message))

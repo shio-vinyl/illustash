@@ -40,7 +40,7 @@ pub(crate) fn request_prepared(
             initialized(&c)?;
             crate::app_characters::request(&mut c, context, path, body)
         }
-        "/api/identity/decision" | "/api/identity/skip" | "/api/merge" => {
+        "/api/identity/decision" | "/api/identity/skip" | "/api/identity/pair" | "/api/merge" => {
             initialized(&c)?;
             crate::app_identity::request(&mut c, path, body)
         }
@@ -65,7 +65,7 @@ pub(crate) fn request_prepared(
     if matches!(
         path,
         "/api/undo" | "/api/identity/decision" | "/api/merge" | "/api/character/profile" | "/api/local-links"
-    ) || path == "/api/catalog/split"
+    ) || matches!(path, "/api/catalog/split" | "/api/identity/pair")
     {
         crate::app_effects::drain_after_commit(&context.db);
     }
@@ -400,6 +400,14 @@ fn restore_application(c: &Connection, bound: &SqlValue, before: &Value) -> Resu
     }
     if let Some(seen) = single.and_then(|item| item.get("similar_seen")) {
         crate::app_similar_seen::restore(c, seen)?;
+        c.execute("UPDATE actions SET undone=1 WHERE id=?", [id])?;
+        return Ok(());
+    }
+    if let Some(pair) = single.and_then(|item| item.get("identity_kept_apart")) {
+        let (Some(a), Some(b)) = (pair[0].as_str(), pair[1].as_str()) else {
+            return Err(Error::Io(std::io::Error::other("未知历史")));
+        };
+        crate::character_identity::set_kept_apart(c, a, b, false)?;
         c.execute("UPDATE actions SET undone=1 WHERE id=?", [id])?;
         return Ok(());
     }

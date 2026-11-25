@@ -395,13 +395,13 @@ fn catalog_changes(c: &Connection, id: &str) -> Result<Json> {
 
 fn kept_apart_of(c: &Connection, id: &str) -> Result<Vec<Json>> {
     use rusqlite::OptionalExtension;
-    let family = c.prepare_cached(&format!("SELECT coalesce(parent_id,id) FROM {ENTITIES} WHERE id=?"))?;
-    let name = c.prepare_cached("SELECT entity_name(?)")?;
-    let root_of = |raw: &str| -> Result<Option<String>> {
+    let mut family = c.prepare_cached(&format!("SELECT coalesce(parent_id,id) FROM {ENTITIES} WHERE id=?"))?;
+    let mut name = c.prepare_cached("SELECT entity_name(?)")?;
+    let mut root_of = |raw: &str| -> Result<Option<String>> {
         let root = crate::character_commands::resolve(c, raw)?;
         Ok(family.query_row([root], |r| r.get(0)).optional()?)
     };
-    let endpoint = |raw: &str, family: Option<String>| -> Result<Json> {
+    let mut endpoint = |raw: &str, family: Option<String>| -> Result<Json> {
         let shown: String = name.query_row([raw], |r| r.get(0))?;
         let shown = if shown.is_empty() { raw } else { &shown };
         Ok(Json::object([("id", raw.into()), ("family", family.into()), ("name", shown.into())]))

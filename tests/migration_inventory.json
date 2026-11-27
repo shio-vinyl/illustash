@@ -7,7 +7,7 @@
 
  "crates/core/src/ccip_longtail.rs":"04f901a024fd2f26d4fc86486e6db7b8a7c43c046483f0974acc15ad736306b0",
 
- "crates/core/src/character_catalog.rs":"7b46487ecb227466a885aa05336e318bfebbbdc5096fe4152c30d52da0448035",
+ "crates/core/src/character_catalog.rs":"10dc9e2de0f9ec18d7442035ab7f61196249b59c559dff4a78206ad443611420",
 
  "crates/core/src/character_commands.rs":"c6102c580e6bcc6a352ae0624cc695f8df94449045d8c364b52de74ba2097b9c",
 
@@ -21,7 +21,7 @@
 
  "crates/core/src/character_identity.rs":"6e227f85cd220d46abd293f91b90bb119ce5341711fadf8ae5a62ef1606c1144",
 
- "crates/core/src/character_import.rs":"1dfba1fb2a593f7d80b2569d08459b0f76156063d550b5ad56dd08852ad3d321",
+ "crates/core/src/character_import.rs":"13d164f648ce9910bf57496d3758d009dbebb5f0eda7ae8499225122e66d5ca4",
 
  "crates/core/src/character_import/catalog.rs":"37d8257d9230d838ee3418b79824250c0d6e8b5d3eb2eaf96cd1bb8fe1419ea9",
 
@@ -103,15 +103,15 @@
 
  "crates/core/src/legacy_labels.rs":"fe4ed395d6c7bab467b67810ff5d39edf04cbf0877d356623a319dd18330bc59",
 
- "crates/core/src/legacy_names.rs":"f9ad0e0b8b0794964720853b67cc3375423705d35d6b8b29994217e7d221e48a",
+ "crates/core/src/legacy_names.rs":"e27c5a8e21efbc9e622165f6870a96d3d1f50422ca6491840b752e50ebbe731c",
 
  "crates/core/src/lib.rs":"c7f0a7b261fc2269a5572113b275342cc0c5d0cc84f82ce420270ff596574a41",
 
  "crates/core/src/names_commands.rs":"82cd96b3725a5f3705bcc7412860836db398eebf7639b38ae8977af6d8c25dee",
 
- "crates/core/src/names_search.rs":"ca951df0cd2afb41a9a5f29c73e1e8c377914f45c12fe2bf3891818ca7aa71ac",
+ "crates/core/src/names_search.rs":"6821783dcbd1ce98c761c62de900f557d2cc93cec9ee33966ee6fa2c25fe9c30",
 
- "crates/core/src/names_view.rs":"9141c6aee17d991740bf3c4d95642a7eef6cf3160ea4b03d9de5109eba38618d",
+ "crates/core/src/names_view.rs":"36df78869b71026a3d6625b2c15ce104b75fdac5181bd5b07a995ebeeafefa5d",
 
  "crates/core/src/new_library.rs":"66d11a3e942e573585a204300ede8c0bf0225f00d44ce38e9dc30081e9d7a820",
 
@@ -319,7 +319,7 @@
 
  "native/terms/src/app_name_sources.rs":"934b63ff8bffd034e2cfbf1344617239da1ee99bf204e79d84d8e937781b637a",
 
- "native/terms/src/app_names.rs":"0fe7edcf2d76ae8e166f2eb16e4373eeeac844ee5648538adbea4b261a68f1a2",
+ "native/terms/src/app_names.rs":"31c8092cb5125827c0292387e8e0bdef92190342a69dbc2ee4b3b0a173b880ad",
 
  "native/terms/src/app_names/model_api.rs":"e739104e01f34986d74330d04fc6569054dcd3b07f23980df7975a5b417b20e2",
 
@@ -329,7 +329,7 @@
 
  "native/terms/src/app_packs.rs":"e1a5a7b924ee547e5e1bc40a832b68ba21b4656ca9294681f8ca5ab45b12090d",
 
- "native/terms/src/app_packs/character_catalog.rs":"e3b94b75bc7e61472abc945eec1ef52a732aad6ed0a47516f5e52802cc57b2b2",
+ "native/terms/src/app_packs/character_catalog.rs":"a5f875be424a3f4415ab98e5680e5b6e789e28b54417b135ae1df11d0b670243",
 
  "native/terms/src/app_photos.rs":"c1841fbfea512fa378b816228cc42e97074f5a18371196804cd70796c7748c27",
 
@@ -357,7 +357,7 @@
 
  "native/terms/src/app_resources.rs":"d691ec21499b906972a02d49a21790f2a301c34eb4dea0bd9c301675dd9e2c0a",
 
- "native/terms/src/app_service.rs":"5ef59a5bf287e7c518c2e857cdb9b21a997702c43f9adc6f9fdea2b9bf81ca16",
+ "native/terms/src/app_service.rs":"ec72081e6f18c5debf50c78e3a3f4270e49b4066a58d238722669230b64ee662",
 
  "native/terms/src/app_settings.rs":"20f5eb9c25a3a14920b85b48e75186564c5e01f6129cca02b06b2f63d60b2c41",
 
@@ -411,9 +411,9 @@
 
  "native/terms/src/http_artists.rs":"2fec7a75db8c4448c9d442d256d5dc52ab19eab1c19be4f54a6b71ad94092577",
 
- "native/terms/src/http_browse.rs":"7d82da716a069b009ebe2736924c6e4d64f9b92550c60a4214540ccaf639ce21",
+ "native/terms/src/http_browse.rs":"8b1568cb414ebfc88ff7f6c501ce2c50c354714b903a8aaa42ca2255396689fe",
 
- "native/terms/src/http_characters.rs":"8518fbe3bb0784b5dc20c67fe624b77578be310d3c287db3cb938ac6703606e2",
+ "native/terms/src/http_characters.rs":"0ae3c014863432670a82d88a1fa68c233269d2b1c8826bc459432371ab45b7e2",
 
  "native/terms/src/http_example_search.rs":"1b479b900eac347f73924504558a886153a06eaeb74c0b2d5e5cb28a1a758994",
 
@@ -423,9 +423,11 @@
 
  "native/terms/src/http_json.rs":"42ec65687fad69e430186543d3ef27b8141030e6694b07f683ee91f678478d6b",
 
- "native/terms/src/http_local.rs":"7c711f73ffdb6e95d8c01ae8ae4e2a7e3003f377f9a6414fc9d12002bd528c8c",
+ "native/terms/src/http_local.rs":"e057a7683994ccbf81d9b421555cb789f9e3e799d6aefb560b5e7e8960351add",
 
- "native/terms/src/http_read.rs":"82726c8c461a941f68b7d21cc286fbc246e88929ee52b7cd34c457f004e38fd3",
+ "native/terms/src/http_read.rs":"cd1ca43b64180e23720a55bc5c0ac52f44625213672bb330fb2ecda5fbfd9664",
+
+ "native/terms/src/http_role_labels.rs":"d92b35bc22d7e6520677e9ddaa97c9247566f16825807dcb335cf48c48cdb415",
 
  "native/terms/src/image_samples/mod.rs":"3322652e6cd2806e1c739a67ecca850060eb2d4d2c9fd49d74d1ade3bafbefd6",
 
@@ -445,7 +447,7 @@
 
  "native/terms/src/index_generation.rs":"940c236d35bee6001cc2225701d64d0be2964a2575a653a897449650535ad2fa",
 
- "native/terms/src/lib.rs":"d0b9bcf930dc19e4e2a95813676551866485dac7b45d4fc0af2710fcf6974f31",
+ "native/terms/src/lib.rs":"202ace8bd2c2a2d60dc7965e1dd8f787abf1c50a2c2968b90f21233e3debc9cb",
 
  "native/terms/src/platform_process.rs":"62046a3cf19fa77c1f3105770d4937a6cd780b24e9219a84106c4014aaf1f500",
 
@@ -664,7 +666,7 @@
  "native/terms/src/app_migrate_data.rs":{"database-write":[57,0,61,"DELETE FROM:similar_groups","INSERT INTO:similar_groups"]},
  "native/terms/src/app_migration_sql/derived.sql":{"database-write":[108,165,161,137,110,167,52,133,107,130,169,168,118,166,117,129,106,128,163,170,119,162,116,154,125,136,172,56,156,114,54,48,174,55]},
  "crates/core/src/character_profile.rs":{"database-write":{"dynamic-or-wrapper":11,"INSERT INTO:term_links":2,"INSERT OR IGNORE INTO:term_links":1,"UPDATE:term_tree":4,"DELETE FROM:term_names":3,"UPDATE:term_links":1,"UPDATE:set":1,"INSERT OR REPLACE INTO:term_names":1,"DELETE FROM:term_links":1,"INSERT OR REPLACE INTO:term_links":1}},
- "native/terms/src/app_names.rs":{"database-write":[[0,13],34,262,[1,2],71,[70,4],[290,5],"INSERT OR IGNORE INTO:name_cache",3,[21,2],[289,2],"UPDATE:characters","CREATE TRIGGER:synthetic_locked",11,"DROP TRIGGER:synthetic_locked",326,59],"http-branch":[17,23]},
+ "native/terms/src/app_names.rs":{"database-write":[[0,16],34,262,[1,2],71,[70,4],[290,5],"INSERT OR IGNORE INTO:name_cache",3,[21,2],[289,2],"UPDATE:characters","CREATE TRIGGER:synthetic_locked",11,"DROP TRIGGER:synthetic_locked",326,59,66,"DELETE FROM:term_key_names"],"http-branch":[17,23]},
  "desktop/src/main.rs":{"entrypoint":[10]},
  "native/terms/src/bin/illustash-worker.rs":{"entrypoint":[10,4]},
  "native/terms/src/app_accounts.rs":{"database-write":["PRAGMA:c.execute_batch(\"pragma journal_mode",[0,3],46,"PRAGMA:tx.execute_batch(\"pragma user_version","INSERT OR IGNORE INTO:leads",1]},
@@ -676,7 +678,7 @@
  "crates/core/src/character_identity.rs":{"database-write":[262,[0,10],34,[326,2],[72,2],[205,2],64,63,15,18,71]},
  "native/terms/src/app_create_schema.sql":{"database-write":[53,135,124,104,127,105,139,120,101,131,153,123,103,122,49,152,164,155,113,160,115,[50,2],[47,2],[51,2],132,157,158,159,[45,11],109,171,108,165,161,137,110,167,52,133,107,130,169,168,118,166,117,129,106,128,163,170,119,162,116,154,125,136,172,56,156,114,54,48,174,55,148,146,145,144,142,143,112,149,150,151,140,141,147,173,126,2,[31,22]]},
  "native/terms/src/app_upgrade.rs":{"database-write":[[0,3],[1,3]]},
- "crates/core/src/legacy_names.rs":{"database-write":{"CREATE TABLE IF NOT EXISTS:term_key_names":1,"CREATE TABLE IF NOT EXISTS:term_key_aliases":1,"dynamic-or-wrapper":14,"DELETE FROM:term_key_aliases":1,"INSERT INTO:term_key_aliases":1,"UPDATE:set":2,"DELETE FROM:term_key_names":1,"INSERT OR IGNORE INTO:term_key_names":1,"ALTER TABLE:term_names":1,"CREATE INDEX:term_names_seq":1,"DELETE FROM:term_names":1,"INSERT INTO:term_names":1,"UPDATE:term_names":1,"DROP TABLE:names":1,"CREATE TRIGGER IF NOT EXISTS:names_version_|UPDATE:meta":1,"DELETE FROM:names_dirty_entities|DELETE FROM:names_dirty_keys":1,"DELETE FROM:names_dirty_full|DELETE FROM:names_old_entities|DELETE FROM:names_old_links_seen":1,"DELETE FROM:names_old_links|DELETE FROM:names_scope_ids|DELETE FROM:names_scope_keys":1,"INSERT INTO:names_dirty_full":1,"INSERT INTO:names_dirty_entities":3,"INSERT INTO:names_dirty_keys":1,"BEGIN":3,"INSERT INTO:names_old_entities":2,"INSERT INTO:names_old_links":1,"INSERT INTO:names_old_links_seen":1,"INSERT OR REPLACE INTO:meta":2,"ROLLBACK":1}},
+ "crates/core/src/legacy_names.rs":{"database-write":{"CREATE TABLE IF NOT EXISTS:term_key_names":1,"CREATE TABLE IF NOT EXISTS:term_key_aliases":1,"dynamic-or-wrapper":14,"DELETE FROM:term_key_aliases":1,"INSERT INTO:term_key_aliases":1,"UPDATE:set":2,"DELETE FROM:term_key_names":1,"INSERT OR IGNORE INTO:term_key_names":1,"ALTER TABLE:term_names":1,"CREATE INDEX:term_names_seq":1,"DELETE FROM:term_names":1,"INSERT INTO:term_names":1,"UPDATE:term_names":1,"DROP TABLE:names":1,"CREATE TRIGGER IF NOT EXISTS:names_version_|UPDATE:meta":1,"DELETE FROM:names_dirty_entities|DELETE FROM:names_dirty_keys":1,"DELETE FROM:names_dirty_full|DELETE FROM:names_old_entities|DELETE FROM:names_old_links_seen":1,"DELETE FROM:names_old_links|DELETE FROM:names_scope_ids|DELETE FROM:names_scope_keys":1,"INSERT INTO:names_dirty_full":1,"INSERT INTO:names_dirty_entities":3,"INSERT INTO:names_dirty_keys":1,"BEGIN":3,"INSERT INTO:names_old_entities":2,"INSERT INTO:names_old_links":1,"INSERT INTO:names_old_links_seen":1,"INSERT OR REPLACE INTO:meta":2,"ROLLBACK":1,"DELETE FROM:meta":1}},
  "crates/core/src/character_evidence.rs":{"database-write":[14,[0,8],20,212,[213,2],[221,3]]},
  "native/terms/src/app_migration_sql/identity.sql":{"database-write":[148,146,145,144,142,143,112,149,150,151,140,141,147,173]},
  "start-web.command":{"entrypoint":["shell-script"]},
@@ -702,7 +704,7 @@
  "crates/core/src/backup.rs":{"database-write":[0]},
  "crates/core/src/lib.rs":{"database-write":[0]},
  "crates/platform/src/picker.rs":{"entrypoint":[4]},
- "native/terms/src/app_service.rs":{"database-write":[[0,2],2,3]},
+ "native/terms/src/app_service.rs":{"database-write":[[0,2],2,3,70]},
  "native/terms/src/recognition_compute/session.rs":{"database-write":[1]},
  "native/terms/examples/recognition-compute.rs":{"entrypoint":[10]},
  "native/terms/examples/research-compute.rs":{"entrypoint":[10]},

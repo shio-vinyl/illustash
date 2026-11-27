@@ -384,6 +384,12 @@ impl View {
         for (_, r) in keyed {
             best.entry(r.lang.clone()).or_insert((r.value.clone(), r.source.clone(), r.preferred));
         }
+        let reviewed = (kind == "character").then(|| crate::character_catalog::current().reviewed_name(key)).flatten();
+        if let Some(label) = reviewed {
+            if !best.get("zh").is_some_and(|v| matches!(v.1.as_str(), "user" | "bangumi" | "index")) {
+                best.insert("zh".into(), (label.into(), "builtin".into(), false));
+            }
+        }
         if kind == "skin" {
             if let Some(zh) = skin_zh(key) {
                 let replace = match best.get("zh") {
@@ -407,7 +413,8 @@ impl View {
         let mut chosen: Option<(usize, (String, String))> = None;
         for lang in langs.iter().filter(|l| **l != "en") {
             if let Some(v) = best.get(*lang) {
-                let promoted = v.1 == "wiki" && *lang == "zh" && (kind != "character" || v.2);
+                let promoted = *lang == "zh"
+                    && ((v.1 == "wiki" && (kind != "character" || v.2)) || (v.1 == "builtin" && reviewed.is_some()));
                 let rank = priority(if promoted { "bangumi" } else { &v.1 })?;
                 if chosen.as_ref().is_none_or(|(r, _)| rank < *r) {
                     chosen = Some((rank, (v.0.clone(), v.1.clone())));
@@ -1298,6 +1305,31 @@ mod tests {
         ]))
         .unwrap();
         c
+    }
+
+    #[test]
+    fn reviewed_wikidata_uses_old_tag_offline_and_preserves_user_names() {
+        let c = library();
+        let catalog = serde_json::json!({
+            "format":crate::character_catalog::FORMAT, "revision":2,
+            "columns":["id","tag","tags","parent","relation","action","variant","bangumi","pick","wikidata"],
+            "characters":[[1,"current_name",["old_name"],null,null,null,null,null,null,"Q123"]],
+            "works":[], "wikidata_names":{"Q123":"示例椛"}
+        });
+        let catalog = crate::character_catalog::Catalog::parse(&catalog.to_string()).unwrap();
+        crate::character_catalog::override_for_thread(Some(Box::leak(Box::new(catalog))));
+        c.execute_batch(
+            "INSERT INTO term_key_names VALUES ('character','old_name','ja','index','日本語'),
+            ('character','old_name','zh','wiki','误选别名');",
+        )
+        .unwrap();
+        let choice = choose_key(&c, "character", "old_name").unwrap();
+        assert_eq!((choice.name.as_str(), choice.source.as_str()), ("示例椛", "builtin"));
+        assert_eq!(choice.names[1].as_deref(), Some("日本語"));
+        c.execute_batch("INSERT INTO term_key_names VALUES ('character','old_name','zh','user','我改的名');").unwrap();
+        let choice = choose_key(&c, "character", "old_name").unwrap();
+        assert_eq!((choice.name.as_str(), choice.source.as_str()), ("我改的名", "user"));
+        crate::character_catalog::override_for_thread(None);
     }
 
     fn projection(c: &Connection) -> Vec<Vec<rusqlite::types::Value>> {

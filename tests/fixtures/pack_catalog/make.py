@@ -147,7 +147,7 @@ def main():
         'packs-2.json': {**pack_catalog.build(good + rejected[:3], strict=False), 'serial': 2},
         'packs-1-alt.json': pack_catalog.build(good + rejected[:2], strict=False),
     }
-    roles = {'format': pack_catalog.CHARACTER_FORMAT, 'revision': 2, 'columns': [
+    roles = {'format': pack_catalog.CHARACTER_FORMAT, 'revision': 3, 'columns': [
         'id', 'tag', 'tags', 'parent', 'relation', 'action', 'variant', 'bangumi', 'pick', 'wikidata'],
         'characters': [[1, 'synthetic_role', [], None, None, None, None, None, None, None]], 'works': []}
     write('roles.json', pack_catalog.dumps(roles))

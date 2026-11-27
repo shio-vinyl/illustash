@@ -1,8 +1,8 @@
 //! 角色目录（#837）：识别出来的角色 tag 属于哪个角色、和上级是什么关系、对应哪个 Bangumi 角色。
 //!
 //! 数据由 `tools/character_catalog/build.py` 从 D 站的别名和蕴含、Bangumi 整库导出离线生成，第一版编进应用
-//! （`tags/character_catalog.json`）。目录里不存名字：名字由应用按 Bangumi ID 在线取（`pick` 说明取哪一栏、
-//! 哪一段）。每个角色一行，列名在 `columns` 里：
+//! （`tags/character_catalog.json`）。Bangumi 名字按 ID 在线取（`pick` 说明取哪一栏、
+//! 哪一段）。无 Bangumi ID 时，可用有独立旁证的 Wikidata CC0 中文标签。每个角色一行，列名在 `columns` 里：
 //!
 //! - `id`：公共目录 ID，发布过的不改、不复用；
 //! - `tag`：D 站规范 tag；`tags`：映射到同一个角色的其他识别 tag（多是 D 站改名前的旧 tag）；
@@ -18,7 +18,7 @@ use std::sync::OnceLock;
 /// 这个版本认识的目录格式。
 pub const FORMAT: &str = "illustash-character-catalog/1";
 /// 随应用分发的修订号，用于在启动时选择适用的签名更新。
-pub const BUNDLED_REVISION: u32 = 1;
+pub const BUNDLED_REVISION: u32 = 2;
 static INSTALLED: OnceLock<Option<Catalog>> = OnceLock::new();
 const BUNDLED: &str = include_str!("../../../tags/character_catalog.json");
 
@@ -67,6 +67,7 @@ pub struct Catalog {
     by_id: HashMap<u32, usize>,
     by_tag: HashMap<String, usize>,
     works: HashMap<String, u64>,
+    wikidata_names: HashMap<String, String>,
 }
 
 fn text(v: &Value) -> Option<String> {
@@ -194,12 +195,37 @@ impl Catalog {
                 return invalid("角色目录有重复作品或作品编号不合法");
             }
         }
-        Ok(Self { revision, characters, by_id, by_tag, works })
+        let wikidata_names: HashMap<String, String> = match doc.get("wikidata_names") {
+            None => HashMap::new(),
+            Some(names) => serde_json::from_value(names.clone())
+                .map_err(|_| crate::Error::invalid("角色目录的 Wikidata 中文名不合法"))?,
+        };
+        let known: HashSet<_> = characters.iter().filter_map(|role| role.wikidata.as_ref()).collect();
+        for (id, name) in &wikidata_names {
+            let number = id.strip_prefix('Q').and_then(|n| n.parse::<u64>().ok());
+            if !known.contains(id)
+                || number.is_none_or(|n| n == 0)
+                || name.trim().is_empty()
+                || name.chars().count() > 80
+            {
+                return invalid("角色目录的 Wikidata 中文名或条目号不合法");
+            }
+        }
+        Ok(Self { revision, characters, by_id, by_tag, works, wikidata_names })
     }
 
     /// 按识别 tag 找角色（规范 tag 和旧 tag 都认）。
     pub fn character(&self, tag: &str) -> Option<&Character> {
         self.by_tag.get(tag).map(|&i| &self.characters[i])
+    }
+
+    /// 无 Bangumi 对应时，经制作端独立核对的 Wikidata 简中标签。
+    pub fn reviewed_name(&self, tag: &str) -> Option<&str> {
+        let role = self.character(tag)?;
+        if role.group || role.bangumi.is_some() || role.action == Some(Action::Auto) {
+            return None;
+        }
+        self.wikidata_names.get(role.wikidata.as_ref()?).map(String::as_str)
     }
 
     /// 按目录 ID 找角色。

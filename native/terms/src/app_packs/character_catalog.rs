@@ -207,22 +207,24 @@ mod tests {
 
     #[test]
     fn only_signed_descriptor_matching_file_and_revision_is_usable() {
-        let data = json!({"format":character_catalog::FORMAT, "revision":2,
+        let revision = character_catalog::BUNDLED_REVISION + 1;
+        let version = format!("catalog-{revision}");
+        let data = json!({"format":character_catalog::FORMAT, "revision":revision,
             "columns":["id","tag","tags","parent","relation","action","variant","bangumi","pick","wikidata"],
             "characters":[],"works":[]})
         .to_string();
-        let descriptor = json!({"kind":KIND, "version":"catalog-2", "revision":2, "min_app":"0.4.0",
+        let descriptor = json!({"kind":KIND, "version":version, "revision":revision, "min_app":"0.4.0",
             "format":character_catalog::FORMAT, "license":"test","file":{"name":"roles.json",
-            "url":format!("{RELEASE_PREFIX}catalog-2/roles.json"),"size":data.len(),
+            "url":format!("{RELEASE_PREFIX}{version}/roles.json"),"size":data.len(),
             "sha256":crate::strict_json::sha256_hex(data.as_bytes())}});
         let catalog = |entry| {
             Catalog::parse(&serde_json::to_vec(&json!({"format":CATALOG_FORMAT,"serial":1,"packs":[entry]})).unwrap())
         };
         let parsed = catalog(descriptor.clone()).unwrap();
         let (_, file) = available(&parsed)[0];
-        assert_eq!(checked(data.as_bytes(), file, 2).unwrap().revision, 2);
-        assert!(checked(data.as_bytes(), file, 3).is_err());
-        assert!(checked(b"{}", file, 2).is_err());
+        assert_eq!(checked(data.as_bytes(), file, revision).unwrap().revision, revision);
+        assert!(checked(data.as_bytes(), file, revision + 1).is_err());
+        assert!(checked(b"{}", file, revision).is_err());
         let mut future = descriptor.clone();
         future["min_app"] = json!("99.0.0");
         assert!(available(&catalog(future).unwrap()).is_empty());

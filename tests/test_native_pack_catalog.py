@@ -252,24 +252,24 @@ class NativePackCatalogTest(unittest.TestCase):
             files.update(self.serve(origin))
             for suffix in ('', '.sig'):
                 files[DOWNLOAD + 'packs/packs.json' + suffix] = (FIXTURES / ('packs-roles.json' + suffix)).read_bytes()
-            route = DOWNLOAD + 'character-catalog-2/roles.json'
+            route = DOWNLOAD + 'character-catalog-3/roles.json'
             files[route] = b'partial'
             self.restart()
-            self.assertEqual(self.packs()['character_catalog']['active'], 1)
+            self.assertEqual(self.packs()['character_catalog']['active'], 2)
             self.post('/api/updates', {'action': 'check'})
             state = self.packs()
             self.assertEqual(state['catalog']['serial'], 1)
             self.assertIsNone(state['catalog']['error'])
             self.assertTrue(state['character_catalog']['error'])
-            self.assertEqual((state['character_catalog']['active'], state['character_catalog']['pending']), (1, None))
+            self.assertEqual((state['character_catalog']['active'], state['character_catalog']['pending']), (2, None))
             files[route] = (FIXTURES / 'roles.json').read_bytes()
             self.post('/api/updates', {'action': 'check'})
-            self.assertEqual(self.packs()['character_catalog'], {'active': 1, 'pending': 2, 'error': None})
+            self.assertEqual(self.packs()['character_catalog'], {'active': 2, 'pending': 3, 'error': None})
             self.assertEqual(seen.count(route), 2)
             self.assertIsNone(applied())
             self.restart()
             self.assertIsNone(applied())
-            self.assertEqual(self.packs()['character_catalog'], {'active': 2, 'pending': None, 'error': None})
+            self.assertEqual(self.packs()['character_catalog'], {'active': 3, 'pending': None, 'error': None})
 
     def test_offline_character_catalog_verifies_each_member_and_activates_after_restart(self):
         files = {}
@@ -284,19 +284,19 @@ class NativePackCatalogTest(unittest.TestCase):
         with github(files) as (origin, seen):
             files.update(self.serve(origin))
             self.restart()
-            self.assertEqual(self.packs()['character_catalog']['active'], 1)
+            self.assertEqual(self.packs()['character_catalog']['active'], 2)
             installed = self.root / 'shared/extensions' / f'character-catalog-{sha(roles)}.json'
             bad = self.root / 'untrusted.zip'
             with zipfile.ZipFile(bad, 'w') as archive:
                 archive.writestr('packs.json', descriptor.read_bytes())
                 archive.writestr('packs.json.sig', (FIXTURES / 'packs.json.sig-b').read_bytes())
-                archive.writestr('catalog-2/roles.json', roles)
+                archive.writestr('catalog-3/roles.json', roles)
             self.packs({'action': 'import', 'paths': [str(bad)]})
             results = self.settle('download')['download']['results']
             self.assertEqual({r['name']: r['result'] for r in results}, {
                 'untrusted.zip/packs.json': 'catalog_invalid',
                 'untrusted.zip/packs.json.sig': 'catalog_invalid',
-                'untrusted.zip/catalog-2/roles.json': 'unknown',
+                'untrusted.zip/catalog-3/roles.json': 'unknown',
             })
             self.assertFalse(installed.exists())
 
@@ -313,12 +313,12 @@ class NativePackCatalogTest(unittest.TestCase):
             self.assertEqual(download['status'], 'done')
             results = {r['name']: r['result'] for r in download['results']}
             self.assertEqual(results['damaged.zip/roles.json'], 'mismatch')
-            self.assertEqual(results['verified.zip/catalog-2/roles.json'], 'catalog_file_installed')
+            self.assertEqual(results['verified.zip/catalog-3/roles.json'], 'catalog_file_installed')
             self.assertEqual(installed.read_bytes(), roles)
-            self.assertEqual(self.packs()['character_catalog'], {'active': 1, 'pending': 2, 'error': None})
+            self.assertEqual(self.packs()['character_catalog'], {'active': 2, 'pending': 3, 'error': None})
             self.assertIsNone(applied())
             self.restart()
-            self.assertEqual(self.packs()['character_catalog']['active'], 2)
+            self.assertEqual(self.packs()['character_catalog']['active'], 3)
             self.assertEqual(seen, [])
 
     def test_shell_receives_pack_download_enable_and_withdraw(self):

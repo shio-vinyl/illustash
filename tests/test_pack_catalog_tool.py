@@ -158,9 +158,9 @@ class PackCatalogToolTest(unittest.TestCase):
             pack_catalog.offline(descriptor, [old, new], output, signature_path=FIXTURES / 'packs-roles.json.sig')
             with zipfile.ZipFile(output) as archive:
                 self.assertEqual(archive.namelist(),
-                                 ['packs.json', 'packs.json.sig', 'catalog-2/roles.json', 'catalog-3/roles.json'])
-                self.assertEqual(archive.read('catalog-2/roles.json'), old.read_bytes())
-                self.assertEqual(archive.read('catalog-3/roles.json'), new.read_bytes())
+                                 ['packs.json', 'packs.json.sig', 'catalog-3/roles.json', 'catalog-4/roles.json'])
+                self.assertEqual(archive.read('catalog-3/roles.json'), old.read_bytes())
+                self.assertEqual(archive.read('catalog-4/roles.json'), new.read_bytes())
 
     def test_pubkey_file_placeholder_and_write(self):
         with tempfile.TemporaryDirectory() as temp:

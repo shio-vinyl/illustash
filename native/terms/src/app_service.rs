@@ -801,8 +801,59 @@ pub(crate) fn character_request_with(
     Ok(result)
 }
 
-/// 本次启动选定的角色目录比图库里记的修订新时，按目录补一遍（#837，`character_import::catalog_apply`）：合并 D 站改名
-/// 前后各建了一个的角色、补挂造型。每次打开先读修订号，同一会话处理成功后直接跳过。
+const CATALOG_DISPLAY_POLICY: &str = "[\"catalog-display\", 1]";
+
+fn catalog_display_needed(
+    c: &rusqlite::Connection,
+    catalog: &crate::character_catalog::Catalog,
+    stamp: &str,
+) -> Result<bool> {
+    use rusqlite::OptionalExtension;
+    let previous: Option<String> =
+        c.query_row("SELECT value FROM name_cache WHERE key=?", [CATALOG_DISPLAY_POLICY], |r| r.get(0)).optional()?;
+    if let Some(previous) = previous {
+        return Ok(previous != stamp);
+    }
+    // 新旧图库都可能还没有标记（例如先开空库，随后才识别人物）。文字键投影还包含
+    // 本地造型和被并入的角色。只要现有键用到新规则，整表一起重建，包含其父子显示名。
+    let mut stmt =
+        c.prepare("SELECT kind, key, name_source, name, zh FROM term_name_choice WHERE kind IN ('character','skin')")?;
+    let mut rows = stmt.query([])?;
+    while let Some(row) = rows.next()? {
+        let kind: String = row.get(0)?;
+        let key: String = row.get(1)?;
+        if (kind == "skin" && crate::names_view::expanded_skin_name(&key))
+            || (kind == "character" && catalog.reviewed_name(&key).is_some())
+        {
+            return Ok(true);
+        }
+        // 上一次空库开过后导入的离线中文名可能已被新修订撤下。另一个语言的用户名称
+        // 可以盖过主显示名，仍需检查物化的中文栏。
+        let source: String = row.get(2)?;
+        if kind == "character" && matches!(source.as_str(), "builtin" | "user") {
+            let old_name: String = row.get(3)?;
+            let old_zh: Option<String> = row.get(4)?;
+            if old_zh.as_ref().is_some_and(|zh| source == "builtin" || old_name != *zh) {
+                let current = crate::names_view::choose_key(c, &kind, &key)?;
+                if current.name != old_name || current.source != source || current.names[0] != old_zh {
+                    return Ok(true);
+                }
+            }
+        }
+    }
+    // 所有造型都采用新的手动名称优先顺序，包括没有内置译名的造型。
+    let manual: bool = c.query_row(
+        "SELECT EXISTS(SELECT 1 FROM term_tree r JOIN term_names n ON r.term_id=n.term_id
+                       WHERE r.parent_id IS NOT NULL AND n.role='display' AND n.source='user')
+         OR EXISTS(SELECT 1 FROM term_key_names k JOIN term_name_choice d ON d.kind=k.kind AND d.key=k.key
+                   WHERE k.kind='skin' AND k.source='user')",
+        [],
+        |r| r.get(0),
+    )?;
+    Ok(manual)
+}
+
+/// 在启用名称任务前修复目录中的身份关系，并重算依赖本机词表的显示名。
 fn apply_catalog(session: &mut Session) -> Result<()> {
     use rusqlite::OptionalExtension;
     if session.catalog_checked {
@@ -812,18 +863,25 @@ fn apply_catalog(session: &mut Session) -> Result<()> {
         session.catalog_checked = true;
         return Ok(());
     }
-    let revision = i64::from(crate::character_catalog::current().revision);
+    let catalog = crate::character_catalog::current();
+    let revision = i64::from(catalog.revision);
+    let display_stamp = revision.to_string();
+    let pending = |c: &rusqlite::Connection| -> Result<(bool, bool)> {
+        let applied: Option<i64> = c
+            .query_row(
+                "SELECT json_extract(value,'$.revision') FROM meta WHERE key=?",
+                [illustash_core::character_import::CATALOG_META],
+                |r| r.get(0),
+            )
+            .optional()?
+            .flatten();
+        let display = catalog_display_needed(c, catalog, &display_stamp)?;
+        Ok((applied.is_none_or(|applied| applied < revision), display))
+    };
     let app = crate::app_library::read_connection(&session.library.db())?;
-    let applied: Option<i64> = app
-        .query_row(
-            "SELECT json_extract(value,'$.revision') FROM meta WHERE key=?",
-            [illustash_core::character_import::CATALOG_META],
-            |r| r.get(0),
-        )
-        .optional()?
-        .flatten();
+    let needed = pending(&app)?;
     drop(app);
-    if applied.is_some_and(|a| a >= revision) {
+    if needed == (false, false) {
         session.catalog_checked = true;
         return Ok(());
     }
@@ -832,8 +890,15 @@ fn apply_catalog(session: &mut Session) -> Result<()> {
     app.busy_timeout(crate::app_library::TASK_WRITE_WAIT)?;
     crate::schema::require_current(&app)?;
     let tx = app.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+    let (roles, display) = pending(&tx)?;
+    if display {
+        crate::legacy_names::invalidate_display(&tx)?;
+        tx.execute("INSERT OR REPLACE INTO name_cache VALUES (?,?)", [CATALOG_DISPLAY_POLICY, display_stamp.as_str()])?;
+    }
     crate::schema::begin_writing(&tx)?;
-    crate::character_commands::command(&tx, &serde_json::json!({"op": "catalog_apply"}))?;
+    if roles {
+        crate::character_commands::command(&tx, &serde_json::json!({"op": "catalog_apply"}))?;
+    }
     crate::schema::commit_writing(tx)?;
     session.catalog_checked = true;
     Ok(())
@@ -868,14 +933,14 @@ mod tests {
                 JOIN term_tree r ON r.parent_id=t.key WHERE l.system='danbooru' AND l.key='fixture_parent')
             BEGIN SELECT RAISE(ABORT,'names saw the old catalog'); END";
         let root = PathBuf::from(std::env::var_os("ILLUSTASH_SERVICE_FIXTURE").expect("isolated fixture only"));
-        let catalog = |roles: Value| {
-            let doc = json!({"format":crate::character_catalog::FORMAT,"revision":2,
+        let catalog = |revision: u32, roles: Value, names: Value| {
+            let doc = json!({"format":crate::character_catalog::FORMAT,"revision":revision,
                 "columns":["id","tag","tags","parent","relation","action","variant","bangumi","pick","wikidata"],
-                "characters":roles,"works":[]});
+                "characters":roles,"works":[],"wikidata_names":names});
             let catalog = crate::character_catalog::Catalog::parse(&doc.to_string()).unwrap();
             crate::character_catalog::override_for_thread(Some(Box::leak(Box::new(catalog))));
         };
-        catalog(json!([]));
+        catalog(2, json!([]), json!({}));
         let create = |name: &str| {
             let path = root.join(format!("{name}.pilib"));
             crate::app_create::create_folder(&path, &root.join("source"), None, None, None).unwrap();
@@ -890,16 +955,66 @@ mod tests {
             path
         };
         let (first, second) = (create("first"), create("second"));
-        catalog(json!([
-            [1, "fixture_parent", [], null, null, null, null, null, "", null],
-            [2, "fixture_costume", [], 1, "appearance", "auto", "coat", null, "", null]
-        ]));
-        let mut options = Options::new(root);
+        let first_db = first.join("library.sqlite");
+        {
+            use illustash_core::character_entities::{create, New};
+            let mut c = existing(&first_db).unwrap();
+            let tx = c.transaction().unwrap();
+            crate::schema::begin_writing(&tx).unwrap();
+            create(&tx, &New { id: "old_parent", kind: "character", ..New::default() }, "import").unwrap();
+            create(
+                &tx,
+                &New {
+                    id: "old_skin",
+                    kind: "skin",
+                    parent_id: Some("old_parent"),
+                    variant: "winter_casual",
+                    ..New::default()
+                },
+                "import",
+            )
+            .unwrap();
+            tx.execute(
+                "INSERT INTO term_links(system,key,term_id,source)
+                 SELECT 'danbooru',key,id,'import' FROM terms WHERE key IN ('old_parent','old_skin')",
+                [],
+            )
+            .unwrap();
+            crate::schema::commit_writing(tx).unwrap();
+        }
+        let stale_skin_projection = |c: &rusqlite::Connection| {
+            c.execute_batch(
+                "UPDATE term_name_display SET name='Winter Casual', name_source='readable', zh=NULL
+                 WHERE entity='old_skin' AND skin_only=1;
+                 UPDATE term_name_choice SET name='Winter Casual', name_source='readable', zh=NULL
+                 WHERE kind='skin' AND key='winter_casual';",
+            )
+            .unwrap();
+        };
+        let check_skin_projection = |db: &Path| {
+            let c = existing(db).unwrap();
+            for query in [
+                "SELECT name FROM term_name_display WHERE entity='old_skin' AND skin_only=1",
+                "SELECT name FROM term_name_choice WHERE kind='skin' AND key='winter_casual'",
+            ] {
+                assert_eq!(c.query_row(query, [], |r| r.get::<_, String>(0)).unwrap(), "冬季 · 便服");
+            }
+        };
+        stale_skin_projection(&existing(&first_db).unwrap());
+        catalog(
+            2,
+            json!([
+                [1, "fixture_parent", [], null, null, null, null, null, "", null],
+                [2, "fixture_costume", [], 1, "appearance", "auto", "coat", null, "", null]
+            ]),
+            json!({}),
+        );
+        let mut options = Options::new(root.clone());
         options.startup.provenance_enabled = false;
         options.startup.index_auto_check = false;
         options.startup.auto_sync = false;
         options.startup.sync_disabled = true;
-        let service = Application::open(&first, options).unwrap();
+        let service = Application::open(&first, options.clone()).unwrap();
         let name_runs = |db: &Path| {
             crate::sqlite::open(db)
                 .unwrap()
@@ -907,6 +1022,7 @@ mod tests {
                 .unwrap()
         };
         service.start().unwrap();
+        check_skin_projection(&first_db);
         assert_eq!(name_runs(&first.join("library.sqlite")), 1);
 
         let db = crate::sqlite::open(second.join("library.sqlite")).unwrap();
@@ -924,6 +1040,63 @@ mod tests {
         assert_eq!(name_runs(&second.join("library.sqlite")), 1);
         service.recover();
         assert_eq!(name_runs(&second.join("library.sqlite")), 1);
+        assert!(!db
+            .query_row("SELECT EXISTS(SELECT 1 FROM name_cache WHERE key=?)", [CATALOG_DISPLAY_POLICY], |r| r
+                .get::<_, bool>(0))
+            .unwrap());
+        // 结构修订已经就绪时，换回较低的词表版本也要重建显示名。
+        let c = existing(&first_db).unwrap();
+        c.execute("UPDATE name_cache SET value='99' WHERE key=?", [CATALOG_DISPLAY_POLICY]).unwrap();
+        stale_skin_projection(&c);
+        service.switch(service.generation(), &first).unwrap();
+        service.recover();
+        check_skin_projection(&first_db);
+        let revision = |c: &rusqlite::Connection| {
+            c.query_row("SELECT value FROM name_cache WHERE key=?", [CATALOG_DISPLAY_POLICY], |r| r.get::<_, String>(0))
+                .unwrap()
+        };
+        assert_eq!(revision(&c), "2");
+        service.recover();
+        assert_eq!(revision(&c), "2");
+
+        let late = root.join("late.pilib");
+        crate::app_create::create_folder(&late, &root.join("source"), None, None, None).unwrap();
+        let late_db = late.join("library.sqlite");
+        let roles = json!([[3, "late_hero", [], null, null, null, null, null, "", "Q123"]]);
+        catalog(3, roles.clone(), json!({"Q123":"迟来的角色"}));
+        service.switch(service.generation(), &late).unwrap();
+        service.recover();
+        character_request(
+            &late_db,
+            &json!({"op":"refresh","assets":[["late","late.png","late.png",8,8,"2026-11-23","folder"]],
+                "indexed":"2026-11-23","index":{},"labels":[["late","late_hero",0.99,"character"]]}),
+        )
+        .unwrap();
+        let chosen = |c: &rusqlite::Connection| {
+            for query in [
+                "SELECT name FROM term_name_display WHERE tag='late_hero' AND skin_only=0",
+                "SELECT name FROM term_name_choice WHERE key='late_hero' AND kind='character'",
+            ] {
+                assert_eq!(
+                    c.query_row(query, [], |r| r.get::<_, String>(0)).unwrap(),
+                    crate::names_view::choose_key(c, "character", "late_hero").unwrap().name,
+                );
+            }
+        };
+        let c = existing(&late_db).unwrap();
+        chosen(&c);
+        assert_eq!(crate::names_view::choose_key(&c, "character", "late_hero").unwrap().name, "迟来的角色");
+        assert!(!c
+            .query_row("SELECT EXISTS(SELECT 1 FROM name_cache WHERE key=?)", [CATALOG_DISPLAY_POLICY], |r| r
+                .get::<_, bool>(0),)
+            .unwrap());
+        service.shutdown();
+        catalog(4, roles, json!({}));
+        let service = Application::open(&late, options).unwrap();
+        service.start().unwrap();
+        chosen(&c);
+        assert_eq!(crate::names_view::choose_key(&c, "character", "late_hero").unwrap().name, "Late Hero");
+        assert_eq!(revision(&c), "4");
         service.shutdown();
     }
 

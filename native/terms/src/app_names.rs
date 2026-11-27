@@ -340,33 +340,21 @@ fn matched(c: &Connection, work: &str) -> Result<Vec<Value>> {
         _ => vec![],
     })
 }
+/// 名称匹配的历史夹具没有角色目录。查询与名称投影共用这份测试目录。
 #[cfg(test)]
-thread_local! {
-    /// 测试换用的角色目录（名称任务在调用测试的线程里同步跑）。
-    static TEST_CATALOG: std::cell::Cell<Option<&'static crate::character_catalog::Catalog>> =
-        const { std::cell::Cell::new(None) };
-}
-
-/// 测试默认用空目录，原有的按名字搜索的测试不受编进应用的目录影响；要测目录的测试自己换一份。
-#[cfg(test)]
-fn catalog() -> &'static crate::character_catalog::Catalog {
+fn empty_catalog() -> &'static crate::character_catalog::Catalog {
     static EMPTY: std::sync::OnceLock<crate::character_catalog::Catalog> = std::sync::OnceLock::new();
-    TEST_CATALOG.with(std::cell::Cell::get).unwrap_or_else(|| {
-        EMPTY.get_or_init(|| {
-            let columns = r#"["id","tag","tags","parent","relation","action","variant","bangumi","pick","wikidata"]"#;
-            let doc = format!(
-                r#"{{"format":"{}","revision":1,"columns":{columns},"characters":[],"works":[]}}"#,
-                crate::character_catalog::FORMAT
-            );
-            crate::character_catalog::Catalog::parse(&doc).expect("空目录能解析")
-        })
+    EMPTY.get_or_init(|| {
+        let columns = r#"["id","tag","tags","parent","relation","action","variant","bangumi","pick","wikidata"]"#;
+        let doc = format!(
+            r#"{{"format":"{}","revision":1,"columns":{columns},"characters":[],"works":[]}}"#,
+            crate::character_catalog::FORMAT
+        );
+        crate::character_catalog::Catalog::parse(&doc).expect("空目录能解析")
     })
 }
 
-#[cfg(not(test))]
-fn catalog() -> &'static crate::character_catalog::Catalog {
-    crate::character_catalog::current()
-}
+use crate::character_catalog::current as catalog;
 
 struct CatalogName {
     id: u64,
@@ -1817,6 +1805,7 @@ mod matching_tests {
 
     impl Library {
         fn load(key: &str) -> Self {
+            crate::character_catalog::override_for_thread(Some(empty_catalog()));
             let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/names/matching.json.gz");
             let mut text = String::new();
             flate2::read::GzDecoder::new(std::fs::File::open(path).unwrap()).read_to_string(&mut text).unwrap();
@@ -1875,6 +1864,7 @@ mod matching_tests {
 
     impl Drop for Library {
         fn drop(&mut self) {
+            crate::character_catalog::override_for_thread(None);
             let _ = std::fs::remove_dir_all(&self.root);
         }
     }
@@ -2292,6 +2282,7 @@ mod sources_tests {
 
     impl Library {
         fn load() -> Self {
+            crate::character_catalog::override_for_thread(Some(empty_catalog()));
             let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/names/base.json.gz");
             let mut text = String::new();
             flate2::read::GzDecoder::new(std::fs::File::open(path).unwrap()).read_to_string(&mut text).unwrap();
@@ -2363,6 +2354,7 @@ mod sources_tests {
 
     impl Drop for Library {
         fn drop(&mut self) {
+            crate::character_catalog::override_for_thread(None);
             let _ = std::fs::remove_dir_all(&self.root);
         }
     }
@@ -2483,7 +2475,7 @@ mod sources_tests {
             "works": works,
         });
         let catalog = Box::leak(Box::new(crate::character_catalog::Catalog::parse(&dump(&doc)).unwrap()));
-        TEST_CATALOG.with(|c| c.set(Some(catalog)));
+        crate::character_catalog::override_for_thread(Some(catalog));
     }
 
     fn use_catalog(tag: &str, bangumi: u64, pick: &str) {
@@ -2518,7 +2510,6 @@ mod sources_tests {
         assert!(!calls[previous..].iter().any(|(u, _)| u.starts_with("/search/subjects")));
         lib.run(&p, None, false).unwrap();
         assert_eq!(p.calls(), calls);
-        TEST_CATALOG.with(|c| c.set(None));
     }
 
     #[test]
@@ -2541,7 +2532,6 @@ mod sources_tests {
         });
         lib.run(&p, None, true).unwrap();
         assert_eq!(lib.work_name(), "目录作品");
-        TEST_CATALOG.with(|c| c.set(None));
     }
 
     #[test]
@@ -2560,7 +2550,6 @@ mod sources_tests {
         let work = choose(&lib.db(), "work", "Example").unwrap();
         assert_eq!(work.names[1].as_deref(), Some("固定原名"));
         assert_eq!(work.name, "同条目中文");
-        TEST_CATALOG.with(|c| c.set(None));
     }
 
     #[test]
@@ -2598,7 +2587,6 @@ mod sources_tests {
         for value in ["旧检索别名", "爱丽丝", "カノンアリス", "规范名字"] {
             assert_eq!(lib.hits(value), BTreeSet::from(["alice".into()]));
         }
-        TEST_CATALOG.with(|c| c.set(None));
     }
 
     #[test]
@@ -2616,7 +2604,6 @@ mod sources_tests {
             .iter()
             .any(|(url, body)| url.starts_with("/search/characters")
                 && body.as_ref().unwrap()["keyword"] == "Canonical Bob"));
-        TEST_CATALOG.with(|c| c.set(None));
     }
 
     #[test]
@@ -2641,7 +2628,7 @@ mod sources_tests {
         let (p, lib) = (Providers::start(), Library::load());
         use_catalog("alice", 77, "");
         lib.run(&p, None, false).unwrap();
-        TEST_CATALOG.with(|c| c.set(None));
+        crate::character_catalog::override_for_thread(Some(empty_catalog()));
         assert_eq!(named(lib.char("alice")), pair("目录爱丽丝", "bangumi"));
         assert_eq!(lib.char("alice").names[1].as_deref(), Some("アリス"));
         let calls = p.calls();
@@ -2673,7 +2660,6 @@ mod sources_tests {
         assert_eq!(calls[previous..].iter().filter(|(u, _)| u.starts_with("/characters/77")).count(), 1);
         lib.run(&p, None, false).unwrap();
         assert_eq!(p.calls(), calls);
-        TEST_CATALOG.with(|c| c.set(None));
     }
 
     #[test]
@@ -2714,7 +2700,6 @@ mod sources_tests {
         lib.run(&p, None, false).unwrap();
         assert_eq!(named(lib.char("bob")), pair("槐", "bangumi"));
         assert_eq!(lib.hits("小叶子"), BTreeSet::from(["bob".into()]));
-        TEST_CATALOG.with(|c| c.set(None));
     }
 
     #[test]
@@ -2732,7 +2717,6 @@ mod sources_tests {
         });
         lib.run(&p, None, true).unwrap();
         assert_eq!(named(lib.char("alice")), pair("目录爱丽丝", "bangumi"));
-        TEST_CATALOG.with(|c| c.set(None));
     }
 
     #[test]
@@ -2740,7 +2724,7 @@ mod sources_tests {
         let (p, lib) = (Providers::start(), Library::load());
         use_catalog("alice", 78, "");
         lib.run(&p, None, false).unwrap();
-        TEST_CATALOG.with(|c| c.set(None));
+        crate::character_catalog::override_for_thread(Some(empty_catalog()));
         assert_eq!(named(lib.char("alice")), pair("爱丽丝", "bangumi"));
         assert!(p.calls().iter().any(|(u, _)| u.starts_with("/characters/78")));
     }

@@ -866,7 +866,7 @@ fn apply_catalog(session: &mut Session) -> Result<()> {
     let catalog = crate::character_catalog::current();
     let revision = i64::from(catalog.revision);
     let display_stamp = revision.to_string();
-    let pending = |c: &rusqlite::Connection| -> Result<(bool, bool)> {
+    let needs_roles = |c: &rusqlite::Connection| -> Result<bool> {
         let applied: Option<i64> = c
             .query_row(
                 "SELECT json_extract(value,'$.revision') FROM meta WHERE key=?",
@@ -875,13 +875,12 @@ fn apply_catalog(session: &mut Session) -> Result<()> {
             )
             .optional()?
             .flatten();
-        let display = catalog_display_needed(c, catalog, &display_stamp)?;
-        Ok((applied.is_none_or(|applied| applied < revision), display))
+        Ok(applied.is_none_or(|applied| applied < revision))
     };
     let app = crate::app_library::read_connection(&session.library.db())?;
-    let needed = pending(&app)?;
+    let needed = needs_roles(&app)? || catalog_display_needed(&app, catalog, &display_stamp)?;
     drop(app);
-    if needed == (false, false) {
+    if !needed {
         session.catalog_checked = true;
         return Ok(());
     }
@@ -890,13 +889,12 @@ fn apply_catalog(session: &mut Session) -> Result<()> {
     app.busy_timeout(crate::app_library::TASK_WRITE_WAIT)?;
     crate::schema::require_current(&app)?;
     let tx = app.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
-    let (roles, display) = pending(&tx)?;
-    if display {
+    if catalog_display_needed(&tx, catalog, &display_stamp)? {
         crate::legacy_names::invalidate_display(&tx)?;
         tx.execute("INSERT OR REPLACE INTO name_cache VALUES (?,?)", [CATALOG_DISPLAY_POLICY, display_stamp.as_str()])?;
     }
     crate::schema::begin_writing(&tx)?;
-    if roles {
+    if needs_roles(&tx)? {
         crate::character_commands::command(&tx, &serde_json::json!({"op": "catalog_apply"}))?;
     }
     crate::schema::commit_writing(tx)?;

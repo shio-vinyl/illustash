@@ -200,11 +200,18 @@ impl Catalog {
             Some(names) => serde_json::from_value(names.clone())
                 .map_err(|_| crate::Error::invalid("角色目录的 Wikidata 中文名不合法"))?,
         };
-        let known: HashSet<_> = characters.iter().filter_map(|role| role.wikidata.as_ref()).collect();
+        let mut owners = HashSet::new();
+        for qid in
+            characters.iter().filter_map(|role| role.wikidata.as_ref()).filter(|id| wikidata_names.contains_key(*id))
+        {
+            if !owners.insert(qid) {
+                return invalid("角色目录的 Wikidata 中文名对应多个角色");
+            }
+        }
         for (id, name) in &wikidata_names {
             let number = id.strip_prefix('Q').and_then(|n| n.parse::<u64>().ok());
-            if !known.contains(id)
-                || number.is_none_or(|n| n == 0)
+            if !owners.contains(id)
+                || number.is_none_or(|n| n == 0 || *id != format!("Q{n}"))
                 || name.trim().is_empty()
                 || name.chars().count() > 80
             {
@@ -315,6 +322,13 @@ mod tests {
         ] {
             assert!(Catalog::parse(&doc(bad)).is_err(), "{bad}");
         }
+        let mut labels: Value = serde_json::from_str(&doc(ok)).unwrap();
+        labels["wikidata_names"] = serde_json::json!({"Q12": "示例"});
+        assert!(Catalog::parse(&labels.to_string()).is_err());
+        labels["characters"][0][9] = Value::from("Q12");
+        assert_eq!(Catalog::parse(&labels.to_string()).unwrap().reviewed_name("a"), Some("示例"));
+        labels["characters"][1][9] = Value::from("Q12");
+        assert!(Catalog::parse(&labels.to_string()).is_err());
         assert!(Catalog::parse(&doc(ok).replace(FORMAT, "other/1")).is_err());
     }
 }

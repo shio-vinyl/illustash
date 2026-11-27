@@ -2,7 +2,7 @@
 // 身份整理的建议和写入内容、画师抽查的统计这些纯函数。不碰 DOM，Node 里能直接测；画在 ui/groups.js、ui/similar.js、
 // ui/identity.js、ui/artist_audit.js。读取都带 signal：换页或换了子视图时由页面作用域取消。
 import {t} from './i18n.js';
-import {AUDIT_METHODS} from './labels.js';
+import {AUDIT_METHODS, roleName} from './labels.js';
 import {api, post} from './session.js';
 
 // ---------- 按组整理（未识别的相似分组） ----------
@@ -51,7 +51,7 @@ export function identitySuggestion(x) {
 }
 /** 这一对为什么排进来，一句纯文字。 */
 export function identityEvidence(x) {
-  const h = x.hint, name = tag => tag === x.a.tag ? x.a.name : tag === x.b.tag ? x.b.name : tag.replaceAll('_', ' ');
+  const h = x.hint, name = tag => tag === x.a.tag ? roleName(x.a) : tag === x.b.tag ? roleName(x.b) : tag.replaceAll('_', ' ');
   const parts = [];
   if (x.catalog_kind === 'duplicate_of') parts.push(t('角色词表：同一个角色标签的新旧名称'));
   else if (x.catalog_kind === 'appearance') parts.push(t('角色词表：可能是同一个角色的造型'));
@@ -67,8 +67,8 @@ export async function decidePair(x, {answer, parent}) {
   const [child, base] = parent === 'a' ? [x.b, x.a] : [x.a, x.b];
   const result = await post('/api/identity/pair', {a: child.id, b: base.id, answer});
   const message = answer === 'apart' ? t('已分成两个角色，不再问这一对')
-    : answer === 'duplicate' ? t('已把 {a} 和 {b} 记为同一角色', {a: child.name, b: base.name})
-      : t('{left} 已作为 {right} 的一个造型', {left: child.name, right: base.name});
+    : answer === 'duplicate' ? t('已把 {a} 和 {b} 记为同一角色', {a: roleName(child), b: roleName(base)})
+      : t('{left} 已作为 {right} 的一个造型', {left: roleName(child), right: roleName(base)});
   return {result, message};
 }
 /**
@@ -81,8 +81,8 @@ export async function decideIdentity(x, act) {
   const rel = {same: {a: small.id, b: big.id, kind: 'duplicate_of'}, b_of_a: {a: x.b.id, b: x.a.id, kind: 'form_of'},
     a_of_b: {a: x.a.id, b: x.b.id, kind: 'form_of'}, different: {a: x.a.id, b: x.b.id, kind: 'different_from'}}[act];
   if (!rel) throw new Error('unknown identity act: ' + act);
-  const message = {same: t('已把 {a} 和 {b} 记为同一角色', {a: small.name, b: big.name}), b_of_a: t('{left} 已作为 {right} 的一个造型', {left: x.b.name, right: x.a.name}),
-    a_of_b: t('{left} 已作为 {right} 的一个造型', {left: x.a.name, right: x.b.name}), different: t('已记下 {a} 和 {b} 是不同角色', {a: x.a.name, b: x.b.name})}[act];
+  const message = {same: t('已把 {a} 和 {b} 记为同一角色', {a: roleName(small), b: roleName(big)}), b_of_a: t('{left} 已作为 {right} 的一个造型', {left: roleName(x.b), right: roleName(x.a)}),
+    a_of_b: t('{left} 已作为 {right} 的一个造型', {left: roleName(x.a), right: roleName(x.b)}), different: t('已记下 {a} 和 {b} 是不同角色', {a: roleName(x.a), b: roleName(x.b)})}[act];
   return {result: await post('/api/identity/decision', {status: 'accepted', reason: '身份整理', ...rel}), message};
 }
 

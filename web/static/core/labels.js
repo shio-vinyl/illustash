@@ -13,11 +13,16 @@ export const FOLD_OPTIONS = [['identical', RELATION_NAMES.identical, t('像素�
 export const AUDIT_METHODS = {pixel_hash: [t('像素哈希'), t('和 Danbooru 上的帖子是同一个文件，画师取自帖子的画师标签')],
   gallery_match: [t('本地比对'), t('和 TA 公开作品的小图逐张比对一致')], ocr: [t('签名识别'), t('图上的签名或水印')]};
 export const RELATION_KINDS = [['', t('全部')], ...['duplicate', 'subtle', 'variant', 'crop', 'edit'].map(k => [k, RELATION_NAMES[k]])];
+// 同作品重名时，接口在原名旁给出当前语言的形态短词，手动名称和普通角色没有这个字段。
+export function roleName(role) {
+  const qualifier = role?.name_disambiguation?.qualifier;
+  return qualifier ? t('{name}（{qualifier}）', {name: role.name, qualifier}) : role?.name || '';
+}
 // 显示名来自服务端（中文 → 日文 → 可读的英文）；原始 tag 只在悬停时显示。
 export const nameTip = c => !c ? '' : c.tag && c.tag !== c.name ? c.tag + (c.name_source === 'model' ? ' · ' + t('机器翻译') : c.name_source === 'wiki' ? ' · ' + t('来自 Danbooru 别名') : '') : c.name;
 // 角色名字旁边的作品（#293）：原创角色写「原创」，否则写它直接所属的作品，否则什么都不写。c 是角色，或在
 // state.charMap 里查到的某张图的归属（{id, name}）。
-const charOf = c => c && (state.charMap.get(c.id) || c);
-export const workLabel = c => { const x = charOf(c); return !x ? '' : x.kind === 'oc' ? t('原创') : x.work_id ? x.work_name || workName(x.work || '') : ''; };
+export const catalogRole = c => c && (state.charMap.get(c.id) || c);
+export const workLabel = c => { const x = catalogRole(c); return !x ? '' : x.kind === 'oc' ? t('原创') : x.work_id ? x.work_name || workName(x.work || '') : ''; };
 // 只放得下名字的地方，悬停时显示「名字（作品）」。
-export const nameWithWork = c => { const w = workLabel(c); return w ? t('{name}（{work}）', {name: c.name, work: w}) : c?.name || ''; };
+export const nameWithWork = c => { const w = workLabel(c); return w ? t('{name}（{work}）', {name: roleName(c), work: w}) : roleName(c); };

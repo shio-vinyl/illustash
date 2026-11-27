@@ -5,7 +5,7 @@ import {esc, isMac, platformText, shortcut} from '../core/format.js';
 import {prefs} from '../core/prefs.js';
 import {session, STALE, onStale, readError} from '../core/session.js';
 import {editLabel, onLatest, setLatest} from '../core/edits.js';
-import {workLabel} from '../core/labels.js';
+import {roleName, workLabel} from '../core/labels.js';
 import {AREAS, pageOf} from '../core/pages.js';
 import {state} from '../core/state.js';
 import {createLayer} from './overlay.js';
@@ -72,7 +72,7 @@ export function wireToast(undo) {
 // 角色选项里的名字（#294、#678）：名字后面跟作品小字。「跳到角色」等命令面板（ui/palette.js）和筛选条「＋ 条件」
 // （ui/filters.js）都用它，以后新加的角色选择器也用它，不各自拼。work 默认按 workLabel 算；Danbooru 上的候选还不在
 // 图库里，由调用处给它在 D 站的作品名。
-export const charOption = (c, work = workLabel(c)) => esc(c.name) + (work ? `<small class="char-work">${esc(work)}</small>` : '');
+export const charOption = (c, work = workLabel(c)) => esc(roleName(c)) + (work ? `<small class="char-work">${esc(work)}</small>` : '');
 export function error(message) { if (session.stale) return; $('errorBanner').textContent = message; $('errorBanner').hidden = !message; }
 // 可折叠的块，展开或收起的状态在重新渲染和重新载入后保留。
 export const fold = (key, summary, body) => `<details class="more" data-fold-key="${key}"${prefs.get('settingsOpen', {})[key] ? ' open' : ''}><summary>${summary}</summary><div class="more-body">${body}</div></details>`;

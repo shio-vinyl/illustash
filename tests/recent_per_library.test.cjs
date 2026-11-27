@@ -74,3 +74,32 @@ test('选择器只列出当前图库用过的标签，选中的记在当前图�
   assert.equal(libraryCalls, 0, '图库 ID 上一个测试已经取到，同一个页面不再取');
 });
 
+
+test('最近使用按 ID 读取当前形态和人工名，选择后仍保存原名', async () => {
+  const page = web.fakePage();
+  const {state, session, libraryPrefs} = web.core();
+  session.token = 'a'; libraryId = 'A';
+  const base = {id: 'base', name: '自取的名字'}, guard = {id: 'guard', name: '合成角色', name_disambiguation: {qualifier: '近卫'}};
+  Object.assign(state, {chars: [base], charMap: new Map([[base.id, base]])});
+  const recent = libraryPrefs('A');
+  recent.set('picks', [base, guard].map(({id}) => ({id, name: '旧名字'})));
+  const reads = [], fetchOther = globalThis.fetch;
+  globalThis.fetch = async (url, opts) => {
+    if (!url.startsWith('/api/characters?')) return fetchOther(url, opts);
+    reads.push(new URL(url, 'http://localhost').searchParams.get('id'));
+    return {status: 200, ok: true, json: async () => [guard]};
+  };
+  const palette = await web.load('ui/palette.js');
+  palette.wirePalette();
+  let picked = null;
+  await palette.openPicker({jump: true, pick: e => { picked = e; }});
+  assert.deepEqual(reads, [guard.id]);
+  assert.match(page.el('pickerResults').innerHTML, /自取的名字.*合成角色（近卫）/s);
+  assert.doesNotMatch(page.el('pickerResults').innerHTML, /旧名字/);
+  const key = key => page.el('pickerSearch').listeners.keydown[0]({key, preventDefault() {}, isComposing: false, keyCode: 13});
+  key('ArrowDown');
+  assert.match(page.el('pickerFoot').innerHTML, /合成角色（近卫）/);
+  key('Enter'); await tick();
+  assert.equal(picked.id, guard.id);
+  assert.deepEqual(recent.get('picks', [])[0], {id: guard.id, name: guard.name});
+});

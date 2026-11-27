@@ -6,8 +6,8 @@ import {exclusive} from '../core/edits.js';
 import {esc, number} from '../core/format.js';
 import {t, tb} from '../core/i18n.js';
 import {composing, onTyped} from '../core/keys.js';
-import {workLabel} from '../core/labels.js';
-import {refreshMeta} from '../core/meta.js';
+import {roleName, workLabel} from '../core/labels.js';
+import {fetchChar, refreshMeta} from '../core/meta.js';
 import {poolIs} from '../core/pages.js';
 import {libraryPrefs, prefs} from '../core/prefs.js';
 import {charRoute, go, replaceRoute} from '../core/route.js';
@@ -65,7 +65,7 @@ async function paletteSearch() {
       if (wd.length) sections.push({label: t('采纳 WD 通用标签'), items: wd.filter(tag => !known.has(tag)).slice(0, 8).map(tag => ({tag, name: tag, hint: t('机器词表，采纳后成为你的标签')}))});
       if (!known.has(q) && !wd.includes(q)) sections.push({label: '', items: [{tag: q, name: q, create: q, hint: t('新建标签')}]});
     }
-  } else if (p.items) sections = [{label: '', items: p.items.filter(e => !q || e.name.toLowerCase().includes(q.toLowerCase()))}];
+  } else if (p.items) sections = [{label: '', items: p.items.filter(e => !q || roleName(e).toLowerCase().includes(q.toLowerCase()))}];
   else if (q) {
     let list; try { list = await api('/api/entities?q=' + encodeURIComponent(q)); } catch (e) { if (gen === p.generation && palette === p) renderPalette([{label: t('本地角色'), items: [], note: readError(e)}], q); return; }
     if (gen !== p.generation || palette !== p) return;   // 换了一次搜索，或面板已经关了
@@ -98,7 +98,13 @@ async function paletteSearch() {
     }
     const seen = new Set(sections.flatMap(s => s.items.map(e => e.id)));
     const recent = p.recent.get('picks', []).filter(e => !seen.has(e.id) && !(p.exclude || []).includes(e.id));
-    if (recent.length) sections.push({label: t('最近使用'), items: recent}); recent.forEach(e => seen.add(e.id));
+    if (recent.length) {
+      // 最近记录只存 ID 和原名。先取当前目录，目录外的零张角色按 ID 读取现名与限定词。
+      const items = await Promise.all(recent.map(e => state.charMap.get(e.id) || fetchChar(e.id).catch(() => e)));
+      if (gen !== p.generation || palette !== p) return;
+      sections.push({label: t('最近使用'), items: items.filter(Boolean)});
+      recent.forEach(e => seen.add(e.id));
+    }
     const top = state.chars.filter(e => !seen.has(e.id) && !(p.exclude || []).includes(e.id)).slice(0, 8);
     if (top.length) sections.push({label: t('常用'), items: top});
   }
@@ -127,7 +133,8 @@ function highlight() {
   const p = palette; if (!p) return;
   pickerNav.mark();
   const e = p.list[pickerNav.index], chosen = p.multi ? finalList(e, p.touched) : e ? [e] : [];
-  const sentence = chosen.length ? (p.sentence ? p.sentence({...chosen[0], name: chosen.map(x => x.name).join(t('、'))}) : chosen.map(x => x.name).join(t('、'))) : '';
+  const names = chosen.map(roleName).join(t('、'));
+  const sentence = chosen.length && p.sentence ? p.sentence({...chosen[0], name: names}) : names;
   $('pickerFoot').innerHTML = chosen.length ? `<kbd>↵</kbd> ${esc(sentence)}${p.multi ? `<span class="palette-tip"><kbd>⇧↵</kbd> ${p.staged.length ? t('继续加') : t('多选')}</span>` : ''}` : `<span>${esc(p.title || '')}</span>`;
 }
 // 暂存的角色加上高亮的那个（除非它已经暂存了）。
@@ -152,7 +159,10 @@ function renderSubject(opts) {
 function renderStaged() {
   const p = palette, box = $('pickerStaged');
   box.hidden = !p?.staged.length;
-  box.innerHTML = (p?.staged || []).map((e, i) => `<button class="staged-chip" data-unstage="${i}" title="${t('移除')}">${esc(e.create ? t('新建「{name}」', {name: e.name}) : e.name)} ×</button>`).join('');
+  box.innerHTML = (p?.staged || []).map((e, i) => {
+    const label = e.create ? t('新建「{name}」', {name: e.name}) : roleName(e);
+    return `<button class="staged-chip" data-unstage="${i}" title="${t('移除')}">${esc(label)} ×</button>`;
+  }).join('');
 }
 // 导出给样式清单页调用（tools/styleguide/live.js，#352）：改名或改参数时，tools/check_styleguide.py 会报出来。
 export function stage(e) {
@@ -190,8 +200,8 @@ async function choose(i, more = false, explicit = false) {
   palette = null; closeModal($('picker')); p.pick(entity);
 }
 export function mergeCharacter(c) {
-  openPicker({title: t('把 {name} 合并到…', {name: c.name}), placeholder: t('输入同一个人的另一个角色'), jump: true, exclude: [c.id],
-    sentence: e => t('把 {name} 并入 {target}：图、人工结论、造型和别名都过去', {name: c.name, target: e.name}),
+  openPicker({title: t('把 {name} 合并到…', {name: roleName(c)}), placeholder: t('输入同一个人的另一个角色'), jump: true, exclude: [c.id],
+    sentence: e => t('把 {name} 并入 {target}：图、人工结论、造型和别名都过去', {name: roleName(c), target: e.name}),
     pick: async e => {
       try { const r = await post('/api/merge', {source: c.id, target: e.id}); written(r.undo); await refreshMeta(); go(charRoute(e.id)); }
       catch (err) { toast(err.message); }

@@ -16,7 +16,7 @@ import {CARD_MAX, doubtAnswer, doubtCards, doubtLater, loadDoubts, tally} from '
 import {edits, exclusive} from '../core/edits.js';
 import {coverUrl, number} from '../core/format.js';
 import {t} from '../core/i18n.js';
-import {avatarOf} from '../core/labels.js';
+import {avatarOf, roleName} from '../core/labels.js';
 import {refreshMeta} from '../core/meta.js';
 import {implement, onPage} from '../core/pages.js';
 import {DOUBT_POOL} from '../core/rail.js';
@@ -55,24 +55,24 @@ const CARD = tpl`<section class="group tidy-group doubt-card">
 
 // 角色的圆头像。
 const face = (img, c) => attr(img, 'src', coverUrl(avatarOf(c.id)));
-const nameLink = c => { const a = make('a', '', c.name); a.href = charHash(c.id); return a; };
+const nameLink = (c, name) => { const a = make('a', '', name); a.href = charHash(c.id); return a; };
 const samePair = (a, b) => (a.a.id === b.a.id && a.b.id === b.b.id) || (a.a.id === b.b.id && a.b.id === b.a.id);
 
 // 一张卡：卡头两个圆头像、「是 A 还是 B？」和张数；下面一排方图；最下面是回答。
 function doubtCard(page, c) {
   const s = page.scope.child('doubt'), {el, refs} = CARD();
-  let current = c;
+  let current = c, aName, bName;
   const none = ({kept}) => !kept.length, act = how => off => page.answer(current, how, off);
   // 卡上有 A、B 两个人：图上的提示写明是 A。
   const judge = judgeCard({scope: s, look: 'strip', max: CARD_MAX, shrink: true,
-    tip: {off: () => t('点一下：不是 {name}', {name: current.a.name}), on: () => t('点一下：改回「是 {name}」', {name: current.a.name})},
+    tip: {off: () => t('点一下：不是 {name}', {name: aName}), on: () => t('点一下：改回「是 {name}」', {name: aName})},
     onOff: off => page.off.set(current.key, off),
     actions: [
       // 全部点掉以后没有「其余」：写回「是 A」，灰掉（只剩「点掉的是…」和整张卡的回答能点）。
-      {key: 'a', label: ({k, kept}) => k && kept.length ? t('其余 {n} 张是 {name}', {n: number(kept.length), name: current.a.name}) : t('是 {name}', {name: current.a.name}),
-        primary: true, disabled: none, title: ({k, kept}) => k && kept.length ? t('点掉的记成不是 {name}', {name: current.a.name}) : '', run: act('a')},
-      {key: 'b', label: () => t('是 {name}', {name: current.b.name}), title: ({n}) => t('{n} 张都记成 {name}', {n: number(n), name: current.b.name}), run: act('b')},
-      {key: 'none', label: t('都不是', {context: 'pair'}), title: () => t('{a}、{b} 都记成不是', {a: current.a.name, b: current.b.name}), run: act('none')},
+      {key: 'a', label: ({k, kept}) => k && kept.length ? t('其余 {n} 张是 {name}', {n: number(kept.length), name: aName}) : t('是 {name}', {name: aName}),
+        primary: true, disabled: none, title: ({k, kept}) => k && kept.length ? t('点掉的记成不是 {name}', {name: aName}) : '', run: act('a')},
+      {key: 'b', label: () => t('是 {name}', {name: bName}), title: ({n}) => t('{n} 张都记成 {name}', {n: number(n), name: bName}), run: act('b')},
+      {key: 'none', label: t('都不是', {context: 'pair'}), title: () => t('{a}、{b} 都记成不是', {a: aName, b: bName}), run: act('none')},
       {key: 'other', label: t('点掉的是…'), when: ({k}) => k > 0, run: off => page.other(current, off)},
       {key: 'pair', label: t('整对处理'), run: () => page.pair(current)},
       {key: 'later', label: t('以后再说'), quiet: true, run: () => page.later(current)},
@@ -80,11 +80,11 @@ function doubtCard(page, c) {
   refs.tiles.replaceWith(judge.el); refs.acts.append(judge.acts);
   setPeekList(el, () => current.items.map(x => x.uuid));
   const update = x => {
-    current = x;
+    current = x; aName = roleName(x.a); bName = roleName(x.b);
     attr(el, 'data-key', x.key);
     face(refs.faceA, x.a); face(refs.faceB, x.b);
     // 问句里的两个名字是去角色页的链接：只在这一对变了时重画，焦点在链接上时不丢。
-    refill(refs.q, `${x.a.id}|${x.a.name}|${x.b.id}|${x.b.name}`, () => [rich(t('是 {a} 还是 {b}？'), {a: nameLink(x.a), b: nameLink(x.b)})]);
+    refill(refs.q, `${x.a.id}|${aName}|${x.b.id}|${bName}`, () => [rich(t('是 {a} 还是 {b}？'), {a: nameLink(x.a, aName), b: nameLink(x.b, bName)})]);
     text(refs.meta, x.parts > 1 ? t('{n} 张 · 这一对共 {total} 张', {n: number(x.items.length), total: number(x.total)}) : t('{n} 张', {n: number(x.items.length)}));
     judge.update(x.items, {off: page.off.get(x.key) || new Set()});
   };
@@ -162,7 +162,7 @@ function doubtsView(scope) {
   page.other = (c, off) => {
     const ids = c.items.filter(x => off.has(x.uuid)).map(x => x.uuid);
     if (!ids.length || page.busy.has(c.key) || waiting()) return;
-    pickFor(scope, {ids, exclude: [c.a.id], sentence: e => t('把 {n} 张从 {from} 换成 {name}', {n: number(ids.length), from: c.a.name, name: e.name}),
+    pickFor(scope, {ids, exclude: [c.a.id], sentence: e => t('把 {n} 张从 {from} 换成 {name}', {n: number(ids.length), from: roleName(c.a), name: e.name}),
       still: () => onPage(state.route, 'doubts') && page.cards.some(x => x.key === c.key),
       pick: e => write(c, doubtAnswer(c, 'other', new Set(ids), e.id), ids)}, page.pick);
   };

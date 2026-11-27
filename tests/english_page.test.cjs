@@ -6,6 +6,12 @@ const web = require('./web.cjs');
 web.language('en');
 before(web.ready);
 
+test('role labels use English punctuation and preserve manual or unqualified names', async () => {
+  const {roleName} = await web.load('core/labels.js');
+  assert.equal(roleName({name: 'Amiya', name_disambiguation: {qualifier: 'Guard'}}), 'Amiya (Guard)');
+  assert.equal(roleName({name: 'My Amiya'}), 'My Amiya');
+});
+
 test('numbers and dates follow Intl', () => {
   const {number, dateText, monthText, I18N} = web.core();
   assert.equal(I18N.language, 'en');

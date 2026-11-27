@@ -7,7 +7,7 @@
 import {loadCharacter, peopleOf} from '../core/character.js';
 import {coverUrl, imageUrl, localDate, number} from '../core/format.js';
 import {t} from '../core/i18n.js';
-import {nameTip, workLabel} from '../core/labels.js';
+import {nameTip, roleName, workLabel} from '../core/labels.js';
 import {onMeta} from '../core/meta.js';
 import {implement, narrowed} from '../core/pages.js';
 import {go} from '../core/route.js';
@@ -93,7 +93,7 @@ function charHero(scope) {
   function update(r, char) {
     route = r; c = char;
     const tagOnly = c.mascot || c.group_tag;   // 只当标签：没有角色归属需要复核
-    text(refs.name, c.name); attr(refs.name, 'title', nameTip(c));
+    text(refs.name, roleName(c)); attr(refs.name, 'title', nameTip(c));
     attr(refs.avatar, 'src', coverUrl(c.cover));
     show(refs.badge, tagOnly);
     attr(refs.badge, 'title', (c.mascot_origin === 'default' ? t('老师、博士、训练员这类没有固定形象的玩家化身和吉祥物默认只当标签。') : '') +
@@ -141,7 +141,7 @@ function menuItems(c) {
 const hero = pageView(scope => charHero(scope.child('character-hero')));
 implement({character: {
   // 页头：小标题（名字和张数），横幅上的名字看得见时藏着。
-  head: () => ({title: state.char?.name || '', sub: state.char ? t('{n} 张', {n: number(state.char.count)}) : ''}),
+  head: () => ({title: roleName(state.char), sub: state.char ? t('{n} 张', {n: number(state.char.count)}) : ''}),
   // 刚进这一页（或横幅的作用域已经释放）才建；同一页又画一次（换造型、只看未检查……）只按新地址更新。
   gridHead: ({samePage, scope}) => {
     if (!state.char) return;

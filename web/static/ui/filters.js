@@ -5,7 +5,7 @@ import {ownConditionOf} from '../core/galleries.js';
 import {loadWorkTree} from '../core/catalog.js';
 import {dayLabel, esc, number} from '../core/format.js';
 import {I18N, t} from '../core/i18n.js';
-import {nameWithWork} from '../core/labels.js';
+import {nameWithWork, roleName} from '../core/labels.js';
 import {addCondition, conditions, count, datesLabel, dropCondition, flipCondition, kindOf, LIMIT, setDates, sole, SOURCES, validDates, valueOf, yearDates} from '../core/filters.js';
 import {go, hashFor} from '../core/route.js';
 import {api} from '../core/session.js';
@@ -29,7 +29,7 @@ export function conditionLabel(c) {
   if (kind === 'fav') return t('收藏');
   if (kind === 'source') return SOURCE_NAMES[value] || value;
   if (kind === 'utag') return '# ' + value;
-  if (kind === 'char') { const found = state.charMap.get(value); if (found) return found.name; }
+  if (kind === 'char') { const found = state.charMap.get(value); if (found) return roleName(found); }
   if (!names.has(c)) lookUp(c);
   return names.get(c) || (kind === 'tag' ? tagText(value) : value);
 }
@@ -47,7 +47,7 @@ async function lookUp(c) {
     if (kind === 'tag' && I18N.language === 'zh-CN') name = (await api('/api/general-tags?' + new URLSearchParams({q: value, format: 'menu'}))).find(x => x.tag === value)?.zh || '';
     else if (kind === 'work') { if (!state.workTree) await loadWorkTree(); name = state.workTree.find(w => w.id === value)?.name || ''; }
     else if (kind === 'artist') name = (await api('/api/artist?' + new URLSearchParams({id: value}))).name || t('未知画师');
-    else if (kind === 'char') { const found = (await api('/api/characters?' + new URLSearchParams({id: value})))[0]; if (found) fetched.set(c, found); name = found?.name || ''; }
+    else if (kind === 'char') { const found = (await api('/api/characters?' + new URLSearchParams({id: value})))[0]; if (found) fetched.set(c, found); name = roleName(found); }
   } catch { name = ''; }
   names.set(c, name);
   for (const a of document.querySelectorAll('[data-cond]')) if (a.dataset.cond === c) { a.textContent = pillText(c, a.dataset.neg === '1'); a.title = pillTitle(c, a.dataset.neg === '1'); }
@@ -155,8 +155,8 @@ async function candidates(q) {
     // 中文页面上画面标签显示中文名（#446），后面小字是原来的标签。
     const zh = x => I18N.language === 'zh-CN' && x.zh;
     out.push(...tags.map(x => ({section: 'tag', label: zh(x) || tagText(x.tag), detail: zh(x) ? tagText(x.tag) : '', cond: `tag:${x.tag}`})));
-    const chars = state.chars.filter(c => hit(c.name) || (c.tag && hit(c.tag)));
-    out.push(...chars.map(c => ({section: 'char', label: c.name, html: charOption(c), detail: number(c.count), cond: `char:${c.id}`})));
+    const chars = state.chars.filter(c => hit(roleName(c)) || (c.tag && hit(c.tag)));
+    out.push(...chars.map(c => ({section: 'char', label: roleName(c), html: charOption(c), detail: number(c.count), cond: `char:${c.id}`})));
     if (!state.workTree) await loadWorkTree().catch(() => {});
     out.push(...(state.workTree || []).filter(w => hit(w.name)).map(w => ({section: 'work', label: w.name, detail: w.qualifier || '', cond: `work:${w.id}`})));
     out.push(...artists.map(a => ({section: 'artist', label: a.name, detail: number(a.count), cond: `artist:${a.id}`})));

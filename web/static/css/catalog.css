@@ -80,6 +80,8 @@
 .cat-ring>b,.cat-person>b{max-width:100%;overflow:hidden;font-size:var(--fs-12);font-weight:var(--fw-600);white-space:nowrap;text-overflow:ellipsis}
 .cat-ring>small,.cat-person>small{max-width:100%;overflow:hidden;color:var(--muted);font-size:var(--fs-11);white-space:nowrap;text-overflow:ellipsis}
 .cat-ring>small:empty{display:none}
+.cat-ring,.cat-person{align-content:start}
+.cat-ring>small[data-ref="qualifier"],.cat-person>small[data-ref="qualifier"]{color:var(--ink);white-space:normal;overflow-wrap:anywhere}
 
 /* ---- 圆头像卡（常见一档、画师）和芯片（偶尔一档） ---- */
 .cat-people{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:var(--space-20) var(--space-12)}

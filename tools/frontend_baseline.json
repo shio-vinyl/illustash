@@ -31,7 +31,7 @@
    "core/meta.js": 1,
    "core/route.js": 1,
    "ui/catalog.js": 10,
-   "ui/detail.js": 2,
+   "ui/detail.js": 1,
    "ui/dom.js": 1,
    "ui/grid.js": 3,
    "ui/guide.js": 4,

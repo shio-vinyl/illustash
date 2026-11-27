@@ -5,6 +5,7 @@
 // - 卡片和大图底栏的点击都交给 act(名字, data-*, 事件, 详情)：同一个按钮在两处做同一件事。
 // - 大图的函数照旧从这里导出（ui/grid.js、shell.js 等从这里导入）；它们的实现在 ui/viewer.js。
 import {t} from '../core/i18n.js';
+import {catalogRole, roleName} from '../core/labels.js';
 import {number} from '../core/format.js';
 import {leaves} from '../core/filters.js';
 import {questionBody} from '../core/ask.js';
@@ -124,7 +125,7 @@ function addOne(d, ident) {
 }
 function swapOne(d, ident, from) {
   const old = d.memberships.find(m => m.id === from);
-  openPicker({title: t('换成…'), sentence: e => t('把这张从 {from} 换成 {name}', {from: old.name, name: e.name}), exclude: d.memberships.map(m => m.id), suggest: {ids: [ident]}, multi: true,
+  openPicker({title: t('换成…'), sentence: e => t('把这张从 {from} 换成 {name}', {from: roleName(catalogRole(old)), name: e.name}), exclude: d.memberships.map(m => m.id), suggest: {ids: [ident]}, multi: true,
     pick: list => mutate('/api/reassign', {ids: [ident], old: from, new: newIds(list)}, state.route.char === from)});
 }
 async function addVariant(ident, charId) {
@@ -158,7 +159,8 @@ export async function singleAction(kind) {
   if (kind === 'remove') {
     if (r.char) mutate('/api/change', {ids: [item.uuid], action: 'rejected', entity: r.char}, true);
     else if (item.memberships.length === 1) mutate('/api/change', {ids: [item.uuid], action: 'rejected', entity: item.memberships[0].id}, false);
-    else if (item.memberships.length) openPicker({title: t('这张不是…'), items: item.memberships, subject: [item.uuid], sentence: e => t('把 {name} 从这张移出', {name: e.name}), pick: e => mutate('/api/change', {ids: [item.uuid], action: 'rejected', entity: e.id}, false)});
+    else if (item.memberships.length) openPicker({title: t('这张不是…'), items: item.memberships.map(catalogRole), subject: [item.uuid],
+      sentence: e => t('把 {name} 从这张移出', {name: e.name}), pick: e => mutate('/api/change', {ids: [item.uuid], action: 'rejected', entity: e.id}, false)});
   } else if (kind === 'tag') {
     const d = state.detail?.uuid === item.uuid ? state.detail : null;
     openTagPicker(() => ({ids: [item.uuid]}), 1, [{...item, user_tags: d?.user_tags || item.user_tags}], () => false);

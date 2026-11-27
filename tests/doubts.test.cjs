@@ -92,6 +92,23 @@ test('卡头写「是 A 还是 B？」和张数；点掉一张，主按钮变「
   assert.match(box.textContent, /没有可能认错的图/);
 });
 
+test('同作品重名的问句和作答选项显示形态，重读后随限定词更新，作答仍提交身份 ID', async () => {
+  const a = {...A, name: '同名', name_disambiguation: {qualifier: '基本形态'}};
+  const b = {...B, name: '同名', name_disambiguation: {qualifier: '近卫'}};
+  fetchImpl = serve; state.pools = {ambiguous: 1};
+  data = [{a, b, count: 1, items: ['u']}];
+  await open();
+  const [card] = cards();
+  assert.match(card.textContent, /是 同名（基本形态） 还是 同名（近卫）？/);
+  assert.equal(btn(card, 'b').textContent, '是 同名（近卫）');
+  data = [{...data[0], b: {...b, name_disambiguation: {qualifier: '医疗'}}}];
+  await pages.PAGES.doubts.refresh('sync');
+  assert.equal(cards()[0], card);
+  assert.match(card.textContent, /是 同名（基本形态） 还是 同名（医疗）？/);
+  btn(card, 'b').dispatchEvent(dom.event('click')); await settle();
+  assert.equal(posts[0][1].switch, b.id);
+});
+
 test('「是 B」「都不是」各答整张卡；「以后再说」之后这张卡不在了', async () => {
   data = [{a: A, b: B, count: 2, items: ['u', 'v']}, {a: A, b: C, count: 1, items: ['w']}, {a: B, b: C, count: 1, items: ['z']}];
   fetchImpl = serve; state.pools = {ambiguous: 4};

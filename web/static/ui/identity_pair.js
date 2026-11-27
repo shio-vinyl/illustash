@@ -1,4 +1,5 @@
 // 身份整理和可能认错共用的整对处理。两个答案都是普通按钮，初始焦点在关闭按钮。
+import {roleName} from '../core/labels.js';
 import {t} from '../core/i18n.js';
 import {openDialog} from './dialog.js';
 import {text} from './el.js';
@@ -23,7 +24,7 @@ export function chooseIdentityPair(scope, pair) {
     const note = d.querySelector('.dialog-message span'), swap = d.querySelector('[data-swap]');
     const update = () => {
       const [base, child] = parent === 'a' ? [pair.a, pair.b] : [pair.b, pair.a];
-      text(note, duplicate ? t('合并后保留 {name}。', {name: base.name}) : t('合并后，{child} 是 {name} 的一个造型。', {child: child.name, name: base.name}));
+      text(note, duplicate ? t('合并后保留 {name}。', {name: roleName(base)}) : t('合并后，{child} 是 {name} 的一个造型。', {child: roleName(child), name: roleName(base)}));
     };
     text(swap, duplicate ? t('交换保留项') : t('交换本体'));
     swap.addEventListener('click', () => { parent = parent === 'a' ? 'b' : 'a'; update(); });

@@ -3,6 +3,7 @@
 // 一次点击决定一对；每个决定都是一条可撤销的关系，原始记录从不移动。判过的那对原地收起，活页条上的数字跟着滚下去；
 // 之后按现在显示的对数从头重读，撤销的那对回到原处，点过「再显示一些」的人不被带回前 12 对（#386 的 2-36）。
 // 同一路由上的几次重读只认最后发出的那次。
+import {roleName} from '../core/labels.js';
 import {edits, exclusive} from '../core/edits.js';
 import {number} from '../core/format.js';
 import {t} from '../core/i18n.js';
@@ -51,11 +52,11 @@ function pairCard(page, x) {
   const buttons = [...acts.el.querySelectorAll('[data-act]')];
   let current = x;
   setPeekList(p.a, () => current.a.samples); setPeekList(p.b, () => current.b.samples);
-  const side = (name, n, c) => { text(name, c.name); attr(name, 'href', charHash(c.id)); attr(name, 'title', c.tag || c.name); text(n, t('{n} 张', {n: number(c.count)})); };
+  const side = (name, n, c) => { text(name, roleName(c)); attr(name, 'href', charHash(c.id)); attr(name, 'title', c.tag || c.name); text(n, t('{n} 张', {n: number(c.count)})); };
   const update = y => {
     current = y;
     attr(card.el, 'data-pair', pairKey(y));
-    text(title.refs.a, y.a.name); text(title.refs.b, y.b.name);
+    text(title.refs.a, roleName(y.a)); text(title.refs.b, roleName(y.b));
     text(r.q, identityEvidence(y));
     show(acts.el, !y.catalog_kind);
     show(pairAct.el, !!y.catalog_kind);

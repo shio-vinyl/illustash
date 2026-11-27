@@ -1,4 +1,5 @@
 // 编辑资料中可以拆开词表关系，或解除一对角色的「不再追问」偏好。
+import {roleName} from '../core/labels.js';
 import {readProfile, resumePair, splitCatalog} from '../core/character.js';
 import {exclusive} from '../core/edits.js';
 import {t} from '../core/i18n.js';
@@ -10,7 +11,7 @@ const SECTION = tpl`<div class="field"><span data-ref="label"></span><div class=
 const CATALOG = tpl`<div class="link-row"><span><b data-ref="name"></b><small data-ref="note"></small>
   <small data-ref="tags"><code data-ref="from"></code> → <code data-ref="to"></code></small></span>
   <button type="button" class="quiet" data-ref="split" title="拆开后角色词表不会再合并这一对" data-t-attr="title" data-t>拆开</button></div>`;
-const APART = tpl`<div class="link-row"><span><a data-ref="a" data-close></a> ↔ <a data-ref="b" data-close></a></span>
+const APART = tpl`<div class="link-row"><span><span><a data-ref="a" data-close></a> ↔ <a data-ref="b" data-close></a></span></span>
   <button type="button" class="quiet" data-ref="resume" data-t>允许再次询问</button></div>`;
 
 export function profileDecisions(container, initial, refresh) {
@@ -46,7 +47,7 @@ export function profileDecisions(container, initial, refresh) {
     const {el, refs} = APART();
     for (const side of ['a', 'b']) {
       const role = pair[side];
-      text(refs[side], role.name);
+      text(refs[side], roleName(role));
       attr(refs[side], 'href', role.family ? charHash(role.family) : null);
     }
     refs.resume.onclick = action(refs.resume, () => resumePair(pair));

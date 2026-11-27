@@ -173,10 +173,10 @@ fn disambiguate(catalog: &Catalog, roles: &[Role], requested: &HashSet<&str>, ou
     let mut used = HashSet::new();
     for (role, mut label) in labels {
         if !used.insert(label.clone()) {
-            let original = label;
             for index in 2.. {
-                label = format!("{original} {index}");
-                if !reserved.contains(&label) && used.insert(label.clone()) {
+                let candidate = format!("{label} {index}");
+                if !reserved.contains(&candidate) && used.insert(candidate.clone()) {
+                    label = candidate;
                     break;
                 }
             }

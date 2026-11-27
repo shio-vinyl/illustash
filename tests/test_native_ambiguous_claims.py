@@ -322,10 +322,12 @@ class NativeAmbiguousClaimsTest(unittest.TestCase):
         with self.connect() as c, c:
             self.seed(c, 'front', '2026-01-01')
             self.seed(c, 'back', '2026-01-02', reverse=True)
-        for left, right, form in [
-            ('firefly_(honkai:_star_rail)', 'sam_(honkai:_star_rail)', True),
-            ('sailor_moon', 'tsukino_usagi', True),
-            ('kujo_jotaro', 'star_platinum', False),
+        for left, right, relation in [
+            ('firefly_(honkai:_star_rail)', 'sam_(honkai:_star_rail)', 'form'),
+            ('sailor_moon', 'tsukino_usagi', 'form'),
+            ('hoshino_ai', 'hoshino_ai_(oshi_no_ko)', 'unknown'),
+            ('shorekeeper_(wuthering_waves)', 'the_shorekeeper_(wuthering_waves)', 'unknown'),
+            ('kujo_jotaro', 'star_platinum', None),
         ]:
             with self.subTest(left=left, right=right):
                 with self.connect() as c, c:
@@ -333,8 +335,8 @@ class NativeAmbiguousClaimsTest(unittest.TestCase):
                     c.executemany("INSERT INTO term_links(system,key,term_id,source) "
                                   "SELECT 'danbooru',?,id,'reviewed-form-fixture' FROM terms WHERE key=?",
                                   [(left, self.alice), (right, self.bob)])
-                if form:
-                    self.assert_catalog_pair()
+                if relation:
+                    self.assert_catalog_pair(relation)
                 else:
                     self.assertEqual(self.read('/api/identity/queue')['items'], [])
 
@@ -367,12 +369,12 @@ class NativeAmbiguousClaimsTest(unittest.TestCase):
         self.read('/api/undo', {'id': undo['id']})
         self.assert_catalog_pair()
 
-    def assert_catalog_pair(self):
+    def assert_catalog_pair(self, relation='form'):
         result = self.read('/api/identity/queue')
         self.assertEqual(result['total'], 1)
         [item] = result['items']
         self.assertEqual({item['a']['id'], item['b']['id']}, {self.alice, self.bob})
-        self.assertEqual(item['catalog_kind'], 'form')
+        self.assertEqual(item['catalog_kind'], relation)
 
     def test_same_work_role_labels_after_keep_apart(self):
         # 同一个 Bangumi 角色的两种目录形态，使用合成图片和离线选名数据。

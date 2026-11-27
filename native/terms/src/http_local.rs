@@ -157,7 +157,8 @@ pub(crate) fn suggest(context: &LibraryContext, body: &Json) -> Result<Json> {
         unrejected = unrejected("v")
     );
     let selected = rows(&tx, &sql, &[])?;
-    let result = Json::Array(selected.into_iter().map(|r| display(&tx, r)).collect::<Result<_>>()?);
+    let mut result = selected.into_iter().map(|r| display(&tx, r)).collect::<Result<Vec<_>>>()?;
+    crate::http_role_labels::RoleLabels::rows(&tx, &mut result)?;
     tx.commit()?;
-    Ok(result)
+    Ok(Json::Array(result))
 }

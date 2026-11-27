@@ -116,7 +116,7 @@ CREATE TABLE names(
 5. 悬停提示里显示链接的原文（D 站 tag），和现在一样。
 6. 名字不要求唯一。跨作品同名时显示作品，如「明里 · 蔚蓝档案」。同作品的独立角色使用相同自动中文名时，在自动名称旁显示形态限定，如「阿米娅（近卫）」。优先用形态短词的译名，缺少译名时用可读限定词，人工名称原样显示。其他语言页面在可见名称仍相同时显示相应的限定。限定只用于展示，名称、别名、搜索索引和身份仍用原来的数据。
 
-原生 `GET /api/characters`（含摘要和按 ID 请求）、`GET /api/entities` 的本地结果，以及 `GET /api/identity/queue`、`GET /api/ambiguous` 和角色资料的 `kept_apart` 中的角色端点，按需附上 `name_disambiguation`，其中 `qualifier` 是按页面语言生成的限定词，`tag` 是原始识别标签。`name` 仍是原显示名。重名以已有作品 ID 为准，缺少作品归属时按可验证的作品标签匹配本地作品，或按词表中的作品和形态关联比较。搜索结果、分级和队列分页都共用完整的重名范围。
+原生 `GET /api/characters`（含摘要和按 ID 请求）、`GET /api/entities` 的本地结果、`POST /api/suggest` 的角色建议，以及 `GET /api/identity/queue`、`GET /api/ambiguous` 和角色资料的 `kept_apart` 中的角色端点，按需附上 `name_disambiguation`，其中 `qualifier` 是按页面语言生成的限定词，`tag` 是原始识别标签。`name` 仍是原显示名。重名以已有作品 ID 为准，缺少作品归属时按可验证的作品标签匹配本地作品，或按词表中的作品和形态关联比较。搜索结果、分级和队列分页都共用完整的重名范围。
 
 ### 搜索
 

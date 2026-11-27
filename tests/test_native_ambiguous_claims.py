@@ -429,6 +429,7 @@ class NativeAmbiguousClaimsTest(unittest.TestCase):
         find = urlencode({'q': name})
         self.assertEqual(labels(self.read('/api/entities?' + find)), expected)
         self.assertEqual(labels(self.read('/api/entities?q=guard')), {guard: expected[guard]})
+        self.assertEqual(labels(self.read('/api/suggest', {'ids': ['front', 'back']})), expected)
         only_guard = '/api/characters?' + urlencode({'id': guard})
         self.assertEqual(labels(self.read(only_guard)), {guard: expected[guard]})
         en = self.read(only_guard, headers={'X-Illustash-Language': 'en-US'})

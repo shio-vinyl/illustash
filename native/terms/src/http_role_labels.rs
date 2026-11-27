@@ -14,7 +14,7 @@ pub(crate) struct RoleLabels(HashMap<String, Json>);
 #[derive(Hash, PartialEq, Eq)]
 enum Work {
     Local(String),
-    CatalogWork(String),
+    CatalogTag(String),
     CatalogFamily(u32),
 }
 
@@ -133,7 +133,7 @@ fn catalog_scope(
                 return Ok(Some(Work::Local(id.clone())));
             }
             if known {
-                return Ok(Some(Work::CatalogWork(work.into())));
+                return Ok(Some(Work::CatalogTag(work.into())));
             }
         }
     }

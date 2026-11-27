@@ -132,6 +132,8 @@ Python 里的词表副本仍给 NameUpdater 用，两边由测试钉住相同。
 
 `characters / entities / detail / assets / similar / suggest / index` 的实体对象附原始 `tag`，原有 `work` 不变，另附 `work_name`。角色列表及详情的 `variants` 只显示皮肤部分；完整实体名使用父角色名和皮肤名。新操作及可从历史实体 ID 还原的撤销文案使用当前显示名，原始历史文本和撤销快照不被改写。
 
+造型选名优先使用手动名称，再按来源选择中文。内置词表翻译序数衣装（`1st_costume` 显示「第一套衣装」）和能完整拆解的常见词（`winter_casual` 显示「冬季 · 便服」），显示与搜索共用规则。专有造型名可由外部模型翻译，离线使用已保存的翻译，缺少翻译时显示可读的原名。打开或切换图库时，已有造型的名称投影按当前内置规则更新。导入时判断作品后缀仍使用原有的造型词口径。
+
 ### 原生运行与恢复
 
 原生宿主直接提供 GET/POST `/api/names`、entities/works 的远程查询和 local-links 建议。启动按当前包的 names 偏好补拉，`--no-names` 禁止后台与显式刷新，仍可读取已有显示名及模型设置。名称文本查询（角色/作品远程搜索、后台补拉中文名、作品版权解析）的授权有两种来源（2026-10-06，#1）：`--names-network` 仅为本次进程授予；图库的持久授权由用户在界面上同意（`POST /api/names {"action":"network","allow":true|false}`），存在 `library.sqlite` 的 `prefs` 表 `names_network` 行（`{"granted_at":…}`），与启动偏好分开，撤销即删除该行。授权在每次请求时实时读取，撤销后运行中的任务下一次请求即被拒绝。`GET /api/names` 返回 `network:{authorized,this_run,granted_at}`。未授权的非本机请求报「显示名联网尚未授权」（HTTP 502），前端据此显示授权入口，其他失败显示具体原因。保存 key 和修改启动偏好不授予网络。模型 HTTP 401/403 等以本地安全错误报告，不回显服务响应、凭据或请求头。模型设置的存储和回退见下文。

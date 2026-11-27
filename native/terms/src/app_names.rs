@@ -2976,6 +2976,72 @@ mod sources_tests {
     }
 
     #[test]
+    fn appearance_names_use_model_only_for_unknown_variants_and_keep_the_offline_result() {
+        use crate::character_entities::{create, New};
+
+        let (p, lib) = (Providers::start(), Library::load());
+        let mut c = lib.db();
+        let parent: String = c
+            .query_row(
+                "SELECT t.key FROM terms t JOIN term_links l ON l.term_id=t.id
+                 WHERE l.system='danbooru' AND l.key='alice' AND l.current=1",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        let tx = c.transaction().unwrap();
+        crate::schema::begin_writing(&tx).unwrap();
+        for variant in ["winter_casual", "lantern_carousel"] {
+            create(
+                &tx,
+                &New { id: variant, kind: "skin", parent_id: Some(&parent), variant, ..New::default() },
+                "import",
+            )
+            .unwrap();
+            tx.execute(
+                "INSERT INTO term_links(system,key,term_id,source) SELECT 'danbooru',key,id,'import' FROM terms WHERE key=?",
+                [variant],
+            )
+            .unwrap();
+        }
+        crate::schema::commit_writing(tx).unwrap();
+
+        let display = |c: &Connection, variant: &str| -> (String, String) {
+            c.query_row(
+                "SELECT name,name_source FROM term_name_display WHERE entity=? AND skin_only=1",
+                [variant],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap()
+        };
+        assert_eq!(display(&c, "winter_casual"), pair("冬季 · 便服", "builtin"));
+        assert_eq!(display(&c, "lantern_carousel"), pair("Lantern Carousel", "readable"));
+        lib.configure_model(&p);
+        p.set(|a| a.translation = json!({"zh":"灯笼旋转木马"}));
+        lib.run(&p, Some("lantern_carousel"), false).unwrap();
+        let asked = p.model_calls();
+        assert_eq!(asked.len(), 1);
+        let content: Value = serde_json::from_str(asked[0]["messages"][1]["content"].as_str().unwrap()).unwrap();
+        assert_eq!(content["tag"], "lantern_carousel");
+        assert_eq!(display(&c, "winter_casual"), pair("冬季 · 便服", "builtin"));
+        assert_eq!(display(&c, "lantern_carousel"), pair("灯笼旋转木马", "model"));
+
+        let tx = c.transaction().unwrap();
+        crate::schema::begin_writing(&tx).unwrap();
+        tx.execute("DELETE FROM term_key_names WHERE kind='skin' AND source='model'", []).unwrap();
+        crate::schema::commit_writing(tx).unwrap();
+        assert_eq!(display(&c, "lantern_carousel"), pair("Lantern Carousel", "readable"));
+        p.set(|a| a.down = true);
+        let mut source =
+            Source::new(lib.root.join("library.sqlite"), Arc::new(AtomicBool::new(false)), false, false).unwrap();
+        lookup(&mut c, &mut source, &[], &Job::new("skin", "lantern_carousel", ""), None, false, &Cell::new(false))
+            .unwrap();
+        assert_eq!(p.model_calls().len(), 1);
+        assert_eq!(display(&c, "lantern_carousel"), pair("灯笼旋转木马", "model"));
+        assert!(lib.hits("灯笼旋转木马").contains("alice"));
+    }
+
+    #[test]
     fn user_name_survives_provider_refresh() {
         let (p, lib) = (Providers::start(), Library::load());
         lib.put("character", "alice", "zh", "user", "人工名");

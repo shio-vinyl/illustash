@@ -103,13 +103,13 @@ const NOT_WORKS: [&str; 17] = [
     "outfit",
 ];
 
-/// 导入时不为它建作品的作品文字：人物类别（`NOT_WORKS`）、服装（`1st_costume`、`…_outfit`）、皮肤词表能整段翻译的
-/// 形态（`swimsuit`、`new_year` 等）。只看本地清单，不联网（docs/DATA_MODEL.md 第 5 节「导入」第 2 条）。
+/// 导入时不为它建作品的作品文字：人物类别（`NOT_WORKS`）、服装（`1st_costume`、`…_outfit`）或旧造型词表中
+/// 能整段匹配的形态（`swimsuit`、`new_year` 等）。
 pub fn not_work(text: &str) -> bool {
     NOT_WORKS.contains(&text)
         || text.ends_with("_costume")
         || text.ends_with("_outfit")
-        || crate::names_view::skin_zh(text).is_some()
+        || crate::names_view::costume_qualifier(text)
 }
 
 /// 只供测试：设置 `ILLUSTASH_TEST_NO_IMPORT_WORKS` 时，导入照 #296 之前的规则走：不新建作品，WD 结果建的角色不取
@@ -821,8 +821,20 @@ mod tests {
         for text in ["vtuber", "1st_costume", "2nd_outfit", "alternate_costume", "swimsuit", "new_year", "bunny_maid"] {
             assert!(not_work(text), "{text}");
         }
-        for text in ["fate", "blue_archive", "kancolle", "honkai:_star_rail", "idolmaster", "Example", "swimsuit_anime"]
-        {
+        for text in [
+            "fate",
+            "blue_archive",
+            "kancolle",
+            "honkai:_star_rail",
+            "idolmaster",
+            "Example",
+            "swimsuit_anime",
+            "summer",
+            "winter",
+            "band",
+            "racing",
+            "winter_casual",
+        ] {
             assert!(!not_work(text), "{text}");
         }
     }

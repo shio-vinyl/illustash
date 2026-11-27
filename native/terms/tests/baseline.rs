@@ -13,6 +13,8 @@
 //! 基准录在导入按 tag 后缀建作品（#296）之前：每次重放的调用都设上 `ILLUSTASH_TEST_NO_IMPORT_WORKS`（`NO_IMPORT_WORKS`），
 //! 导入照旧规则走，录下的期望不改（用户 2026-11-12 定）。新规则由它自己的测试覆盖（`character_import`、`app_create`、
 //! `app_recognition`）。
+//! 录制中的造型沿用扩充前的选名规则（#847），例如 `summer`、`winter` 和 `sleepwear`。现行名称规则由核心和
+//! 宿主的合成造型测试验收。
 //!
 //! 不并进 `tests/it/` 的合并测试二进制（#310）：下面的 `SQLITE_CONFIG_MEMSTATUS` 必须在本进程第一次用 SQLite 之前设置，
 //! 和别的测试同在一个进程里时，测试框架多线程运行、先后没有保证，谁先开了库这个设置就会失败。
@@ -36,6 +38,7 @@ static STAMP_REF: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"<stamp@(\d+)>"
 const COMPANIONS: [&str; 4] = ["", "-wal", "-shm", "-journal"];
 /// 只供测试：#296 之前的导入规则（见模块说明）。
 const NO_IMPORT_WORKS: &str = "ILLUSTASH_TEST_NO_IMPORT_WORKS";
+const LEGACY_SKIN_NAMES: &str = "ILLUSTASH_TEST_LEGACY_SKIN_NAMES";
 
 /// 一个用例的临时根目录：`@ROOT@`、`@ROOT_1@`……以及它们代表的真实目录。
 struct Roots {
@@ -237,6 +240,7 @@ impl Replay<'_> {
             .arg(path)
             .env("ILLUSTASH_TEST_KEY_COUNTER", &self.counter)
             .env(NO_IMPORT_WORKS, "1")
+            .env(LEGACY_SKIN_NAMES, "1")
             .output()
             .unwrap();
         if !done.status.success() {
@@ -310,6 +314,7 @@ impl Replay<'_> {
                 .args(&args)
                 .env("ILLUSTASH_TEST_KEY_COUNTER", &self.counter)
                 .env(NO_IMPORT_WORKS, "1")
+                .env(LEGACY_SKIN_NAMES, "1")
                 .env(VERIFY_INCREMENTAL, &self.verified)
                 .stdin(Stdio::piped())
                 .stdout(Stdio::piped())
@@ -343,6 +348,7 @@ impl Replay<'_> {
                     .args(self.historical_index.then_some("--historical-index"))
                     .env("ILLUSTASH_TEST_KEY_COUNTER", counter)
                     .env(NO_IMPORT_WORKS, "1")
+                    .env(LEGACY_SKIN_NAMES, "1")
                     .env(VERIFY_INCREMENTAL, verified)
                     .stdin(Stdio::piped())
                     .stdout(Stdio::piped())

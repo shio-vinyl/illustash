@@ -7,7 +7,7 @@
 
     {"format": "illustash-character-catalog/1", "revision": 1, "built": "2026-11-23", "sources": {…},
      "columns": ["id", "tag", "tags", "parent", "relation", "action", "variant", "bangumi", "pick", "wikidata"],
-     "characters": [[…], …], "works": [["azur_lane", 12345], …]}
+    "characters": [[…], …], "works": [["azur_lane", 12345], …], "wikidata_names": {"Q1": "…"}}
 
 - `id`：公共目录 ID，正整数，发布过的不再改、不再复用（`--previous` 读上一版沿用）；
 - `tag`：D 站规范 tag；`tags`：映射到这个角色的其他识别 tag（多是 D 站改名前的旧 tag）；
@@ -18,23 +18,25 @@
 - `bangumi`、`pick`：Bangumi 角色 ID 和取名提示（'' 用「简体中文名」，`name` 用原名，`p0`/`p1` 取「A／B」的
   第几段，前面可以带 `name:`）。名字本身不进目录，应用按 ID 在线取；
 - `wikidata`：Wikidata 条目号；
+- `wikidata_names`：可选的顶层映射，从 Wikidata 条目号到有独立中文旁证的 CC0 原标签；
 - `works`：D 站作品 tag 对应的 Bangumi 条目 ID。
 
 D 站数据（tag、别名、蕴含）是事实数据；wiki 正文、Bangumi 和 zh-tags 的内容都不进目录。
 """
 import argparse
 import collections
+from datetime import date
 import hashlib
 import itertools
 import json
 from pathlib import Path
 import sys
-import time
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from tools.character_catalog import (  # noqa: E402
-    bangumi, graph as graph_mod, match_bangumi, names as names_mod, relations, reviewed, tagparse, work as work_mod,
+    audit, bangumi, forms, graph as graph_mod, match_bangumi, names as names_mod, relations, reviewed, tagparse,
+    wikidata_labels, work as work_mod,
 )
 
 FORMAT = 'illustash-character-catalog/1'
@@ -140,7 +142,7 @@ def clear_work_conflicts(rows, matcher, parent_of, review):
     return removed
 
 
-def build(work, dump, previous=None):
+def build(work, dump, previous=None, audit_path=None):
     g, wiki = load(work)
     scope = work.scope
     alias = {r['antecedent_name']: r['consequent_name'] for r in work.danbooru('aliases_from')}
@@ -149,8 +151,9 @@ def build(work, dump, previous=None):
         for r in json.loads(line)['rows']:
             copyrights[r['name']] = r['post_count']
     zt = names_mod.zh_tags(work.cache / 'zh-tags/character.csv')
-    wd = names_mod.wikidata(work.cache / 'wikidata/p13236.json')
-    characters, subjects, links, _ = bangumi.load(dump)
+    wikidata = wikidata_labels.load(work.cache / 'wikidata/p13236.json')
+    wd = wikidata_labels.name_evidence(wikidata)
+    characters, subjects, links, archive_relations = bangumi.load(dump)
     matcher = match_bangumi.Matcher(characters, subjects, links, wiki, alias, copyrights, scope, zt, wd)
 
     # 目录对象：规范 tag → 映射到它的范围内 tag。
@@ -170,7 +173,7 @@ def build(work, dump, previous=None):
         if len(candidates) != 1 or canon in reviewed.GROUPS:
             continue
         parent, result = next(iter(candidates.items()))
-        if parent in reviewed.GROUPS or (canon, parent) in reviewed.INSTANCES:
+        if parent in reviewed.GROUPS or (canon, parent) in reviewed.INSTANCES or frozenset((canon, parent)) in reviewed.DISTINCT:
             continue
         kind = result['kind']
         paragraph = relations.first_paragraph(wiki.get(canon, {}).get('body', ''))
@@ -197,13 +200,18 @@ def build(work, dump, previous=None):
     ids, high_water = assign_ids(objects, prev)
 
     rows, stats, work_hits = [], collections.Counter(), collections.defaultdict(collections.Counter)
-    matches = {}
+    matches, work_by_tag = {}, {}
     for canon in sorted(objects, key=lambda c: ids[c]):
         tags = objects[canon]
         names = [canon, *[t for t in tags if t != canon]]
         m = matcher.match(names, review)
+        if audit_path:
+            work_by_tag[canon] = matcher.series_of(names, m['work'] if m else matcher.work_of(names))
         if m and canon not in reviewed.GROUPS:
-            matches[canon] = m
+            if m['id'] in reviewed.BANGUMI_EXCLUSIONS.get(canon, ()):
+                review.add(('禁止角色对应', canon, str(m['id'])))
+            else:
+                matches[canon] = m
     for canon in sorted(objects, key=lambda c: ids[c]):
         tags = objects[canon]
         parent = relation = action = variant = None
@@ -225,7 +233,7 @@ def build(work, dump, previous=None):
                     review.add(('分不出取哪段', canon, str(m['id'])))
                     bid = pick = None
             stats['bangumi:' + m['how']] += 1
-            if m['work']:
+            if m['work'] and m['how'] != 'series':
                 # 只用标题和作品别名能够独立指向的条目；共演、联动、续作都不能单凭票数认作原作。
                 subject_ids = matcher.subjects_of(m['work'])
                 if len(subject_ids) == 1:
@@ -236,23 +244,27 @@ def build(work, dump, previous=None):
             bid, subject, pick = reviewed.BANGUMI[canon]
             if bid not in characters or subject not in {sid for sid, _ in links.get(bid, [])}:
                 raise ValueError(f'已审核的角色与作品对应发生变化：{canon}')
-        qid = None
-        for t in [canon, *tags]:
-            if t in wd:
-                qid = wd[t]['item'].rsplit('/', 1)[-1]
-                break
+        qid = wikidata_labels.qid_for([canon, *tags], wikidata)
         rows.append([ids[canon], canon, [t for t in tags if t != canon], ids.get(parent), relation, action, variant,
                      bid, pick, qid, canon in reviewed.GROUPS or None])
         stats['objects'] += 1
         stats['with_bangumi'] += bid is not None
-        stats[f'relation:{relation}'] += relation is not None
     stats['with_bangumi'] -= clear_work_conflicts(rows, matcher, parent_of, review)
+    forms.add(rows, COLUMNS, matcher, archive_relations, review)
+    relation_col = COLUMNS.index('relation')
+    for row in rows:
+        if relation := row[relation_col]:
+            stats[f'relation:{relation}'] += 1
     works = []
     for work_tag, counter in sorted(work_hits.items()):
         sid, n = counter.most_common(1)[0]
         if n >= 2:
             works.append([work_tag, sid])
-    return rows, works, stats, sorted(review), high_water
+    if audit_path:
+        report = audit.revision(prev, COLUMNS, rows, matches, work_by_tag)
+        audit_path.write_text(json.dumps(report, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+    wd_names = wikidata_labels.reviewed_labels(rows, COLUMNS, wikidata, zt)
+    return rows, works, stats, sorted(review), high_water, wd_names
 
 
 def sources(work, dump):
@@ -291,7 +303,9 @@ def main(argv=None):
     p.add_argument('output', type=Path)
     p.add_argument('--previous', type=Path)
     p.add_argument('--revision', type=int, default=1)
+    p.add_argument('--built', type=date.fromisoformat, default=date.today(), help='可指定原构建日期以逐字节复现目录')
     p.add_argument('--review', type=Path, help='把要人工看的条目写到这里（不进仓库）')
+    p.add_argument('--audit', type=Path, help='写出修订前后覆盖率、匹配证据和随机抽查样本（不进仓库）')
     args = p.parse_args(argv)
     if args.revision < 1:
         p.error('修订号必须是正整数')
@@ -300,9 +314,11 @@ def main(argv=None):
     if args.previous and json.loads(args.previous.read_bytes())['revision'] >= args.revision:
         p.error('修订号必须比上一版大')
     work = work_mod.open_work(args.work)
-    rows, works, stats, review, high_water = build(work, args.dump, args.previous)
-    header = {'format': FORMAT, 'revision': args.revision, 'built': time.strftime('%Y-%m-%d'),
+    rows, works, stats, review, high_water, wd_names = build(work, args.dump, args.previous, args.audit)
+    header = {'format': FORMAT, 'revision': args.revision, 'built': args.built.isoformat(),
               'id_high_water': high_water, 'sources': sources(work, args.dump), 'columns': COLUMNS}
+    if wd_names:
+        header['wikidata_names'] = wd_names
     write(args.output, header, rows, works)
     for k, v in sorted(stats.items()):
         print(f'{k}\t{v}')

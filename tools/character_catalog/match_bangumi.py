@@ -4,18 +4,18 @@
 
 - D 站作品：tag 末尾括号（经别名换成规范作品 tag）→ 基础索引给的作品 → wiki 第一段里第一个作品链接；
 - D 站作品 → Bangumi 条目：作品 wiki 的 `other_names`、可读名，跟条目原名、中文名比，可以对上好几个条目
-  （同一作品的游戏、动画、漫画各是一个条目）；
+  （同一作品的游戏、动画、漫画各是一个条目）；系列总标签还可在约定的子作范围内找；
 - 作品里认人：D 站 wiki 的 `other_names` 和可读名，跟 Bangumi 角色的原名、日文名、英文名、罗马字、中文名比，
   同作品共用的未核实别名及明显合称不参与匹配；对上几个时，用非拉丁字母的名字再筛一次；
 - 全库：只用非拉丁字母、至少两个字的名字，全库唯一、没有已知作品冲突，并且 Bangumi 的中文名和 zh-tags、Wikidata、
   D 站别名里的中文至少一处一致。
 
-每条结果记下对法（`work`、`work-strict`、`global`）和用来对上的名字，供审核和抽查。
+每条结果记下对法（`work`、`work-strict`、`global`、`series`）和用来对上的名字，供审核和抽查。
 """
 import collections
 import re
 
-from tools.character_catalog import bangumi, names, tagparse, zhtext
+from tools.character_catalog import bangumi, names, series, tagparse, zhtext
 
 LINK = re.compile(r'\[\[([^\]|]+)(?:\|[^\]]*)?\]\]')
 SPLIT = re.compile(r'\s*[／/]\s*')
@@ -73,6 +73,16 @@ class Matcher:
                 if not is_latin:
                     self.by_key[k].add(cid)
 
+        self.series_subjects = series.subjects_by_series(subjects)
+        self.series_by_key = {}
+        for work, sids in self.series_subjects.items():
+            by_key = collections.defaultdict(set)
+            for sid in sids:
+                for cid in self.chars_of[sid]:
+                    for key, _ in self.keys.get(cid, ()):
+                        by_key[key].add(cid)
+            self.series_by_key[work] = by_key
+
         self.shared_names = set()
         owners = {}
         for tag in scope:
@@ -95,6 +105,8 @@ class Matcher:
     def work_of(self, tags):
         for tag in tags:
             _, qs = tagparse.split(tag)
+            if qs and (work := series.LEAF_QUALIFIERS.get(qs[-1])) in self.copyrights:
+                return work
             if qs and (work := self.copyright(qs[-1])):
                 return work
         return next(self.work_clues(tags), None)
@@ -114,7 +126,19 @@ class Matcher:
 
     def qualified_works(self, tag):
         _, qualifiers = tagparse.split(tag)
-        return {work for qualifier in qualifiers if (work := self.copyright(qualifier))}
+        return {work for qualifier in qualifiers if (work := self.qualified_work(qualifier))}
+
+    def qualified_work(self, qualifier):
+        work = series.LEAF_QUALIFIERS.get(qualifier, qualifier)
+        return self.copyright(work) or (work if work in self.series_subjects else None)
+
+    def series_of(self, tags, work):
+        """明确的具体子作限定词不扩大到整个系列。"""
+        for tag in tags:
+            _, qualifiers = tagparse.split(tag)
+            if qualifiers and (qualified := self.qualified_work(qualifiers[-1])):
+                return series.SERIES_COPYRIGHTS.get(qualified, qualified)
+        return series.SERIES_COPYRIGHTS.get(work, work)
 
     def work_names(self, work):
         names = [tagparse.readable(work), *((self.wiki.get(work) or {}).get('other_names') or [])]
@@ -208,9 +232,22 @@ class Matcher:
                 if self.work_conflicts(tags, work, sids, linked):
                     if review is not None:
                         review.add(('全库命中与已知作品冲突', tags[0], str(cid)))
-                    return None
-                return {'id': cid, 'how': 'global', 'work': work,
-                        'via': sorted(k for k, _ in self.keys[cid] & mine)[:3]}
+                else:
+                    return {'id': cid, 'how': 'global', 'work': work,
+                            'via': sorted(k for k, _ in self.keys[cid] & mine)[:3]}
+        series_work = self.series_of(tags, work)
+        if (by_key := self.series_by_key.get(series_work)) is not None:
+            # Wiki 有明确拼写时，仅凭规范 tag 的可读名不能推翻这个证据。
+            wiki_keys = {bangumi.norm(name) for name in self.personal_wiki_names(tags, work)}
+            keys = {key for key, _ in mine}
+            if wiki_keys:
+                keys &= wiki_keys
+            hits = {cid for key in keys for cid in by_key.get(key, ())}
+            if len(hits) == 1:
+                cid = next(iter(hits))
+                via = sorted({key for key, _ in self.keys[cid]} & keys)
+                return {'id': cid, 'how': 'series', 'work': work, 'series': series_work, 'via': via[:3],
+                        'subjects': sorted(self.series_subjects[series_work] & self.linked_subjects(cid))}
         return None
 
     def pick(self, cid, tags):

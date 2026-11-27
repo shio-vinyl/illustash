@@ -11,6 +11,9 @@ CORE = {'characters', 'tagged', 'character/profile', 'character/activity', 'char
         }
 
 class CharacterReadHTTPTest(HTTPHarness):
+    # 本类复用同一个只读宿主，接口字节按扩充造型译名前的录制比较。
+    host_env = {'ILLUSTASH_TEST_LEGACY_SKIN_NAMES': '1'}
+
     def test_directory_and_identity_corpus(self):
         requests = self.corpus(sample=6, query_limit=30,
                                keep=lambda r: r['stage'] == 'R4' and r['url'].split('?', 1)[0].removeprefix('/api/') in CORE)
@@ -112,7 +115,8 @@ class CharacterReadHTTPTest(HTTPHarness):
         terms = os.environ.get('ILLUSTASH_TERMS_BIN')
         if not terms:
             raise unittest.SkipTest('set ILLUSTASH_TERMS_BIN: the projection is rebuilt with the core command')
-        subprocess.run([terms, 'names-project', '--db', str(self.db)], check=True, capture_output=True)
+        subprocess.run([terms, 'names-project', '--db', str(self.db)], check=True, capture_output=True,
+                       env={**os.environ, **self.host_env})
         for path in ['characters', 'characters?summary=1', 'detail?id=a']:
             live(path)
         for e in ids:

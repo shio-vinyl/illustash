@@ -196,7 +196,7 @@ fn translate_skin_words(tag: &str, words: &[(&str, &str)], ordinals: bool) -> Op
 }
 
 /// 冻结录制重放指定旧选名规则，新图库和现行测试使用当前规则。
-fn legacy_skin_names() -> bool {
+pub fn legacy_skin_names() -> bool {
     static LEGACY: LazyLock<bool> = LazyLock::new(|| std::env::var_os("ILLUSTASH_TEST_LEGACY_SKIN_NAMES").is_some());
     *LEGACY
 }

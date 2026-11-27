@@ -56,6 +56,8 @@ def publish(rec, server, state, **override):
 
 
 class HTTPHarness(unittest.TestCase):
+    host_env = {}
+
     @classmethod
     def setUpClass(cls):
         cls.binary = binary()
@@ -72,7 +74,7 @@ class HTTPHarness(unittest.TestCase):
         cls.context = publish(rec, cls.server, cls.state)
         cls.log = tempfile.TemporaryFile()
         cls.host = subprocess.Popen([str(cls.binary), '--port', cls.origin.rsplit(':', 1)[1], '--state', str(cls.state)],
-                                    env={**os.environ, **RECORDED_TODAY}, stdout=cls.log, stderr=cls.log, **SPAWN)
+                                    env={**os.environ, **RECORDED_TODAY, **cls.host_env}, stdout=cls.log, stderr=cls.log, **SPAWN)
         wait_until(lambda: verify.fetch(cls.origin, {'url': '/api/fold'}, cls.origin)['status'] == 200)
 
     @classmethod

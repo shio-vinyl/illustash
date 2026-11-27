@@ -841,10 +841,16 @@ fn catalog_display_needed(
             }
         }
     }
-    // 所有造型都采用新的手动名称优先顺序，包括没有内置译名的造型。
+    if crate::names_view::legacy_skin_names() {
+        return Ok(false);
+    }
+    // 只有已链接的非原创造型受新的手动名称优先顺序影响。本地造型一直直接使用自己的名称。
     let manual: bool = c.query_row(
-        "SELECT EXISTS(SELECT 1 FROM term_tree r JOIN term_names n ON r.term_id=n.term_id
-                       WHERE r.parent_id IS NOT NULL AND n.role='display' AND n.source='user')
+        "SELECT EXISTS(SELECT 1 FROM term_tree r JOIN terms t ON t.id=r.term_id
+                       JOIN term_names n ON r.term_id=n.term_id
+                       WHERE r.parent_id IS NOT NULL AND r.original=0 AND t.kind IN ('character','skin')
+                         AND n.role='display' AND n.source='user'
+                         AND EXISTS(SELECT 1 FROM term_links l WHERE l.term_id=r.term_id AND l.current=1))
          OR EXISTS(SELECT 1 FROM term_key_names k JOIN term_name_choice d ON d.kind=k.kind AND d.key=k.key
                    WHERE k.kind='skin' AND k.source='user')",
         [],

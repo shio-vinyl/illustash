@@ -102,6 +102,7 @@ mod http_example_search;
 mod http_json;
 mod http_local;
 mod http_read;
+mod http_role_labels;
 #[cfg(feature = "test-read-host")]
 pub mod read_harness;
 mod sql_fragments;

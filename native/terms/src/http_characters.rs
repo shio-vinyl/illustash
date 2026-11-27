@@ -4,6 +4,7 @@ use crate::character_links::LINKS;
 use crate::character_projection::VARIANT_MEMBERSHIPS;
 use crate::character_relations::{EVIDENCE, RELATIONS};
 use crate::error::invalid;
+use crate::http_role_labels::RoleLabels;
 use crate::{
     http::LibraryContext,
     http_json::{parse_python, Json},
@@ -91,6 +92,7 @@ fn characters(c: &Connection, q: &HashMap<String, String>, minimum: i64) -> Resu
         }
     }
     choose_covers(c, &mut result, &ids, nsfw)?;
+    RoleLabels::rows(c, &mut result)?;
     if summary {
         result = result.into_iter().map(summarized).collect();
     }
@@ -263,7 +265,7 @@ fn choose_covers(c: &Connection, result: &mut [Json], ids: &str, nsfw: &str) -> 
 }
 /// 摘要列表里显示的角色。
 fn summarized(r: Json) -> Json {
-    const FIELDS: [&str; 13] = [
+    const FIELDS: [&str; 14] = [
         "id",
         "name",
         "tag",
@@ -277,6 +279,7 @@ fn summarized(r: Json) -> Json {
         "cover",
         "summary",
         "group_tag",
+        "name_disambiguation",
     ];
     let mut s = Json::Object(Vec::new());
     for k in FIELDS {
@@ -373,7 +376,8 @@ fn profile(c: &Connection, e: &str) -> Result<Json> {
     if !matches!(&catalog, Json::Array(items) if items.is_empty()) {
         profile.set("catalog", catalog);
     }
-    let apart = kept_apart_of(c, &id)?;
+    let mut apart = kept_apart_of(c, &id)?;
+    RoleLabels::pairs(c, &mut apart)?;
     if !apart.is_empty() {
         profile.set("kept_apart", Json::Array(apart));
     }
@@ -764,6 +768,7 @@ fn queue(c: &Connection, limit: i64, offset: i64, nsfw: &str, count_only: bool) 
             );
         }
     }
+    RoleLabels::pairs(c, &mut items)?;
     Ok(Json::object([("items", Json::Array(items)), ("total", (total as i64).into())]))
 }
 pub(crate) fn assignments(c: &Connection, id: &str) -> Result<Json> {

@@ -1304,7 +1304,7 @@ fn ambiguous_groups(c: &Connection, nsfw: &str) -> Result<Json> {
          GROUP BY m.entity,m.rival
          ORDER BY count DESC,m.entity,m.rival"
     );
-    let groups: Vec<_> = rows(c, &sql, &[])?
+    let mut groups: Vec<_> = rows(c, &sql, &[])?
         .into_iter()
         .map(|row| {
             Ok(Json::object([
@@ -1315,6 +1315,7 @@ fn ambiguous_groups(c: &Connection, nsfw: &str) -> Result<Json> {
             ]))
         })
         .collect::<Result<_>>()?;
+    crate::http_role_labels::RoleLabels::pairs(c, &mut groups)?;
     Ok(Json::object([("groups", Json::Array(groups))]))
 }
 fn pools(c: &Connection, nsfw: &str) -> Result<Json> {

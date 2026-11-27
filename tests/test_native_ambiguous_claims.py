@@ -51,8 +51,8 @@ class NativeAmbiguousClaimsTest(unittest.TestCase):
     def connect(self):
         return closing(sqlite3.connect(self.lib.db))
 
-    def read(self, url, body=None, status=200):
-        reply = self.request(url, body)
+    def read(self, url, body=None, status=200, *, headers=None):
+        reply = self.request(url, body, headers=headers)
         self.assertEqual(reply['status'], status, reply['body'])
         return json.loads(reply['body'])
 
@@ -373,6 +373,75 @@ class NativeAmbiguousClaimsTest(unittest.TestCase):
         [item] = result['items']
         self.assertEqual({item['a']['id'], item['b']['id']}, {self.alice, self.bob})
         self.assertEqual(item['catalog_kind'], 'form')
+
+    def test_same_work_role_labels_after_keep_apart(self):
+        # 同一个 Bangumi 角色的两种目录形态，使用合成图片和离线选名数据。
+        guard, base = self.alice, self.bob
+        tags = {guard: 'amiya_(guard)_(arknights)', base: 'amiya_(arknights)'}
+        name = '合成阿米娅'
+        with self.connect() as c, c:
+            self.seed(c, 'front', '2026-01-01')
+            self.seed(c, 'back', '2026-01-02', reverse=True)
+            c.execute("INSERT INTO meta(key,value) VALUES ('terms_writer','1')")
+            for entity, tag in tags.items():
+                c.execute("INSERT INTO term_links(system,key,term_id,source) "
+                          "SELECT 'danbooru',?,id,'fixture' FROM terms WHERE key=?", (tag, entity))
+                c.executemany("INSERT INTO term_names(term_id,lang,value,source,role,seq) "
+                              "SELECT id,?,?,'bangumi','display',(SELECT coalesce(max(seq),0)+1 FROM term_names) "
+                              "FROM terms WHERE key=?", [('zh', name, entity), ('en', 'Synthetic Amiya', entity)])
+            c.execute("DELETE FROM meta WHERE key='terms_writer'")
+        work = self.read('/api/works', {'action': 'from_tag', 'tag': 'arknights'})['id']
+        self.read('/api/character/profile', {'entity': base, 'work': work})
+
+        def labels(rows):
+            return {r['id']: (r['name'], r.get('name_disambiguation')) for r in rows}
+
+        def endpoints(pair):
+            return labels([pair['a'], pair['b']])
+
+        def short(entity, value, shown=name):
+            return shown, {'qualifier': value, 'tag': tags[entity]}
+
+        expected = {base: short(base, '基本形态'), guard: short(guard, '近卫')}
+        # 一端来自有作品归属的索引，另一端只有已经确认作品的角色目录 tag。
+        for entity in tags:
+            path = '/api/characters?' + urlencode({'id': entity})
+            [row] = self.read(path)
+            self.assertEqual(row['work_id'], work if entity == base else None)
+            self.assertEqual(labels([row]), {entity: expected[entity]})
+        self.read('/api/character/profile', {'entity': guard, 'work': work})
+
+        [pair] = self.read('/api/identity/queue?limit=1&offset=0')['items']
+        self.assertEqual(endpoints(pair), expected)
+        groups = self.read('/api/ambiguous')['groups']
+        self.assertEqual(len(groups), 2)
+        for group in groups:
+            self.assertEqual(endpoints(group), expected)
+
+        self.read('/api/identity/pair', {'a': base, 'b': guard, 'answer': 'apart'})
+        self.assertEqual(self.read('/api/identity/queue')['items'], [])
+        self.assertEqual(self.read('/api/ambiguous')['groups'], [])
+        profile_url = '/api/character/profile?' + urlencode({'entity': guard})
+        [kept] = self.read(profile_url)['kept_apart']
+        self.assertEqual(endpoints(kept), expected)
+
+        self.assertEqual(labels(self.read('/api/characters?summary=1&min=1&nsfw=hide')), expected)
+        find = urlencode({'q': name})
+        self.assertEqual(labels(self.read('/api/entities?' + find)), expected)
+        self.assertEqual(labels(self.read('/api/entities?q=guard')), {guard: expected[guard]})
+        only_guard = '/api/characters?' + urlencode({'id': guard})
+        self.assertEqual(labels(self.read(only_guard)), {guard: expected[guard]})
+        en = self.read(only_guard, headers={'X-Illustash-Language': 'en-US'})
+        self.assertEqual(labels(en), {guard: short(guard, 'Guard', 'Synthetic Amiya')})
+
+        manual = self.read('/api/character/profile', {'entity': base, 'name': name})['undo']
+        self.assertEqual(labels(self.read('/api/entities?' + find)), {base: (name, None), guard: expected[guard]})
+        self.read('/api/undo', {'id': manual['id']})
+        self.assertEqual(labels(self.read('/api/entities?' + find)), expected)
+
+        other = self.read('/api/works', {'action': 'create', 'name': '另一合成作品'})['id']
+        self.read('/api/character/profile', {'entity': base, 'work': other})
+        self.assertEqual(labels(self.read('/api/entities?' + find)), {base: (name, None), guard: (name, None)})
 
     def test_profile_only_lists_live_catalog_edges_and_displays_original_tags(self):
         owner, child = self.alice, self.bob

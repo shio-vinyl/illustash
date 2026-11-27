@@ -163,13 +163,13 @@ fn ordinal_costume(tag: &str) -> Option<(String, &str)> {
         return None;
     }
     const ZH: [&str; 10] = ["", "一", "二", "三", "四", "五", "六", "七", "八", "九"];
-    let ordinal = match (digits.len(), number) {
+    let shown = match (digits.len(), number) {
         (1, n) => ZH[n].to_owned(),
         (2, 10..=19) => format!("十{}", ZH[number % 10]),
         (2, n) => format!("{}十{}", ZH[n / 10], ZH[n % 10]),
         _ => digits.to_owned(),
     };
-    Some((format!("第{ordinal}套衣装"), remaining))
+    Some((format!("第{shown}套衣装"), remaining))
 }
 
 fn translate_skin_words(tag: &str, words: &[(&str, &str)], ordinals: bool) -> Option<String> {

@@ -1,4 +1,5 @@
 """角色词表的公共 ID 和自动挂载审核边界。"""
+import json
 import unittest
 from unittest import mock
 
@@ -42,16 +43,32 @@ class CharacterCatalogBuildTest(unittest.TestCase):
             [3, 'cross_work', None, None, None, 1],
             [4, 'archive', None, None, None, 2],
             [5, 'unreviewed', None, None, None, 3],
+            [6, 'renamed', None, None, None, 1],
         ]
         matcher = SimpleNamespace(qualified_works=lambda tag: {'other'} if tag == 'cross_work' else {'same'})
         review = set()
-        with mock.patch.dict(reviewed.FORMS, checked='base', cross_work='base', archive='base'):
+        with (mock.patch.dict(reviewed.FORMS, checked='base', cross_work='base', archive='base'),
+              mock.patch.dict(reviewed.RENAMED_TAGS, renamed='base')):
             forms.add(rows, columns, matcher, [(2, forms.BANGUMI_FORM, 1), (3, forms.BANGUMI_FORM, 1)], review)
         self.assertEqual(rows[1][2:5], [1, 'form', 'ask'])
         self.assertEqual(rows[2][2:5], [None, None, None])
         self.assertEqual(rows[3][2:5], [1, 'form', 'ask'])
         self.assertEqual(rows[4][2:5], [None, None, None])
+        self.assertEqual(rows[5][2:5], [1, 'unknown', 'ask'])
         self.assertIn(('Bangumi 形态', 'base', 'unreviewed'), review)
+
+    def test_bundled_renamed_tags_keep_both_public_ids_and_ask(self):
+        catalog = json.loads((build.ROOT / 'tags/character_catalog.json').read_bytes())
+        rows = (dict(zip(catalog['columns'], raw, strict=True)) for raw in catalog['characters'])
+        entries = {row['tag']: row for row in rows}
+        for old, old_id, current, current_id in (
+                ('the_shorekeeper_(wuthering_waves)', 13321, 'shorekeeper_(wuthering_waves)', 12257),
+                ('hoshino_ai_(oshi_no_ko)', 4905, 'hoshino_ai', 4904)):
+            with self.subTest(old=old):
+                former = entries[old]
+                self.assertEqual((former['id'], former['parent'], former['relation'], former['action']),
+                                 (old_id, current_id, 'unknown', 'ask'))
+                self.assertEqual(entries[current]['id'], current_id)
 
     def test_only_unambiguous_original_wikidata_labels_with_external_evidence_are_shipped(self):
         columns = ['tag', 'tags', 'wikidata', 'bangumi', 'group', 'action']

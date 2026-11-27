@@ -140,7 +140,17 @@ FORMS = {
     'cure_white': 'yukishiro_honoka',
     'cure_wing': 'yuunagi_tsubasa',
 }
-# 漫画里的替身、共享代号、复制品及仅有重复标签的对象不能靠同 ID 归为形态。
+# 曾用于同一角色的旧 tag。公开 ID 各自保留，按整对询问处理。
+RENAMED_TAGS = {
+    # 旧角色页 https://danbooru.donmai.us/wiki_page_versions/636229.json
+    # 原帖换标 https://danbooru.donmai.us/post_versions/60201909.json
+    'the_shorekeeper_(wuthering_waves)': 'shorekeeper_(wuthering_waves)',
+    # 旧角色页 https://danbooru.donmai.us/wiki_page_versions/593423.json
+    # 原帖换标 https://danbooru.donmai.us/post_versions/59132896.json
+    'hoshino_ai_(oshi_no_ko)': 'hoshino_ai',
+}
+
+# 漫画里的替身、共享代号和复制品不能靠同 ID 归为形态。
 BANGUMI_EXCLUSIONS = {
     'star_platinum': {878},  # 这是空条承太郎本人的条目。
     'pollux_(fate)': {76639},  # Bangumi 记录的是双子合称，单人的原名另有对应。

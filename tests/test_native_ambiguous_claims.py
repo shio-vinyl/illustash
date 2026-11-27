@@ -386,6 +386,9 @@ class NativeAmbiguousClaimsTest(unittest.TestCase):
             self.seed(c, 'back', '2026-01-02', reverse=True)
             c.execute("INSERT INTO meta(key,value) VALUES ('terms_writer','1')")
             for entity, tag in tags.items():
+                # 模拟旧索引已经有当前链接，随后索引更新追加目录规范标签。
+                c.execute("UPDATE term_links SET added_at='1970-01-01' WHERE system='danbooru' "
+                          "AND term_id=(SELECT id FROM terms WHERE key=?)", (entity,))
                 c.execute("INSERT INTO term_links(system,key,term_id,source) "
                           "SELECT 'danbooru',?,id,'fixture' FROM terms WHERE key=?", (tag, entity))
                 c.executemany("INSERT INTO term_names(term_id,lang,value,source,role,seq) "
@@ -410,7 +413,18 @@ class NativeAmbiguousClaimsTest(unittest.TestCase):
             path = '/api/characters?' + urlencode({'id': entity})
             [row] = self.read(path)
             self.assertEqual(row['work_id'], work if entity == base else None)
+            self.assertEqual(row['tag'], 'alice' if entity == guard else 'bob')
             self.assertEqual(labels([row]), {entity: expected[entity]})
+
+        # 若旧身份还有另一个互相矛盾的目录链接，不从候选标签推断作品归属。
+        guard_path = '/api/characters?' + urlencode({'id': guard})
+        other_tag = 'acheron_(honkai:_star_rail)'
+        with self.connect() as c, c:
+            c.execute("INSERT INTO term_links(system,key,term_id,source) "
+                      "SELECT 'wd_character',?,id,'fixture' FROM terms WHERE key=?", (other_tag, guard))
+        self.assertEqual(labels(self.read(guard_path)), {guard: (name, None)})
+        with self.connect() as c, c:
+            c.execute("DELETE FROM term_links WHERE system='wd_character' AND key=?", (other_tag,))
         self.read('/api/character/profile', {'entity': guard, 'work': work})
 
         [pair] = self.read('/api/identity/queue?limit=1&offset=0')['items']

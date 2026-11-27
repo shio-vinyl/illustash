@@ -41,12 +41,15 @@ impl RoleLabels {
                 JOIN term_name_display n ON n.entity=e.id AND n.skin_only=0
                 WHERE {INDEPENDENT} AND n.tag<>'' AND n.name<>'' AND n.name_source<>'user' AND n.name=n.zh
              )
-             SELECT e.id,e.work_id,e.work,n.name,n.name_source,n.en,n.tag,n.name=n.zh
-             FROM {ENTITIES} e JOIN term_name_display n ON n.entity=e.id AND n.skin_only=0
-             WHERE {INDEPENDENT} AND {SELECTABLE_ROLE}
-                AND n.name IN (SELECT name FROM wanted_roles)
-                AND (e.work_id IS NULL OR e.work_id IN (SELECT work FROM wanted_roles)
-                     OR EXISTS(SELECT 1 FROM wanted_roles WHERE work IS NULL))"
+             SELECT * FROM (
+                SELECT e.id,e.work_id,e.work,n.name,n.name_source,n.en,n.tag,n.name=n.zh,e.term_id,
+                       count(*) OVER (PARTITION BY n.name) AS name_count
+                FROM {ENTITIES} e JOIN term_name_display n ON n.entity=e.id AND n.skin_only=0
+                WHERE {INDEPENDENT} AND {SELECTABLE_ROLE}
+                    AND n.name IN (SELECT name FROM wanted_roles)
+                    AND (e.work_id IS NULL OR e.work_id IN (SELECT work FROM wanted_roles)
+                         OR EXISTS(SELECT 1 FROM wanted_roles WHERE work IS NULL))
+             ) WHERE name_count>1"
         ))?;
         let catalog = crate::character_catalog::current();
         let mut local_works = HashMap::new();
@@ -61,6 +64,7 @@ impl RoleLabels {
                 r.get::<_, String>(2)?,
                 name,
                 shown,
+                r.get::<_, i64>(8)?,
                 Role {
                     id: r.get(0)?,
                     automatic_zh: source != "user" && r.get::<_, Option<bool>>(7)? == Some(true),
@@ -68,7 +72,10 @@ impl RoleLabels {
                 },
             ))
         })? {
-            let (work, work_text, name, shown, role) = row?;
+            let (work, work_text, name, shown, term_id, mut role) = row?;
+            if let Some(tag) = fallback_catalog_tag(c, catalog, term_id, &role.tag)? {
+                role.tag = tag;
+            }
             let work = match work {
                 Some(work) => Some(Work::Local(work)),
                 None => catalog_scope(c, catalog, &role.tag, &work_text, &mut local_works)?,
@@ -112,6 +119,31 @@ impl RoleLabels {
             row.set("name_disambiguation", label.clone());
         }
     }
+}
+
+// 索引更新会保留旧词条的当前链接，再补充目录中认识的标签。首选标签仍用于显示名；只有其余当前链接
+// 指向同一个目录角色时，才用该角色的资料给重名补限定。
+fn fallback_catalog_tag(c: &Connection, catalog: &Catalog, term_id: i64, primary: &str) -> Result<Option<String>> {
+    if catalog.character(primary).is_some() {
+        return Ok(None);
+    }
+    let mut stmt = c.prepare_cached(
+        "SELECT key FROM term_links WHERE term_id=? AND current=1 AND system IN ('danbooru','wd_character')
+         ORDER BY system='wd_character',added_at,key",
+    )?;
+    let mut found: Option<(u32, String)> = None;
+    for row in stmt.query_map([term_id], |r| r.get::<_, String>(0))? {
+        let tag = row?;
+        let Some(entry) = catalog.character(&tag) else { continue };
+        if let Some((id, _)) = &found {
+            if *id != entry.id {
+                return Ok(None);
+            }
+        } else {
+            found = Some((entry.id, tag));
+        }
+    }
+    Ok(found.map(|(_, tag)| tag))
 }
 
 fn catalog_scope(

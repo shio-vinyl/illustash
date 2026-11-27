@@ -107,15 +107,6 @@ pub fn hits(c: &Connection, query: &str) -> Result<Hits> {
         &[&like],
         false,
     )?;
-    // 离线 Wikidata 中文名来自目录，只出现在名称投影里。
-    s.add(
-        "SELECT d.entity, d.name FROM term_name_display d
-         JOIN terms t ON t.key=d.entity JOIN term_tree r ON r.term_id=t.id
-         WHERE d.skin_only=0 AND d.name_source='builtin' AND d.name LIKE ? ESCAPE '\\'
-           AND t.kind='character' AND r.parent_id IS NULL",
-        &[&like],
-        false,
-    )?;
     for (table, field) in [("term_key_names", "value"), ("term_key_aliases", "value")] {
         for (kind, column) in [("work", "work"), ("skin", "variant")] {
             let join = format!("JOIN {ENTITIES} e ON e.{column}=t.key");
@@ -131,6 +122,23 @@ pub fn hits(c: &Connection, query: &str) -> Result<Hits> {
     }
     let needle = s.needle.clone();
     let mut hits = std::mem::take(&mut s.hits);
+    // 从当前词表的核验标签反查库里的链接。用户另起了显示名、图库只剩旧 tag 时也能搜索。
+    let mut owners = c.prepare_cached(
+        "SELECT coalesce(r.parent_id,t.key) FROM term_links l JOIN terms t ON t.id=l.term_id
+         JOIN term_tree r ON r.term_id=t.id WHERE l.system IN ('danbooru','wd_character','photos_album','ccip')
+         AND l.key=? AND l.current=1 AND t.kind='character'",
+    )?;
+    for (role, label) in crate::character_catalog::current().reviewed_labels() {
+        let value = casefold(label);
+        if value.contains(&needle) {
+            let rank = rank(&value, &needle);
+            for tag in std::iter::once(&role.tag).chain(&role.tags) {
+                for id in owners.query_map([tag], |r| r.get(0))? {
+                    raise(&mut hits, id?, rank);
+                }
+            }
+        }
+    }
     let builtin: Vec<&str> =
         WORK_NAMES.iter().filter(|(_, v)| casefold(v).contains(&needle)).map(|(k, _)| *k).collect();
     if !builtin.is_empty() {
@@ -237,8 +245,6 @@ mod tests {
                original INTEGER, seq INTEGER);
              CREATE TABLE term_links(system TEXT, key TEXT, term_id INTEGER, current INTEGER, source TEXT, added_at TEXT);
              CREATE TABLE term_names(term_id INTEGER, value TEXT);
-             CREATE TABLE term_name_display(entity TEXT, skin_only INTEGER, name_source TEXT, name TEXT);
-             INSERT INTO term_name_display VALUES ('a',0,'builtin','离线中文名');
              CREATE TABLE term_key_names(kind TEXT, key TEXT, lang TEXT, source TEXT, value TEXT);
              CREATE TABLE term_key_aliases(kind TEXT, key TEXT, value TEXT, position INTEGER);
              INSERT INTO terms VALUES (1,'a','character'),(2,'w','work'),(3,'s','skin');
@@ -248,7 +254,6 @@ mod tests {
              INSERT INTO term_names VALUES (1,'爱丽丝');",
         )
         .unwrap();
-        assert_eq!(hits(&c, "离线中文名").unwrap().get("a"), Some(&2));
         let h = hits(&c, "爱丽丝").unwrap();
         assert_eq!(h.get("a"), Some(&2));
         assert_eq!(hits(&c, "ALICE").unwrap().get("a"), Some(&2)); // 原 tag 是开头（1），可读形式 "Alice" 完全相同（2）：取大

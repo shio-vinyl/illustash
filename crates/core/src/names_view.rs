@@ -1444,6 +1444,9 @@ mod tests {
         c.execute_batch("INSERT INTO term_key_names VALUES ('character','old_name','zh','user','我改的名');").unwrap();
         let choice = choose_key(&c, "character", "old_name").unwrap();
         assert_eq!((choice.name.as_str(), choice.source.as_str()), ("我改的名", "user"));
+        c.execute("UPDATE term_links SET key='old_name' WHERE system='danbooru' AND key='synth_(series_w)'", [])
+            .unwrap();
+        assert_eq!(crate::names_search::hits(&c, "示例椛").unwrap().get("e1"), Some(&2));
         crate::character_catalog::override_for_thread(None);
     }
 

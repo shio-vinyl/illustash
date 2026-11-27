@@ -67,7 +67,7 @@ pub struct Catalog {
     by_id: HashMap<u32, usize>,
     by_tag: HashMap<String, usize>,
     works: HashMap<String, u64>,
-    wikidata_names: HashMap<String, String>,
+    reviewed_names: HashMap<usize, String>,
 }
 
 fn text(v: &Value) -> Option<String> {
@@ -200,25 +200,32 @@ impl Catalog {
             Some(names) => serde_json::from_value(names.clone())
                 .map_err(|_| crate::Error::invalid("角色目录的 Wikidata 中文名不合法"))?,
         };
-        let mut owners = HashSet::new();
-        for qid in
-            characters.iter().filter_map(|role| role.wikidata.as_ref()).filter(|id| wikidata_names.contains_key(*id))
-        {
-            if !owners.insert(qid) {
-                return invalid("角色目录的 Wikidata 中文名对应多个角色");
+        let mut owners = HashMap::new();
+        for (i, role) in characters.iter().enumerate() {
+            if let Some(qid) = role.wikidata.as_ref().filter(|id| wikidata_names.contains_key(*id)) {
+                if owners.insert(qid, i).is_some() {
+                    return invalid("角色目录的 Wikidata 中文名对应多个角色");
+                }
             }
         }
-        for (id, name) in &wikidata_names {
-            let number = id.strip_prefix('Q').and_then(|n| n.parse::<u64>().ok());
-            if !owners.contains(id)
-                || number.is_none_or(|n| n == 0 || *id != format!("Q{n}"))
+        let mut reviewed_names = HashMap::new();
+        for (qid, name) in wikidata_names {
+            let Some(&i) = owners.get(&qid) else {
+                return invalid("角色目录的 Wikidata 中文名缺少对应角色");
+            };
+            let number = qid.strip_prefix('Q').and_then(|n| n.parse::<u64>().ok());
+            if number.is_none_or(|n| n == 0 || qid != format!("Q{n}"))
                 || name.trim().is_empty()
                 || name.chars().count() > 80
             {
                 return invalid("角色目录的 Wikidata 中文名或条目号不合法");
             }
+            let role = &characters[i];
+            if !role.group && role.bangumi.is_none() && role.action != Some(Action::Auto) {
+                reviewed_names.insert(i, name);
+            }
         }
-        Ok(Self { revision, characters, by_id, by_tag, works, wikidata_names })
+        Ok(Self { revision, characters, by_id, by_tag, works, reviewed_names })
     }
 
     /// 按识别 tag 找角色（规范 tag 和旧 tag 都认）。
@@ -228,11 +235,12 @@ impl Catalog {
 
     /// 无 Bangumi 对应时，经制作端独立核对的 Wikidata 简中标签。
     pub fn reviewed_name(&self, tag: &str) -> Option<&str> {
-        let role = self.character(tag)?;
-        if role.group || role.bangumi.is_some() || role.action == Some(Action::Auto) {
-            return None;
-        }
-        self.wikidata_names.get(role.wikidata.as_ref()?).map(String::as_str)
+        self.reviewed_names.get(self.by_tag.get(tag)?).map(String::as_str)
+    }
+
+    /// 可用于离线搜索的已核验中文标签与对应的规范、历史 tag。
+    pub(crate) fn reviewed_labels(&self) -> impl Iterator<Item = (&Character, &str)> {
+        self.reviewed_names.iter().map(|(&i, name)| (&self.characters[i], name.as_str()))
     }
 
     /// 按目录 ID 找角色。

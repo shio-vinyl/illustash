@@ -318,6 +318,26 @@ class NativeAmbiguousClaimsTest(unittest.TestCase):
         self.assertEqual(self.read('/api/ids?' + urlencode({'entity': self.bob})), ['back'])
         self.assertEqual(self.read('/api/ids?' + urlencode({'entity': self.alice})), ['longtail', 'front'])
 
+    def test_reviewed_forms_without_implications_reach_the_identity_queue(self):
+        with self.connect() as c, c:
+            self.seed(c, 'front', '2026-01-01')
+            self.seed(c, 'back', '2026-01-02', reverse=True)
+        for left, right, form in [
+            ('firefly_(honkai:_star_rail)', 'sam_(honkai:_star_rail)', True),
+            ('sailor_moon', 'tsukino_usagi', True),
+            ('kujo_jotaro', 'star_platinum', False),
+        ]:
+            with self.subTest(left=left, right=right):
+                with self.connect() as c, c:
+                    c.execute("DELETE FROM term_links WHERE system='danbooru' AND source='reviewed-form-fixture'")
+                    c.executemany("INSERT INTO term_links(system,key,term_id,source) "
+                                  "SELECT 'danbooru',?,id,'reviewed-form-fixture' FROM terms WHERE key=?",
+                                  [(left, self.alice), (right, self.bob)])
+                if form:
+                    self.assert_catalog_pair()
+                else:
+                    self.assertEqual(self.read('/api/identity/queue')['items'], [])
+
     def test_catalog_pair_is_asked_in_direct_and_hybrid_modes(self):
         # 公共目录中的一对形态，角色和图片归属使用同一组合成夹具。
         with self.connect() as c, c:

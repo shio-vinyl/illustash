@@ -47,6 +47,7 @@
 .char-peers{display:flex;flex-wrap:wrap;gap:var(--space-10);margin:0;padding:0;list-style:none}
 .char-peer{display:grid;justify-items:center;gap:var(--space-4);width:56px;color:var(--ink2);font-size:var(--fs-11);text-align:center;text-decoration:none}
 .char-peer>span{width:100%;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.char-peer>small{width:100%;font-size:var(--fs-11);overflow-wrap:anywhere}
 .char-peer:hover{color:var(--accent-ink)}
 @media (max-width:860px){
   .char-facts{grid-template-columns:minmax(0,1fr)}

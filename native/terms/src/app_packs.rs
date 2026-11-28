@@ -12,6 +12,8 @@
 //!   别的条目原样留在目录里，但不提供。
 //! - 组成部分的文件按 SHA-256 放：和内置文件相同的就用内置的文件夹，其余放 `extensions/<种类>-<SHA-256 前 12 位>/`。
 //!   所以下一个版本只换了一个组成部分时，另一个不用重新下载。
+pub(crate) mod character_catalog;
+
 use crate::app_updates::Version;
 use crate::{Error, Result};
 use base64::{engine::general_purpose::STANDARD, Engine};
@@ -209,6 +211,8 @@ struct RawEntry {
     note: Option<RawNote>,
     #[serde(default)]
     components: Option<RawComponents>,
+    file: Option<RawFile>,
+    format: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -299,6 +303,8 @@ struct RawNote {
 pub(crate) struct Entry {
     kind: String,
     pack: Option<CharacterPack>,
+    character_file: Option<File>,
+    character_supported: bool,
     version: String,
     revision: u32,
     min_app: Version,
@@ -378,6 +384,19 @@ impl Catalog {
         let stage = raw.stage.as_deref().unwrap_or(STAGE_RELEASE);
         let known_stage = matches!(stage, STAGE_PREVIEW | STAGE_RELEASE);
         let min_app = Version::parse(&raw.min_app).ok_or_else(|| bad("最低应用版本不是 X.Y.Z"))?;
+        let character_file = if raw.kind == character_catalog::KIND {
+            let file = raw.file.ok_or_else(|| bad("角色词表缺少文件"))?;
+            if raw.components.is_some()
+                || !raw.version.starts_with("catalog-")
+                || !file.valid()
+                || file.size > character_catalog::LIMIT
+            {
+                return Err(bad("角色词表的版本或文件不合法"));
+            }
+            Some(file.into_file())
+        } else {
+            None
+        };
         let pack = match (raw.kind.as_str(), raw.components) {
             (PACK_KIND, None) => return Err(bad(&format!("条目 {version} 缺少组成部分"))),
             // 不认识的标记：结构照查，本版本不提供。
@@ -399,7 +418,17 @@ impl Catalog {
             // 以后的种类：上面的通用字段照查，本版本不提供。
             _ => None,
         };
-        Ok(Entry { kind: raw.kind, pack, version: raw.version, revision: raw.revision, min_app })
+        let character_supported =
+            character_file.is_some() && known_stage && raw.format.as_deref() == Some(crate::character_catalog::FORMAT);
+        Ok(Entry {
+            kind: raw.kind,
+            pack,
+            character_file,
+            character_supported,
+            version: raw.version,
+            revision: raw.revision,
+            min_app,
+        })
     }
 
     fn component(kind: Kind, raw: RawComponent, revision: u32, version: &str) -> Result<Pack> {
@@ -449,6 +478,18 @@ impl Catalog {
         };
         for entry in &self.entries {
             let earlier = previous.entries.iter().find(|old| old.version == entry.version);
+            if let Some(old) = earlier {
+                if old.kind != entry.kind
+                    || old.revision != entry.revision
+                    || entry
+                        .character_file
+                        .as_ref()
+                        .zip(old.character_file.as_ref())
+                        .is_some_and(|(a, b)| a.sha256 != b.sha256)
+                {
+                    return Err(bad(&format!("已发布的版本 {} 不能替换文件或修订号", entry.version)));
+                }
+            }
             if let (Some(new), Some(old)) = (entry.pack.as_ref(), earlier.and_then(|e| e.pack.as_ref())) {
                 if new.revision != old.revision || !same_parts(&new.wd, &old.wd) || !same_parts(&new.ccip, &old.ccip) {
                     return Err(bad(&format!("已发布的版本 {} 不能替换文件或修订号", entry.version)));
@@ -719,22 +760,34 @@ fn get(agent: &ureq::Agent, address: &str, limit: u64) -> std::result::Result<Ve
     Ok(bytes)
 }
 
-/// 检查更新时顺带读一次目录（`app_updates` 的 check）。没有公钥时什么都不做；失败变成一句话，不影响检查更新本身。
-/// 目录是普通文件，GitHub 的下载地址会跳转到存储服务，所以这里跟随跳转；内容靠签名把关。
-pub(crate) fn refresh(resources: &Path) -> Option<std::result::Result<Adopted, String>> {
+/// 签名清单采用成功后，单独报告角色词表文件的下载结果。
+pub(crate) enum Refresh {
+    ManifestFailed(String),
+    Adopted { character_error: Option<String> },
+}
+
+pub(crate) fn refresh(resources: &Path) -> Option<Refresh> {
     pubkey()?;
-    Some((|| {
+    let manifest = (|| {
         let prefix = crate::app_updates::asset_url(&format!("{RELEASE_PREFIX}{CATALOG_TAG}/"))?;
         let agent = crate::app_models::download_agent(Duration::from_secs(15), &prefix);
         let bytes = get(&agent, &format!("{prefix}{CATALOG_NAME}"), CATALOG_LIMIT)?;
         let signature = get(&agent, &format!("{prefix}{SIGNATURE_NAME}"), SIGNATURE_LIMIT)?;
-        adopt(resources, &bytes, &signature).map_err(|e| e.reason())
-    })())
+        adopt(resources, &bytes, &signature).map_err(|e| e.reason())?;
+        Ok(agent)
+    })();
+    Some(match manifest {
+        Err(error) => Refresh::ManifestFailed(error),
+        Ok(agent) => {
+            Refresh::Adopted { character_error: character_catalog::fetch(resources, &agent).err().map(|e| e.reason()) }
+        }
+    })
 }
 
 // ---------- 离线导入 ----------
 
 /// 所选文件里的离线包（ZIP，根上有 `packs.json` 和 `packs.json.sig`）：先采用其中的目录，再按它认包文件。
+/// 角色词表在验签后独立校验和存放，其它组成部分由原来的包导入任务处理。
 /// 返回目录成员和附带文件的导入结果（「名字 → 结果」，名字的写法和导入结果列表一致：`包.zip/packs.json`）。
 pub(crate) fn adopt_archives(resources: &Path, paths: &[PathBuf]) -> Vec<(String, &'static str)> {
     let mut results = Vec::new();
@@ -772,15 +825,22 @@ pub(crate) fn adopt_archives(resources: &Path, paths: &[PathBuf]) -> Vec<(String
             continue;
         }
         let Ok(catalog) = Catalog::parse(&bytes) else { continue };
+        let latest = if result == "catalog_old" { cached(resources).ok().flatten() } else { None };
+        let active = if result == "catalog_old" { latest.as_ref() } else { Some(&catalog) };
         let listed = catalog.file_names();
         for i in 0..archive.len() {
-            let Ok(item) = archive.by_index(i) else { continue };
+            let Ok(mut item) = archive.by_index(i) else { continue };
             let Some(name) = item.is_file().then(|| item.name().ok().map(|n| n.into_owned())).flatten() else {
                 continue;
             };
+            if name == CATALOG_NAME || name == SIGNATURE_NAME {
+                continue;
+            }
+            let size = item.size();
+            let installed = character_catalog::import_member(resources, &catalog, active, &name, size, &mut item);
             let base = name.rsplit('/').next().unwrap_or(&name);
-            if name != CATALOG_NAME && name != SIGNATURE_NAME && !listed.contains(&base) {
-                results.push((format!("{zip}/{name}"), "extra"));
+            if let Some(result) = installed.or_else(|| (!listed.contains(&base)).then_some("extra")) {
+                results.push((format!("{zip}/{name}"), result));
             }
         }
     }

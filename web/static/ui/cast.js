@@ -7,7 +7,7 @@
 import {BUCKETS, castRows, catalog, recentOf} from '../core/catalog.js';
 import {coverUrl, number} from '../core/format.js';
 import {t} from '../core/i18n.js';
-import {nameTip} from '../core/labels.js';
+import {nameTip, roleName, roleQualifier} from '../core/labels.js';
 import {prefs} from '../core/prefs.js';
 import {charHash} from '../core/route.js';
 import {state} from '../core/state.js';
@@ -32,7 +32,7 @@ const VIEW = tpl`<div class="cat-cast"><div data-ref="shelf"><section class="cat
   data-ref="more"></button></div><p class="cat-tagged" data-ref="tagged"><span data-t>不算角色、只当标签：</span><span data-ref="taggedList"></span><button type="button"
   class="btn is-quiet is-small" data-ref="taggedManage" data-t>管理…</button></p></div>`;
 const RING = tpl`<a class="cat-ring"><span class="avatar-ring" data-ref="ring"><img class="avatar" data-ref="img" alt="" loading="lazy" decoding="async" draggable="false"><em
-  data-ref="plus"></em></span><b data-ref="name"></b><small data-ref="work"></small></a>`;
+  data-ref="plus"></em></span><b data-ref="name"></b><small data-ref="qualifier" hidden></small><small data-ref="work"></small></a>`;
 const CHIP = tpl`<a class="chip cat-chip"><img class="avatar" data-ref="img" alt="" loading="lazy" decoding="async"><span data-ref="name"></span><span class="chip-count"
   data-ref="n"></span></a>`;
 const ROW = tpl`<tr><td><a class="cat-who" data-ref="who"><img class="avatar" data-ref="img" alt="" loading="lazy" decoding="async"><span><b data-ref="name"></b><small
@@ -52,6 +52,8 @@ function ringItem(c) {
     attr(refs.img, 'src', coverUrl(x.c.cover)); setTint(refs.img, x.c.color);
     css(refs.ring, '--p', String(x.p));
     text(refs.plus, '+' + number(recentOf(x.c))); text(refs.name, x.c.name); text(refs.work, x.c.work_name || '');
+    const qualifier = roleQualifier(x.c);
+    text(refs.qualifier, qualifier || ''); show(refs.qualifier, !!qualifier);
   }
   update(c);
   return {el, update};
@@ -61,7 +63,7 @@ function chipItem(c) {
   function update(x) {
     attr(el, 'href', charHash(x.id)); attr(el, 'title', nameTip(x));
     attr(refs.img, 'src', coverUrl(x.cover)); setTint(refs.img, x.color);
-    text(refs.name, x.name); text(refs.n, number(x.count));
+    text(refs.name, roleName(x)); text(refs.n, number(x.count));
   }
   update(c);
   return {el, update};
@@ -71,7 +73,7 @@ function rowItem(x) {
   function update({c, max}) {
     const a = catalog.activity.get(c.id), orig = c.tag && c.tag !== c.name ? c.tag.replaceAll('_', ' ') : '', skins = skinsOf(c);
     attr(refs.who, 'href', charHash(c.id)); attr(refs.img, 'src', coverUrl(c.cover)); setTint(refs.img, c.color);
-    text(refs.name, c.name); text(refs.orig, orig); show(refs.orig, !!orig);
+    text(refs.name, roleName(c)); text(refs.orig, orig); show(refs.orig, !!orig);
     text(refs.work, workOf(c) || '—');
     css(refs.bar, 'width', Math.max(4, Math.log(c.count + 1) / Math.log(max + 1) * 110) + 'px'); text(refs.count, number(c.count));
     text(refs.recent, a?.recent ? '+' + number(a.recent) : '—');
@@ -91,7 +93,7 @@ export function castView(s) {
   const small = keyed(refs.small, {key: c => c.id, create: chipItem, scope: s});
   const rows = keyed(refs.rows, {key: x => x.c.id, create: rowItem, scope: s});
   let showWork = false;
-  const person = c => ({href: charHash(c.id), cover: c.cover, color: c.color, name: c.name, title: nameTip(c),
+  const person = c => ({href: charHash(c.id), cover: c.cover, color: c.color, name: c.name, qualifier: roleQualifier(c), title: nameTip(c),
     sub: showWork ? withWork(c, t('{n} 张', {n: number(c.count)})) : t('{n} 张', {n: number(c.count)})});
   const midItems = list => list.map(c => ({...person(c), id: c.id}));
 

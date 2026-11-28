@@ -198,7 +198,7 @@ impl Drop for PageLanguage {
         ROMAN.set(self.0);
     }
 }
-fn roman() -> bool {
+pub(crate) fn roman() -> bool {
     ROMAN.get()
 }
 /// 在其他语言页面上显示的名字：用户自己起的名字保留；否则用英文名，其次是整理成可读形式的 Danbooru 标签（如
@@ -427,6 +427,14 @@ pub(crate) fn match_names(c: &Connection, q: &str) -> Result<()> {
     }
     Ok(())
 }
+// 扩展词条失去来源后，只有已有归属或人工资料的角色仍进入选择器和重名范围。
+pub(crate) const SELECTABLE_ROLE: &str = "NOT EXISTS (
+    SELECT 1 FROM terms t WHERE t.id=e.term_id AND t.origin=?2
+    AND NOT EXISTS (SELECT 1 FROM candidates v WHERE v.entity=e.id)
+    AND NOT EXISTS (SELECT 1 FROM term_projection p WHERE p.term_id=t.id)
+    AND NOT EXISTS (SELECT 1 FROM term_names n WHERE n.term_id=t.id AND n.source='user')
+    AND NOT EXISTS (SELECT 1 FROM term_links l WHERE l.term_id=t.id AND l.source='user'))";
+
 fn entities(c: &Connection, q: &str) -> Result<Json> {
     let q = cut(trim(q), 160);
     match_names(c, &q)?;
@@ -449,18 +457,15 @@ fn entities(c: &Connection, q: &str) -> Result<Json> {
          FROM {ENTITIES} e
          {matched}
          WHERE e.parent_id IS NULL AND e.kind<>'work' AND e.merged_into IS NULL
-           AND NOT EXISTS (
-               SELECT 1 FROM terms t WHERE t.id=e.term_id AND t.origin=?2
-               AND NOT EXISTS (SELECT 1 FROM candidates v WHERE v.entity=e.id)
-               AND NOT EXISTS (SELECT 1 FROM term_projection p WHERE p.term_id=t.id)
-               AND NOT EXISTS (SELECT 1 FROM term_names n WHERE n.term_id=t.id AND n.source='user')
-               AND NOT EXISTS (SELECT 1 FROM term_links l WHERE l.term_id=t.id AND l.source='user'))
+           AND {SELECTABLE_ROLE}
          ORDER BY {ranking}count DESC,entity_name(e.id),e.id
          LIMIT 30",
         visible = visible("m")
     );
     let origin = crate::character_import::EXTENSION_CHARACTER_ORIGIN;
-    let result = rows(c, &sql, &[&like(&q), origin])?.into_iter().map(|v| display(c, v)).collect::<Result<Vec<_>>>()?;
+    let mut result =
+        rows(c, &sql, &[&like(&q), origin])?.into_iter().map(|v| display(c, v)).collect::<Result<Vec<_>>>()?;
+    crate::http_role_labels::RoleLabels::rows(c, &mut result)?;
     c.execute("DELETE FROM name_matches", [])?;
     Ok(Json::Array(result))
 }

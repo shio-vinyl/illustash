@@ -240,6 +240,87 @@ class NativePackCatalogTest(unittest.TestCase):
         state = wait_until(finished)
         self.assertEqual((state['status'], state['total']), ('needs_recognition', count), state)
 
+    def test_character_catalog_retries_and_only_activates_on_next_start(self):
+        files = {}
+
+        def applied():
+            with closing(sqlite3.connect(self.lib.db)) as db:
+                row = db.execute("SELECT json_extract(value,'$.revision') FROM meta WHERE key='character_catalog'").fetchone()
+            return row[0] if row else None
+
+        with github(files) as (origin, seen):
+            files.update(self.serve(origin))
+            for suffix in ('', '.sig'):
+                files[DOWNLOAD + 'packs/packs.json' + suffix] = (FIXTURES / ('packs-roles.json' + suffix)).read_bytes()
+            route = DOWNLOAD + 'character-catalog-3/roles.json'
+            files[route] = b'partial'
+            self.restart()
+            self.assertEqual(self.packs()['character_catalog']['active'], 2)
+            self.post('/api/updates', {'action': 'check'})
+            state = self.packs()
+            self.assertEqual(state['catalog']['serial'], 1)
+            self.assertIsNone(state['catalog']['error'])
+            self.assertTrue(state['character_catalog']['error'])
+            self.assertEqual((state['character_catalog']['active'], state['character_catalog']['pending']), (2, None))
+            files[route] = (FIXTURES / 'roles.json').read_bytes()
+            self.post('/api/updates', {'action': 'check'})
+            self.assertEqual(self.packs()['character_catalog'], {'active': 2, 'pending': 3, 'error': None})
+            self.assertEqual(seen.count(route), 2)
+            self.assertIsNone(applied())
+            self.restart()
+            self.assertIsNone(applied())
+            self.assertEqual(self.packs()['character_catalog'], {'active': 3, 'pending': None, 'error': None})
+
+    def test_offline_character_catalog_verifies_each_member_and_activates_after_restart(self):
+        files = {}
+        roles = (FIXTURES / 'roles.json').read_bytes()
+        descriptor = FIXTURES / 'packs-roles.json'
+
+        def applied():
+            with closing(sqlite3.connect(self.lib.db)) as db:
+                row = db.execute("SELECT json_extract(value,'$.revision') FROM meta WHERE key='character_catalog'").fetchone()
+            return row[0] if row else None
+
+        with github(files) as (origin, seen):
+            files.update(self.serve(origin))
+            self.restart()
+            self.assertEqual(self.packs()['character_catalog']['active'], 2)
+            installed = self.root / 'shared/extensions' / f'character-catalog-{sha(roles)}.json'
+            bad = self.root / 'untrusted.zip'
+            with zipfile.ZipFile(bad, 'w') as archive:
+                archive.writestr('packs.json', descriptor.read_bytes())
+                archive.writestr('packs.json.sig', (FIXTURES / 'packs.json.sig-b').read_bytes())
+                archive.writestr('catalog-3/roles.json', roles)
+            self.packs({'action': 'import', 'paths': [str(bad)]})
+            results = self.settle('download')['download']['results']
+            self.assertEqual({r['name']: r['result'] for r in results}, {
+                'untrusted.zip/packs.json': 'catalog_invalid',
+                'untrusted.zip/packs.json.sig': 'catalog_invalid',
+                'untrusted.zip/catalog-3/roles.json': 'unknown',
+            })
+            self.assertFalse(installed.exists())
+
+            partial = self.root / 'damaged.zip'
+            with zipfile.ZipFile(partial, 'w') as archive:
+                archive.writestr('packs.json', descriptor.read_bytes())
+                archive.writestr('packs.json.sig', (FIXTURES / 'packs-roles.json.sig').read_bytes())
+                # 正确签名、同样文件大小，但内容与 SHA-256 不符；兼容放在 ZIP 根上的词表文件。
+                archive.writestr('roles.json', b'x' + roles[1:])
+            good = self.root / 'verified.zip'
+            pack_catalog.offline(descriptor, [FIXTURES / 'roles.json'], good)
+            self.packs({'action': 'import', 'paths': [str(partial), str(good)]})
+            download = self.settle('download')['download']
+            self.assertEqual(download['status'], 'done')
+            results = {r['name']: r['result'] for r in download['results']}
+            self.assertEqual(results['damaged.zip/roles.json'], 'mismatch')
+            self.assertEqual(results['verified.zip/catalog-3/roles.json'], 'catalog_file_installed')
+            self.assertEqual(installed.read_bytes(), roles)
+            self.assertEqual(self.packs()['character_catalog'], {'active': 2, 'pending': 3, 'error': None})
+            self.assertIsNone(applied())
+            self.restart()
+            self.assertEqual(self.packs()['character_catalog']['active'], 3)
+            self.assertEqual(seen, [])
+
     def test_shell_receives_pack_download_enable_and_withdraw(self):
         files, activity = {}, []
         release = Event()

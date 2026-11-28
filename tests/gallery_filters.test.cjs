@@ -191,5 +191,7 @@ test('角色胶囊只写名字，悬停写「名字（作品）」；原创角�
   // 菜单里的角色行和「跳到角色」同一种写法
   assert.equal(charOption(chars[0]), '合成角色<small class="char-work">合成作品</small>');
   assert.equal(charOption(chars[2]), '无作品');
+  assert.equal(charOption({...chars[0], name_disambiguation: {qualifier: 'A&B<2>'}}),
+    '合成角色（A&amp;B&lt;2&gt;）<small class="char-work">合成作品</small>');
   assert.equal(charOption({name: 'Karen'}, 'Blue Archive'), 'Karen<small class="char-work">Blue Archive</small>');
 });

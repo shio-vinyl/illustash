@@ -1,15 +1,16 @@
 // 对角色的操作（桌面布局，#199）：命令面板（换成 / 也是 / 设为角色 / 跳到角色）、原创角色、编辑角色资料、合并，以及
 // 选中图片之间的关系。
 import {forgetLocalLinks, workName} from '../core/catalog.js';
+import {readProfile} from '../core/character.js';
 import {exclusive} from '../core/edits.js';
 import {esc, number} from '../core/format.js';
 import {t, tb} from '../core/i18n.js';
 import {composing, onTyped} from '../core/keys.js';
-import {workLabel} from '../core/labels.js';
-import {refreshMeta} from '../core/meta.js';
+import {roleName, workLabel} from '../core/labels.js';
+import {fetchChar, refreshMeta} from '../core/meta.js';
 import {poolIs} from '../core/pages.js';
 import {libraryPrefs, prefs} from '../core/prefs.js';
-import {charRoute, go} from '../core/route.js';
+import {charRoute, go, replaceRoute} from '../core/route.js';
 import {api, post, readError} from '../core/session.js';
 import {currentLibraryId, remoteNames, remoteNote} from '../core/settings.js';
 import {state} from '../core/state.js';
@@ -18,7 +19,8 @@ import {$, charOption, namesAllowButton, toast, written} from './dom.js';
 import {closeModal, openDialog, openStatic} from './dialog.js';
 import {combo, listNav} from './combo.js';
 import {mutate, reload} from './grid.js';
-import {renderHeading} from './shell.js';
+import {profileDecisions} from './profile_decisions.js';
+import {renderChrome, renderHeading} from './shell.js';
 
 // 命令面板搜索的防抖。
 let pickerTimer = 0;
@@ -63,7 +65,7 @@ async function paletteSearch() {
       if (wd.length) sections.push({label: t('采纳 WD 通用标签'), items: wd.filter(tag => !known.has(tag)).slice(0, 8).map(tag => ({tag, name: tag, hint: t('机器词表，采纳后成为你的标签')}))});
       if (!known.has(q) && !wd.includes(q)) sections.push({label: '', items: [{tag: q, name: q, create: q, hint: t('新建标签')}]});
     }
-  } else if (p.items) sections = [{label: '', items: p.items.filter(e => !q || e.name.toLowerCase().includes(q.toLowerCase()))}];
+  } else if (p.items) sections = [{label: '', items: p.items.filter(e => !q || roleName(e).toLowerCase().includes(q.toLowerCase()))}];
   else if (q) {
     let list; try { list = await api('/api/entities?q=' + encodeURIComponent(q)); } catch (e) { if (gen === p.generation && palette === p) renderPalette([{label: t('本地角色'), items: [], note: readError(e)}], q); return; }
     if (gen !== p.generation || palette !== p) return;   // 换了一次搜索，或面板已经关了
@@ -72,7 +74,8 @@ async function paletteSearch() {
     if (!p.jump) {
       // 还不在图库里：Danbooru 角色（只用输入的文字）稍后就到；只在本地新建的一项留在最后。
       // 原创角色不按名字新建，只给共用的「原创角色（未细分）」（ocShared，选中时才建；#694）。它已在本地结果里时不重复。
-      const shared = list.some(e => e.label_only) ? [] : [{ocShared: true, name: t('原创角色（未细分）'), hint: t('画师的原创角色，不属于任何作品')}];
+      const shared = list.some(e => e.label_only && e.kind === 'oc') ? []
+        : [{ocShared: true, name: t('原创角色（未细分）'), hint: t('画师的原创角色，不属于任何作品')}];
       const create = list.some(e => e.name.toLowerCase() === q.toLowerCase()) ? [] : [{create: q, name: q, hint: t('只在本地新建，不关联 Danbooru')}, ...shared];
       const remote = {label: t('Danbooru 角色 · 选中即新建并关联'), items: [], note: t('正在查 Danbooru…')};
       sections.push(remote, {label: '', items: create});
@@ -95,7 +98,13 @@ async function paletteSearch() {
     }
     const seen = new Set(sections.flatMap(s => s.items.map(e => e.id)));
     const recent = p.recent.get('picks', []).filter(e => !seen.has(e.id) && !(p.exclude || []).includes(e.id));
-    if (recent.length) sections.push({label: t('最近使用'), items: recent}); recent.forEach(e => seen.add(e.id));
+    if (recent.length) {
+      // 最近记录只存 ID 和原名。先取当前目录，目录外的零张角色按 ID 读取现名与限定词。
+      const items = await Promise.all(recent.map(e => state.charMap.get(e.id) || fetchChar(e.id).catch(() => e)));
+      if (gen !== p.generation || palette !== p) return;
+      sections.push({label: t('最近使用'), items: items.filter(Boolean)});
+      recent.forEach(e => seen.add(e.id));
+    }
     const top = state.chars.filter(e => !seen.has(e.id) && !(p.exclude || []).includes(e.id)).slice(0, 8);
     if (top.length) sections.push({label: t('常用'), items: top});
   }
@@ -124,7 +133,8 @@ function highlight() {
   const p = palette; if (!p) return;
   pickerNav.mark();
   const e = p.list[pickerNav.index], chosen = p.multi ? finalList(e, p.touched) : e ? [e] : [];
-  const sentence = chosen.length ? (p.sentence ? p.sentence({...chosen[0], name: chosen.map(x => x.name).join(t('、'))}) : chosen.map(x => x.name).join(t('、'))) : '';
+  const names = chosen.map(roleName).join(t('、'));
+  const sentence = chosen.length && p.sentence ? p.sentence({...chosen[0], name: names}) : names;
   $('pickerFoot').innerHTML = chosen.length ? `<kbd>↵</kbd> ${esc(sentence)}${p.multi ? `<span class="palette-tip"><kbd>⇧↵</kbd> ${p.staged.length ? t('继续加') : t('多选')}</span>` : ''}` : `<span>${esc(p.title || '')}</span>`;
 }
 // 暂存的角色加上高亮的那个（除非它已经暂存了）。
@@ -149,7 +159,10 @@ function renderSubject(opts) {
 function renderStaged() {
   const p = palette, box = $('pickerStaged');
   box.hidden = !p?.staged.length;
-  box.innerHTML = (p?.staged || []).map((e, i) => `<button class="staged-chip" data-unstage="${i}" title="${t('移除')}">${esc(e.create ? t('新建「{name}」', {name: e.name}) : e.name)} ×</button>`).join('');
+  box.innerHTML = (p?.staged || []).map((e, i) => {
+    const label = e.create ? t('新建「{name}」', {name: e.name}) : roleName(e);
+    return `<button class="staged-chip" data-unstage="${i}" title="${t('移除')}">${esc(label)} ×</button>`;
+  }).join('');
 }
 // 导出给样式清单页调用（tools/styleguide/live.js，#352）：改名或改参数时，tools/check_styleguide.py 会报出来。
 export function stage(e) {
@@ -187,8 +200,8 @@ async function choose(i, more = false, explicit = false) {
   palette = null; closeModal($('picker')); p.pick(entity);
 }
 export function mergeCharacter(c) {
-  openPicker({title: t('把 {name} 合并到…', {name: c.name}), placeholder: t('输入同一个人的另一个角色'), jump: true, exclude: [c.id],
-    sentence: e => t('把 {name} 并入 {target}：图、人工结论、造型和别名都过去', {name: c.name, target: e.name}),
+  openPicker({title: t('把 {name} 合并到…', {name: roleName(c)}), placeholder: t('输入同一个人的另一个角色'), jump: true, exclude: [c.id],
+    sentence: e => t('把 {name} 并入 {target}：图、人工结论、造型和别名都过去', {name: roleName(c), target: e.name}),
     pick: async e => {
       try { const r = await post('/api/merge', {source: c.id, target: e.id}); written(r.undo); await refreshMeta(); go(charRoute(e.id)); }
       catch (err) { toast(err.message); }
@@ -241,7 +254,7 @@ export function twoStage(local, remote, extra = () => []) {
   };
 }
 export async function editProfile(c) {
-  let p; try { p = await api('/api/character/profile?' + new URLSearchParams({entity: c.id})); } catch (e) { toast(e.message); return; }
+  let p; try { p = await readProfile(c.id); } catch (e) { toast(e.message); return; }
   const draft = {aliases: [...p.aliases], work: p.work_id ? {id: p.work_id, label: p.work_name} : null, tag: p.tag};
   const autoName = p.tag && !p.user_name ? p.name : '';
   const body = `${p.label_only ? '' : `<label class="field"><span>${t('Danbooru 角色')}</span><div class="combo"><input id="pfTag" autocomplete="off" spellcheck="false" placeholder="${t('搜索角色名或 tag，如 karen blue、カレン')}"><div class="combo-menu" id="pfTagMenu" hidden></div></div>
@@ -250,7 +263,8 @@ export async function editProfile(c) {
       <small>${p.tag ? t('关联了 Danbooru 时可以留空，中文名会自动补全') : t('没有关联 Danbooru 时需要一个名称')}</small></label>
     <div class="field"><span>${t('别名')}</span><div class="alias-box" id="pfAliases"></div><input id="pfAlias" maxlength="120" placeholder="${t('输入别名后按回车')}">
       <small>${p.other_aliases ? t('另有 {n} 个来自 Danbooru 等来源的别名，会自动更新', {n: number(p.other_aliases)}) : ''}</small></div>
-    <label class="field"><span>${t('所属作品')}</span>${p.oc ? `<small>${t('原创角色不属于任何作品')}</small>` : `<div class="combo"><input id="pfWork" autocomplete="off" placeholder="${t('搜索作品，找不到可以新建')}"><div class="combo-menu" id="pfWorkMenu" hidden></div></div><small id="pfWorkNote"></small>`}</label>`;
+    <label class="field"><span>${t('所属作品')}</span>${p.oc ? `<small>${t('原创角色不属于任何作品')}</small>` : `<div class="combo"><input id="pfWork" autocomplete="off" placeholder="${t('搜索作品，找不到可以新建')}"><div class="combo-menu" id="pfWorkMenu" hidden></div></div><small id="pfWorkNote"></small>`}</label>
+    <div id="pfDecisions" hidden></div>`;
   // 填了内容（和打开时不一样，或输入框里还有没按回车、没选中的字）时 Esc 先确认（#422 的 2-20）。
   const typed = () => !!q('#pfAlias').value.trim() || !!q('#pfTag') && q('#pfTag').value !== (draft.tag ? draft.tag.replaceAll('_', ' ') : '')
     || !!q('#pfWork') && q('#pfWork').value !== (draft.work?.label || '');
@@ -262,6 +276,14 @@ export async function editProfile(c) {
   q('#pfAliases').onclick = e => { const b = e.target.closest('[data-a]'); if (b) { draft.aliases.splice(Number(b.dataset.a), 1); aliases(); } };
   q('#pfAlias').onkeydown = e => { if (composing(e)) return; const v = e.target.value.trim(); if (e.key === 'Enter') { e.preventDefault(); if (v && !draft.aliases.includes(v)) draft.aliases.push(v); e.target.value = ''; aliases(); } };
   aliases();
+  profileDecisions(q('#pfDecisions'), p, async () => {
+    await refreshMeta();
+    const {char, variant} = state.route;
+    if (char !== p.id) return;
+    if (variant && !state.char?.variants?.some(v => v.id === variant)) replaceRoute({variant: ''});
+    renderChrome();
+    await reload();
+  });
   const tagNote = () => { if (!q('#pfTagNote')) return; q('#pfTag').value = draft.tag ? draft.tag.replaceAll('_', ' ') : ''; q('#pfTagNote').innerHTML = draft.tag ? `${t('已关联 {tag}', {tag: `<code>${esc(draft.tag)}</code>`})} · <button type="button" class="link-button" id="pfUnlink">${t('取消关联')}</button>` : t('补上中文名、别名和所属作品'); q('#pfUnlink')?.addEventListener('click', () => { draft.tag = ''; tagNote(); }); };
   const workNote = () => { if (!q('#pfWork')) return; q('#pfWork').value = draft.work?.label || ''; q('#pfWorkNote').innerHTML = draft.work ? `${draft.work.create ? t('保存时新建这个作品') + ' · ' : draft.work.tag ? t('保存时从 Danbooru 建立这个作品') + ' · ' : ''}<button type="button" class="link-button" id="pfNoWork">${t('不归属任何作品')}</button>` : (draft.tag && draft.tag !== p.tag && !p.work_id ? (draft.tagWork ? t('留空：按 Danbooru 自动设置（{work}）', {work: draft.tagWork}) : t('留空：按 Danbooru 自动设置')) : t('未归类')); q('#pfNoWork')?.addEventListener('click', () => { draft.work = null; workNote(); }); };
   tagNote(); workNote();

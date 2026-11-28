@@ -40,7 +40,12 @@ pub(crate) fn request_prepared(
             initialized(&c)?;
             crate::app_characters::request(&mut c, context, path, body)
         }
-        "/api/identity/decision" | "/api/identity/skip" | "/api/merge" => {
+        "/api/identity/decision" | "/api/identity/skip" | "/api/identity/pair" | "/api/merge" => {
+            initialized(&c)?;
+            crate::app_identity::request(&mut c, path, body)
+        }
+        // 拆开角色目录合并或挂上的角色（#837）。
+        "/api/catalog/split" => {
             initialized(&c)?;
             crate::app_identity::request(&mut c, path, body)
         }
@@ -60,7 +65,8 @@ pub(crate) fn request_prepared(
     if matches!(
         path,
         "/api/undo" | "/api/identity/decision" | "/api/merge" | "/api/character/profile" | "/api/local-links"
-    ) {
+    ) || matches!(path, "/api/catalog/split" | "/api/identity/pair")
+    {
         crate::app_effects::drain_after_commit(&context.db);
     }
     Ok(result)
@@ -396,6 +402,19 @@ fn restore_application(c: &Connection, bound: &SqlValue, before: &Value) -> Resu
         crate::app_similar_seen::restore(c, seen)?;
         c.execute("UPDATE actions SET undone=1 WHERE id=?", [id])?;
         return Ok(());
+    }
+    for (key, was_apart) in [("identity_kept_apart", false), ("identity_resumed", true)] {
+        if let Some(pair) = single.and_then(|item| item.get(key)) {
+            let Some([Value::String(a), Value::String(b)]) = pair.as_array().map(Vec::as_slice) else {
+                return Err(Error::Io(std::io::Error::other("未知历史")));
+            };
+            if a.is_empty() || b.is_empty() || a == b {
+                return Err(Error::Io(std::io::Error::other("未知历史")));
+            }
+            crate::character_identity::set_kept_apart(c, a, b, was_apart)?;
+            c.execute("UPDATE actions SET undone=1 WHERE id=?", [id])?;
+            return Ok(());
+        }
     }
     c.execute("DELETE FROM asked WHERE action_id=?", [id])?;
     let mut touched = Vec::new();

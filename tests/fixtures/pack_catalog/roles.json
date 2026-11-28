@@ -1,0 +1,31 @@
+{
+  "format": "illustash-character-catalog/1",
+  "revision": 3,
+  "columns": [
+    "id",
+    "tag",
+    "tags",
+    "parent",
+    "relation",
+    "action",
+    "variant",
+    "bangumi",
+    "pick",
+    "wikidata"
+  ],
+  "characters": [
+    [
+      1,
+      "synthetic_role",
+      [],
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+    ]
+  ],
+  "works": []
+}

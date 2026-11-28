@@ -4,8 +4,8 @@ window.CENSUS = {
  "files": {
   "app.css": "574d3a7d0357cdcd1e4e1f7212461ef762a8c86703349e1090aa4140895a4499",
   "css/base.css": "18d8e9194960f9bd76dc9f70d15ab45b4cd0cc1c06b415a395a875ceba5d7451",
-  "css/catalog.css": "076a0fcebc95af0a6daff5b99fb5e0d5c407fa7bacc908dcd8383bc4e52a6ba2",
-  "css/character.css": "c700d9eb883a6ef2848b44e5c9d96446dc649e7b9d63e2ae83ebfbfef7151697",
+  "css/catalog.css": "c34b8356ec8edffce694b803be3f4f620268b312520826103fb9758d7cc61e34",
+  "css/character.css": "039f4c74f919c110648158e2b66e32914012fd3b8d2771b42a0d9ad5c30ff75c",
   "css/detail.css": "a9eaf043f2074eea276c1b235e7da4db3630a280ad99ea15956c62d2ecba2904",
   "css/galleries.css": "2ce38f58bf8ff9228202c489de9cd3eb9c7448666f7f524404ed7728ad7ed5b2",
   "css/library.css": "f27e451570faad3bec97b148dfe39fcfa12ff872445a0f28f7e1c9dc0db7075a",
@@ -15,9 +15,9 @@ window.CENSUS = {
   "css/tidy.css": "63c15db2f00a009f88d0b19a20ab688b72849fc49e487ae3bf9260e55dada604",
   "css/tokens.css": "6f31fbe3b32f892a26e753e410d7e5ea94d7e4165ed49d04458eecca3314e787"
  },
- "sha256": "44fb5d6401a26dd1813544be1d69ff48b651b4ae9b28d448038f6330b9d9b9c2",
- "lines": 2054,
- "rules": 1450,
+ "sha256": "a9cfa5e916f9529975cfdc41e194b48f57f51bc17fe64d63569a5478deeb0c3f",
+ "lines": 2057,
+ "rules": 1453,
  "themeVars": {
   "light": {
    "--canvas": "#f4f4f6",
@@ -188,7 +188,7 @@ window.CENSUS = {
    "--tint": "#8a8a96"
   },
   "uses": {
-   "--ink": 68,
+   "--ink": 69,
    "--canvas": 17,
    "--fs-13": 35,
    "--radius-6": 8,
@@ -211,7 +211,7 @@ window.CENSUS = {
    "--faint": 9,
    "--z-popover": 2,
    "--gutter": 5,
-   "--fs-11": 84,
+   "--fs-11": 85,
    "--z-page-4": 2,
    "--space-10": 75,
    "--space-2": 58,
@@ -552,7 +552,7 @@ window.CENSUS = {
    {
     "name": "--fs-11",
     "value": "11px",
-    "uses": 84
+    "uses": 85
    },
    {
     "name": "--fs-12",
@@ -1002,7 +1002,7 @@ window.CENSUS = {
  "rgbaCalls": 70,
  "fontSize": {
   "kinds": 10,
-  "uses": 248,
+  "uses": 249,
   "table": [
    {
     "value": "var(--fs-10)",
@@ -1015,7 +1015,7 @@ window.CENSUS = {
    },
    {
     "value": "var(--fs-11)",
-    "uses": 83,
+    "uses": 84,
     "examples": [
      ".missing",
      ".footer",

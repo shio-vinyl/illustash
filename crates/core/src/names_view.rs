@@ -1,5 +1,5 @@
 //! 名字的显示投影（docs/TERMS_NAMES.md 方案 N1）：逐条移植 tests/reference/web/names.py（#9 已删除） 的 `View`（`entity_rows`、`load`、`choose`、
-//! `entity`、`base`、`own_name`）和词表（`PRIORITY`、`SKINS`、`WORK_NAMES`、`readable`、`skin_zh`）。
+//! `entity`、`base`、`own_name`）和词表（`PRIORITY`、`WORK_NAMES`、`readable`、`skin_zh`）。
 //! 输入是身份（`character_entities::ENTITIES`）、当前链接、名字和按文字键的显示名 `term_key_names`，输出两张投影表：
 //! - `term_name_display(entity, skin_only, …)`：`View.entity(id, skin_only)`；
 //! - `term_name_choice(kind, key, …)`：`View.choose(kind, key)`，键的范围是人物的 tag、作品文字（身份的 `work` 与
@@ -11,12 +11,13 @@ use crate::character_links::LINKS;
 use crate::{Error, Result};
 use rusqlite::{params, Connection};
 use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::sync::LazyLock;
 
 /// `names.PRIORITY`：小的优先。
 pub const PRIORITY: [&str; 7] = ["user", "bangumi", "index", "danbooru", "wiki", "builtin", "model"];
 
-/// `names.SKINS`，保持原来的顺序（`skin_zh` 按长度排序时，同长的词按这个顺序）。
-pub const SKINS: [(&str, &str); 15] = [
+/// 旧有造型词，也是作品后缀筛选原先采用的词表。
+const LEGACY_SKINS: [(&str, &str); 15] = [
     ("swimsuit", "泳装"),
     ("new_year", "新年"),
     ("bunny", "兔女郎"),
@@ -32,6 +33,36 @@ pub const SKINS: [(&str, &str); 15] = [
     ("halloween", "万圣节"),
     ("christmas", "圣诞"),
     ("festival_outfit", "祭典服"),
+];
+
+/// 以下词只在已知是造型的 variant 中翻译。
+const COMMON_SKINS: &[(&str, &str)] = &[
+    ("armed", "武装"),
+    ("autumn", "秋季"),
+    ("band", "乐队"),
+    ("camp", "露营"),
+    ("cheer_squad", "啦啦队服"),
+    ("elite_i", "精英一阶段"),
+    ("elite_ii", "精英二阶段"),
+    ("goth", "哥特风"),
+    ("gothic_lolita", "哥特洛丽塔"),
+    ("hoodie", "连帽衫"),
+    ("jirai_kei", "地雷系"),
+    ("loungewear", "家居服"),
+    ("nurse", "护士服"),
+    ("pajamas", "睡衣"),
+    ("racing", "赛车服"),
+    ("roomwear", "家居服"),
+    ("sailor", "水手服"),
+    ("sleepwear", "睡衣"),
+    ("sportswear", "运动服"),
+    ("spring", "春季"),
+    ("street", "街头风"),
+    ("streetwear", "街头服饰"),
+    ("suit", "西服"),
+    ("summer", "夏季"),
+    ("track", "田径服"),
+    ("winter", "冬季"),
 ];
 
 /// `names.WORK_NAMES`。
@@ -113,24 +144,93 @@ pub fn readable(tag: &str, character: bool) -> String {
     title(&t.replace('_', " "))
 }
 
-/// `names.skin_zh`：最长的词先匹配，拆不完就不翻译。
-pub fn skin_zh(tag: &str) -> Option<String> {
-    if tag.is_empty() {
+fn ordinal_costume(tag: &str) -> Option<(String, &str)> {
+    let (ordinal, tail) = tag.split_once("_costume")?;
+    let remaining = if tail.is_empty() { "" } else { tail.strip_prefix('_').filter(|s| !s.is_empty())? };
+    let (digits, suffix) = ordinal.split_at_checked(ordinal.len().checked_sub(2)?)?;
+    if digits.starts_with('0') || !digits.bytes().all(|c| c.is_ascii_digit()) {
         return None;
     }
-    let mut words: Vec<(&str, &str)> = SKINS.to_vec();
-    words.sort_by_key(|(w, _)| std::cmp::Reverse(w.chars().count())); // 稳定排序：同长保持原顺序
-    for (word, zh) in words {
+    let number: usize = digits[digits.len().saturating_sub(2)..].parse().ok()?;
+    let expected = match (number % 100, number % 10) {
+        (11..=13, _) => "th",
+        (_, 1) => "st",
+        (_, 2) => "nd",
+        (_, 3) => "rd",
+        _ => "th",
+    };
+    if suffix != expected {
+        return None;
+    }
+    const ZH: [&str; 10] = ["", "一", "二", "三", "四", "五", "六", "七", "八", "九"];
+    let shown = match (digits.len(), number) {
+        (1, n) => ZH[n].to_owned(),
+        (2, 10..=19) => format!("十{}", ZH[number % 10]),
+        (2, n) => format!("{}十{}", ZH[n / 10], ZH[n % 10]),
+        _ => digits.to_owned(),
+    };
+    Some((format!("第{shown}套衣装"), remaining))
+}
+
+fn translate_skin_words(tag: &str, words: &[(&str, &str)], ordinals: bool) -> Option<String> {
+    if ordinals {
+        if let Some((zh, rest)) = ordinal_costume(tag) {
+            return if rest.is_empty() {
+                Some(zh)
+            } else {
+                translate_skin_words(rest, words, ordinals).map(|rest| format!("{zh} · {rest}"))
+            };
+        }
+    }
+    for &(word, zh) in words {
         if tag == word {
             return Some(zh.to_owned());
         }
         if let Some(rest) = tag.strip_prefix(word).and_then(|r| r.strip_prefix('_')) {
-            if let Some(rest) = skin_zh(rest) {
+            if let Some(rest) = translate_skin_words(rest, words, ordinals) {
                 return Some(format!("{zh} · {rest}"));
             }
         }
     }
     None
+}
+
+/// 冻结录制重放指定旧选名规则，新图库和现行测试使用当前规则。
+pub fn legacy_skin_names() -> bool {
+    static LEGACY: LazyLock<bool> = LazyLock::new(|| std::env::var_os("ILLUSTASH_TEST_LEGACY_SKIN_NAMES").is_some());
+    *LEGACY
+}
+
+fn legacy_skin_zh(tag: &str) -> Option<String> {
+    static WORDS: LazyLock<[(&str, &str); LEGACY_SKINS.len()]> = LazyLock::new(|| {
+        let mut words = LEGACY_SKINS;
+        words.sort_by_key(|(word, _)| std::cmp::Reverse(word.len()));
+        words
+    });
+    translate_skin_words(tag, WORDS.as_slice(), false)
+}
+
+/// 造型词最长优先，无法完整拆解的造型保留整个原名。
+pub fn skin_zh(tag: &str) -> Option<String> {
+    if legacy_skin_names() {
+        return legacy_skin_zh(tag);
+    }
+    static WORDS: LazyLock<Vec<(&str, &str)>> = LazyLock::new(|| {
+        let mut words: Vec<_> = LEGACY_SKINS.into_iter().chain(COMMON_SKINS.iter().copied()).collect();
+        words.sort_by_key(|(word, _)| std::cmp::Reverse(word.len()));
+        words
+    });
+    translate_skin_words(tag, &WORDS, true)
+}
+
+/// 作品括号中的词是否匹配原有的、明确表示造型的词表。
+pub(crate) fn costume_qualifier(tag: &str) -> bool {
+    legacy_skin_zh(tag).is_some()
+}
+
+/// 新增词表能翻译而旧词表不能，用于找需要重投影的造型。
+pub fn expanded_skin_name(tag: &str) -> bool {
+    skin_zh(tag).is_some() && !costume_qualifier(tag)
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -375,12 +475,20 @@ impl View {
             self.names.get(&(kind.to_owned(), key.to_owned())).map(|v| v.iter().collect()).unwrap_or_default();
         let mut keyed = Vec::with_capacity(rows.len());
         for r in rows.drain(..) {
-            keyed.push(((!r.preferred, priority(&r.source)?, r.value.clone()), r));
+            // 角色的 wiki preferred 只记录旁证状态。来源和用户的偏好继续管同语言取舍。
+            let preferred = r.preferred && !(kind == "character" && r.source == "wiki");
+            keyed.push(((!preferred, priority(&r.source)?, r.value.clone()), r));
         }
         keyed.sort_by(|a, b| a.0.cmp(&b.0));
-        let mut best: BTreeMap<String, (String, String)> = BTreeMap::new();
+        let mut best: BTreeMap<String, (String, String, bool)> = BTreeMap::new();
         for (_, r) in keyed {
-            best.entry(r.lang.clone()).or_insert((r.value.clone(), r.source.clone()));
+            best.entry(r.lang.clone()).or_insert((r.value.clone(), r.source.clone(), r.preferred));
+        }
+        let reviewed = (kind == "character").then(|| crate::character_catalog::current().reviewed_name(key)).flatten();
+        if let Some(label) = reviewed {
+            if !best.get("zh").is_some_and(|v| matches!(v.1.as_str(), "user" | "bangumi" | "index")) {
+                best.insert("zh".into(), (label.into(), "builtin".into(), false));
+            }
         }
         if kind == "skin" {
             if let Some(zh) = skin_zh(key) {
@@ -389,25 +497,35 @@ impl View {
                     Some(old) => priority(&old.1)? > priority("builtin")?,
                 };
                 if replace {
-                    best.insert("zh".into(), (zh, "builtin".into()));
+                    best.insert("zh".into(), (zh, "builtin".into(), false));
                 }
+            }
+            let manual = LANGS.iter().filter_map(|lang| best.get(*lang)).find(|row| row.1 == "user");
+            if let Some(manual) = manual.filter(|_| !legacy_skin_names()) {
+                return Ok(Choice {
+                    name: manual.0.clone(),
+                    source: manual.1.clone(),
+                    names: LANGS.map(|lang| best.get(lang).map(|row| row.0.clone())),
+                });
             }
         }
         if kind == "work" {
             if let Some(w) = work_name(key) {
                 if best.get("zh").map(|v| v.1.as_str()) != Some("user") {
-                    best.insert("zh".into(), (w.to_owned(), "builtin".into()));
+                    best.insert("zh".into(), (w.to_owned(), "builtin".into(), false));
                 }
             }
         }
         let langs: &[&str] = if kind == "skin" { &["zh", "en"] } else { &LANGS };
-        // min 取第一个最小的；wiki 的中文按 bangumi 排。
+        // 同档选第一种语言。角色的 wiki 中文有旁证才提档。
         let mut chosen: Option<(usize, (String, String))> = None;
         for lang in langs.iter().filter(|l| **l != "en") {
             if let Some(v) = best.get(*lang) {
-                let rank = if v.1 == "wiki" && *lang == "zh" { priority("bangumi")? } else { priority(&v.1)? };
+                let promoted = *lang == "zh"
+                    && ((v.1 == "wiki" && (kind != "character" || v.2)) || (v.1 == "builtin" && reviewed.is_some()));
+                let rank = priority(if promoted { "bangumi" } else { &v.1 })?;
                 if chosen.as_ref().is_none_or(|(r, _)| rank < *r) {
-                    chosen = Some((rank, v.clone()));
+                    chosen = Some((rank, (v.0.clone(), v.1.clone())));
                 }
             }
         }
@@ -477,12 +595,18 @@ impl View {
         } else if let Some(parent_id) = &e.parent {
             result = self.choose("skin", &e.variant)?;
             let parent = self.entities.get(parent_id);
-            if result.source == "readable" {
-                let mut rows: Vec<&NameRow> = self
-                    .own
-                    .get(&e.id)
-                    .map(|v| v.iter().filter(|r| r.lang == "zh" || r.lang == "ja").collect())
-                    .unwrap_or_default();
+            let own = self.own.get(&e.id).map_or(&[][..], Vec::as_slice);
+            let manual = own.iter().find(|r| r.source == "user");
+            if let Some(manual) = manual.filter(|_| !legacy_skin_names()) {
+                result.name = manual.value.clone();
+                result.source = manual.source.clone();
+                for (i, lang) in LANGS.iter().enumerate() {
+                    if let Some(row) = own.iter().find(|r| r.source == "user" && r.lang == *lang) {
+                        result.names[i] = Some(row.value.clone());
+                    }
+                }
+            } else if result.source == "readable" {
+                let mut rows: Vec<&NameRow> = own.iter().filter(|r| r.lang == "zh" || r.lang == "ja").collect();
                 let mut keyed = Vec::with_capacity(rows.len());
                 for r in rows.drain(..) {
                     keyed.push(((r.lang != "zh", !r.preferred, priority(&r.source)?, r.value.clone()), r));
@@ -508,7 +632,7 @@ impl View {
                     None => (String::new(), None),
                 };
                 result.name = format!("{base_name} · {}", result.name);
-                if base_source.as_deref() == Some("model") {
+                if base_source.as_deref() == Some("model") && (result.source != "user" || legacy_skin_names()) {
                     result.source = "model".into();
                 }
             }
@@ -1278,6 +1402,7 @@ mod tests {
              CREATE TABLE term_names(term_id INTEGER,lang TEXT,value TEXT,source TEXT,role TEXT,preferred INTEGER NOT NULL DEFAULT 0,
               position INTEGER NOT NULL DEFAULT 0,seq INTEGER,PRIMARY KEY(term_id,role,lang,source,value));
              CREATE TABLE term_key_names(kind TEXT,key TEXT,lang TEXT,source TEXT,value TEXT,PRIMARY KEY(kind,key,lang,source,value));
+             CREATE TABLE term_key_aliases(kind TEXT,key TEXT,value TEXT);
              INSERT INTO identities VALUES ('e1','character',NULL,'',NULL,0,'series_w'),('e2','character',NULL,'',NULL,0,''),
               ('s1','skin','e1','swimsuit_x',NULL,0,''),('w1','work',NULL,'',NULL,0,''),('m1','character',NULL,'','e1',0,'');
              INSERT INTO term_links(system,key,term_id,current,added_at) VALUES ('danbooru','synth_(series_w)',(SELECT id FROM terms WHERE key='e1'),1,'2026-01-01'),('wd_character','synth_(series_w)',(SELECT id FROM terms WHERE key='e2'),1,'2026-01-02'),
@@ -1295,6 +1420,34 @@ mod tests {
         ]))
         .unwrap();
         c
+    }
+
+    #[test]
+    fn reviewed_wikidata_uses_old_tag_offline_and_preserves_user_names() {
+        let c = library();
+        let catalog = serde_json::json!({
+            "format":crate::character_catalog::FORMAT, "revision":2,
+            "columns":["id","tag","tags","parent","relation","action","variant","bangumi","pick","wikidata"],
+            "characters":[[1,"current_name",["old_name"],null,null,null,null,null,null,"Q123"]],
+            "works":[], "wikidata_names":{"Q123":"示例椛"}
+        });
+        let catalog = crate::character_catalog::Catalog::parse(&catalog.to_string()).unwrap();
+        crate::character_catalog::override_for_thread(Some(Box::leak(Box::new(catalog))));
+        c.execute_batch(
+            "INSERT INTO term_key_names VALUES ('character','old_name','ja','index','日本語'),
+            ('character','old_name','zh','wiki','误选别名');",
+        )
+        .unwrap();
+        let choice = choose_key(&c, "character", "old_name").unwrap();
+        assert_eq!((choice.name.as_str(), choice.source.as_str()), ("示例椛", "builtin"));
+        assert_eq!(choice.names[1].as_deref(), Some("日本語"));
+        c.execute_batch("INSERT INTO term_key_names VALUES ('character','old_name','zh','user','我改的名');").unwrap();
+        let choice = choose_key(&c, "character", "old_name").unwrap();
+        assert_eq!((choice.name.as_str(), choice.source.as_str()), ("我改的名", "user"));
+        c.execute("UPDATE term_links SET key='old_name' WHERE system='danbooru' AND key='synth_(series_w)'", [])
+            .unwrap();
+        assert_eq!(crate::names_search::hits(&c, "示例椛").unwrap().get("e1"), Some(&2));
+        crate::character_catalog::override_for_thread(None);
     }
 
     fn projection(c: &Connection) -> Vec<Vec<rusqlite::types::Value>> {
@@ -1550,5 +1703,92 @@ mod tests {
         assert_eq!(skin_zh("swimsuit_x"), None);
         assert_eq!(skin_zh("festival_outfit"), Some("祭典服".to_owned()));
         assert_eq!(skin_zh(""), None);
+    }
+
+    #[test]
+    fn appearance_names_and_search_share_the_chinese_vocabulary() {
+        let c = library();
+        c.execute_batch(TABLES).unwrap();
+        for (variant, name) in [
+            ("1st_costume", "第一套衣装"),
+            ("2nd_costume", "第二套衣装"),
+            ("3rd_costume", "第三套衣装"),
+            ("4th_costume", "第四套衣装"),
+            ("9th_costume", "第九套衣装"),
+            ("11th_costume", "第十一套衣装"),
+            ("22nd_costume", "第二十二套衣装"),
+            ("100th_costume", "第100套衣装"),
+            ("101st_costume", "第101套衣装"),
+            ("4294967296th_costume", "第4294967296套衣装"),
+            ("winter_casual", "冬季 · 便服"),
+            ("summer", "夏季"),
+            ("winter", "冬季"),
+            ("sleepwear", "睡衣"),
+            ("racing", "赛车服"),
+            ("elite_ii", "精英二阶段"),
+            ("gothic_lolita", "哥特洛丽塔"),
+            ("winter_3rd_costume", "冬季 · 第三套衣装"),
+        ] {
+            c.execute("UPDATE identities SET variant=? WHERE id='s1'", [variant]).unwrap();
+            rebuild(&c).unwrap();
+            let shown = c
+                .query_row("SELECT name FROM term_name_display WHERE entity='s1' AND skin_only=1", [], |r| {
+                    r.get::<_, String>(0)
+                })
+                .unwrap();
+            assert_eq!(shown, name, "{variant}");
+            assert!(crate::names_search::hits(&c, name).unwrap().contains_key("e1"), "{variant}");
+        }
+        for query in ["冬季", "第三套衣装", "winter 3rd costume", "同名 · 冬季 · 第三套衣装"] {
+            assert!(crate::names_search::hits(&c, query).unwrap().contains_key("e1"), "{query}");
+        }
+        for variant in ["0th_costume", "01st_costume", "11st_costume", "winter_summer_flower", "2nd_costume_"] {
+            assert_eq!(skin_zh(variant), None, "{variant}");
+        }
+    }
+
+    #[test]
+    fn manual_appearance_names_win_and_unknown_names_keep_their_fallbacks() {
+        let c = library();
+        c.execute_batch(
+            "UPDATE identities SET variant='winter_casual' WHERE id='s1';
+             INSERT INTO term_key_names VALUES ('skin','winter_casual','en','user','Cold Weather'),
+               ('skin','winter_casual','zh','model','模型便服');
+             INSERT INTO term_key_names VALUES ('character','synth_(series_w)','zh','model','模型角色');
+             DELETE FROM term_names WHERE term_id = (SELECT id FROM terms WHERE key='e1');",
+        )
+        .unwrap();
+        let view = View::load(&c).unwrap();
+        let short = view.entity("s1", true).unwrap().unwrap().0;
+        assert_eq!((short.name.as_str(), short.source.as_str()), ("Cold Weather", "user"));
+        assert_eq!(short.names[0].as_deref(), Some("冬季 · 便服"));
+
+        c.execute_batch(&named(&[("s1", "ja", "冬の名前", "user", 1)])).unwrap();
+        let view = View::load(&c).unwrap();
+        let full = view.entity("s1", false).unwrap().unwrap().0;
+        assert_eq!((full.name.as_str(), full.source.as_str()), ("模型角色 · 冬の名前", "user"));
+        assert!(crate::names_search::hits(&c, "冬の名前").unwrap().contains_key("e1"));
+
+        let variant = "shoal_beat";
+        let choice = choose_key(&c, "skin", variant).unwrap();
+        assert_eq!((choice.name.as_str(), choice.source.as_str()), ("Shoal Beat", "readable"));
+        c.execute("INSERT INTO term_key_names VALUES ('skin',?,'zh','model','浅滩节拍')", [variant]).unwrap();
+        let choice = choose_key(&c, "skin", variant).unwrap();
+        assert_eq!((choice.name.as_str(), choice.source.as_str()), ("浅滩节拍", "model"));
+    }
+
+    #[test]
+    fn builtin_appearance_name_coverage() {
+        use crate::character_catalog::{bundled, Action, Relation};
+        let variants: Vec<_> = bundled()
+            .characters()
+            .iter()
+            .filter(|entry| entry.relation == Some(Relation::Appearance) && entry.action == Some(Action::Auto))
+            .map(|entry| entry.variant.as_deref().unwrap_or(entry.tag.as_str()))
+            .collect();
+        let before = variants.iter().filter(|tag| costume_qualifier(tag)).count();
+        let after = variants.iter().filter(|tag| skin_zh(tag).is_some()).count();
+        eprintln!("内置造型译名覆盖共 {} 条，改前 {before}，改后 {after}", variants.len());
+        assert!(after * 2 > variants.len());
     }
 }

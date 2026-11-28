@@ -502,19 +502,23 @@ pub(crate) fn normalize(s: &str) -> String {
     )
 }
 fn kana(s: &str) -> bool {
-    s.chars().any(|c| ('\u{3040}'..='\u{30ff}').contains(&c))
+    s.chars().any(|c| matches!(c, '\u{3040}'..='\u{30ff}' | '\u{31f0}'..='\u{31ff}' | '\u{1b000}'..='\u{1b16f}'))
 }
 fn han(s: &str) -> bool {
-    s.chars().any(|c| ('\u{3400}'..='\u{9fff}').contains(&c))
+    s.chars().any(han_char)
+}
+fn han_char(c: char) -> bool {
+    matches!(c, '\u{3400}'..='\u{4dbf}' | '\u{4e00}'..='\u{9fff}' | '\u{20000}'..='\u{323af}')
 }
 fn hangul(s: &str) -> bool {
-    s.chars().any(|c| ('\u{ac00}'..='\u{d7a3}').contains(&c))
+    s.chars().any(|c| matches!(c, '\u{1100}'..='\u{11ff}' | '\u{3130}'..='\u{318f}' | '\u{ac00}'..='\u{d7ff}'))
 }
 pub(crate) fn group(s: &str) -> bool {
+    static TEAM: OnceLock<Regex> = OnceLock::new();
     let n = normalize(s);
     n.contains("チーム")
         || n.ends_with(['队', '隊'])
-        || Regex::new(r"(?i)(?:^|[\s_])team$").expect("constant regular expression is valid").is_match(s)
+        || TEAM.get_or_init(|| Regex::new(r"(?i)(?:^|[\s_])team$").expect("固定的团队名格式")).is_match(s)
 }
 pub(crate) fn keywords(names: &[String], character: bool) -> Vec<String> {
     let mut seen = HashSet::new();
@@ -533,6 +537,9 @@ pub(crate) fn keywords(names: &[String], character: bool) -> Vec<String> {
         .collect()
 }
 fn codec(s: &str, encoded: &str) -> bool {
+    s.chars().all(|c| codec_char(c, encoded))
+}
+fn codec_char(c: char, encoded: &str) -> bool {
     static GB: OnceLock<Vec<(u32, u32)>> = OnceLock::new();
     static JP: OnceLock<Vec<(u32, u32)>> = OnceLock::new();
     let storage = if encoded == crate::name_codecs::GB2312 { &GB } else { &JP };
@@ -549,34 +556,84 @@ fn codec(s: &str, encoded: &str) -> bool {
             })
             .collect()
     });
+    let c = c as u32;
+    let i = ranges.partition_point(|(a, _)| *a <= c);
+    i > 0 && c <= ranges[i - 1].1
+}
+/// 比较 wiki 别名时解开 Danbooru 的空格编码和尾部作品限定词。
+pub(crate) fn wiki_base(name: &str) -> String {
+    static QUALIFIER: OnceLock<Regex> = OnceLock::new();
+    let name = name.nfkc().collect::<String>().replace(['•', '・', '･'], "·").replace('_', " ");
+    let name = name.trim();
+    QUALIFIER
+        .get_or_init(|| Regex::new(r"^(.+?)\s*\([^()]+\)$").expect("固定的作品限定词格式"))
+        .captures(name)
+        .map(|m| m[1].trim().to_owned())
+        .unwrap_or_else(|| name.into())
+}
+
+fn simplified_wiki_chars(s: &str) -> bool {
     s.chars().all(|c| {
-        let c = c as u32;
-        let i = ranges.partition_point(|(a, _)| *a <= c);
-        i > 0 && c <= ranges[i - 1].1
+        codec_char(c, crate::name_codecs::GB2312)
+            || c == '·'
+            || (han_char(c) && !codec_char(c, crate::name_codecs::CP932))
     })
 }
-pub(crate) fn wiki_zh(names: &[String], works: &[String]) -> Option<String> {
+
+/// 日文同形只能旁证已经符合简中文字形条件的名字。独立中文来源可旁证其他生僻字。
+pub(super) fn wiki_ja_han(s: &str) -> bool {
+    simplified_wiki_chars(s)
+}
+
+/// 同一作品共享的无旁证别名和常见合称只用于搜索。多个候选中优先取有旁证的。
+pub(crate) fn wiki_zh(
+    names: &[String],
+    works: &[String],
+    confirmed: impl Fn(&str) -> bool,
+    shared: impl Fn(&str) -> bool,
+) -> Option<(String, bool)> {
+    let works: Vec<_> = works.iter().map(|w| normalize(w)).filter(|w| !w.is_empty()).collect();
+    let mut fallback = None;
     let mut previous = false;
-    let re = Regex::new(r"^(.+?)\s*[(（][^()（）]+[)）]$").expect("constant regular expression is valid");
     for name in names {
-        let name = name.nfkc().collect::<String>().replace(['•', '・'], "·");
-        let name = name.trim();
-        let base = re.captures(name).map(|m| m[1].trim().to_owned()).unwrap_or_else(|| name.into());
-        let h = base.chars().filter(|c| ('\u{3400}'..='\u{9fff}').contains(c)).collect::<String>();
-        let usable = !kana(name)
-            && !hangul(name)
-            && !h.is_empty()
-            && base.chars().count() <= 20
-            && codec(&base.replace('·', ""), crate::name_codecs::GB2312)
-            && !group(&base)
-            && !["兄妹", "姐妹", "兄弟"].iter().any(|s| base.contains(s))
-            && !works.iter().any(|w| !w.is_empty() && normalize(&base).contains(&normalize(w)));
-        if usable && (!previous || !codec(&h, crate::name_codecs::CP932)) {
-            return Some(base);
+        let base = wiki_base(name);
+        let key = normalize(&base);
+        let h = base.chars().filter(|&c| han_char(c)).collect::<String>();
+        let group_name = group(&base)
+            || [
+                "双子",
+                "雙子",
+                "双胞胎",
+                "雙胞胎",
+                "组合",
+                "組合",
+                "二人组",
+                "二人組",
+                "コンビ",
+                "兄妹",
+                "兄弟",
+                "姉妹",
+                "姐妹",
+                "姊妹",
+            ]
+            .iter()
+            .any(|suffix| key.ends_with(suffix));
+        let shaped = !kana(&base) && !hangul(&base) && !h.is_empty() && base.chars().count() <= 20;
+        if shaped && confirmed(&key) {
+            return Some((base, true));
         }
-        previous |= !h.is_empty();
+        let usable = shaped
+            && simplified_wiki_chars(&base)
+            && !group_name
+            && !shared(&key)
+            && !works.iter().any(|w| key.contains(w));
+        if fallback.is_none() && usable && (!previous || !codec(&h, crate::name_codecs::CP932)) {
+            fallback = Some((base, false));
+        }
+        // 被排除的合称和共用别名不影响之后本名的文字判断。
+        previous |= !h.is_empty() && !group_name && !shared(&key);
     }
-    None
+    fallback
 }
 pub(crate) fn subject_matches(v: &Value, names: &[String]) -> bool {
     ["name", "name_cn"].iter().any(|k| names.iter().any(|n| normalize(n) == normalize(v[k].as_str().unwrap_or(""))))
@@ -590,30 +647,30 @@ pub(crate) fn infobox(v: &Value) -> Option<String> {
         .and_then(|x| x["value"].as_str())
         .map(|s| s.trim().into())
 }
-fn chinese(name: &str, work: &str, subjects: &[Value], wiki: &[String]) -> bool {
-    const JA: &[&str] = &[
-        "touhou",
-        "fate",
-        "vocaloid",
-        "hololive",
-        "nijisanji",
-        "idolmaster",
-        "kancolle",
-        "pokemon",
-        "blue_archive",
-        "umamusume",
-        "love_live!",
-        "bang_dream!",
-        "project_sekai",
-        "princess_connect!",
-        "persona_3",
-        "clannad",
-        "guilty_gear",
-        "macross",
-        "umineko",
-        "senren",
-        "otonari_no_tenshi-sama",
-    ];
+const JAPANESE_WORKS: &[&str] = &[
+    "touhou",
+    "fate",
+    "vocaloid",
+    "hololive",
+    "nijisanji",
+    "idolmaster",
+    "kancolle",
+    "pokemon",
+    "blue_archive",
+    "umamusume",
+    "love_live!",
+    "bang_dream!",
+    "project_sekai",
+    "princess_connect!",
+    "persona_3",
+    "clannad",
+    "guilty_gear",
+    "macross",
+    "umineko",
+    "senren",
+    "otonari_no_tenshi-sama",
+];
+pub(crate) fn chinese_work(work: &str, subjects: &[Value]) -> bool {
     const ZH: &[&str] = &[
         "genshin_impact",
         "arknights",
@@ -624,17 +681,64 @@ fn chinese(name: &str, work: &str, subjects: &[Value], wiki: &[String]) -> bool 
         "wuthering_waves",
         "honkai_impact_3rd",
     ];
-    !kana(name)
-        && !hangul(name)
-        && han(name)
-        && !JA.contains(&work)
+    !JAPANESE_WORKS.contains(&work)
         && (ZH.contains(&work)
             || subjects.iter().any(|s| {
-                !s["name"].as_str().unwrap_or("").is_empty()
-                    && normalize(s["name"].as_str().expect("validated internal text field"))
-                        == normalize(s["name_cn"].as_str().unwrap_or(""))
-            })
-            || (subjects.is_empty() && wiki.iter().any(|s| normalize(s) == normalize(name))))
+                let name = s["name"].as_str().unwrap_or("");
+                han(name)
+                    && !kana(name)
+                    && !hangul(name)
+                    && normalize(name) == normalize(s["name_cn"].as_str().unwrap_or(""))
+            }))
+}
+/// 按角色目录的取名提示，从按 ID 取到的 Bangumi 角色里挑名字（#837）。
+///
+/// 提示是 `''`（中文名用「简体中文名」）、`name`（国产作品：原名就是中文名，「简体中文名」常空着或写的是别名）、
+/// `p0`/`p1`…（「A／B」这种一个条目写了两个名字的，取第几段，原名同样取那一段），可以写成 `name:p1`。
+/// 返回的写法和 [`character_values`] 一样：（名字列表，要另记成别名的「简体中文名」）。
+pub(crate) fn picked_values(v: &Value, pick: &str) -> (Vec<Value>, Option<String>) {
+    let (field, part) = match pick.split_once(':') {
+        Some((f, p)) => (f, Some(p)),
+        None if pick.starts_with('p') => ("", Some(pick)),
+        None => (pick, None),
+    };
+    let index = part.and_then(|p| p.strip_prefix('p')).and_then(|n| n.parse::<usize>().ok());
+    if part.is_some() && index.is_none() {
+        return (vec![], None);
+    }
+    let segment = |s: &str| -> Option<String> {
+        let s = s.trim();
+        if s.is_empty() {
+            return None;
+        }
+        match index {
+            None => Some(s.to_owned()),
+            Some(i) => Regex::new(r"\s*[／/]\s*")
+                .expect("constant regular expression is valid")
+                .split(s)
+                .nth(i)
+                .map(str::trim)
+                .filter(|x| !x.is_empty())
+                .map(str::to_owned),
+        }
+    };
+    let name = v["name"].as_str().unwrap_or("");
+    let boxed = infobox(v);
+    if field == "name" {
+        let zh = segment(name);
+        return (
+            zh.into_iter().map(|z| json!(["zh", z])).collect(),
+            boxed.filter(|b| Some(b.as_str()) != segment(name).as_deref()),
+        );
+    }
+    let mut values = vec![];
+    if let Some(original) = segment(name).filter(|n| !hangul(n)) {
+        values.push(json!([if kana(&original) || han(&original) { "ja" } else { "en" }, original]));
+    }
+    if let Some(zh) = boxed.as_deref().and_then(segment) {
+        values.push(json!(["zh", zh]));
+    }
+    (values, None)
 }
 pub(crate) fn character_values(
     v: &Value,
@@ -643,7 +747,13 @@ pub(crate) fn character_values(
     wiki: &[String],
 ) -> (Vec<Value>, Option<String>) {
     let name = v["name"].as_str().unwrap_or("");
-    let zh = chinese(name, work, subjects, wiki);
+    let zh = !kana(name)
+        && !hangul(name)
+        && han(name)
+        && (chinese_work(work, subjects)
+            || (subjects.is_empty()
+                && !JAPANESE_WORKS.contains(&work)
+                && wiki.iter().any(|s| normalize(s) == normalize(name))));
     if zh {
         return (vec![json!(["zh", name])], infobox(v));
     }
@@ -715,18 +825,51 @@ mod tests {
             (vec!["綾", "杉山清美"], vec![], None),
             (vec!["杉山清美"], vec![], Some("杉山清美")),
             (vec!["左衛門佐", "爱丽丝（示例）"], vec![], Some("爱丽丝")),
+            (vec!["摩根・勒・菲（モルガン）"], vec![], Some("摩根·勒·菲")),
             (vec!["兄妹", "合成队", "示例角色"], vec!["示例"], None),
             (vec!["한글", "桜", "螢", "爱丽丝"], vec![], Some("爱丽丝")),
         ] {
             assert_eq!(
                 wiki_zh(
                     &input.into_iter().map(str::to_owned).collect::<Vec<_>>(),
-                    &works.into_iter().map(str::to_owned).collect::<Vec<_>>()
+                    &works.into_iter().map(str::to_owned).collect::<Vec<_>>(),
+                    |_| false,
+                    |_| false,
                 ),
-                expected.map(str::to_owned)
+                expected.map(|name| (name.to_owned(), false))
             );
         }
     }
+    #[test]
+    fn wiki_japanese_corroboration_requires_simplified_han() {
+        let with_japanese_evidence = |name: &str| {
+            wiki_zh(&["小绰号".into(), name.into()], &[], |key| key == name && wiki_ja_han(key), |_| false)
+        };
+        for name in ["十六夜咲夜", "犬走椛", "秋山澪", "琴吹紬"] {
+            assert!(!wiki_ja_han(name), "{name}");
+            assert_eq!(with_japanese_evidence(name), Some(("小绰号".into(), false)), "{name}");
+        }
+        assert!(wiki_ja_han("山田太郎"));
+        assert_eq!(with_japanese_evidence("山田太郎"), Some(("山田太郎".into(), true)));
+    }
+    #[test]
+    fn wiki_corroboration_accepts_rare_han_and_prefers_a_personal_name() {
+        for name in ["十六夜咲夜", "秋山澪", "犬走椛", "琴吹紬", "和泉凪"] {
+            assert_eq!(
+                wiki_zh(&["小绰号".into(), name.into()], &[], |key| key == name, |_| false),
+                Some((name.into(), true))
+            );
+        }
+        assert_eq!(
+            wiki_zh(&["队友别名".into(), "姐妹红".into()], &[], |_| false, |name| name == "队友别名"),
+            Some(("姐妹红".into(), false))
+        );
+        assert_eq!(
+            wiki_zh(&["队友别名".into()], &[], |name| name == "队友别名", |_| true),
+            Some(("队友别名".into(), true))
+        );
+    }
+
     #[test]
     fn exact_match_keywords_and_original_language_preserve_rules() {
         assert_eq!(
@@ -753,6 +896,30 @@ mod tests {
             (vec![json!(["zh", "合成角色"])], Some("另一个名字".into()))
         );
         assert_eq!(normalize("Ａ_・ リス"), "a_リス");
+    }
+
+    #[test]
+    fn catalog_pick_chooses_field_and_segment() {
+        let row = |name: &str, zh: &str| json!({"name":name,"infobox":[{"key":"简体中文名","value":zh}]});
+        // 默认：原名记成日文，「简体中文名」是中文。
+        assert_eq!(
+            picked_values(&row("初音ミク", "初音未来"), ""),
+            (vec![json!(["ja", "初音ミク"]), json!(["zh", "初音未来"])], None)
+        );
+        // 国产作品：原名是中文名，「简体中文名」写的是别名，另记成别名。
+        assert_eq!(
+            picked_values(&row("雷电将军", "巴尔泽布"), "name"),
+            (vec![json!(["zh", "雷电将军"])], Some("巴尔泽布".into()))
+        );
+        // 一个条目写两个名字：按 tag 取对应的那一段，原名同样取那一段。
+        let two = row("春野はるか／キュアフローラ", "春野遥／花神天使");
+        assert_eq!(picked_values(&two, "p1"), (vec![json!(["ja", "キュアフローラ"]), json!(["zh", "花神天使"])], None));
+        assert_eq!(picked_values(&two, "p0").0[1], json!(["zh", "春野遥"]));
+        assert_eq!(picked_values(&row("甲/乙", ""), "name:p1"), (vec![json!(["zh", "乙"])], None));
+        // 段号超出、提示认不出、名字是空的：挑不出中文名。
+        assert!(!picked_values(&two, "p5").0.iter().any(|v| v[0] == "zh"));
+        assert!(picked_values(&two, "px").0.is_empty());
+        assert!(!picked_values(&row("Alice", ""), "").0.iter().any(|v| v[0] == "zh"));
     }
 }
 

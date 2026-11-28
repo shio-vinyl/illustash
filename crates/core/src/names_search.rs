@@ -122,6 +122,23 @@ pub fn hits(c: &Connection, query: &str) -> Result<Hits> {
     }
     let needle = s.needle.clone();
     let mut hits = std::mem::take(&mut s.hits);
+    // 从当前词表的核验标签反查库里的链接。用户另起了显示名、图库只剩旧 tag 时也能搜索。
+    let mut owners = c.prepare_cached(
+        "SELECT coalesce(r.parent_id,t.key) FROM term_links l JOIN terms t ON t.id=l.term_id
+         JOIN term_tree r ON r.term_id=t.id WHERE l.system IN ('danbooru','wd_character','photos_album','ccip')
+         AND l.key=? AND l.current=1 AND t.kind='character'",
+    )?;
+    for (role, label) in crate::character_catalog::current().reviewed_labels() {
+        let value = casefold(label);
+        if value.contains(&needle) {
+            let rank = rank(&value, &needle);
+            for tag in std::iter::once(&role.tag).chain(&role.tags) {
+                for id in owners.query_map([tag], |r| r.get(0))? {
+                    raise(&mut hits, id?, rank);
+                }
+            }
+        }
+    }
     let builtin: Vec<&str> =
         WORK_NAMES.iter().filter(|(_, v)| casefold(v).contains(&needle)).map(|(k, _)| *k).collect();
     if !builtin.is_empty() {

@@ -6,6 +6,23 @@ const web = require('./web.cjs');
 web.language('en');
 before(web.ready);
 
+test('role labels use English punctuation and preserve manual or unqualified names', async () => {
+  const {nameWithWork, roleName} = await web.load('core/labels.js');
+  const {state} = web.core(), saved = state.charMap;
+  assert.equal(roleName({name: 'Amiya', name_disambiguation: {qualifier: 'Guard'}}), 'Amiya (Guard)');
+  assert.equal(roleName({name: 'My Amiya'}), 'My Amiya');
+  // An image membership only carries {id, name}; the qualifier comes from the character directory.
+  state.charMap = new Map([['g', {id: 'g', name: 'Amiya', work_id: 'w', work_name: 'Arknights', name_disambiguation: {qualifier: 'Guard'}}],
+    ['k', {id: 'k', name: 'Kal\'tsit', work_id: 'w', work_name: 'Arknights'}]]);
+  try {
+    assert.equal(roleName({id: 'g', name: 'Amiya'}), 'Amiya (Guard)');
+    assert.equal(roleName({id: 'other', name: 'Amiya'}), 'Amiya');
+    assert.equal(roleName(null), '');
+    assert.equal(nameWithWork({id: 'g', name: 'Amiya'}), 'Amiya (Guard, Arknights)');
+    assert.equal(nameWithWork({id: 'k', name: 'Kal\'tsit'}), 'Kal\'tsit (Arknights)');
+  } finally { state.charMap = saved; }
+});
+
 test('numbers and dates follow Intl', () => {
   const {number, dateText, monthText, I18N} = web.core();
   assert.equal(I18N.language, 'en');

@@ -92,6 +92,10 @@ test('单图／选择快捷键在各页做什么', () => {
   assert.deepEqual(act('x', C, 2, items[0], true, maybe), {bar: 'exclude'});
   assert.deepEqual(act('c', C, 0, items[0], true, maybe), {single: 'swap'}, 'no selection: still the current image');
   assert.equal(act('s', C, 2), null);
+  const group = {group: true, variants: true};
+  for (const key of ['remove', 'c', 'a', 't']) assert.equal(act(key, C, 2, items[0], true, group), null, key);
+  assert.equal(act('remove', C, 0, items[0], true, group), null);
+  assert.deepEqual(act('g', C, 2, items[0], true, group), {bar: 'tag'});
   // 浏览页（图库、重复）
   for (const view of [P.library, P.duplicates]) {
     assert.deepEqual(act('remove', view, 3), {bar: 'notlib'}, view.name);

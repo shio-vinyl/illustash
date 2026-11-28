@@ -63,6 +63,7 @@ pub mod provenance_compute;
 pub mod recognition_compute;
 pub mod research_compute;
 pub use illustash_core::casefold;
+pub use illustash_core::character_catalog;
 pub use illustash_core::character_commands;
 pub use illustash_core::character_entities;
 pub use illustash_core::character_evidence;
@@ -101,6 +102,7 @@ mod http_example_search;
 mod http_json;
 mod http_local;
 mod http_read;
+mod http_role_labels;
 #[cfg(feature = "test-read-host")]
 pub mod read_harness;
 mod sql_fragments;

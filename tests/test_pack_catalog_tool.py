@@ -18,6 +18,18 @@ PLACEHOLDER = ('# 专签数据包目录的公钥（#602），Tauri 格式：`car
 
 
 class PackCatalogToolTest(unittest.TestCase):
+    def test_character_index_version_has_its_own_signed_file(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / 'character_catalog.json'
+            path.write_text(json.dumps({'format': pack_catalog.CHARACTER_FORMAT, 'revision': 2}))
+            item = pack_catalog.character_entry(path, '0.4.2', 'fixture')
+            manifest = pack_catalog.build([item])
+            self.assertEqual(item['version'], 'catalog-2')
+            self.assertNotIn('components', item)
+            path.write_text(path.read_text() + '\n')
+            with self.assertRaisesRegex(pack_catalog.CatalogError, '不能替换'):
+                pack_catalog.build([pack_catalog.character_entry(path, '0.4.2', 'fixture')], manifest)
+
     def test_entry_reads_both_components_from_their_packages(self):
         e = pack_catalog.entry(version='1.0', revision=3, wd=FIXTURES / 'wd-extension-v3.bin', ccip=FIXTURES / 'ccip-longtail-v2.zip',
                                min_app='0.3.0')
@@ -127,6 +139,28 @@ class PackCatalogToolTest(unittest.TestCase):
                 self.assertEqual(archive.read('packs.json'), (FIXTURES / 'packs.json').read_bytes())
             with self.assertRaises(pack_catalog.CatalogError):
                 pack_catalog.offline(FIXTURES / 'packs.json', notice, output)
+
+    def test_offline_bundle_keeps_same_named_character_revisions_separate(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            old = FIXTURES / 'roles.json'
+            document = json.loads(old.read_bytes())
+            document['revision'] += 1
+            new = root / old.name
+            new.write_bytes(pack_catalog.dumps(document))
+            catalog = pack_catalog.build([
+                pack_catalog.character_entry(old, '0.4.0', 'fixture'),
+                pack_catalog.character_entry(new, '0.4.0', 'fixture'),
+            ])
+            descriptor = root / 'packs.json'
+            descriptor.write_bytes(pack_catalog.dumps(catalog))
+            output = root / 'catalog-offline.zip'
+            pack_catalog.offline(descriptor, [old, new], output, signature_path=FIXTURES / 'packs-roles.json.sig')
+            with zipfile.ZipFile(output) as archive:
+                self.assertEqual(archive.namelist(),
+                                 ['packs.json', 'packs.json.sig', 'catalog-3/roles.json', 'catalog-4/roles.json'])
+                self.assertEqual(archive.read('catalog-3/roles.json'), old.read_bytes())
+                self.assertEqual(archive.read('catalog-4/roles.json'), new.read_bytes())
 
     def test_pubkey_file_placeholder_and_write(self):
         with tempfile.TemporaryDirectory() as temp:

@@ -65,6 +65,25 @@ test('没有扩展证据时不出现扩展的小字；CCIP 长尾写三位小数
   assert.equal(byClass(who.el, 'dc-ext').length, 1);
 });
 
+// 图的归属只有 {id, name}：同作品重名的两个角色按角色目录写上形态（#849），手动取名的原样写。
+test('同作品重名：主角色、其他角色和「也可能是」都写上形态', () => {
+  const role = (id, qualifier) => ({id, name: '合成角色', ...(qualifier ? {name_disambiguation: {qualifier, tag: id}} : {})});
+  state.charMap = new Map([['g', role('g', '近卫')], ['b', role('b', '基本形态')], ['u', {id: 'u', name: '自取的名字'}]]);
+  try {
+    const d = detail({memberships: [machine('g', '合成角色', {sources: ['WD']}), machine('u', '自取的名字', {sources: ['WD']})],
+      alternatives: [{id: 'b', name: '合成角色', weak: false, evidence: {sources: ['WD'], max_score: 0.8, wd: 0.8, ccip: null}}]});
+    const who = card.identities();
+    who.update(d);
+    assert.equal(all(byClass(who.el, 'dc-name')[0]).find(x => x.localName === 'a').textContent, '合成角色（近卫）');
+    assert.deepEqual(byClass(who.el, 'dc-other-name').map(x => x.textContent), ['自取的名字']);
+    assert.deepEqual(byClass(who.el, 'dc-alt').map(b => b.textContent), ['1合成角色（基本形态）']);
+    assert.match(titleOf(byClass(who.el, 'dc-alt')[0]), /^合成角色（基本形态） · /);
+    const compact = card.identities({compact: true});
+    compact.update(d);
+    assert.deepEqual(byClass(compact.el, 'dc-other-name').map(x => x.textContent), ['合成角色（近卫）', '自取的名字']);
+  } finally { state.charMap = new Map(); }
+});
+
 test('还没有角色：卡片上是小字「还没认出是谁」和「设为角色…」，大图底栏写「还没有角色」', () => {
   const big = card.identities(), compact = card.identities({compact: true});
   big.update(detail({})); compact.update(detail({}));

@@ -18,13 +18,18 @@ class NativeHumanCharactersTest(unittest.TestCase):
     setUpClass = classmethod(labels.NativeHumanLabelsTest.setUpClass.__func__)
     setUp = labels.NativeHumanLabelsTest.setUp
     clone = labels.NativeHumanLabelsTest.clone
-    start = labels.NativeHumanLabelsTest.start
     stop = labels.NativeHumanLabelsTest.stop
     seed_both = labels.NativeHumanLabelsTest.seed_both
     undo_latest = labels.NativeHumanLabelsTest.undo_latest
     latest_action = labels.NativeHumanLabelsTest.latest_action
     reference_response = labels.NativeHumanLabelsTest.reference_response
     pair = curation.NativeHumanCurationTest.pair
+
+    def start(self, lib):
+        if self._testMethodName == 'test_change_all_actions_multi_copy_filter_and_variants':
+            # 这条冻结用例的夏季造型按原选名规则物化，逐表断言仍覆盖它的投影。
+            self.env['ILLUSTASH_TEST_LEGACY_SKIN_NAMES'] = '1'
+        return labels.NativeHumanLabelsTest.start(self, lib)
 
     def test_change_all_actions_multi_copy_filter_and_variants(self):
         skin = 'synthetic-skin'

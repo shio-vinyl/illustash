@@ -6,6 +6,7 @@
 // - 回复是旧的（读的过程中又要了别的图）由调用方判断：比对自己记着的当前图，是当前的才调 adoptDetail。
 // - state.detail（画出来的那份详情）和 state.question（正显示的那条提问）只在这里写：adoptDetail，或 setDetail、setQuestion。
 import {t} from './i18n.js';
+import {roleName} from './labels.js';
 import {cleanup} from './route.js';
 import {api} from './session.js';
 import {state} from './state.js';
@@ -91,5 +92,8 @@ export function askAnswered() { ask.pending = null; ask.ignored = 0; }
 /** 测试用：回到刚打开页面时的状态。 */
 export function resetAsk() { Object.assign(ask, {cool: 0, ignored: 0, off: false, pending: null}); }
 /** 提问那一句的说明：随机抽查、像你确认过的 TA、和谁分不清。 */
-export const askWhy = q => q.kind === 'audit' ? t('随机抽查') : q.kind === 'hint' ? t('和你确认过的 TA 很像') + (q.current_name ? ' · ' + t('现在算作 {name}', {name: q.current_name}) : '')
-  : q.kind === 'ambiguous' ? t('和 {name} 分不太清', {name: q.rival_name}) : '';
+export function askWhy(q) {
+  if (q.kind === 'audit') return t('随机抽查');
+  if (q.kind === 'hint') return t('和你确认过的 TA 很像') + (q.current_name ? ' · ' + t('现在算作 {name}', {name: roleName({id: q.current, name: q.current_name})}) : '');
+  return q.kind === 'ambiguous' ? t('和 {name} 分不太清', {name: roleName({id: q.rival, name: q.rival_name})}) : '';
+}

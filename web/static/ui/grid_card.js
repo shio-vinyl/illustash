@@ -18,7 +18,7 @@
 // 缩略图在 ui/motion.js 的登记表里标上 uuid（看图器从这里展开、关掉时回到这里，#709）；摘掉时放掉解码后的位图（#683）。
 import {imageUrl, number, short, thumbSize} from '../core/format.js';
 import {t} from '../core/i18n.js';
-import {REASONS, nameWithWork} from '../core/labels.js';
+import {REASONS, nameWithWork, roleName} from '../core/labels.js';
 import {clampRatio, aspect} from '../core/layout.js';
 import {attr, cls, css, make, show, text, tpl} from './el.js';
 import {heartTip} from './favorites.js';
@@ -69,7 +69,7 @@ export function dupHue(items, version, i) {
   return at[i] * 30;
 }
 // 卡片的说明：读屏和悬停提示用。
-export const cardLabel = (item, i) => t('{names}，第 {n} 张', {names: item.memberships.map(m => m.name).join(t('、')) || t('未识别图片'), n: i + 1});
+export const cardLabel = (item, i) => t('{names}，第 {n} 张', {names: item.memberships.map(roleName).join(t('、')) || t('未识别图片'), n: i + 1});
 
 // 左下的芯片：随卡片内容变，个数少，整排重建（只在内容变了时）。
 function chips(item, ctx) {
@@ -77,14 +77,14 @@ function chips(item, ctx) {
   if (ctx.char && ctx.cellW >= CHIPS_MIN) {
     const m = item.memberships.find(x => x.id === ctx.char);
     if (!ctx.maybe) for (const v of m?.variants || []) out.push(chip(v.name));
-    else out.push(chip(item.memberships.length ? t('现为 {name}', {name: short(item.memberships[0].name)}) : t('未识别')));
+    else out.push(chip(item.memberships.length ? t('现为 {name}', {name: short(roleName(item.memberships[0]))}) : t('未识别')));
   }
   if (ctx.reason && item.excluded && ctx.cellW >= CHIPS_MIN) out.push(chip(REASONS[item.excluded] || ''));
   // 随机抽查是在小格子里快速过的：角色标签一直留到 70px 的格子。
   if (ctx.audit && item.audit && ctx.cellW >= SMALL) out.push(...auditTags(item));
   if (ctx.hints && !item.memberships.length && item.hint && ctx.cellW >= ctx.hintMin) {
-    const b = make('button', 'hint-add', `+ ${short(item.hint.name)}`);
-    b.type = 'button'; b.dataset.hint = ''; b.title = t('可能是 {name}，点一下设为 TA', {name: item.hint.name});
+    const b = make('button', 'hint-add', `+ ${short(roleName(item.hint))}`);
+    b.type = 'button'; b.dataset.hint = ''; b.title = t('可能是 {name}，点一下设为 TA', {name: roleName(item.hint)});
     out.push(b);
   }
   return out;
@@ -105,12 +105,12 @@ function auditTags(item) {
     return box;
   };
   const asked = a.answer ? (a.answer === 'yes' ? t('抽查已答：是') : t('抽查已答：不是')) : t('抽查：是 TA 吗？');
-  return [tag(a.id, a.name, `checked ${a.answer || 'open'}`, asked, true),
-    ...item.memberships.filter(m => m.id !== a.id).map(m => m.status === 'confirmed' ? tag(m.id, m.name, 'confirmed', t('已确认')) : tag(m.id, m.name, '', t('机器识别')))];
+  return [tag(a.id, roleName(a), `checked ${a.answer || 'open'}`, asked, true),
+    ...item.memberships.filter(m => m.id !== a.id).map(m => m.status === 'confirmed' ? tag(m.id, roleName(m), 'confirmed', t('已确认')) : tag(m.id, roleName(m), '', t('机器识别')))];
 }
 // 芯片的内容由这些决定；一样就不重建。
 const chipsKey = (item, ctx) => JSON.stringify([ctx.char, ctx.maybe, ctx.reason, ctx.audit, ctx.hints, ctx.cellW >= CHIPS_MIN, ctx.cellW >= SMALL, ctx.cellW >= ctx.hintMin,
-  item.memberships.map(m => [m.id, m.name, m.status, (m.variants || []).map(v => v.name)]), item.excluded || '', item.audit || null, item.hint || null]);
+  item.memberships.map(m => [m.id, roleName(m), m.status, (m.variants || []).map(v => v.name)]), item.excluded || '', item.audit || null, item.hint || null]);
 
 /**
  * 一张卡片。scope 是这张卡片自己的作用域（网格给每张卡片建一个子作用域，摘掉时释放）。
@@ -173,7 +173,7 @@ export function gridCard(scope) {
     // 而且已经写了这一页要看的信息）。
     const names = item.memberships, many = names.length > 1, wide = box.w >= NAMES_MIN;
     show(refs.info, names.length > 0 && box.w >= INFO_MIN && !refs.chips.children.length);
-    text(refs.who, !names.length ? '' : many && !wide ? t('{n} 位', {n: number(names.length)}) : names[0].name);
+    text(refs.who, !names.length ? '' : many && !wide ? t('{n} 位', {n: number(names.length)}) : roleName(names[0]));
     text(refs.more, many && wide ? t('另外 {n} 位', {n: number(names.length - 1)}) : '');
     attr(refs.info, 'title', names.length ? names.map(nameWithWork).join(t('、')) : null);
     // 副本：重复页上同组同色、写「第几份 / 共几份」；别的页上折叠的副本写「×N」。

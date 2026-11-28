@@ -111,6 +111,20 @@ test('角色页的造型芯片、「可能是」按钮、随机抽查的标签�
   assert.deepEqual(tags[0].querySelectorAll('button').map(b => [b.getAttribute('data-tagact'), b.getAttribute('data-entity')]), [['yes', 'c1'], ['no', 'c1']]);
 });
 
+// 「可能也是 TA」那一页上，图现在多半归给了同作品的另一种形态：芯片和悬停名字都按角色目录写上形态（#849）。
+test('同作品重名：「现为」芯片、悬停的名字和读屏说明写上形态', () => {
+  const {state} = web.core(), saved = state.charMap;
+  state.charMap = new Map([['b', {id: 'b', name: '合成甲', name_disambiguation: {qualifier: '基本形态', tag: 'b'}}]]);
+  try {
+    const {c} = card(), base = item({memberships: [member('b', '合成甲')]});
+    c.update({item: base, index: 0, box, ctx: ctx({route: {char: 'g', maybe: '1'}})});
+    assert.deepEqual(one(c.el, 'card-chips').children.map(x => x.textContent), ['现为 合成甲（基本形态）']);
+    assert.match(c.el.getAttribute('aria-label'), /^合成甲（基本形态），第 1 张/);
+    c.update({item: base, index: 0, box, ctx: ctx()});
+    assert.equal(one(c.el, 'card-info').children[0].textContent, '合成甲（基本形态）');
+  } finally { state.charMap = saved; }
+});
+
 test('芯片的内容没变就不重建', () => {
   const {c} = card(), v = item({memberships: [member('c1', '合成甲', {variants: [{name: '泳装'}]})]}), c1 = ctx({route: {char: 'c1'}});
   c.update({item: v, index: 0, box, ctx: c1});

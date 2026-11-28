@@ -259,6 +259,12 @@ const PROJECTED: &str = "names_projected";
 /// 事务中途重建过显示投影时的版本，避免提交时再次重建（`refresh_projection`）。
 const DISPLAY_PROJECTED: &str = "names_display_projected";
 
+/// 内置名称规则或词表变更时，在追踪写入前让投影失效。提交时按当前输入重建两张投影表，即使图库里的名字行没有变化。
+pub fn invalidate_display(c: &Connection) -> Result<()> {
+    c.execute("DELETE FROM meta WHERE key IN (?1,?2)", [PROJECTED, DISPLAY_PROJECTED])?;
+    Ok(())
+}
+
 pub fn names_in_core(c: &Connection) -> Result<bool> {
     Ok(c.query_row("SELECT EXISTS(SELECT 1 FROM meta WHERE key=?1 AND value='core')", [NAMES_IN_CORE], |r| r.get(0))?)
 }

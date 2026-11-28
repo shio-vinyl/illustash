@@ -13,7 +13,7 @@ import {INDEX_ACTIVE, NAMES_ACTIVE, indexLine, indexTone, namesTone, namesLine, 
 import {loadNames, loadCoverage, indexCoverage, saveModelApi, testModelApi} from '../core/settings.js';
 import {confirmAction} from './dialog.js';
 import {toast} from './dom.js';
-import {packButtons, packDeleteButtons, packDot, packHasTask, packHintText, packInfoItems, packLine, packManual, packName, packNote,
+import {characterCatalogHint, packButtons, packDeleteButtons, packDot, packHasTask, packHintText, packInfoItems, packLine, packManual, packName, packNote,
   packOfferInfo, packProgress, packResultItems, runPack} from './packs.js';
 import {groups, refreshSection, startupRow, taskRow} from './settings_group.js';
 import {openTasks} from './tasks.js';
@@ -138,6 +138,7 @@ export function build(main, scope) {
        dot: s => packDot(s.pack) || '', progress: s => packProgress(s.pack),
        buttons: s => [...packButtons(s.pack), ...(packHasTask(s.pack) ? [{act: 'tasks', label: t('在任务面板查看')}] : [])],
        run: (s, a) => a === 'tasks' ? openTasks() : runPack(a)},
+      {kind: 'info', key: 'characterCatalog', hidden: s => !s.pack?.character_catalog, label: t('角色词表'), hint: s => characterCatalogHint(s.pack)},
       {kind: 'list', key: 'packResults', label: '', hidden: s => !packResultItems(s.pack).length, items: s => packResultItems(s.pack),
        itemKey: x => x.key, itemText: x => x.text, itemHint: x => x.hint || ''},
       {kind: 'action', key: 'packOffer', hidden: s => !packOfferInfo(s.pack), label: s => packOfferInfo(s.pack).what, hint: s => packOfferInfo(s.pack).hint,

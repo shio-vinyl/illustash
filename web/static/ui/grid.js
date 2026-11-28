@@ -10,7 +10,7 @@ import {afterSyncLearning, learningNow, learningSettled, learningShown, metaSoon
 import {prefs} from '../core/prefs.js';
 import {viewOpts} from '../core/view_opts.js';
 import {SHORTCUTS, currentSource, keyAction, keySelection, modes, selectionSize, shownUuid, viewerTarget} from '../core/modes.js';
-import {keyScope, pageOf, viewOf} from '../core/pages.js';
+import {isGroupPage, keyScope, pageOf, viewOf} from '../core/pages.js';
 import {browsing, cleanup, hashFor, reRoute, stepHistory} from '../core/route.js';
 import {post, readError} from '../core/session.js';
 import {PAGE, countAssets, gridFilters as filters, listIds, readPage} from '../core/assets.js';
@@ -728,7 +728,7 @@ export function wireGrid() {
     if (remove || ['c', 'a', 't', 'g', 'x', 's', 'f'].includes(key)) {
       if (remove) e.preventDefault();
       const item = n ? null : currentItem(); if (!n && !item) return;   // 没有选中也没有当前图：什么都不做
-      const act = keyAction(remove ? 'remove' : key, {view, char: character, n, item, maybe: !!state.route.maybe, variants: !!state.char?.variants?.length});
+      const act = keyAction(remove ? 'remove' : key, {view, char: character, group: isGroupPage(), n, item, maybe: !!state.route.maybe, variants: !!state.char?.variants?.length});
       if (act?.bar) bar.run(act.bar);
       else if (act) singleAction(act.single);
       // 选择栏上没有这个键的按钮，或整理页里这个键没有对应的动作：说一声，不再静默吞掉（#422 的 2-21）。

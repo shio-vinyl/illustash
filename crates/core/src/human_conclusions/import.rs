@@ -82,6 +82,8 @@ struct History {
     names: Vec<names::Edit>,
     links: Vec<links::Added>,
     skip_before: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    catalog_splits: Vec<crate::character_import::SuppressedCatalogChange>,
     graph: bool,
 }
 
@@ -132,6 +134,7 @@ fn resolve_existing(
     same_library: bool,
     source: &str,
     definition: &Entity,
+    existing: &BTreeMap<&String, &Entity>,
 ) -> Result<Resolution> {
     // 人工标记的 key 是各图库共用的；没有名字、链接或可映射的身份结构。
     if definition.kind == "mark" {
@@ -172,7 +175,10 @@ fn resolve_existing(
     if !candidates.is_empty() {
         return Ok(Resolution::Blocked);
     }
-    let kind: String = c.query_row("SELECT kind FROM terms WHERE key=?1", [&target], |r| r.get(0))?;
+    let kind = match existing.get(&target) {
+        Some(entity) => entity.kind.clone(),
+        None => c.query_row("SELECT kind FROM terms WHERE key=?1", [&target], |r| r.get(0))?,
+    };
     Ok(if kind == definition.kind { Resolution::Existing(target) } else { Resolution::Blocked })
 }
 
@@ -419,11 +425,20 @@ pub fn apply_in(
             field_counts: BTreeMap::new(),
         });
     }
+    let existing = current(c)?;
+    let existing_entities: BTreeMap<_, _> = existing
+        .records
+        .iter()
+        .filter_map(|r| match r {
+            Record::Entity { key, definition } => Some((key, definition.as_ref())),
+            _ => None,
+        })
+        .collect();
     let mut terms = BTreeMap::new();
     let mut new_definitions = Vec::new();
     for record in &snapshot.records {
         if let Record::Entity { key, definition } = record {
-            match resolve_existing(c, &snapshot.header.library_id, same_library, key, definition)? {
+            match resolve_existing(c, &snapshot.header.library_id, same_library, key, definition, &existing_entities)? {
                 Resolution::Existing(target) => {
                     terms.insert(key.clone(), target);
                 }
@@ -446,15 +461,6 @@ pub fn apply_in(
         *claims.entry(target.clone()).or_default() += 1;
     }
     terms.retain(|_, target| claims[target] == 1);
-    let existing = current(c)?;
-    let existing_entities: BTreeMap<_, _> = existing
-        .records
-        .iter()
-        .filter_map(|r| match r {
-            Record::Entity { key, definition } => Some((key, definition.as_ref())),
-            _ => None,
-        })
-        .collect();
     let fresh: BTreeSet<_> = new_definitions.iter().map(|new| new.source_key.as_str()).collect();
     let source_entities: BTreeMap<_, _> = snapshot
         .records
@@ -617,6 +623,17 @@ pub fn apply_in(
                 };
                 *pair = if a < b { format!("{a}|{b}") } else { format!("{b}|{a}") };
             }
+            Record::IdentityKeepApart { a, b, .. } => {
+                *a = terms[a].clone();
+                *b = terms[b].clone();
+                if a == b {
+                    report.record(source, "conflict");
+                    continue;
+                }
+                if a > b {
+                    std::mem::swap(a, b);
+                }
+            }
             Record::AnchorDecision { .. } => {
                 report.record_reason(source, "unsupported_dependency", Some("reference_version_unverified"));
                 continue;
@@ -748,10 +765,16 @@ pub fn apply_in(
     }
     definitions::refresh_signatures(c, &mut created)?;
     let mut touched = BTreeSet::new();
+    let mut catalog_splits = Vec::new();
     for record in &planned {
         check()?;
         if !matches!(record, Record::RelationVerdict { .. }) {
             write(c, action, &snapshot.header.snapshot_id, record)?;
+        }
+        if let Record::IdentityKeepApart { a, b, .. } = record {
+            if let Some(split) = crate::character_import::suppress_catalog_change(c, a, b)? {
+                catalog_splits.push(split);
+            }
         }
         touched.extend(record.assets().into_iter().map(str::to_owned));
     }
@@ -782,6 +805,7 @@ pub fn apply_in(
         names: name_edits,
         links: link_edits,
         skip_before,
+        catalog_splits,
         graph,
     };
     c.execute(
@@ -879,6 +903,9 @@ fn write(c: &Connection, action: i64, snapshot: &str, record: &Record) -> Result
             )?;
         }
         Record::IdentitySkip { pair, .. } => skips::add(c, pair)?,
+        Record::IdentityKeepApart { a, b, .. } => {
+            crate::character_identity::set_kept_apart(c, a, b, true)?;
+        }
         Record::IdentityContext { asset, term, scope, suspended, .. } => {
             if let Some(scope) = scope {
                 c.execute(
@@ -979,6 +1006,7 @@ pub fn undo_in(c: &Connection, action: i64) -> Result<Vec<String>> {
             | Record::Review { .. }
             | Record::RelationVerdict { .. }
             | Record::IdentitySkip { .. }
+            | Record::IdentityKeepApart { .. }
             | Record::IdentityContext { .. } => None,
             Record::Curation { .. } => Some("curation"),
             Record::Deferred { .. } => Some("deferred"),
@@ -1004,6 +1032,14 @@ pub fn undo_in(c: &Connection, action: i64) -> Result<Vec<String>> {
         })
         .collect();
     skips::undo(c, &skipped, history.skip_before.as_deref())?;
+    for record in &history.after {
+        if let Record::IdentityKeepApart { a, b, .. } = record {
+            crate::character_identity::set_kept_apart(c, a, b, false)?;
+        }
+    }
+    for split in &history.catalog_splits {
+        crate::character_import::restore_catalog_change(c, split)?;
+    }
     definitions::check_undo(c, action, &history.created)?;
     relations::check_undo(c, action, &history.relations)?;
     definitions::remove(c, &history.created)?;

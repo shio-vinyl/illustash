@@ -5,13 +5,17 @@
 import {catalog, loadActivity} from './catalog.js';
 import {readCharStats} from './detail.js';
 import {aspect} from './layout.js';
-import {api} from './session.js';
+import {api, post} from './session.js';
 import {state} from './state.js';
 
 // 横幅从最近加入的这么多张里挑；够宽的图（宽高比至少 WIDE）优先，都不够宽就用最近的一张。
 const LOOK = 24, WIDE = 1.25;
 // 最近加入显示几张、常一起出现的角色显示几个。
 export const RECENT = 3, PEERS = 6;
+
+export const readProfile = id => api('/api/character/profile?' + new URLSearchParams({entity: id}));
+export const splitCatalog = (owner, {id, kind}) => post('/api/catalog/split', {owner, entity: id, kind});
+export const resumePair = ({a, b}) => post('/api/identity/pair', {a: a.id, b: b.id, answer: 'resume'});
 
 // 横幅的图：items 里第一张够宽的，没有就第一张；都没有是 null。
 export function pickBanner(items) {
@@ -26,6 +30,7 @@ export function peersOf(c, chars) {
 // 资料区第三组画谁：常一起出现的（together 是 [{id, count}]，按角色目录取名字和头像，目录里没有的、只当标签的不画）；
 // 一个都没有时退回同作品的角色。返回 {kind: 'together' | 'work', people: [{c, count}]}。
 export function peopleOf(c, together, chars, charMap) {
+  if (c?.group_tag) return {kind: 'work', people: []};
   const met = (together || []).map(x => ({c: charMap.get(x.id), count: x.count})).filter(x => x.c && !x.c.mascot);
   if (met.length) return {kind: 'together', people: met.slice(0, PEERS)};
   return {kind: 'work', people: peersOf(c, chars).map(x => ({c: x, count: x.count}))};
@@ -42,13 +47,14 @@ export async function loadCharacter(c, {signal} = {}) {
   const nsfw = state.nsfw ? {nsfw: state.nsfw} : {};
   const [list, stats, together] = await Promise.all([
     api('/api/assets?' + new URLSearchParams({entity: c.id, order: 'newest', limit: LOOK, marks: 'color', count: 0, ...nsfw}), {signal}),
-    readCharStats(c.id),
+    c.group_tag ? null : readCharStats(c.id),
     // 同框次数读不到（接口出错）时当作没有，资料区退回同作品。
-    api('/api/character/together?' + new URLSearchParams({id: c.id, nsfw: state.nsfw || '', limit: PEERS * 2}), {signal}).catch(e => { if (e.name === 'AbortError') throw e; return []; }),
-    loadActivity().catch(() => false),
+    c.group_tag ? [] : api('/api/character/together?' + new URLSearchParams({id: c.id, nsfw: state.nsfw || '', limit: PEERS * 2}), {signal})
+      .catch(e => { if (e.name === 'AbortError') throw e; return []; }),
+    c.group_tag ? null : loadActivity().catch(() => false),
   ]);
   const items = list?.items || [];
-  const data = {banner: pickBanner(items), recent: items.slice(0, RECENT), months: stats?.months || [], recent30: recentDays(c.id),
+  const data = {banner: pickBanner(items), recent: items.slice(0, RECENT), months: stats?.months || [], recent30: c.group_tag ? null : recentDays(c.id),
     together: Array.isArray(together) ? together : []};
   cached = {key, data};
   return data;

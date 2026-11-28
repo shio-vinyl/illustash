@@ -176,6 +176,9 @@ stderr 每行最多取前 4 KiB 在内存识别，未知非空行只记未分类
 
 #### 发布角色资料包
 
+角色词表使用同一签名目录中的独立种类 `character-catalog`。首版已编进程序。发布新修订时，用 `tools/character_catalog/build.py` 生成更高修订号的 JSON，再运行 `python3 tools/pack_catalog.py character-entry character_catalog.json --license "<该修订的许可说明>" --output entry.json`。条目自带 `catalog-<修订号>` 版本名和单文件大小、SHA-256。把词表放在条目指明的 `character-catalog-<修订号>` Release，再按本节步骤把条目并入现有目录并签名。旧应用会跳过这个种类。新应用在首次准备或检查更新时获取词表，下次启动时核对文件并启用。「设置 › 角色资料」显示当前修订、待重启启用的修订和上次词表下载错误。词表下载失败时，已采用的签名清单和其他资料包可以继续使用，再次检查更新会重试。 离线分发用 `tools/pack_catalog.py offline` 把已签目录和词表打成 ZIP，应用验签并逐个核对词表后保存，重启时选用其中最新的适用修订。
+
+
 2026-11-17 用户定（#602）：WD 角色扩展头和 CCIP 长尾锚点合成一个「角色资料包」，单独发布，不跟软件版本走；对用户只是一个包、一个版本号、一个开关，默认启用。新版本写进一份签名的包目录，应用跟着检查更新读它（`native/terms/src/app_packs.rs`）；下载、启用和换包仍然只在用户点了以后发生（首次准备时用户点了下载识别模型，就一起下载）。2026-11-18 用户定（#630）：首次准备时用户点了下载识别模型，先读一次包目录（读法、签名校验、缓存和记录都和检查更新时一样，`app_updates::refresh_packs`），再下载目录里最新的、这个版本能用的资料包；读不到（断网、签名不对、没有能用的条目）时照常下载内置的 0.1，首次准备不受影响。平时仍然只在检查更新时读目录，自动检查更新默认关着不变。原来写死在程序里的 `wd-extension-v1`、`ccip-longtail-v1` 合起来算内置的角色资料包 0.1（测试版），离线也能用。
 
 **版本号**（2026-11-18 用户定）：
@@ -271,6 +274,7 @@ illustash/
 | `ui_perf/` | 界面性能测量（#683）：合成大图库夹具，Chromium（DevTools 性能记录）和 WebKit（WKWebView 小程序）跑同一组场景，`python3 -m tools.ui_perf run`，见 [本地验收](LOCAL_CHECKS.md#界面性能测量683) |
 | `version.py` | 版本号的唯一来源是 `native/terms/application.json`（#189）：检查或改写 `tauri.conf.json`、各发布 crate 的 `Cargo.toml` 与 `Cargo.lock` |
 | `updater_release.py` | 应用内更新的发布文件（#279）：打 macOS 更新包、生成 `latest.json`，步骤见上文「发布」 |
+| `character_catalog/` | `build.py` 从公开识别资料和 Bangumi 归档生成角色词表。用 `--previous` 延续已发布的角色编号，用 `--review` 导出需要复核的条目。 |
 | `pack_catalog.py` | 角色资料包的签名目录（#602）：生成专签数据包的密钥、从两个组成部分的包文件写条目、组目录、签名、核对、打离线包，步骤见上文「发布角色资料包」；测试夹具由 `tests/fixtures/pack_catalog/make.py` 用测试密钥生成 |
 | `gen_rust_licenses.py` | 生成 `packaging/rust-licenses/` 的第三方 Rust crate 许可（#161），依赖或 `Cargo.lock` 变了要重跑 |
 | `build_wd_coreml.py` | 生成 `models.json` 固定的 WD Core ML 执行变体（#375），只在维护者构建模型 Release 时用 |

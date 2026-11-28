@@ -1,7 +1,10 @@
 //! 角色与身份的 HTTP 读取。查询顺序、事后的稳定排序和 dict 插入顺序都与 Store 一致。
 use crate::character_entities::ENTITIES;
+use crate::character_links::LINKS;
+use crate::character_projection::VARIANT_MEMBERSHIPS;
 use crate::character_relations::{EVIDENCE, RELATIONS};
 use crate::error::invalid;
+use crate::http_role_labels::RoleLabels;
 use crate::{
     http::LibraryContext,
     http_json::{parse_python, Json},
@@ -52,7 +55,11 @@ fn truth(v: &Json) -> bool {
     }
 }
 fn shown(c: &Connection, mut r: Json, skin: bool, identity: bool) -> Result<Json> {
+    let group = truth(&remove(&mut r, "is_group"));
     r = display(c, r)?;
+    if group {
+        r.set("group_tag", true.into());
+    }
     if skin {
         let s: String = c.query_row("SELECT entity_info(?,1)", [text(&r, "id")], |r| r.get(0))?;
         r.extend(parse_python(&s)?);
@@ -85,6 +92,7 @@ fn characters(c: &Connection, q: &HashMap<String, String>, minimum: i64) -> Resu
         }
     }
     choose_covers(c, &mut result, &ids, nsfw)?;
+    RoleLabels::rows(c, &mut result)?;
     if summary {
         result = result.into_iter().map(summarized).collect();
     }
@@ -114,6 +122,7 @@ fn character_rows(c: &Connection, q: &HashMap<String, String>, minimum: i64) -> 
     args.push(minimum.to_string());
     let sql = format!(
         "SELECT e.id,entity_name(e.id) AS name,e.work,e.kind,e.artist,e.label_only,e.mascot,e.mascot_origin,
+           (e.label_only=1 AND e.original=0) AS is_group,
            count(m.uuid) AS count,coalesce(sum(m.status='machine'),0) AS unchecked,
            min(CASE WHEN ?<>'hide'
                       OR NOT coalesce({nsfw},0)
@@ -128,14 +137,24 @@ fn character_rows(c: &Connection, q: &HashMap<String, String>, minimum: i64) -> 
          ORDER BY {ranking}count DESC,name,e.id",
         nsfw = crate::sql_fragments::nsfw("m"),
         matched = if query.is_empty() { "" } else { "JOIN name_matches sm ON sm.entity=e.id" },
-        members = if ident.is_empty() {
-            "memberships"
-        } else {
+        members = if !ident.is_empty() {
             "(SELECT * FROM memberships WHERE entity=? UNION ALL SELECT * FROM tag_memberships WHERE entity=?)"
+        } else if !query.is_empty() {
+            "(SELECT * FROM memberships UNION ALL
+                SELECT m.* FROM tag_memberships m JOIN terms t ON t.key=m.entity
+                JOIN term_tree r ON r.term_id=t.id AND r.label_only=1 AND r.original=0)"
+        } else {
+            "memberships"
         },
         visible = visible("m"),
         rating = rating("m", nsfw)?,
-        mascot = if ident.is_empty() { " AND e.mascot=0" } else { "" },
+        mascot = if !ident.is_empty() {
+            ""
+        } else if query.is_empty() {
+            " AND e.mascot=0 AND NOT (e.label_only=1 AND e.original=0)"
+        } else {
+            " AND e.mascot=0"
+        },
         only = if ident.is_empty() { "" } else { " AND e.id=?" },
         ranking = if query.is_empty() { "" } else { "sm.rank DESC," },
     );
@@ -168,7 +187,7 @@ fn skins(c: &Connection, ids: &str, nsfw: &str, summary: bool) -> Result<HashMap
         "NULL".to_owned()
     } else {
         format!(
-            "(SELECT count(*) FROM variant_memberships v WHERE v.entity=e.id AND {}{})",
+            "(SELECT count(*) FROM {VARIANT_MEMBERSHIPS} v WHERE v.entity=e.id AND {}{})",
             visible("v"),
             rating("v", nsfw)?
         )
@@ -246,7 +265,7 @@ fn choose_covers(c: &Connection, result: &mut [Json], ids: &str, nsfw: &str) -> 
 }
 /// 摘要列表里显示的角色。
 fn summarized(r: Json) -> Json {
-    const FIELDS: [&str; 12] = [
+    const FIELDS: [&str; 14] = [
         "id",
         "name",
         "tag",
@@ -259,6 +278,8 @@ fn summarized(r: Json) -> Json {
         "unchecked",
         "cover",
         "summary",
+        "group_tag",
+        "name_disambiguation",
     ];
     let mut s = Json::Object(Vec::new());
     for k in FIELDS {
@@ -328,7 +349,8 @@ fn profile(c: &Connection, e: &str) -> Result<Json> {
     let work = text(&row, "work_id");
     let name =
         if work.is_empty() { String::new() } else { c.query_row("SELECT entity_name(?)", [&work], |r| r.get(0))? };
-    Ok(Json::object([
+    let catalog = catalog_changes(c, &id)?;
+    let mut profile = Json::object([
         ("id", id.clone().into()),
         ("name", shown.field("name").clone()),
         ("user_name", user.into()),
@@ -349,7 +371,54 @@ fn profile(c: &Connection, e: &str) -> Result<Json> {
         ("work_name", name.into()),
         ("oc", (number(&row, "original") != 0).into()),
         ("label_only", (number(&row, "label_only") != 0).into()),
-    ]))
+    ]);
+    // 只在目录动过这个角色时才带这一项，其余资料的响应和以前逐字节相同。
+    if !matches!(&catalog, Json::Array(items) if items.is_empty()) {
+        profile.set("catalog", catalog);
+    }
+    let mut apart = kept_apart_of(c, &id)?;
+    RoleLabels::pairs(c, &mut apart)?;
+    if !apart.is_empty() {
+        profile.set("kept_apart", Json::Array(apart));
+    }
+    Ok(profile)
+}
+
+/// 角色目录合并进这个角色、挂到它下面的角色（#837），给「编辑资料」里的「拆开」用：[{id, kind, name}]，
+/// kind 是 `merged` 或 `attached`。
+fn catalog_changes(c: &Connection, id: &str) -> Result<Json> {
+    let mut out = Vec::new();
+    for data in crate::character_import::catalog_children(c, id)? {
+        let mut row = parse_python(&data.to_string())?;
+        let name: String = c.query_row("SELECT entity_name(?)", [row.field("id").text()], |r| r.get(0))?;
+        row.set("name", name.into());
+        out.push(row);
+    }
+    Ok(Json::Array(out))
+}
+
+fn kept_apart_of(c: &Connection, id: &str) -> Result<Vec<Json>> {
+    use rusqlite::OptionalExtension;
+    let mut family = c.prepare_cached(&format!("SELECT coalesce(parent_id,id) FROM {ENTITIES} WHERE id=?"))?;
+    let mut name = c.prepare_cached("SELECT entity_name(?)")?;
+    let mut root_of = |raw: &str| -> Result<Option<String>> {
+        let root = crate::character_commands::resolve(c, raw)?;
+        Ok(family.query_row([root], |r| r.get(0)).optional()?)
+    };
+    let mut endpoint = |raw: &str, family: Option<String>| -> Result<Json> {
+        let shown: String = name.query_row([raw], |r| r.get(0))?;
+        let shown = if shown.is_empty() { raw } else { &shown };
+        Ok(Json::object([("id", raw.into()), ("family", family.into()), ("name", shown.into())]))
+    };
+    let mut out = Vec::new();
+    for (a, b) in crate::character_identity::kept_apart_pairs(c)? {
+        let a_family = root_of(&a)?;
+        let b_family = root_of(&b)?;
+        if a_family.as_deref() == Some(id) || b_family.as_deref() == Some(id) {
+            out.push(Json::object([("a", endpoint(&a, a_family)?), ("b", endpoint(&b, b_family)?)]));
+        }
+    }
+    Ok(out)
 }
 fn activity(c: &Connection, nsfw: &str) -> Result<Json> {
     let t = crate::platform_time::local_date(30 * 86400);
@@ -463,6 +532,7 @@ struct Pairs {
     family: HashMap<String, String>,
     counts: HashMap<String, i64>,
     decided: HashSet<(String, String)>,
+    apart: BTreeSet<(String, String)>,
     skip: HashSet<String>,
     marks: HashSet<String>,
     found: Vec<Json>,
@@ -490,18 +560,20 @@ impl Pairs {
         };
         let marks =
             strings(c, &format!("SELECT id FROM {ENTITIES} WHERE label_only=1"), &[])?.iter().map(|e| fam(e)).collect();
-        Ok(Self { family, counts, decided, skip, marks, found: Vec::new(), keys: HashMap::new() })
+        let apart = crate::character_identity::kept_apart_pairs(c)?;
+        Ok(Self { family, counts, decided, apart, skip, marks, found: Vec::new(), keys: HashMap::new() })
     }
     fn family(&self, e: &str) -> String {
         self.family.get(e).cloned().unwrap_or_else(|| e.to_owned())
     }
-    fn add(&mut self, a: &str, b: &str, distance: Json, hint: Json, relation: Json) {
+    fn add(&mut self, a: &str, b: &str, distance: Json, hint: Json, relation: Json, catalog_kind: Option<&str>) {
         let (a, b) = (self.family(a), self.family(b));
         let key = pair_key(&a, &b);
         if a == b
             || self.marks.contains(&a)
             || self.marks.contains(&b)
             || self.decided.contains(&key)
+            || self.apart.contains(&key)
             || self.skip.contains(&format!("{}|{}", key.0, key.1))
             || self.counts.get(&a).copied().unwrap_or(0) == 0
             || self.counts.get(&b).copied().unwrap_or(0) == 0
@@ -529,6 +601,9 @@ impl Pairs {
             item.set("hint", hint);
             item.set("relation_id", relation);
         }
+        if let Some(kind) = catalog_kind.filter(|_| item.get("catalog_kind").is_none()) {
+            item.set("catalog_kind", kind.into());
+        }
     }
 }
 /// 识别器认为相近的身份对；以它们的 Danbooru 关系作为提示。
@@ -553,7 +628,7 @@ fn close_pairs(c: &Connection, pairs: &mut Pairs, count_only: bool) -> Result<()
                 r.field("original_distance").clone()
             }
         };
-        pairs.add(&text(&r, "a"), &text(&r, "b"), distance, hint, None::<String>.into());
+        pairs.add(&text(&r, "a"), &text(&r, "b"), distance, hint, None::<String>.into(), None);
     }
     Ok(())
 }
@@ -588,10 +663,66 @@ fn proposed_pairs(c: &Connection, pairs: &mut Pairs, count_only: bool) -> Result
                 ("source", text(&r, "source").into()),
             ])
         };
-        pairs.add(&a, &b, None::<String>.into(), hint, r.field("id").clone());
+        pairs.add(&a, &b, None::<String>.into(), hint, r.field("id").clone(), None);
     }
     Ok(())
 }
+
+/// 词表关系按当前图库和启用的目录生成，撤回词表或撤销判断后无需修复候选缓存。
+fn catalog_pairs(c: &Connection, pairs: &mut Pairs) -> Result<()> {
+    use crate::character_catalog::{Action, Relation};
+
+    let hybrid = hybrid(c)?;
+    let catalog = crate::character_catalog::current();
+    let mut linked: HashMap<u32, BTreeSet<String>> = HashMap::new();
+    let lookup = format!(
+        "SELECT l.key,l.entity_id FROM {LINKS} l JOIN {ENTITIES} e ON e.id=l.entity_id
+         WHERE l.core_system IN ('danbooru','wd_character') AND l.current=1
+           AND e.kind<>'work' AND e.parent_id IS NULL AND e.merged_into IS NULL AND e.mascot=0 AND e.label_only=0"
+    );
+    for row in c.prepare_cached(&lookup)?.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))? {
+        let (tag, id) = row?;
+        if let Some(entry) = catalog.character(&tag).filter(|_| pairs.counts.contains_key(&id)) {
+            linked.entry(entry.id).or_default().insert(id);
+        }
+    }
+    let declined: HashSet<_> =
+        crate::character_import::declined_pairs(c)?.iter().map(|(a, b)| pair_key(a, b)).collect();
+    let mut add = |a: &str, b: &str, kind: &'static str| {
+        if !declined.contains(&pair_key(a, b)) {
+            let empty = Json::from(serde_json::Value::Null);
+            pairs.add(a, b, empty.clone(), empty.clone(), empty, Some(kind));
+        }
+    };
+    for entry in catalog.characters() {
+        let Some(subjects) = linked.get(&entry.id) else { continue };
+        if hybrid {
+            for (i, a) in subjects.iter().enumerate() {
+                for b in subjects.iter().skip(i + 1) {
+                    add(a, b, "duplicate_of");
+                }
+            }
+        }
+        if !hybrid && entry.action != Some(Action::Ask) {
+            continue;
+        }
+        let (Some(objects), Some(relation)) = (entry.parent.and_then(|p| linked.get(&p)), entry.relation) else {
+            continue;
+        };
+        let kind = match relation {
+            Relation::Appearance => "appearance",
+            Relation::Form => "form",
+            Relation::Unknown => "unknown",
+        };
+        for a in subjects {
+            for b in objects {
+                add(a, b, kind);
+            }
+        }
+    }
+    Ok(())
+}
+
 fn queue(c: &Connection, limit: i64, offset: i64, nsfw: &str, count_only: bool) -> Result<Json> {
     if !(1..=100).contains(&limit) || offset < 0 {
         return invalid("分页参数不正确");
@@ -600,6 +731,7 @@ fn queue(c: &Connection, limit: i64, offset: i64, nsfw: &str, count_only: bool) 
     let mut pairs = Pairs::load(c, &shown)?;
     close_pairs(c, &mut pairs, count_only)?;
     proposed_pairs(c, &mut pairs, count_only)?;
+    catalog_pairs(c, &mut pairs)?;
     let Pairs { mut found, counts, .. } = pairs;
     let total = found.len();
     if count_only {
@@ -636,20 +768,23 @@ fn queue(c: &Connection, limit: i64, offset: i64, nsfw: &str, count_only: bool) 
             );
         }
     }
+    RoleLabels::pairs(c, &mut items)?;
     Ok(Json::object([("items", Json::Array(items)), ("total", (total as i64).into())]))
 }
 pub(crate) fn assignments(c: &Connection, id: &str) -> Result<Json> {
     let (a, mut p) = if hybrid(c)? {
-        let assigned = "
+        let assigned = format!(
+            "
             SELECT m.uuid,m.entity AS character_id,v.entity AS variant_id,m.status,m.origin
             FROM memberships m
-            LEFT JOIN (SELECT entity,parent_id FROM variant_memberships WHERE uuid=?) v ON v.parent_id=m.entity
-            WHERE m.uuid=?";
+            LEFT JOIN (SELECT entity,parent_id FROM {VARIANT_MEMBERSHIPS} WHERE uuid=?) v ON v.parent_id=m.entity
+            WHERE m.uuid=?"
+        );
         let undetermined = "
             SELECT options_json,reason FROM identity_uncertain WHERE uuid=?
             UNION ALL
             SELECT options_json,reason FROM identity_suspended WHERE uuid=?";
-        (rows(c, assigned, &[id, id])?, rows(c, undetermined, &[id, id])?)
+        (rows(c, &assigned, &[id, id])?, rows(c, undetermined, &[id, id])?)
     } else {
         (Vec::new(), Vec::new())
     };
@@ -668,14 +803,21 @@ pub fn read(c: &Connection, _context: &LibraryContext, path: &str, q: &HashMap<S
         "/api/tagged" => {
             let sql = format!(
                 "SELECT e.id,entity_name(e.id) AS name,
+                   (e.label_only=1 AND e.original=0) AS is_group,
                    (SELECT count(*) FROM tag_memberships m WHERE m.entity=e.id AND {visible}{rating}) AS count
                  FROM {ENTITIES} e
-                 WHERE e.mascot=1 AND e.merged_into IS NULL
+                 WHERE (e.mascot=1 OR (e.label_only=1 AND e.original=0)) AND e.merged_into IS NULL
                  ORDER BY count DESC,name,e.seq",
                 visible = visible("m"),
                 rating = rating("m", get("nsfw"))?,
             );
-            Json::Array(rows(c, &sql, &[])?)
+            let mut tagged = rows(c, &sql, &[])?;
+            for item in &mut tagged {
+                if truth(&remove(item, "is_group")) {
+                    item.set("group_tag", true.into());
+                }
+            }
+            Json::Array(tagged)
         }
         "/api/character/profile" => profile(c, get("entity"))?,
         "/api/character/activity" => activity(c, get("nsfw"))?,

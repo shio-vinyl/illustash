@@ -7,6 +7,7 @@
 import {workColor} from '../core/catalog.js';
 import {imageUrl, number} from '../core/format.js';
 import {t} from '../core/i18n.js';
+import {roleName} from '../core/labels.js';
 import {hashFor} from '../core/route.js';
 import {watchToggle} from './catalog.js';
 import {attr, make, refill, show, text, tpl} from './el.js';
@@ -36,7 +37,7 @@ function card(first, s, open) {
     const faces = w.chars.slice(0, FACES), more = w.chars.length - faces.length;
     refill(refs.faces, faces.map(c => c.id + c.cover).join('|') + '|' + more, () => [
       ...faces.map(c => {
-        const img = make('img', 'avatar is-small'); img.alt = ''; img.loading = 'lazy'; img.title = c.name;
+        const img = make('img', 'avatar is-small'); img.alt = ''; img.loading = 'lazy'; img.title = roleName(c);
         if (c.cover) img.src = imageUrl(c.cover);
         setTint(img, c.color);
         return img;

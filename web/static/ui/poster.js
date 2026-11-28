@@ -13,7 +13,7 @@
 import {posterPictures, recentOf} from '../core/catalog.js';
 import {coverUrl, imageUrl, number} from '../core/format.js';
 import {composing} from '../core/keys.js';
-import {nameTip} from '../core/labels.js';
+import {nameTip, roleName} from '../core/labels.js';
 import {charHash} from '../core/route.js';
 import {state} from '../core/state.js';
 import {attr, cls, css, make, show, text, tpl} from './el.js';
@@ -76,7 +76,7 @@ function posterWidget(first, s, watch) {
     show(refs.rank, !!next.rank); text(refs.rank, next.rank ? String(next.rank) : '');
     const plus = recentOf(c);
     show(refs.plus, plus > 0 && plus !== c.count); text(refs.plus, plus ? '+' + number(plus) : '');
-    text(refs.name, c.name); attr(refs.name, 'title', nameTip(c));
+    text(refs.name, roleName(c)); attr(refs.name, 'title', nameTip(c));
     text(refs.sub, next.sub || '');
     pinned.update('c:' + c.id);
   }
@@ -190,9 +190,9 @@ function posterWidget(first, s, watch) {
 }
 
 // ---------- 圆头像卡 ----------
-// 圆形代表人：资料库「常见」一档的角色、画师页签的画师。{href, cover, color, name, sub, title}；点了按链接走。
+// 圆形代表人：资料库「常见」一档的角色、画师页签的画师。{href, cover, color, name, qualifier?, sub, title}；点了按链接走。
 const PERSON = tpl`<a class="cat-person"><img class="avatar is-large" data-ref="img" alt="" loading="lazy" decoding="async" draggable="false"><b data-ref="name"></b><small
-  data-ref="sub"></small></a>`;
+  data-ref="qualifier" hidden></small><small data-ref="sub"></small></a>`;
 export function personCard(first) {
   const {el, refs} = PERSON();
   function update(x) {
@@ -201,6 +201,7 @@ export function personCard(first) {
     attr(refs.img, 'src', coverUrl(x.cover));
     setTint(refs.img, x.color);
     text(refs.name, x.name); text(refs.sub, x.sub || '');
+    text(refs.qualifier, x.qualifier || ''); show(refs.qualifier, !!x.qualifier);
   }
   update(first);
   return {el, update};

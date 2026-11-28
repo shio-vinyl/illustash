@@ -7,7 +7,7 @@
 import {loadCharacter, peopleOf} from '../core/character.js';
 import {coverUrl, imageUrl, localDate, number} from '../core/format.js';
 import {t} from '../core/i18n.js';
-import {nameTip, workLabel} from '../core/labels.js';
+import {nameTip, roleName, workLabel} from '../core/labels.js';
 import {onMeta} from '../core/meta.js';
 import {implement, narrowed} from '../core/pages.js';
 import {go} from '../core/route.js';
@@ -92,8 +92,8 @@ function charHero(scope) {
 
   function update(r, char) {
     route = r; c = char;
-    const tagOnly = !!c.mascot;   // 只当标签：没有要复核的，所以没有检查、清扫、原创角色这些控件
-    text(refs.name, c.name); attr(refs.name, 'title', nameTip(c));
+    const tagOnly = c.mascot || c.group_tag;   // 只当标签：没有角色归属需要复核
+    text(refs.name, roleName(c)); attr(refs.name, 'title', nameTip(c));
     attr(refs.avatar, 'src', coverUrl(c.cover));
     show(refs.badge, tagOnly);
     attr(refs.badge, 'title', (c.mascot_origin === 'default' ? t('老师、博士、训练员这类没有固定形象的玩家化身和吉祥物默认只当标签。') : '') +
@@ -129,11 +129,11 @@ function charHero(scope) {
 function menuItems(c) {
   if (!c) return [];
   return [
-    !c.label_only && !c.mascot && [c.kind === 'oc' ? t('取消原创角色') : t('标为原创角色'), () => toggleOc(c), t('画师自己的原创角色，不属于任何作品')],
-    !c.label_only && [c.mascot ? t('算作角色') : t('不算角色，只当标签'), () => toggleMascot(c),
+    !c.group_tag && !c.label_only && !c.mascot && [c.kind === 'oc' ? t('取消原创角色') : t('标为原创角色'), () => toggleOc(c), t('画师自己的原创角色，不属于任何作品')],
+    !c.group_tag && !c.label_only && [c.mascot ? t('算作角色') : t('不算角色，只当标签'), () => toggleMascot(c),
       c.mascot ? t('恢复成角色：出现在角色列表里，同框就算多人图') : t('像佩洛洛这样的吉祥物、玩家化身：不算角色，不算多人图；图上仍挂着这个标签，可以按它筛选')],
     [t('编辑资料…'), () => editProfile(c), t('名称、别名、所属作品、Danbooru 关联')],
-    [t('合并到另一个角色…'), () => mergeCharacter(c), t('把这个角色的图和人工结论并到另一个角色')],
+    !c.group_tag && [t('合并到另一个角色…'), () => mergeCharacter(c), t('把这个角色的图和人工结论并到另一个角色')],
   ];
 }
 
@@ -141,7 +141,7 @@ function menuItems(c) {
 const hero = pageView(scope => charHero(scope.child('character-hero')));
 implement({character: {
   // 页头：小标题（名字和张数），横幅上的名字看得见时藏着。
-  head: () => ({title: state.char?.name || '', sub: state.char ? t('{n} 张', {n: number(state.char.count)}) : ''}),
+  head: () => ({title: roleName(state.char), sub: state.char ? t('{n} 张', {n: number(state.char.count)}) : ''}),
   // 刚进这一页（或横幅的作用域已经释放）才建；同一页又画一次（换造型、只看未检查……）只按新地址更新。
   gridHead: ({samePage, scope}) => {
     if (!state.char) return;

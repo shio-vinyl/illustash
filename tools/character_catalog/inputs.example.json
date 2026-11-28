@@ -1,0 +1,5 @@
+{
+  "index": "path/to/character-index-v1.bin",
+  "extension": "path/to/wd-extension-0.5.bin",
+  "longtail": "path/to/ccip-longtail-0.3.zip"
+}

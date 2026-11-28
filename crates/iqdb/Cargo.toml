@@ -1,6 +1,6 @@
 [package]
 name = "illustash-iqdb"
-version = "0.4.1"
+version = "0.4.2"
 edition = "2021"
 description = "找回画师：在本地计算 Danbooru IQDB 签名，只发哈希文本查相似帖子（docs/PROVENANCE.md 第 9 节）"
 license = "GPL-3.0-or-later"

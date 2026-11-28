@@ -3,6 +3,7 @@
 // 数据由 core/character.js 读好，这里只画；横幅本身在 ui/character.js。
 import {coverUrl, imageUrl, monthLabel, number} from '../core/format.js';
 import {t} from '../core/i18n.js';
+import {roleName, roleQualifier} from '../core/labels.js';
 import {charHash} from '../core/route.js';
 import {inspect} from './detail.js';
 import {attr, make, refill, show, text, tpl} from './el.js';
@@ -30,7 +31,8 @@ function personLink({c, count}, together) {
   const a = make('a', 'char-peer'), img = make('img', 'avatar');
   attr(a, 'href', charHash(c.id)); attr(a, 'title', together ? t('同框 {n} 张', {n: number(count)}) : t('{n} 张', {n: number(count)}));
   attr(img, 'alt', ''); attr(img, 'loading', 'lazy'); attr(img, 'src', coverUrl(c.cover));
-  a.append(img, make('span', '', c.name));
+  const qualifier = roleQualifier(c);
+  a.append(img, make('span', '', c.name), ...(qualifier ? [make('small', '', qualifier)] : []));
   const li = make('li'); li.append(a);
   return li;
 }
@@ -55,7 +57,7 @@ export function charFacts() {
     const together = kind === 'together';
     text(refs.peerTitle, together ? t('常一起出现') : t('同作品'));
     show(refs.peerBox, list.length > 0);
-    refill(refs.peers, kind + '|' + list.map(x => [x.c.id, x.c.cover, x.c.name, x.count].join(':')).join(','), () => list.map(x => personLink(x, together)));
+    refill(refs.peers, kind + '|' + list.map(x => [x.c.id, x.c.cover, roleName(x.c), x.count].join(':')).join(','), () => list.map(x => personLink(x, together)));
     shown.people = list.length > 0; showAll();
   }
   update(null);

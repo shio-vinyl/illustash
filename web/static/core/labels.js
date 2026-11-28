@@ -15,9 +15,21 @@ export const AUDIT_METHODS = {pixel_hash: [t('像素哈希'), t('和 Danbooru �
 export const RELATION_KINDS = [['', t('全部')], ...['duplicate', 'subtle', 'variant', 'crop', 'edit'].map(k => [k, RELATION_NAMES[k]])];
 // 显示名来自服务端（中文 → 日文 → 可读的英文）；原始 tag 只在悬停时显示。
 export const nameTip = c => !c ? '' : c.tag && c.tag !== c.name ? c.tag + (c.name_source === 'model' ? ' · ' + t('机器翻译') : c.name_source === 'wiki' ? ' · ' + t('来自 Danbooru 别名') : '') : c.name;
-// 角色名字旁边的作品（#293）：原创角色写「原创」，否则写它直接所属的作品，否则什么都不写。c 是角色，或在
-// state.charMap 里查到的某张图的归属（{id, name}）。
+// c 是角色，或某张图的归属、最近使用的记录这类只有 {id, name} 的对象：在 state.charMap 里查到时用目录里的那份。
 const charOf = c => c && (state.charMap.get(c.id) || c);
+// 同作品的独立角色共用自动名称时（#849），接口给出当前语言的形态短词，如「近卫」；对象本身没带时按 ID 到角色目录里取。
+// 手动取的名字和不重名的角色没有，是 ''。名字放不下一行的窄卡把它另起一行（ui/cast.js、ui/poster.js、ui/character_facts.js）。
+export const roleQualifier = role => (role?.name_disambiguation || charOf(role)?.name_disambiguation)?.qualifier || '';
+// 角色的可见名称：有形态短词时写成「阿米娅（近卫）」，否则原样。
+export function roleName(role) {
+  const qualifier = roleQualifier(role);
+  return qualifier ? t('{name}（{qualifier}）', {name: role.name, qualifier}) : role?.name || '';
+}
+// 角色名字旁边的作品（#293）：原创角色写「原创」，否则写它直接所属的作品，否则什么都不写。
 export const workLabel = c => { const x = charOf(c); return !x ? '' : x.kind === 'oc' ? t('原创') : x.work_id ? x.work_name || workName(x.work || '') : ''; };
-// 只放得下名字的地方，悬停时显示「名字（作品）」。
-export const nameWithWork = c => { const w = workLabel(c); return w ? t('{name}（{work}）', {name: c.name, work: w}) : c?.name || ''; };
+// 只放得下名字的地方，悬停时显示「名字（作品）」；有形态短词时写在同一对括号里：「阿米娅（近卫，明日方舟）」。
+export function nameWithWork(c) {
+  const work = workLabel(c), qualifier = roleQualifier(c);
+  if (!work) return roleName(c);
+  return qualifier ? t('{name}（{qualifier}，{work}）', {name: c.name, qualifier, work}) : t('{name}（{work}）', {name: c.name, work});
+}

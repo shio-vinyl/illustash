@@ -17,6 +17,15 @@ pub const ENTITIES: &str = "(SELECT t.key AS id, t.kind AS kind, r.work_text AS 
   FROM term_tree r
   JOIN terms t ON t.id = r.term_id)";
 
+/// SQL 条件：这些固定 SQL 表达式指向的人物身份里没有只作标签的团体。
+pub fn without_groups(keys: &[&str]) -> String {
+    let keys = keys.join(",");
+    format!(
+        "NOT EXISTS(SELECT 1 FROM terms t JOIN term_tree r ON r.term_id=t.id
+            WHERE t.key IN ({keys}) AND r.label_only=1 AND r.original=0)"
+    )
+}
+
 /// 一个身份在 `term_tree` 里的行（身份 id 是参数 `?1`）：原来的 `UPDATE entities … WHERE id = ?`。
 pub const OF: &str = "term_id = (SELECT id FROM terms WHERE key = ?1)";
 

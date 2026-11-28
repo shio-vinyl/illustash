@@ -140,7 +140,7 @@ const RETIRED = {recent: 'days', home: 'days', tidy: 'groups'};
 // 活页条上它属于资料库（角色在那里），不是图库；页头没有图库的视图切换。
 const character = {name: 'character', virtual: true, legacyPrefix: 'c', ...libraryBase, entry: 'catalog', view: '', click: 'cleanup', sorts: ['suspicious', ...NEWEST], sortPref: 'sortCharacter',
   empty: (r, ctx = {}) => narrowed(r) || ctx.nsfw === 'only' ? PAGES.library.empty(r, ctx) : t('这个角色已经没有图片了。'),
-  hint: () => t('点击或拖动选择 · Space 看大图 · ⌫ 不是 TA · C 换成')};
+  hint: () => isGroupPage() ? libraryBase.hint() : t('点击或拖动选择 · Space 看大图 · ⌫ 不是 TA · C 换成')};
 
 // 「更多像这张的」（#449）：也不是 route.page，而是 library 加 like（例图）参数，见 core/like.js。点击照常打开详情；排序多
 // 「最相似」并默认是它；没有结果时，有别的筛选就照图库说，否则说没找到。#427 的「看过了」角标和按钮在这里另加 card、bar。
@@ -149,6 +149,7 @@ const like = {name: 'like', virtual: true, ...libraryBase, click: 'browse', sort
 
 export const PAGES = Object.fromEntries(list.map(p => [p.name, p]));
 export const CHARACTER = character;
+export const isGroupPage = () => !!(state.route.char && state.char?.group_tag);
 export const LIKE = like;
 const VIRTUAL = {character, like};
 // 路由里的页面名没登记时（只有测试会这样）按没有特殊性质的网格页处理。

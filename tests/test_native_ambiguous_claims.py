@@ -460,6 +460,50 @@ class NativeAmbiguousClaimsTest(unittest.TestCase):
         self.read('/api/character/profile', {'entity': base, 'work': other})
         self.assertEqual(labels(self.read('/api/entities?' + find)), {base: (name, None), guard: (name, None)})
 
+    def test_role_labels_for_tag_only_forms_and_renamed_tags(self):
+        # 两组都是内置词表里登记为整对询问的同名角色，用合成图片和离线选名数据。
+        def label_pair(tags, name, work_tag, worked):
+            with self.connect() as c, c:
+                self.seed(c, f'{work_tag}-front', '2026-01-01')
+                self.seed(c, f'{work_tag}-back', '2026-01-02', reverse=True)
+                c.execute("INSERT INTO meta(key,value) VALUES ('terms_writer','1')")
+                for entity, tag in tags.items():
+                    c.execute("DELETE FROM term_links WHERE system='danbooru' AND source='fixture' "
+                              "AND term_id=(SELECT id FROM terms WHERE key=?)", (entity,))
+                    c.execute("UPDATE term_links SET added_at='1970-01-01' WHERE system='danbooru' "
+                              "AND term_id=(SELECT id FROM terms WHERE key=?)", (entity,))
+                    c.execute("INSERT INTO term_links(system,key,term_id,source) "
+                              "SELECT 'danbooru',?,id,'fixture' FROM terms WHERE key=?", (tag, entity))
+                    c.execute("DELETE FROM term_names WHERE role='display' AND source='bangumi' "
+                              "AND term_id=(SELECT id FROM terms WHERE key=?)", (entity,))
+                    c.executemany("INSERT INTO term_names(term_id,lang,value,source,role,seq) "
+                                  "SELECT id,?,?,'bangumi','display',(SELECT coalesce(max(seq),0)+1 FROM term_names) "
+                                  "FROM terms WHERE key=?", [('zh', name, entity), ('en', 'Synthetic', entity)])
+                c.execute("DELETE FROM meta WHERE key='terms_writer'")
+            work = self.read('/api/works', {'action': 'from_tag', 'tag': work_tag})['id']
+            for entity in worked:
+                self.read('/api/character/profile', {'entity': entity, 'work': work})
+            labels = {}
+            for entity in tags:
+                [row] = self.read('/api/characters?' + urlencode({'id': entity}))
+                labels[entity] = (row['name'], row.get('name_disambiguation'), row['work_id'])
+            return work, labels
+
+        # darth_vader 不带作品后缀，只由 WD 认出时没有作品；同家族、同名的 anakin_skywalker 有作品。
+        tags = {self.alice: 'darth_vader', self.bob: 'anakin_skywalker'}
+        work, labels = label_pair(tags, '合成天行者', 'star_wars', [self.bob])
+        self.assertEqual(labels, {
+            self.alice: ('合成天行者', {'qualifier': 'Darth Vader', 'tag': 'darth_vader'}, None),
+            self.bob: ('合成天行者', {'qualifier': 'Anakin Skywalker', 'tag': 'anakin_skywalker'}, work),
+        })
+        # 旧标签改名的一对只差写法：不说成「基本形态」，两边写去掉作品后缀的 tag。
+        tags = {self.alice: 'the_shorekeeper_(wuthering_waves)', self.bob: 'shorekeeper_(wuthering_waves)'}
+        work, labels = label_pair(tags, '合成守岸人', 'wuthering_waves', [self.bob])
+        self.assertEqual(labels, {
+            self.alice: ('合成守岸人', {'qualifier': 'The Shorekeeper', 'tag': tags[self.alice]}, None),
+            self.bob: ('合成守岸人', {'qualifier': 'Shorekeeper', 'tag': tags[self.bob]}, work),
+        })
+
     def test_profile_only_lists_live_catalog_edges_and_displays_original_tags(self):
         owner, child = self.alice, self.bob
         source_tag, owner_tag = 'hiyori_(swimsuit)_(blue_archive)', 'hiyori_(blue_archive)'

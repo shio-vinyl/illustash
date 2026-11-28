@@ -11,7 +11,7 @@ use std::collections::{HashMap, HashSet};
 #[derive(Default)]
 pub(crate) struct RoleLabels(HashMap<String, Json>);
 
-#[derive(Hash, PartialEq, Eq)]
+#[derive(Clone, Hash, PartialEq, Eq)]
 enum Work {
     Local(String),
     CatalogTag(String),
@@ -35,9 +35,11 @@ impl RoleLabels {
         }
         let wanted = serde_json::json!(ids).to_string();
         let origin = crate::character_import::EXTENSION_CHARACTER_ORIGIN;
+        // 候选只按名字取，不按作品预筛：没有作品的角色要和同名的全部身份一起归组（见 merge_families），
+        // 不论请求的是哪一端，拿到的分组都一样。
         let mut stmt = c.prepare_cached(&format!(
-            "WITH wanted_roles(name, work) AS (
-                SELECT DISTINCT n.name,e.work_id FROM json_each(?1) r JOIN {ENTITIES} e ON e.id=r.value
+            "WITH wanted_roles(name) AS (
+                SELECT DISTINCT n.name FROM json_each(?1) r JOIN {ENTITIES} e ON e.id=r.value
                 JOIN term_name_display n ON n.entity=e.id AND n.skin_only=0
                 WHERE {INDEPENDENT} AND n.tag<>'' AND n.name<>'' AND n.name_source<>'user' AND n.name=n.zh
              )
@@ -47,8 +49,6 @@ impl RoleLabels {
                 FROM {ENTITIES} e JOIN term_name_display n ON n.entity=e.id AND n.skin_only=0
                 WHERE {INDEPENDENT} AND {SELECTABLE_ROLE}
                     AND n.name IN (SELECT name FROM wanted_roles)
-                    AND (e.work_id IS NULL OR e.work_id IN (SELECT work FROM wanted_roles)
-                         OR EXISTS(SELECT 1 FROM wanted_roles WHERE work IS NULL))
              ) WHERE name_count>1"
         ))?;
         let catalog = crate::character_catalog::current();
@@ -84,10 +84,12 @@ impl RoleLabels {
                 scopes.entry((work, name, shown)).or_default().push(role);
             }
         }
+        merge_families(catalog, &mut scopes);
         let mut out = HashMap::new();
-        for roles in scopes.into_values().filter(|roles| roles.len() > 1) {
+        for ((work, ..), roles) in scopes.into_iter().filter(|(_, roles)| roles.len() > 1) {
             if roles.iter().any(|r| ids.contains(r.id.as_str())) {
-                disambiguate(catalog, &roles, &ids, &mut out);
+                let works = work_words(c, catalog, &work, &roles, &mut local_works)?;
+                disambiguate(catalog, &roles, &works, &ids, &mut out);
             }
         }
         Ok(Self(out))
@@ -156,7 +158,7 @@ fn catalog_scope(
     let entry = catalog.character(tag);
     let tail = entry.map(|entry| crate::character_profile::qualifier(&entry.tag)).unwrap_or_default();
     for work in [work_text, tail].into_iter().filter(|work| !work.is_empty()) {
-        let known = catalog.work(work).is_some() || work_name(work).is_some();
+        let known = known_work(catalog, work);
         if work == work_text || known {
             if !local.contains_key(work) {
                 local.insert(work.into(), crate::character_profile::local_work(c, &[work])?);
@@ -172,6 +174,10 @@ fn catalog_scope(
     Ok(entry.and_then(|entry| catalog_root(catalog, entry)).map(|root| Work::CatalogFamily(root.id)))
 }
 
+fn known_work(catalog: &Catalog, word: &str) -> bool {
+    catalog.work(word).is_some() || work_name(word).is_some()
+}
+
 fn catalog_root<'a>(catalog: &'a Catalog, mut entry: &'a Character) -> Option<&'a Character> {
     let mut visited = HashSet::new();
     while let Some(parent) = catalog.parent(entry) {
@@ -183,12 +189,75 @@ fn catalog_root<'a>(catalog: &'a Catalog, mut entry: &'a Character) -> Option<&'
     Some(entry)
 }
 
-fn disambiguate(catalog: &Catalog, roles: &[Role], requested: &HashSet<&str>, out: &mut HashMap<String, Json>) {
+// 没有作品归属、tag 也不带作品后缀的角色（只由 WD 认出的 `darth_vader` 这类）只能按词表家族归组。同名的同家族
+// 角色里有作品的只落在一个本地作品时，把它并进那一组一起比较；落在几个作品时不猜，仍各算各的。
+fn merge_families(catalog: &Catalog, scopes: &mut HashMap<(Work, String, String), Vec<Role>>) {
+    let root_of = |tag: &str| catalog.character(tag).and_then(|entry| catalog_root(catalog, entry)).map(|root| root.id);
+    let mut locals: HashMap<(u32, String, String), HashSet<String>> = HashMap::new();
+    for ((work, name, shown), roles) in scopes.iter() {
+        let Work::Local(id) = work else { continue };
+        for root in roles.iter().filter_map(|role| root_of(&role.tag)) {
+            locals.entry((root, name.clone(), shown.clone())).or_default().insert(id.clone());
+        }
+    }
+    let families: Vec<_> = scopes.keys().filter(|(work, ..)| matches!(work, Work::CatalogFamily(_))).cloned().collect();
+    for key in families {
+        let (Work::CatalogFamily(root), name, shown) = &key else { continue };
+        let Some(works) = locals.get(&(*root, name.clone(), shown.clone())) else { continue };
+        let mut works = works.iter();
+        let (Some(work), None) = (works.next(), works.next()) else { continue };
+        let target = (Work::Local(work.clone()), name.clone(), shown.clone());
+        if let Some(roles) = scopes.remove(&key) {
+            scopes.entry(target).or_default().extend(roles);
+        }
+    }
+}
+
+// 这一组里哪些括号词是作品：词表和内置作品名认识的，与本组本地作品是同一个作品的，或本组按词表认出的作品 tag。
+// 比较形态时去掉它们，「hoshino_ai_(oshi_no_ko)」相对「hoshino_ai」就不算多了一种形态。
+fn work_words(
+    c: &Connection,
+    catalog: &Catalog,
+    work: &Work,
+    roles: &[Role],
+    local: &mut HashMap<String, Option<String>>,
+) -> Result<HashSet<String>> {
+    let mut words = HashSet::new();
+    for entry in roles.iter().filter_map(|role| catalog.character(&role.tag)) {
+        for word in qualifiers(&entry.tag) {
+            if words.contains(word) {
+                continue;
+            }
+            let same = match work {
+                Work::Local(id) => {
+                    if !local.contains_key(word) {
+                        local.insert(word.into(), crate::character_profile::local_work(c, &[word])?);
+                    }
+                    local[word].as_deref() == Some(id.as_str())
+                }
+                Work::CatalogTag(tag) => tag == word,
+                Work::CatalogFamily(_) => false,
+            };
+            if same || known_work(catalog, word) {
+                words.insert(word.to_owned());
+            }
+        }
+    }
+    Ok(words)
+}
+
+fn disambiguate(
+    catalog: &Catalog,
+    roles: &[Role],
+    works: &HashSet<String>,
+    requested: &HashSet<&str>,
+    out: &mut HashMap<String, Json>,
+) {
     let entries: Vec<_> = roles.iter().filter_map(|role| catalog.character(&role.tag)).collect();
     let mut labels: Vec<_> = roles
         .iter()
         .filter(|role| role.automatic_zh && !role.tag.is_empty())
-        .map(|role| (role, short_form(catalog, &entries, &role.tag)))
+        .map(|role| (role, short_form(catalog, &entries, works, &role.tag)))
         .collect();
     let mut counts = HashMap::new();
     for (_, label) in &labels {
@@ -247,24 +316,32 @@ fn qualifiers(mut tag: &str) -> Vec<&str> {
     out
 }
 
-fn short_form(catalog: &Catalog, entries: &[&Character], tag: &str) -> String {
-    if let Some(entry) = catalog.character(tag) {
-        let tail = crate::character_profile::qualifier(&entry.tag);
-        if let Some(variant) = &entry.variant {
-            return translated(variant, tail);
-        }
-        if let Some(parent) = catalog.parent(entry) {
-            let shared = qualifiers(&parent.tag);
-            let forms: Vec<_> = qualifiers(&entry.tag).into_iter().filter(|q| !shared.contains(q)).collect();
-            if !forms.is_empty() {
-                return forms.into_iter().map(|form| translated(form, tail)).collect::<Vec<_>>().join(" · ");
-            }
-        } else if entries
-            .iter()
-            .any(|other| other.id != entry.id && catalog_root(catalog, other).is_some_and(|root| root.id == entry.id))
-        {
-            return if roman() { "Base form" } else { "基本形态" }.into();
-        }
+// 词表条目比上级多出来的括号词，不算作品词：「近卫」这类形态。没有上级、或只差作品词时为空。
+fn own_forms<'a>(catalog: &Catalog, entry: &'a Character, works: &HashSet<String>) -> Vec<&'a str> {
+    let Some(parent) = catalog.parent(entry) else { return Vec::new() };
+    let shared = qualifiers(&parent.tag);
+    qualifiers(&entry.tag).into_iter().filter(|q| !shared.contains(q) && !works.contains(*q)).collect()
+}
+
+fn short_form(catalog: &Catalog, entries: &[&Character], works: &HashSet<String>, tag: &str) -> String {
+    let Some(entry) = catalog.character(tag) else { return readable(tag, false) };
+    let tail = crate::character_profile::qualifier(&entry.tag);
+    if let Some(variant) = &entry.variant {
+        return translated(variant, tail);
     }
-    readable(tag, false)
+    let forms = own_forms(catalog, entry, works);
+    if !forms.is_empty() {
+        return forms.into_iter().map(|form| translated(form, tail)).collect::<Vec<_>>().join(" · ");
+    }
+    // 同组里有它名下带形态词或造型的条目时，本体叫「基本形态」。旧标签改名这类只差作品词、或整个换了写法的，
+    // 两边都用去掉作品后缀的可读 tag（「Shorekeeper」「The Shorekeeper」），一样时 disambiguate 再换成完整的 tag。
+    let base = entries.iter().any(|other| {
+        other.id != entry.id
+            && catalog_root(catalog, other).is_some_and(|root| root.id == entry.id)
+            && (other.variant.is_some() || !own_forms(catalog, other, works).is_empty())
+    });
+    if base {
+        return if roman() { "Base form" } else { "基本形态" }.into();
+    }
+    readable(tag, true)
 }

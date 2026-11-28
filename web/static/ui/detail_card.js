@@ -13,7 +13,7 @@
 import {t} from '../core/i18n.js';
 import {coverUrl, imageUrl, number, thumbSize} from '../core/format.js';
 import {evidence, fromExt, howFound, primaryOf, askWhy} from '../core/detail.js';
-import {REASONS, avatarOf, nameWithWork, workLabel} from '../core/labels.js';
+import {REASONS, avatarOf, nameWithWork, roleName, workLabel} from '../core/labels.js';
 import {unreadableText} from '../core/jobs.js';
 import {charHash, filterRoute, hashFor} from '../core/route.js';
 import {state} from '../core/state.js';
@@ -51,16 +51,16 @@ export function askBar() {
   const {el, refs} = ASK();
   return {el, dispose() {}, update(q) {
     show(el, !!q); if (!q) return;
-    const sig = JSON.stringify([q.entity, q.name]);
-    refill(refs.q, sig, () => {
-      const who = make('b', '', q.name), w = workLabel({id: q.entity, name: q.name});
-      if (w) who.append(make('small', 'char-work', w));
-      return [rich(t('是 {name} 吗？', {name: '{name}'}), {name: who})];
+    const who = {id: q.entity, name: q.name}, rival = q.rival ? roleName({id: q.rival, name: q.rival_name}) : '';
+    refill(refs.q, JSON.stringify([q.entity, roleName(who)]), () => {
+      const b = make('b', '', roleName(who)), w = workLabel(who);
+      if (w) b.append(make('small', 'char-work', w));
+      return [rich(t('是 {name} 吗？', {name: '{name}'}), {name: b})];
     });
     text(refs.why, askWhy(q)); show(refs.why, !!askWhy(q));
     show(refs.rival, !!q.rival);
-    text(refs.rival, q.rival ? t('是 {name}', {name: q.rival_name}) : '');
-    attr(refs.rival, 'title', q.rival ? t('换成 {name}', {name: q.rival_name}) : null);
+    text(refs.rival, rival ? t('是 {name}', {name: rival}) : '');
+    attr(refs.rival, 'title', rival ? t('换成 {name}', {name: rival}) : null);
   }};
 }
 
@@ -116,7 +116,7 @@ function otherRow(compact) {
   return {el, dispose() {}, update({m, primary}) {
     attr(el, 'data-id', m.id);
     setAvatar(refs.avatar, m.id);
-    text(refs.name, m.name); attr(refs.name, 'href', charHash(m.id)); attr(refs.name, 'title', `${howFound(m)} · ${evidence(m.evidence)} · ${nameWithWork(m)}`);
+    text(refs.name, roleName(m)); attr(refs.name, 'href', charHash(m.id)); attr(refs.name, 'title', `${howFound(m)} · ${evidence(m.evidence)} · ${nameWithWork(m)}`);
     cls(el, 'is-ext', m.status === 'machine' && fromExt(m.evidence));
     cls(el, 'is-machine', m.status === 'machine');
     attr(refs.swap, 'data-id', m.id); attr(refs.not, 'data-id', m.id);
@@ -141,8 +141,8 @@ export function identities({compact = false, scope: parent = app} = {}) {
     show(refs.lead, !compact && !!primary); show(refs.none, !primary); show(refs.acts, !compact);
     if (primary && !compact) {
       setAvatar(refs.avatar, primary.id); attr(refs.avatarLink, 'href', charHash(primary.id));
-      text(refs.name, primary.name); attr(refs.name, 'href', charHash(primary.id));
-      refill(refs.name.parentNode, JSON.stringify([primary.id, primary.name, workLabel(pc), fromExt(primary.evidence) && primary.status === 'machine']), () => {
+      text(refs.name, roleName(primary)); attr(refs.name, 'href', charHash(primary.id));
+      refill(refs.name.parentNode, JSON.stringify([primary.id, roleName(primary), workLabel(pc), fromExt(primary.evidence) && primary.status === 'machine']), () => {
         const w = workLabel(pc);
         return [refs.name, ...(w ? [make('small', 'char-work', w)] : []), ...(primary.status === 'machine' ? extMark(primary.evidence) : [])];
       });
@@ -167,10 +167,10 @@ export function identities({compact = false, scope: parent = app} = {}) {
     attr(refs.also, 'title', d.memberships.length ? t('追加角色，原有的保留（A）') : t('设为角色（C）'));
     const alts = (d.alternatives || []).slice(0, 9);
     show(refs.altsBox, alts.length > 0);
-    refill(refs.alts, JSON.stringify(alts.map(a => [a.id, a.name, a.weak, a.evidence])), () => alts.map((a, i) => {
+    refill(refs.alts, JSON.stringify(alts.map(a => [a.id, roleName(a), a.weak, a.evidence])), () => alts.map((a, i) => {
       const b = button(`chip dc-alt${a.weak ? ' is-weak' : ''}`, '', {act: 'alt', i: String(i)},
         `${nameWithWork(a)} · ${a.weak ? t('弱线索（中档相似，不算归属）') + ' · ' : ''}${t('{evidence}。点击：换成这个；⌥ 点击：也是', {evidence: evidence(a.evidence)})}`);
-      b.append(kbd(String(i + 1)), a.name, ...extMark(a.evidence));
+      b.append(kbd(String(i + 1)), roleName(a), ...extMark(a.evidence));
       return b;
     }));
     const tagIds = compact ? [] : d.tag_identities || [];

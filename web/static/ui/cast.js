@@ -7,7 +7,7 @@
 import {BUCKETS, castRows, catalog, recentOf} from '../core/catalog.js';
 import {coverUrl, number} from '../core/format.js';
 import {t} from '../core/i18n.js';
-import {nameTip, roleName} from '../core/labels.js';
+import {nameTip, roleName, roleQualifier} from '../core/labels.js';
 import {prefs} from '../core/prefs.js';
 import {charHash} from '../core/route.js';
 import {state} from '../core/state.js';
@@ -52,7 +52,7 @@ function ringItem(c) {
     attr(refs.img, 'src', coverUrl(x.c.cover)); setTint(refs.img, x.c.color);
     css(refs.ring, '--p', String(x.p));
     text(refs.plus, '+' + number(recentOf(x.c))); text(refs.name, x.c.name); text(refs.work, x.c.work_name || '');
-    const qualifier = x.c.name_disambiguation?.qualifier;
+    const qualifier = roleQualifier(x.c);
     text(refs.qualifier, qualifier || ''); show(refs.qualifier, !!qualifier);
   }
   update(c);
@@ -93,7 +93,7 @@ export function castView(s) {
   const small = keyed(refs.small, {key: c => c.id, create: chipItem, scope: s});
   const rows = keyed(refs.rows, {key: x => x.c.id, create: rowItem, scope: s});
   let showWork = false;
-  const person = c => ({href: charHash(c.id), cover: c.cover, color: c.color, name: c.name, qualifier: c.name_disambiguation?.qualifier, title: nameTip(c),
+  const person = c => ({href: charHash(c.id), cover: c.cover, color: c.color, name: c.name, qualifier: roleQualifier(c), title: nameTip(c),
     sub: showWork ? withWork(c, t('{n} 张', {n: number(c.count)})) : t('{n} 张', {n: number(c.count)})});
   const midItems = list => list.map(c => ({...person(c), id: c.id}));
 

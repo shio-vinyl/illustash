@@ -14,6 +14,7 @@ import {readAsk} from '../core/days.js';
 import {edits} from '../core/edits.js';
 import {number} from '../core/format.js';
 import {t} from '../core/i18n.js';
+import {roleName} from '../core/labels.js';
 import {onPage, pageOf} from '../core/pages.js';
 import {readError} from '../core/session.js';
 import {state} from '../core/state.js';
@@ -66,7 +67,7 @@ export function dayAsk(scope, {pick: choose = openPicker} = {}) {
   function other(off) {
     const b = batch; if (!b || !off.size || busy || edits.busy) return;
     const ids = b.items.filter(x => off.has(x.uuid)).map(x => x.uuid);
-    pickFor(scope, {ids, exclude: [b.entity], sentence: e => t('把 {n} 张从 {from} 换成 {name}', {n: number(ids.length), from: b.name, name: e.name}),
+    pickFor(scope, {ids, exclude: [b.entity], sentence: e => t('把 {n} 张从 {from} 换成 {name}', {n: number(ids.length), from: roleName({id: b.entity, name: b.name}), name: e.name}),
       still: () => batch === b && !busy && onPage(state.route, 'days'),
       pick: async e => {
         if (!await write(askBody(b, 'other', off, e.id))) return;

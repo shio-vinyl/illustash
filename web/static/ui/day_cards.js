@@ -19,7 +19,7 @@ import {SYNC_ACTIVE, syncBar, syncLine, syncTone} from '../core/jobs.js';
 import {imageUrl, number, stamp} from '../core/format.js';
 import {t} from '../core/i18n.js';
 import {charHash} from '../core/route.js';
-import {workLabel} from '../core/labels.js';
+import {roleName, workLabel} from '../core/labels.js';
 import {attr, cls, css, make, rich, show, text, tpl} from './el.js';
 import {keyed} from './keyed.js';
 import {judgeCard} from './judge.js';
@@ -121,7 +121,7 @@ export function askCard({answer, other, later, retry}) {
   }
   // 问句里的名字是去角色页的链接：用节点拼（ui/el.js 的 rich），名字只进 textContent。
   function titleFor(b) {
-    const link = make('a', '', b.name);
+    const link = make('a', '', roleName({id: b.entity, name: b.name}));
     attr(link, 'href', charHash(b.entity));
     refs.title.textContent = '';
     refs.title.append(rich(t('这些是 {name} 吗？'), {name: link}));

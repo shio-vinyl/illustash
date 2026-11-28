@@ -22,7 +22,7 @@
 import {dayCells, fitChips} from '../core/days.js';
 import {coverUrl, dayLabel, imageUrl, number, thumbSize, weekdayShort} from '../core/format.js';
 import {t} from '../core/i18n.js';
-import {nameWithWork, workLabel} from '../core/labels.js';
+import {nameWithWork, roleName, workLabel} from '../core/labels.js';
 import {attr, cls, css, show, text, tpl} from './el.js';
 import {icon} from './icons.js';
 import {keyed} from './keyed.js';
@@ -70,7 +70,7 @@ function tileWidget(cell, ctx, s) {
     attr(el, 'data-more', more ? String(more) : null); show(refs.plus, !!more);
     text(refs.plus, more ? t('+{n} 张', {n: number(more)}) : '');
     // 按钮的可访问名称：「+N」那格说去网格；其余照网格卡片的口径（角色名或「未识别图片」，第几张）。
-    const names = (item.memberships || []).map(m => m.name).join(t('、')) || t('未识别图片');
+    const names = (item.memberships || []).map(roleName).join(t('、')) || t('未识别图片');
     attr(el, 'aria-label', more ? t('还有 {n} 张，在网格里看', {n: number(more)}) : t('{names}，第 {n} 张', {names, n: next.index + 1}));
     css(el, 'left', b.x + 'px'); css(el, 'top', b.y + 'px'); css(el, 'width', b.w + 'px'); css(el, 'height', b.h + 'px');
     if (box && (box.x !== b.x || box.y !== b.y || box.w !== b.w || box.h !== b.h)) flip(el, box, b);
@@ -88,7 +88,7 @@ function chipWidget(c, ctx, day) {
     attr(el, 'href', ctx.href(day, x.id));
     const cover = ctx.cover(x.id);
     attr(refs.img, 'src', coverUrl(cover));
-    text(refs.name, x.name); text(refs.n, number(x.count));
+    text(refs.name, roleName(x)); text(refs.n, number(x.count));
     attr(el, 'title', nameWithWork(x));
   };
   update(c);

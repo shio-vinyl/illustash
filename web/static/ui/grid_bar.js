@@ -8,7 +8,7 @@ import {exportActive} from '../core/files.js';
 import {number, short} from '../core/format.js';
 import {wantsAdd} from '../core/favorites.js';
 import {t} from '../core/i18n.js';
-import {catalogRole, roleName} from '../core/labels.js';
+import {roleName} from '../core/labels.js';
 import {canLike, likeRoute} from '../core/like.js';
 import {isGroupPage, viewOf} from '../core/pages.js';
 import {go} from '../core/route.js';
@@ -58,11 +58,11 @@ function barButtons(kind, n) {
   const r = state.route, group = isGroupPage(), people = r.char && !group, out = [], N = {n: number(n)};
   const oc = button('oc', t('原创角色'), {tip: t('把画师自己的原创角色统一标为「原创角色（未细分）」')});
   if (people && r.maybe) {
-    const name = short(state.char?.name || t('该角色'));
+    const name = short(roleName(state.char) || t('该角色'));
     out.push(button('isme', armed('isme', t('再点一次：{n} 张设为 {name}', {...N, name}), t('是 {name}', {name})), {primary: true}),
       button('remove', armed('remove', t('再点一次：{n} 张不是', N), t('不是 TA')), {key: '⌫'}));
   } else if (people) {
-    const name = short(state.char?.name || t('该角色'));
+    const name = short(roleName(state.char) || t('该角色'));
     out.push(button('remove', armed('remove', t('再点一次：移出 {n} 张', N), t('不是 {name}', {name})), {primary: true, key: '⌫'}),
       button('swap', t('换成…'), {key: 'C'}), button('also', t('也是…'), {key: 'A'}));
     if (state.char?.variants?.length) out.push(button('variant', t('造型'), {key: 'T'}));
@@ -120,7 +120,7 @@ function selectedChars() {
 // fixed：点下按钮时定下的 {n, sel, payload}（#715）。「换掉哪个角色？」先选一个再开这一步，中间选区变了也照旧写那一次选的图。
 function swapSelected(from, exclude = [from.id], fixed = fixedSelection()) {
   const {n, sel, payload} = fixed;
-  openPicker({title: t('把 {n} 张换成…', {n: number(n)}), sentence: e => t('把 {n} 张从 {from} 换成 {name}', {n: number(n), from: roleName(catalogRole(from)), name: e.name}),
+  openPicker({title: t('把 {n} 张换成…', {n: number(n)}), sentence: e => t('把 {n} 张从 {from} 换成 {name}', {n: number(n), from: roleName(from), name: e.name}),
     exclude, suggest: sel, multi: true,
     pick: list => mutate('/api/reassign', {...payload, old: from.id, new: newIds(list)}, state.route.char === from.id)});
 }
@@ -165,7 +165,7 @@ function runBarAction(act) {
     else if (!chars.common.length) toast(t('所选图片没有共同的角色'));
     else if (chars.common.length === 1) swapSelected(chars.common[0], chars.common.map(m => m.id), fixed);
     // 第二个面板等这一个的 close 事件之后再开：在那之前浮层管理器还把它算作开着，同一个对话框不会再打开。
-    else openPicker({title: t('换掉哪个角色？'), items: chars.common.map(catalogRole), subject: selectionIds(), sentence: e => t('把 {n} 张的 {name} 换掉', {n: number(n), name: e.name}),
+    else openPicker({title: t('换掉哪个角色？'), items: chars.common, subject: selectionIds(), sentence: e => t('把 {n} 张的 {name} 换掉', {n: number(n), name: e.name}),
       pick: e => $('picker').addEventListener('close', () => swapSelected(e, chars.common.map(m => m.id), fixed), {once: true})});
   }
   else if (act === 'also') openPicker({title: t('这 {n} 张也是…', {n: number(n)}), sentence: e => t('给 {n} 张加上 {name}', {n: number(n), name: e.name}),
@@ -190,7 +190,7 @@ function runBarAction(act) {
     if (state.sel.all) { toast(t('全选时请进入角色页移出')); return; }   // 按钮这时是禁用的，⌫ 说一样的话
     const present = new Map(); for (const id of state.sel.ids) { const item = state.items.find(x => x?.uuid === id); for (const m of item?.memberships || []) present.set(m.id, m); }
     if (!present.size) { toast(t('所选图片还没有角色')); return; }
-    openPicker({title: t('这些图不是…'), items: [...present.values()].map(catalogRole), subject: selectionIds(), sentence: e => t('把 {name} 从 {n} 张中移出', {name: e.name, n: number(n)}),
+    openPicker({title: t('这些图不是…'), items: [...present.values()], subject: selectionIds(), sentence: e => t('把 {name} 从 {n} 张中移出', {name: e.name, n: number(n)}),
       pick: e => mutate('/api/change', {...payload(), action: 'rejected', entity: e.id}, false)});
   }
 }

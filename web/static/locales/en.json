@@ -2849,6 +2849,7 @@
   "这台电脑上的其他图库": "Other libraries on this computer",
   "不算角色、只当标签的吉祥物和玩家化身": "Mascots, player stand-ins and other tag-only characters",
   "{name}（{qualifier}）": "{name} ({qualifier})",
+  "{name}（{qualifier}，{work}）": "{name} ({qualifier}, {work})",
   "{name}（{work}）": "{name} ({work})",
   "保存失败，请先核对操作结果；可在设置的关于页复制诊断信息": "Could not save. Check the operation result, then copy diagnostics from Settings › About.",
   "读取失败，请重试；可在设置的关于页复制诊断信息": "Could not read. Try again, or copy diagnostics from Settings › About.",

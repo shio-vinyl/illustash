@@ -4,6 +4,7 @@
 import {esc, isMac, number, short, shortcut} from '../core/format.js';
 import {t} from '../core/i18n.js';
 import {onTyped} from '../core/keys.js';
+import {roleName} from '../core/labels.js';
 import {fetchChar, onMeta, setChar} from '../core/meta.js';
 import {prefs} from '../core/prefs.js';
 import {pageOf, viewOf} from '../core/pages.js';
@@ -233,7 +234,7 @@ export function renderChrome() {
   // 生效的筛选各是一个胶囊，点 × 只清它自己（#386 的 2-30）。角色页的角色胶囊在这里；其余条件是筛选条（ui/filters.js，#445），
   // 旧的单值参数（tag、utag、work、artist、day）也显示在那里。
   const pill = (id, label, title) => `<button class="quiet on" id="${id}" title="${title}">${label} ×</button>`;
-  const name = esc(short(state.char?.name || ''));
+  const name = esc(short(roleName(state.char)));
   const who = tagPage ? t('标签 · {name}', {name}) : t('角色 · {name}', {name});
   const filtersHTML = filtersOnly ? searchBox(r) + filterBar(r) + saveButton(r) : view.toolbar === 'library' ? searchBox(r) +
     (r.char ? pill('charPill', who, tagPage ? t('清除标签筛选') : t('清除角色筛选')) : '') +

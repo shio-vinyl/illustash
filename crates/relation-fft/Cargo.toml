@@ -1,6 +1,6 @@
 [package]
 name = "illustash-relation-fft"
-version = "0.4.1"
+version = "0.4.2"
 edition = "2021"
 rust-version = "1.82"
 description = "关系 NCC 的 PocketFFT C++ 编译边界"

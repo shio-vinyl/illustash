@@ -1,6 +1,6 @@
 [package]
 name = "illustash-core"
-version = "0.4.1"
+version = "0.4.2"
 edition = "2021"
 rust-version = "1.82"
 description = "Illustash 连接内业务规则、证据、人工裁决、关系、历史和投影"
